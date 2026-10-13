@@ -19,10 +19,12 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
+  addProjectMember,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
   signInApi,
@@ -94,6 +96,17 @@ function wrap(
   };
 }
 
+// Monitors live in a Project: one per Organization the run creates.
+const projects = new Map<string, string>();
+const mp = (organizationId: string, suffix = "") =>
+  monitorPath(organizationId, projects.get(organizationId)!, suffix);
+async function addProject(organizationId: string) {
+  projects.set(
+    organizationId,
+    await createProject(pool, organizationId, `Verify ${run}`),
+  );
+}
+
 // ---- state snapshot ----------------------------------------------------------
 async function snapshot(organizationId: string, monitorId: string) {
   const q = async (sql: string, args: unknown[]) =>
@@ -141,11 +154,22 @@ async function setup() {
   orgA = await createOrganization(pool, orgNames.a);
   orgB = await createOrganization(pool, orgNames.b);
   orgIds.push(orgA, orgB);
+  await addProject(orgA);
+  await addProject(orgB);
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
     const person = await createPerson(pool, role, orgA);
     people[role] = person;
     userIds.push(person.userId);
     memberIds[role] = await addMember(pool, orgA, person.userId, role);
+    // The viewer and the auditor read monitors as Project members; Owners and Admins need no membership.
+    if (role === "viewer" || role === "auditor")
+      await addProjectMember(
+        pool,
+        orgA,
+        projects.get(orgA)!,
+        person.userId,
+        "member",
+      );
   }
   people.nonmember = await createPerson(pool, "nonmember", orgB);
   userIds.push(people.nonmember.userId);
@@ -165,15 +189,11 @@ async function createMonitor(
   extra: Record<string, unknown> = {},
   path = "/health",
 ) {
-  const reply = await sessions[role].request(
-    "POST",
-    monitorPath(organizationId),
-    {
-      ...config(name, path),
-      clientRequestId: randomUUID(),
-      ...extra,
-    },
-  );
+  const reply = await sessions[role].request("POST", mp(organizationId), {
+    ...config(name, path),
+    clientRequestId: randomUUID(),
+    ...extra,
+  });
   return reply;
 }
 
@@ -195,8 +215,8 @@ async function matrix() {
   const other = await createMonitor("owner", orgB, `other-${run}`);
   check("matrix setup created monitors", base.status === 201);
   const OB = other.body?.monitor?.id ?? randomUUID();
-  const version = (await owner.request("GET", monitorPath(orgA, `/${M}`))).body
-    .monitor.version;
+  const version = (await owner.request("GET", mp(orgA, `/${M}`))).body.monitor
+    .version;
   const secretId = randomUUID();
   const probeUrl = () =>
     urlOf(probe, `/status/200?p=${randomUUID().slice(0, 6)}`);
@@ -216,39 +236,38 @@ async function matrix() {
     {
       name: "read list",
       write: false,
-      call: (s, o) => s.request("GET", monitorPath(o)),
+      call: (s, o) => s.request("GET", mp(o)),
     },
     {
       name: "read recent-events",
       write: false,
-      call: (s, o) => s.request("GET", monitorPath(o, "/recent-events")),
+      call: (s, o) => s.request("GET", mp(o, "/recent-events")),
     },
     {
       name: "read detail",
       write: false,
-      call: (s, o, id) => s.request("GET", monitorPath(o, `/${id}`)),
+      call: (s, o, id) => s.request("GET", mp(o, `/${id}`)),
     },
     {
       name: "read checks",
       write: false,
-      call: (s, o, id) => s.request("GET", monitorPath(o, `/${id}/checks`)),
+      call: (s, o, id) => s.request("GET", mp(o, `/${id}/checks`)),
     },
     {
       name: "read incidents",
       write: false,
-      call: (s, o, id) => s.request("GET", monitorPath(o, `/${id}/incidents`)),
+      call: (s, o, id) => s.request("GET", mp(o, `/${id}/incidents`)),
     },
     {
       name: "read response-times",
       write: false,
-      call: (s, o, id) =>
-        s.request("GET", monitorPath(o, `/${id}/response-times`)),
+      call: (s, o, id) => s.request("GET", mp(o, `/${id}/response-times`)),
     },
     {
       name: "create",
       write: true,
       call: (s, o) =>
-        s.request("POST", monitorPath(o), {
+        s.request("POST", mp(o), {
           ...basicConfig(
             `matrix-create-${randomUUID().slice(0, 6)}`,
             urlOf(target, "/health"),
@@ -260,7 +279,7 @@ async function matrix() {
       name: "create with secret",
       write: true,
       call: (s, o) =>
-        s.request("POST", monitorPath(o), {
+        s.request("POST", mp(o), {
           ...basicConfig(
             `matrix-secret-${randomUUID().slice(0, 6)}`,
             urlOf(target, "/health"),
@@ -275,9 +294,9 @@ async function matrix() {
       write: true,
       call: async (s, o, id) => {
         const v =
-          (await sessions.owner.request("GET", monitorPath(o, `/${id}`))).body
-            ?.monitor?.version ?? version;
-        return s.request("PATCH", monitorPath(o, `/${id}`), {
+          (await sessions.owner.request("GET", mp(o, `/${id}`))).body?.monitor
+            ?.version ?? version;
+        return s.request("PATCH", mp(o, `/${id}`), {
           ...basicConfig(`edited-${run}`, urlOf(target, "/health")),
           expectedVersion: v,
         });
@@ -288,9 +307,9 @@ async function matrix() {
       write: true,
       call: async (s, o, id) => {
         const v =
-          (await sessions.owner.request("GET", monitorPath(o, `/${id}`))).body
-            ?.monitor?.version ?? version;
-        return s.request("PATCH", monitorPath(o, `/${id}`), {
+          (await sessions.owner.request("GET", mp(o, `/${id}`))).body?.monitor
+            ?.version ?? version;
+        return s.request("PATCH", mp(o, `/${id}`), {
           ...basicConfig(`edited-${run}`, urlOf(target, "/health")),
           auth: { type: "bearer" },
           secrets: [
@@ -308,17 +327,12 @@ async function matrix() {
       name: "test draft",
       write: true,
       call: (s, o) =>
-        s.request(
-          "POST",
-          monitorPath(o, "/test"),
-          basicConfig(`t-${run}`, probeUrl()),
-        ),
+        s.request("POST", mp(o, "/test"), basicConfig(`t-${run}`, probeUrl())),
     },
     {
       name: "test draft with secret",
       write: true,
-      call: (s, o) =>
-        s.request("POST", monitorPath(o, "/test"), secretCfg(`t-${run}`)),
+      call: (s, o) => s.request("POST", mp(o, "/test"), secretCfg(`t-${run}`)),
     },
     {
       name: "test edit",
@@ -326,24 +340,24 @@ async function matrix() {
       call: (s, o, id) =>
         s.request(
           "POST",
-          monitorPath(o, `/${id}/test`),
+          mp(o, `/${id}/test`),
           basicConfig(`t-${run}`, probeUrl()),
         ),
     },
     {
       name: "pause",
       write: true,
-      call: (s, o, id) => s.request("POST", monitorPath(o, `/${id}/pause`)),
+      call: (s, o, id) => s.request("POST", mp(o, `/${id}/pause`)),
     },
     {
       name: "resume",
       write: true,
-      call: (s, o, id) => s.request("POST", monitorPath(o, `/${id}/resume`)),
+      call: (s, o, id) => s.request("POST", mp(o, `/${id}/resume`)),
     },
     {
       name: "delete",
       write: true,
-      call: (s, o, id) => s.request("DELETE", monitorPath(o, `/${id}`)),
+      call: (s, o, id) => s.request("DELETE", mp(o, `/${id}`)),
     },
     {
       name: "monitor alerts toggle",
@@ -398,7 +412,7 @@ async function matrix() {
         if (op.name === "resume") {
           await sessions[role as Role].request(
             "POST",
-            monitorPath(orgA, `/${id}/pause`),
+            mp(orgA, `/${id}/pause`),
           );
         }
       }
@@ -472,7 +486,7 @@ async function matrix() {
   }
 
   // Non-member answers must not reveal names, URLs or counts (AC-02).
-  const leak = await sessions.nonmember.request("GET", monitorPath(orgA));
+  const leak = await sessions.nonmember.request("GET", mp(orgA));
   const text = JSON.stringify(leak.body);
   check(
     "non-member list body carries no name, URL, host or count",
@@ -512,13 +526,10 @@ async function matrix() {
     idOk && bodies.size === 1,
     [...bodies],
   );
-  const other404 = await sessions.owner.request(
-    "GET",
-    monitorPath(orgA, `/${OB}`),
-  );
+  const other404 = await sessions.owner.request("GET", mp(orgA, `/${OB}`));
   const missing404 = await sessions.owner.request(
     "GET",
-    monitorPath(orgA, `/${randomUUID()}`),
+    mp(orgA, `/${randomUUID()}`),
   );
   check(
     "AC-48 other-organization and missing id have byte-identical bodies",
@@ -553,10 +564,10 @@ async function ssrf() {
   for (const url of cases) {
     const test = await sessions.owner.request(
       "POST",
-      monitorPath(orgA, "/test"),
+      mp(orgA, "/test"),
       basicConfig("ssrf", url),
     );
-    const save = await sessions.owner.request("POST", monitorPath(orgA), {
+    const save = await sessions.owner.request("POST", mp(orgA), {
       ...basicConfig("ssrf", url),
       clientRequestId: randomUUID(),
     });
@@ -602,7 +613,7 @@ async function ssrf() {
   const viaRedirect = `/redirect?to=${encodeURIComponent(`http://localhost:${String(second.port)}/x`)}`;
   const rTest = await sessions.owner.request(
     "POST",
-    monitorPath(orgA, "/test"),
+    mp(orgA, "/test"),
     basicConfig("redir", urlOf(target, viaRedirect)),
   );
   check(
@@ -619,7 +630,7 @@ async function ssrf() {
   // A secret is not forwarded when a redirect leaves the origin (same host, other port).
   const crossTo = `/redirect?to=${encodeURIComponent(`http://${host}:${String(second.port)}/reflect`)}`;
   const crossToken = `redirect-token-${run}`;
-  await sessions.owner.request("POST", monitorPath(orgA, "/test"), {
+  await sessions.owner.request("POST", mp(orgA, "/test"), {
     ...basicConfig("cross", urlOf(target, crossTo)),
     auth: { type: "bearer" },
     secrets: [{ slot: "auth.token", value: crossToken }],
@@ -754,17 +765,13 @@ async function secrets() {
       headers: k.headers,
       secrets: k.secrets,
     };
-    const test = await sessions.owner.request(
-      "POST",
-      monitorPath(orgA, "/test"),
-      body,
-    );
+    const test = await sessions.owner.request("POST", mp(orgA, "/test"), body);
     check(
       `AC-25 Test with ${k.kind} passes against a credential-checking target`,
       test.body?.result?.outcome === "pass",
       test.body,
     );
-    const save = await sessions.owner.request("POST", monitorPath(orgA), {
+    const save = await sessions.owner.request("POST", mp(orgA), {
       ...body,
       clientRequestId: randomUUID(),
     });
@@ -798,7 +805,7 @@ async function secrets() {
   }
   const detail = await sessions.viewer.request(
     "GET",
-    monitorPath(orgA, `/${created[0]!.id}`),
+    mp(orgA, `/${created[0]!.id}`),
   );
   check(
     "AC-25 viewer sees slots, never values",
@@ -810,9 +817,8 @@ async function secrets() {
 
   // Edit: keep uses stored value; replace uses the new one; changing origin is refused (AC-26, AC-44, AC-45).
   const bearer = created[0]!;
-  const cur = (
-    await sessions.owner.request("GET", monitorPath(orgA, `/${bearer.id}`))
-  ).body.monitor;
+  const cur = (await sessions.owner.request("GET", mp(orgA, `/${bearer.id}`)))
+    .body.monitor;
   const editBase = {
     ...basicConfig(bearer.name, urlOf(bearer.target, "/creds")),
     auth: { type: "bearer" },
@@ -820,7 +826,7 @@ async function secrets() {
   const before = bearer.target.hits.length;
   const keepTest = await sessions.owner.request(
     "POST",
-    monitorPath(orgA, `/${bearer.id}/test`),
+    mp(orgA, `/${bearer.id}/test`),
     { ...editBase, secrets: [{ slot: "auth.token", action: "keep" }] },
   );
   check(
@@ -834,7 +840,7 @@ async function secrets() {
   bearer.target.setCredentials({ authorization: `Bearer ${newToken}` });
   const replTest = await sessions.owner.request(
     "POST",
-    monitorPath(orgA, `/${bearer.id}/test`),
+    mp(orgA, `/${bearer.id}/test`),
     {
       ...editBase,
       secrets: [{ slot: "auth.token", action: "replace", value: newToken }],
@@ -846,7 +852,7 @@ async function secrets() {
   );
   const stillOld = await sessions.owner.request(
     "POST",
-    monitorPath(orgA, `/${bearer.id}/test`),
+    mp(orgA, `/${bearer.id}/test`),
     { ...editBase, secrets: [{ slot: "auth.token", action: "keep" }] },
   );
   check(
@@ -858,7 +864,7 @@ async function secrets() {
   );
   const originChange = await sessions.owner.request(
     "PATCH",
-    monitorPath(orgA, `/${bearer.id}`),
+    mp(orgA, `/${bearer.id}`),
     {
       ...basicConfig(bearer.name, `http://${host}:${String(probe.port)}/creds`),
       auth: { type: "bearer" },
@@ -868,7 +874,7 @@ async function secrets() {
   );
   const originTest = await sessions.owner.request(
     "POST",
-    monitorPath(orgA, `/${bearer.id}/test`),
+    mp(orgA, `/${bearer.id}/test`),
     {
       ...basicConfig(bearer.name, `http://${host}:${String(probe.port)}/creds`),
       auth: { type: "bearer" },
@@ -884,7 +890,7 @@ async function secrets() {
   );
   const replaceEmpty = await sessions.owner.request(
     "PATCH",
-    monitorPath(orgA, `/${bearer.id}`),
+    mp(orgA, `/${bearer.id}`),
     {
       ...editBase,
       secrets: [{ slot: "auth.token", action: "replace", value: "" }],
@@ -899,7 +905,7 @@ async function secrets() {
   );
   const typeChange = await sessions.owner.request(
     "PATCH",
-    monitorPath(orgA, `/${bearer.id}`),
+    mp(orgA, `/${bearer.id}`),
     {
       ...basicConfig(bearer.name, urlOf(bearer.target, "/creds")),
       auth: { type: "none" },
@@ -920,23 +926,19 @@ async function secrets() {
   // Reflecting endpoint: the secret is redacted from assertion actuals and errors (AC-43).
   const reflectToken = mk();
   KNOWN_SECRETS.push(reflectToken);
-  const reflect = await sessions.owner.request(
-    "POST",
-    monitorPath(orgA, "/test"),
-    {
-      ...basicConfig("reflect", urlOf(target, "/reflect")),
-      auth: { type: "bearer" },
-      secrets: [{ slot: "auth.token", value: reflectToken }],
-      assertions: [
-        {
-          kind: "jsonPathEquals",
-          path: "$.headers.authorization",
-          expected: "nope",
-        },
-        { kind: "bodyContains", text: "nothing-like-this" },
-      ],
-    },
-  );
+  const reflect = await sessions.owner.request("POST", mp(orgA, "/test"), {
+    ...basicConfig("reflect", urlOf(target, "/reflect")),
+    auth: { type: "bearer" },
+    secrets: [{ slot: "auth.token", value: reflectToken }],
+    assertions: [
+      {
+        kind: "jsonPathEquals",
+        path: "$.headers.authorization",
+        expected: "nope",
+      },
+      { kind: "bodyContains", text: "nothing-like-this" },
+    ],
+  });
   const reflectText = JSON.stringify(reflect.body);
   check(
     "AC-43 reflected secret is redacted to bullets in the Test result",
@@ -1001,23 +1003,19 @@ async function secrets() {
   HIDDEN_VALUES.push(queryValue, bodyValue);
   const qbTarget = await startMonitorTarget();
   const qbName = `querybody-${run}`;
-  const qb = await sessions.owner.request("POST", monitorPath(orgA), {
+  const qb = await sessions.owner.request("POST", mp(orgA), {
     ...basicConfig(qbName, urlOf(qbTarget, "/health")),
     method: "POST",
     queryParams: [{ name: "token", value: queryValue }],
     body: { type: "text", content: bodyValue },
     clientRequestId: randomUUID(),
   });
-  const qbTest = await sessions.owner.request(
-    "POST",
-    monitorPath(orgA, "/test"),
-    {
-      ...basicConfig(qbName, urlOf(qbTarget, "/health")),
-      method: "POST",
-      queryParams: [{ name: "token", value: queryValue }],
-      body: { type: "text", content: bodyValue },
-    },
-  );
+  const qbTest = await sessions.owner.request("POST", mp(orgA, "/test"), {
+    ...basicConfig(qbName, urlOf(qbTarget, "/health")),
+    method: "POST",
+    queryParams: [{ name: "token", value: queryValue }],
+    body: { type: "text", content: bodyValue },
+  });
   const qbText = JSON.stringify(qbTest.body);
   check(
     "AC-42 Test result shows the query as name=\u2022\u2022\u2022, never the value",
@@ -1077,10 +1075,7 @@ async function secrets() {
   await qbTarget.close();
 
   // Delete removes stored secrets in the same transaction (AC-46).
-  const del = await sessions.owner.request(
-    "DELETE",
-    monitorPath(orgA, `/${b.id}`),
-  );
+  const del = await sessions.owner.request("DELETE", mp(orgA, `/${b.id}`));
   const gone = await pool.query(
     "select count(*)::int n from monitor_secrets where monitor_id=$1",
     [b.id],
@@ -1198,13 +1193,14 @@ async function scanStores() {
 async function concurrency() {
   const limitOrg = await createOrganization(pool, `Verify limit ${run}`);
   orgIds.push(limitOrg);
+  await addProject(limitOrg);
   const person = await createPerson(pool, "limit", limitOrg);
   userIds.push(person.userId);
   await addMember(pool, limitOrg, person.userId, "owner");
   const s = wrap(await signInApi(person));
   const replies = await Promise.all(
-    Array.from({ length: 60 }, (_, i) =>
-      s.request("POST", monitorPath(limitOrg), {
+    Array.from({ length: 30 }, (_, i) =>
+      s.request("POST", mp(limitOrg), {
         ...basicConfig(`limit-${String(i)}`, urlOf(target, "/health")),
         clientRequestId: randomUUID(),
       }),
@@ -1223,8 +1219,8 @@ async function concurrency() {
     )
   ).rows[0].n;
   check(
-    "AC-59 60 concurrent creates at limit 50 made exactly 50",
-    ok === 50 && count === 50,
+    "AC-59 30 concurrent creates at the Project limit 20 made exactly 20",
+    ok === 20 && count === 20,
     { ok, count, rest: [...rest] },
   );
   const one = (
@@ -1234,11 +1230,11 @@ async function concurrency() {
   ).rows[0].id;
   let conflicts = 0;
   for (let round = 0; round < 8; round++) {
-    const v = (await s.request("GET", monitorPath(limitOrg, `/${one}`))).body
-      .monitor.version;
+    const v = (await s.request("GET", mp(limitOrg, `/${one}`))).body.monitor
+      .version;
     const pair = await Promise.all(
       [0, 1].map((i) =>
-        s.request("PATCH", monitorPath(limitOrg, `/${one}`), {
+        s.request("PATCH", mp(limitOrg, `/${one}`), {
           ...basicConfig(
             `edit-${String(round)}-${String(i)}`,
             urlOf(target, "/health"),
@@ -1282,13 +1278,13 @@ async function concurrency() {
         [org],
       )
     ).rows[0].id;
-    await s.request("DELETE", monitorPath(org, `/${victim}`));
+    await s.request("DELETE", mp(org, `/${victim}`));
     const name = `late-${action}-${run}`;
     const body = {
       ...basicConfig(name, urlOf(slow, "/health")),
       timeoutSeconds: 20,
     };
-    const c = await s.request("POST", monitorPath(org, ""), {
+    const c = await s.request("POST", mp(org, ""), {
       ...body,
       clientRequestId: randomUUID(),
     });
@@ -1299,17 +1295,15 @@ async function concurrency() {
       await sleep(500);
     const inflight = slow.hits.length > seenBefore;
     const v = c.body.monitor.version;
-    if (action === "pause")
-      await s.request("POST", monitorPath(org, `/${id}/pause`));
+    if (action === "pause") await s.request("POST", mp(org, `/${id}/pause`));
     if (action === "edit")
-      await s.request("PATCH", monitorPath(org, `/${id}`), {
+      await s.request("PATCH", mp(org, `/${id}`), {
         ...body,
         name: `${name}-x`,
         timeoutSeconds: 21,
         expectedVersion: v,
       });
-    if (action === "delete")
-      await s.request("DELETE", monitorPath(org, `/${id}`));
+    if (action === "delete") await s.request("DELETE", mp(org, `/${id}`));
     const at = new Date();
     await sleep(14_000);
     const late = await pool.query(
@@ -1322,8 +1316,7 @@ async function concurrency() {
       inflight && late.rows[0].n === 0,
       rows.at(-1),
     );
-    if (action !== "delete")
-      await s.request("DELETE", monitorPath(org, `/${id}`));
+    if (action !== "delete") await s.request("DELETE", mp(org, `/${id}`));
   }
   evidence.late = rows;
   await slow.close();
@@ -1333,6 +1326,7 @@ async function concurrency() {
 async function rateLimit() {
   const org = await createOrganization(pool, `Verify rate ${run}`);
   orgIds.push(org);
+  await addProject(org);
   const users: ApiSession[] = [];
   for (const label of ["a", "b", "c", "d"]) {
     const person = await createPerson(pool, `rate-${label}`, org);
@@ -1343,11 +1337,18 @@ async function rateLimit() {
   const viewer = await createPerson(pool, "rate-viewer", org);
   userIds.push(viewer.userId);
   await addMember(pool, org, viewer.userId, "viewer");
+  await addProjectMember(
+    pool,
+    org,
+    projects.get(org)!,
+    viewer.userId,
+    "member",
+  );
   const viewerSession = wrap(await signInApi(viewer), randomUUID(), false);
   const fire = (s: ApiSession) =>
     s.request(
       "POST",
-      monitorPath(org, "/test"),
+      mp(org, "/test"),
       basicConfig(
         "rate",
         urlOf(probe, `/status/200?r=${randomUUID().slice(0, 6)}`),
@@ -1395,7 +1396,7 @@ async function rateLimit() {
     false,
   ).request(
     "POST",
-    monitorPath(org, "/test"),
+    mp(org, "/test"),
     basicConfig("rate", urlOf(probe, "/status/200")),
   );
   check(
@@ -1414,6 +1415,7 @@ async function rateLimit() {
 async function alerts() {
   const org = await createOrganization(pool, `Verify alerts ${run}`);
   orgIds.push(org);
+  await addProject(org);
   const person = await createPerson(pool, "alerts", org);
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
@@ -1437,7 +1439,7 @@ async function alerts() {
   };
   const make = async (name: string) =>
     (
-      await s.request("POST", monitorPath(org), {
+      await s.request("POST", mp(org), {
         ...basicConfig(name, urlOf(down, "/health")),
         clientRequestId: randomUUID(),
       })
@@ -1465,7 +1467,7 @@ async function alerts() {
   );
 
   // Pause closes the open incident as paused_by_user and sends no recovery (AC-19, AC-51).
-  await s.request("POST", monitorPath(org, `/${a}/pause`));
+  await s.request("POST", mp(org, `/${a}/pause`));
   const closed = (
     await pool.query(
       "select end_reason from monitor_incidents where monitor_id = $1",

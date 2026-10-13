@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
+import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   fetchMonitorChecks,
@@ -53,6 +54,8 @@ import {
   noIncidents,
   noResponseTimes,
   NOW,
+  P,
+  projectDetail,
 } from "./detail-test-support";
 import { TIME_ZONE } from "./format";
 import { deferred } from "./form-test-support";
@@ -65,6 +68,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -89,6 +96,7 @@ const fetchDetailMock = vi.mocked(fetchMonitorDetail);
 const fetchChecksMock = vi.mocked(fetchMonitorChecks);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   refetch.intervalMs = 60_000;
   fetchMeContextMock.mockResolvedValue(context());
@@ -170,18 +178,18 @@ function Harness() {
       <p data-testid="location">{useLocation().pathname}</p>
       <Routes>
         <Route
-          path="/organizations/:organizationId/monitors/:monitorId/checks"
+          path="/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks"
           element={<ChecksHistoryPage />}
         />
         <Route
-          path="/organizations/:organizationId/monitors/:monitorId"
+          path="/organizations/:organizationId/projects/:projectId/monitors/:monitorId"
           element={<DetailPage />}
         />
         <Route
-          path="/organizations/:organizationId/monitors"
+          path="/organizations/:organizationId/projects"
           element={
             <p data-testid="checks-harness-overview">
-              Overview of another Organization
+              Projects of another Organization
             </p>
           }
         />
@@ -206,7 +214,7 @@ function renderChecks(
         <TenantProvider>
           <MemoryRouter
             initialEntries={[
-              `/organizations/${organizationId}/monitors/${monitorId}/checks`,
+              `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/checks`,
             ]}
           >
             <Harness />
@@ -363,7 +371,7 @@ describe("Checks history states", () => {
     ).toBeInTheDocument();
     expect(await waitCount([1, 50, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(50);
-    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
       limit: 50,
       offset: 0,
     });
@@ -371,7 +379,7 @@ describe("Checks history states", () => {
     await user.click(await loadMoreButton());
     expect(await waitCount([1, 100, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(100);
-    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
       limit: 50,
       offset: 50,
     });
@@ -441,7 +449,7 @@ describe("Checks history states", () => {
       await Promise.resolve();
     });
     expect(await waitCount([1, 100, 120])).toBeInTheDocument();
-    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
       limit: 50,
       offset: 50,
     });
@@ -528,7 +536,7 @@ describe("Checks history offset drift", () => {
     });
     // Contiguous and newest first: results 0 to 99 once each, none skipped.
     expect(timesOf()).toEqual(span(0, 100).map(scheduled));
-    expect(fetchChecksMock.mock.calls.map((call) => call[2])).toEqual([
+    expect(fetchChecksMock.mock.calls.map((call) => call[3])).toEqual([
       { limit: 50, offset: 0 },
       { limit: 50, offset: 50 },
       { limit: 50, offset: 100 },
@@ -1137,7 +1145,7 @@ describe("Checks history refresh", () => {
     expect(
       first.queryClient
         .getQueryCache()
-        .find({ queryKey: monitorQueryKeys.checksHistory(A, MONITOR_ID) }),
+        .find({ queryKey: monitorQueryKeys.checksHistory(A, P, MONITOR_ID) }),
     ).toBeUndefined();
 
     fetchChecksMock.mockClear();
@@ -1145,7 +1153,7 @@ describe("Checks history refresh", () => {
     expect(await waitCount([1, 50, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(50);
     expect(fetchChecksMock).toHaveBeenCalledTimes(1);
-    expect(fetchChecksMock).toHaveBeenCalledWith(A, MONITOR_ID, {
+    expect(fetchChecksMock).toHaveBeenCalledWith(A, P, MONITOR_ID, {
       limit: 50,
       offset: 0,
     });
@@ -1166,7 +1174,7 @@ describe("Checks history access", () => {
       });
       expect(await waitCount([3])).toBeInTheDocument();
       expect(historyRows()).toHaveLength(3);
-      expect(fetchChecksMock).toHaveBeenCalledWith(A, MONITOR_ID, {
+      expect(fetchChecksMock).toHaveBeenCalledWith(A, P, MONITOR_ID, {
         limit: 50,
         offset: 0,
       });
@@ -1236,7 +1244,7 @@ describe("Checks history access", () => {
       ).toBeInTheDocument();
       expect(screen.getByTestId("monitor-checks-list-link")).toHaveAttribute(
         "href",
-        `/organizations/${A}/monitors`,
+        `/organizations/${A}/projects/${P}/monitors`,
       );
       expect(document.body.textContent).not.toContain("Payments API");
       expect(document.body.innerHTML).not.toContain("Payments API");
@@ -1314,7 +1322,7 @@ describe("Checks history access", () => {
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
   });
 
-  it("leaves for the new Organization's Overview with no rows from the old one, even when a load more lands late", async () => {
+  it("leaves for the new Organization's Projects with no rows from the old one, even when a load more lands late", async () => {
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
       lastActiveTenantId: B,
@@ -1325,9 +1333,9 @@ describe("Checks history access", () => {
       .mockReturnValueOnce(late.promise);
     const user = userEvent.setup();
     const { queryClient } = renderChecks();
-    expect(monitorQueryKeys.checksHistory(A, MONITOR_ID).slice(0, 1)).toEqual(
-      TENANT_QUERY_PREFIX,
-    );
+    expect(
+      monitorQueryKeys.checksHistory(A, P, MONITOR_ID).slice(0, 1),
+    ).toEqual(TENANT_QUERY_PREFIX);
     await user.click(await loadMoreButton());
     await waitFor(() => {
       expect(screen.getByTestId("monitor-checks-load-more")).toHaveAttribute(
@@ -1338,7 +1346,7 @@ describe("Checks history access", () => {
     await user.click(screen.getByTestId("checks-harness-switch"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${B}/monitors`,
+        `/organizations/${B}/projects`,
       );
     });
     await act(async () => {
@@ -1355,7 +1363,7 @@ describe("Checks history access", () => {
       expect(
         queryClient
           .getQueryCache()
-          .find({ queryKey: monitorQueryKeys.checksHistory(A, MONITOR_ID) }),
+          .find({ queryKey: monitorQueryKeys.checksHistory(A, P, MONITOR_ID) }),
       ).toBeUndefined();
     });
   });
@@ -1371,13 +1379,13 @@ describe("Checks history links", () => {
     const back = screen.getByTestId("monitor-checks-back");
     expect(back).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${MONITOR_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
     // The router takes the click over: no document load.
     expect(fireEvent.click(back)).toBe(false);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${A}/monitors/${MONITOR_ID}`,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
       );
     });
     await waitFor(() => {
@@ -1390,19 +1398,42 @@ describe("Checks history links", () => {
     const open = screen.getByTestId("monitor-detail-checks-link");
     expect(open).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
     );
     await user.click(open);
     expect(await waitCount([3])).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
     );
   });
 
   it("keeps the monitor leaf active on the checks history path", () => {
-    const leaf = { path: "/organizations/:organizationId/monitors" };
+    const leaf = {
+      path: "/organizations/:organizationId/projects/:projectId/monitors",
+    };
     expect(
-      isLeafActive(leaf, `/organizations/${A}/monitors/${MONITOR_ID}/checks`),
+      isLeafActive(
+        leaf,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
+      ),
     ).toBe(true);
+  });
+});
+
+describe("A Project that is gone after the history loaded", () => {
+  it("drops the cached history for the not-found state", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    const { queryClient } = renderChecks();
+    expect(await screen.findByTestId("monitor-checks-table")).toBeVisible();
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(await screen.findByTestId("monitor-checks-not-found")).toBeVisible();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
   });
 });

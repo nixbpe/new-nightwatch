@@ -20,6 +20,7 @@ import {
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
   signInApi,
@@ -84,6 +85,7 @@ const org = await createOrganization(
 );
 const person = await createPerson(pool, "restart", org);
 await addMember(pool, org, person.userId, "owner");
+const project = await createProject(pool, org, "verify");
 const target = await startMonitorTarget();
 target.setDelay(8000);
 const session = await signInApi(person);
@@ -97,7 +99,7 @@ async function inFlight(from: number, waitMs = 60_000) {
 }
 
 try {
-  const created = await session.request("POST", monitorPath(org), {
+  const created = await session.request("POST", monitorPath(org, project), {
     ...basicConfig(
       `restart-${randomUUID().slice(0, 6)}`,
       `http://${host}:${String(target.port)}/health`,

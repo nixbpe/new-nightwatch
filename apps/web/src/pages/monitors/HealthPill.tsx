@@ -4,7 +4,7 @@ import { CheckIcon } from "../../components/shell/icons";
 import { StatusPill } from "../../components/ui/status-pill";
 
 export const HEALTH_LABELS: Record<MonitorHealthName, string> = {
-  up: "ปกติ",
+  up: "ใช้งานได้",
   down: "ล่ม",
   unknown: "ไม่ทราบสถานะ",
   paused: "หยุดชั่วคราว",

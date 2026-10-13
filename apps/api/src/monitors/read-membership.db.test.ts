@@ -21,30 +21,45 @@ import {
 let ctx: MonitorTestContext;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
 }, 120_000);
 
 afterAll(async () => {
   await ctx.close();
 });
 
-// The role change commits right after the pre-transaction membership lookup.
-function demotedAfterPreCheck(org: TestOrganization, userId: string): Database {
+// Runs `statement` right after the pre-transaction membership lookup (the
+// `select 1 from member` of the Project access helper) and before the read
+// transaction opens: the window the in-transaction check closes.
+function afterPreCheck(statement: string, values: unknown[]): Database {
   const pool = ctx.runtime.sql;
   const sql = new Proxy(pool, {
     get(target, property) {
-      if (property === "query") {
-        return async (...args: Parameters<typeof target.query>) => {
-          const result = await (
-            target.query as (...a: unknown[]) => Promise<unknown>
-          )(...args);
-          if (typeof args[0] === "string" && args[0].includes("from member")) {
-            await ctx.owner.sql.query(
-              "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
-              [org.id, userId],
-            );
-          }
-          return result;
+      if (property === "connect") {
+        return async () => {
+          const client = await target.connect();
+          return new Proxy(client, {
+            get(connection, name) {
+              if (name === "query") {
+                return async (...args: unknown[]) => {
+                  const result = await (
+                    connection.query as (...a: unknown[]) => Promise<unknown>
+                  )(...args);
+                  if (
+                    typeof args[0] === "string" &&
+                    args[0].startsWith("select 1 from member")
+                  ) {
+                    await ctx.owner.sql.query(statement, values);
+                  }
+                  return result;
+                };
+              }
+              const value: unknown = Reflect.get(connection, name);
+              return typeof value === "function"
+                ? (value as (...a: unknown[]) => unknown).bind(connection)
+                : value;
+            },
+          });
         };
       }
       const value: unknown = Reflect.get(target, property);
@@ -56,33 +71,18 @@ function demotedAfterPreCheck(org: TestOrganization, userId: string): Database {
   return { ...ctx.runtime, sql };
 }
 
-// The removal commits right after the pre-transaction membership lookup and
-// before the read transaction opens: the window the in-transaction check closes.
+function demotedAfterPreCheck(org: TestOrganization, userId: string): Database {
+  return afterPreCheck(
+    "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+    [org.id, userId],
+  );
+}
+
 function removedAfterPreCheck(org: TestOrganization, userId: string): Database {
-  const pool = ctx.runtime.sql;
-  const sql = new Proxy(pool, {
-    get(target, property) {
-      if (property === "query") {
-        return async (...args: Parameters<typeof target.query>) => {
-          const result = await (
-            target.query as (...a: unknown[]) => Promise<unknown>
-          )(...args);
-          if (typeof args[0] === "string" && args[0].includes("from member")) {
-            await ctx.owner.sql.query(
-              "delete from member where organization_id = $1 and user_id = $2",
-              [org.id, userId],
-            );
-          }
-          return result;
-        };
-      }
-      const value: unknown = Reflect.get(target, property);
-      return typeof value === "function"
-        ? (value as (...a: unknown[]) => unknown).bind(target)
-        : value;
-    },
-  });
-  return { ...ctx.runtime, sql };
+  return afterPreCheck(
+    "delete from member where organization_id = $1 and user_id = $2",
+    [org.id, userId],
+  );
 }
 
 describe("a member removed between the pre-check and the read transaction", () => {
@@ -124,7 +124,11 @@ describe("a member removed between the pre-check and the read transaction", () =
     await expect(
       read(
         removedAfterPreCheck(org, userId),
-        { organizationId: org.id, actorUserId: userId },
+        {
+          organizationId: org.id,
+          projectId: org.projectId,
+          actorUserId: userId,
+        },
         monitorId,
       ),
     ).rejects.toMatchObject(denied);
@@ -135,24 +139,41 @@ describe("a member removed between the pre-check and the read transaction", () =
     await seedMonitor(ctx, org.id, { name: "Visible" });
     const body = await listMonitors(
       ctx.runtime,
-      { organizationId: org.id, actorUserId: org.users.viewer },
+      {
+        organizationId: org.id,
+        projectId: org.projectId,
+        actorUserId: org.users.viewer,
+      },
       query,
     );
     expect(body.monitors.map((monitor) => monitor.name)).toEqual(["Visible"]);
   });
 });
 
-type Identity = { organizationId: string; actorUserId: string };
+type Identity = {
+  organizationId: string;
+  projectId: string;
+  actorUserId: string;
+};
 const query = { limit: 25, offset: 0, sort: "problems" } as const;
 
 describe("an owner demoted between the pre-check and the read transaction", () => {
   it("is denied the last response", async () => {
     const org = await ctx.createOrganization("read-demoted-response");
     const monitorId = await seedMonitor(ctx, org.id);
+    // A Project member keeps read access after the demotion, not the response.
+    await ctx.owner.sql.query(
+      "insert into project_members (project_id, tenant_id, user_id, role) values ($1, $2, $3, 'member')",
+      [org.projectId, org.id, org.users.owner],
+    );
     await expect(
       getLastResponse(
         demotedAfterPreCheck(org, org.users.owner),
-        { organizationId: org.id, actorUserId: org.users.owner },
+        {
+          organizationId: org.id,
+          projectId: org.projectId,
+          actorUserId: org.users.owner,
+        },
         monitorId,
       ),
     ).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
@@ -162,13 +183,21 @@ describe("an owner demoted between the pre-check and the read transaction", () =
     const org = await ctx.createOrganization("read-demoted-feed");
     const monitorId = await seedMonitor(ctx, org.id);
     await ctx.owner.sql.query(
+      "insert into project_members (project_id, tenant_id, user_id, role) values ($1, $2, $3, 'member')",
+      [org.projectId, org.id, org.users.owner],
+    );
+    await ctx.owner.sql.query(
       `insert into monitor_events (monitor_id, tenant_id, kind, actor_kind, actor_user_id)
        values ($1, $2, 'paused', 'user', $3)`,
       [monitorId, org.id, org.users.admin],
     );
     const body = await listEvents(
       demotedAfterPreCheck(org, org.users.owner),
-      { organizationId: org.id, actorUserId: org.users.owner },
+      {
+        organizationId: org.id,
+        projectId: org.projectId,
+        actorUserId: org.users.owner,
+      },
       monitorId,
       { limit: 20, offset: 0 },
     );
@@ -176,6 +205,24 @@ describe("an owner demoted between the pre-check and the read transaction", () =
       { kind: "paused", actor: { kind: "member_hidden" } },
     ]);
     expect(JSON.stringify(body)).not.toContain(org.users.admin);
+  });
+});
+
+describe("an Organization admin demoted without a Project membership", () => {
+  it("loses the Project: 404 on a read, not a leak of the data", async () => {
+    const org = await ctx.createOrganization("read-demoted-hidden");
+    const monitorId = await seedMonitor(ctx, org.id);
+    await expect(
+      getMonitor(
+        demotedAfterPreCheck(org, org.users.owner),
+        {
+          organizationId: org.id,
+          projectId: org.projectId,
+          actorUserId: org.users.owner,
+        },
+        monitorId,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404, code: "PROJECT_NOT_FOUND" });
   });
 });
 
@@ -249,6 +296,7 @@ describe("response-times authorized before removal", () => {
       });
       const identity = {
         organizationId: org.id,
+        projectId: org.projectId,
         actorUserId: org.users.viewer,
       };
       const response = await getResponseTimes(

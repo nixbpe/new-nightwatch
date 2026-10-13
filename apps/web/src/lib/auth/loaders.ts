@@ -34,6 +34,7 @@ import {
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import {
+  fetchLastProject,
   fetchProjectDetail,
   fetchProjectList,
   fetchProjectMembers,
@@ -149,15 +150,49 @@ export async function workspaceLoader({
   const organization = context?.organizations.find(
     (item) => item.id === context.lastActiveTenantId,
   );
-  if (organization !== undefined) {
-    await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+  if (organization === undefined) {
+    return null;
+  }
+  // The overview shows the current Project's monitors, resolved as useCurrentProject does (the
+  // remembered Project while readable, else the first one), so the page needs no round after this.
+  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  const [list, last] = await Promise.all([
+    queryClient
       .query({
-        queryKey: monitorQueryKeys.list(organization.id, OVERVIEW_LIST_PARAMS),
-        queryFn: () => fetchMonitorList(organization.id, OVERVIEW_LIST_PARAMS),
+        queryKey: projectQueryKeys.list(organization.id),
+        queryFn: () => fetchProjectList(organization.id),
         staleTime: "static",
       })
-      .catch(() => undefined);
+      .catch(() => undefined),
+    queryClient
+      .query({
+        queryKey: projectQueryKeys.last(organization.id),
+        queryFn: () => fetchLastProject(organization.id),
+        staleTime: "static",
+      })
+      .catch(() => undefined),
+  ]);
+  if (list === undefined || last === undefined) {
+    return null;
   }
+  const current =
+    list.projects.find((item) => item.id === last.projectId) ??
+    list.projects[0];
+  if (current === undefined) {
+    return null;
+  }
+  await queryClient
+    .query({
+      queryKey: monitorQueryKeys.list(
+        organization.id,
+        current.id,
+        OVERVIEW_LIST_PARAMS,
+      ),
+      queryFn: () =>
+        fetchMonitorList(organization.id, current.id, OVERVIEW_LIST_PARAMS),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
   return null;
 }
 
@@ -212,6 +247,7 @@ export async function notificationSettingsLoader({
 
 // Prefetches the first list page only for an Organization the user belongs to;
 // the page renders denied for any other and must not trigger a request for it.
+// A Project the user cannot read answers 404, which the page shows as its own state.
 export async function monitorsOverviewLoader({
   params,
   request,
@@ -220,8 +256,8 @@ export async function monitorsOverviewLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  const organizationId = params.organizationId;
-  if (organizationId === undefined) {
+  const { organizationId, projectId } = params;
+  if (organizationId === undefined || projectId === undefined) {
     return null;
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
@@ -235,8 +271,8 @@ export async function monitorsOverviewLoader({
   const listParams = { limit: MONITOR_LIST_PAGE_SIZE, offset: 0 };
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
-      queryKey: monitorQueryKeys.list(organizationId, listParams),
-      queryFn: () => fetchMonitorList(organizationId, listParams),
+      queryKey: monitorQueryKeys.list(organizationId, projectId, listParams),
+      queryFn: () => fetchMonitorList(organizationId, projectId, listParams),
       staleTime: "static",
     })
     .catch(() => undefined);
@@ -322,8 +358,12 @@ export async function monitorDetailLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  const { organizationId, monitorId } = params;
-  if (organizationId === undefined || monitorId === undefined) {
+  const { organizationId, projectId, monitorId } = params;
+  if (
+    organizationId === undefined ||
+    projectId === undefined ||
+    monitorId === undefined
+  ) {
     return null;
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
@@ -336,8 +376,8 @@ export async function monitorDetailLoader({
   }
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
-      queryKey: monitorQueryKeys.detail(organizationId, monitorId),
-      queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+      queryKey: monitorQueryKeys.detail(organizationId, projectId, monitorId),
+      queryFn: () => fetchMonitorDetail(organizationId, projectId, monitorId),
       staleTime: "static",
     })
     .catch(() => undefined);
@@ -470,8 +510,12 @@ export async function monitorEditLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  const { organizationId, monitorId } = params;
-  if (organizationId === undefined || monitorId === undefined) {
+  const { organizationId, projectId, monitorId } = params;
+  if (
+    organizationId === undefined ||
+    projectId === undefined ||
+    monitorId === undefined
+  ) {
     return null;
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
@@ -484,8 +528,8 @@ export async function monitorEditLoader({
   }
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
-      queryKey: monitorQueryKeys.detail(organizationId, monitorId),
-      queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+      queryKey: monitorQueryKeys.detail(organizationId, projectId, monitorId),
+      queryFn: () => fetchMonitorDetail(organizationId, projectId, monitorId),
       staleTime: 0,
       // A missing monitor is the page's own state; a retry would only delay it.
       retry: false,

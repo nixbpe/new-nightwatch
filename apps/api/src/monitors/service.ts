@@ -1,12 +1,12 @@
 import {
-  MONITOR_LIMIT_PER_ORGANIZATION,
+  MONITOR_LIMIT_PER_PROJECT,
   type OrganizationRole,
   type MonitorCreateInput,
   type MonitorEditInput,
   type MonitorInvalidReason,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
 import {
   AppError,
   buildCheckUrl,
@@ -21,14 +21,9 @@ import {
 import type { PoolClient } from "pg";
 
 import { recordAuditEvent } from "../audit/record";
-import { normalizeOrganizationRole } from "../me/service";
-import { editAuditAction, monitorAuditChanges } from "./audit";
+import { withProjectAccess } from "../projects/service";
+import { editAuditAction, monitorAuditChanges, monitorTarget } from "./audit";
 import { diffConfig } from "./config-changes";
-import {
-  assertMemberPermissionBeforeTenantContext,
-  assertMonitorPermission,
-  membershipDenied,
-} from "./permissions";
 import {
   affectsChecks,
   assignHeaderIds,
@@ -147,32 +142,31 @@ function urlMarker(previous: StoredConfig, nextMasked: string): string | null {
 
 type Identity = {
   organizationId: string;
+  /** Raw path value: a malformed or hidden Project answers 404. */
+  projectId: string;
   actorUserId: string;
   requestId?: string;
 };
 
-// Lock order shared with the Worker: organization row, then the
-// per-Organization advisory lock (Create only), monitors row, schedule row,
-// incidents. The role is read again under the lock because it may have
-// changed since the pre-check.
-export async function enterOrganization(
-  client: PoolClient,
+export type WriteContext = {
+  /** The Project id, checked and lower-cased. */
+  projectId: string;
+  actorRole: OrganizationRole;
+};
+
+// Lock order: organization row (FOR SHARE), Project row (FOR SHARE, so a
+// Project delete waits for the write and writes of one Project do not
+// serialize; API only, the Worker takes no projects lock), the per-Project
+// advisory lock (Create only), then the rows the Worker also locks in this
+// order: monitors, schedule, incidents. Membership and the Project role are read again under
+// those locks because they may have changed since an earlier check. An Organization
+// nonmember answers like the Project routes, a Project the caller cannot see 404.
+export function withMonitorWriteAccess<T>(
+  database: Database,
   identity: Identity,
-): Promise<OrganizationRole> {
-  const organization = await client.query(
-    "select id from organization where id = $1 for share",
-    [identity.organizationId],
-  );
-  if (organization.rows.length === 0) membershipDenied();
-  const member = await client.query<{ role: string }>(
-    "select role from member where organization_id = $1 and user_id = $2",
-    [identity.organizationId, identity.actorUserId],
-  );
-  assertMonitorPermission(member.rows[0]?.role, "write");
-  // Write permission already implies a recognized role.
-  const role = normalizeOrganizationRole(member.rows[0]?.role ?? "");
-  if (role === null) throw new Error("member has no recognized role");
-  return role;
+  work: (client: PoolClient, context: WriteContext) => Promise<T>,
+): Promise<T> {
+  return withProjectAccess(database, identity, "monitor.write", false, work);
 }
 
 async function secretSlots(
@@ -255,34 +249,37 @@ async function loadRecord(
 async function lockMonitor(
   client: PoolClient,
   identity: Identity,
+  context: WriteContext,
   monitorId: string,
 ): Promise<MonitorRow> {
   const result = await client.query<MonitorRow>(
     `select ${MONITOR_COLUMNS} from monitors
-     where id = $1 and tenant_id = $2 for update`,
-    [monitorId, identity.organizationId],
+     where id = $1 and tenant_id = $2 and project_id = $3 for update`,
+    [monitorId, identity.organizationId, context.projectId],
   );
   const row = result.rows[0];
   if (!row) monitorNotFound();
   return row;
 }
 
-// Existence check before any network work; the real lookup repeats under lock.
+// Project access and existence check before any network work; the real lookup
+// repeats under lock. A Project the caller cannot see ends here with 404, so no
+// DNS lookup or outbound request can reveal it.
 export async function assertMonitorExists(
   database: Database,
   identity: Identity,
-  monitorId: string,
-): Promise<void> {
-  const found = await withTenantContextRaw(
-    database,
-    identity.organizationId,
-    (client) =>
-      client.query("select 1 from monitors where id = $1 and tenant_id = $2", [
-        monitorId,
-        identity.organizationId,
-      ]),
-  );
-  if (found.rows.length === 0) monitorNotFound();
+  rawMonitorId: string,
+): Promise<string> {
+  return withMonitorWriteAccess(database, identity, async (client, context) => {
+    const monitorId = parseMonitorId(rawMonitorId);
+    const found = await client.query(
+      `select 1 from monitors
+         where id = $1 and tenant_id = $2 and project_id = $3`,
+      [monitorId, identity.organizationId, context.projectId],
+    );
+    if (found.rows.length === 0) monitorNotFound();
+    return monitorId;
+  });
 }
 
 function configParameters(stored: StoredConfig): unknown[] {
@@ -308,14 +305,17 @@ function configParameters(stored: StoredConfig): unknown[] {
   ];
 }
 
+// A replay is the same request in the same Project: another Project's monitor
+// is never returned for a reused client_request_id.
 async function findReplay(
   client: PoolClient,
   input: Identity & { input: MonitorCreateInput },
+  context: WriteContext,
 ): Promise<MonitorRow | undefined> {
   const result = await client.query<MonitorRow>(
     `select ${MONITOR_COLUMNS} from monitors
-     where tenant_id = $1 and client_request_id = $2`,
-    [input.organizationId, input.input.clientRequestId],
+     where tenant_id = $1 and project_id = $2 and client_request_id = $3`,
+    [input.organizationId, context.projectId, input.input.clientRequestId],
   );
   return result.rows[0];
 }
@@ -328,18 +328,14 @@ export async function createMonitor(
     credentialEnv?: CredentialEnv;
   },
 ): Promise<MonitorMutation> {
-  await assertMemberPermissionBeforeTenantContext(database, {
-    organizationId: input.organizationId,
-    userId: input.actorUserId,
-    permission: "write",
-  });
-  // A replay wins over everything below, including a host that now resolves
-  // to a blocked address; the original was already accepted.
-  const replayed = await withTenantContextRaw(
+  // Project access comes first (before the replay lookup, DNS and any
+  // outbound work); a replay wins over everything below, including a host that
+  // now resolves to a blocked address; the original was already accepted.
+  const replayed = await withMonitorWriteAccess(
     database,
-    input.organizationId,
-    async (client) => {
-      const found = await findReplay(client, input);
+    input,
+    async (client, context) => {
+      const found = await findReplay(client, input, context);
       return found ? loadRecord(client, found) : undefined;
     },
   );
@@ -358,75 +354,73 @@ export async function createMonitor(
   if (plan.writes.length > 0) requireCredentials(input.credentialEnv);
   await validateSaveTarget(input.input, input.outbound ?? {});
 
-  return withTenantContextRaw(
-    database,
-    input.organizationId,
-    async (client) => {
-      const actorRole = await enterOrganization(client, input);
-      await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
-        `monitors:${input.organizationId}`,
-      ]);
+  return withMonitorWriteAccess(database, input, async (client, context) => {
+    const { actorRole } = context;
+    // One lock per Project: two Creates at the 20th monitor run one after the other.
+    await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+      `monitors:${context.projectId}`,
+    ]);
 
-      // A replay must win over the limit: the original already counts.
-      const original = await findReplay(client, input);
-      if (original) {
-        return { monitor: await loadRecord(client, original), changed: false };
-      }
+    // A replay must win over the limit: the original already counts.
+    const original = await findReplay(client, input, context);
+    if (original) {
+      return { monitor: await loadRecord(client, original), changed: false };
+    }
 
-      const count = await client.query<{ total: string }>(
-        "select count(*) as total from monitors where tenant_id = $1",
-        [input.organizationId],
+    const count = await client.query<{ total: string }>(
+      "select count(*) as total from monitors where tenant_id = $1 and project_id = $2",
+      [input.organizationId, context.projectId],
+    );
+    if (Number(count.rows[0]?.total ?? 0) >= MONITOR_LIMIT_PER_PROJECT) {
+      throw new AppError(
+        409,
+        "MONITOR_LIMIT_REACHED",
+        "โปรเจกต์นี้มีมอนิเตอร์ครบจำนวนสูงสุดแล้ว",
       );
-      if (Number(count.rows[0]?.total ?? 0) >= MONITOR_LIMIT_PER_ORGANIZATION) {
-        throw new AppError(
-          409,
-          "MONITOR_LIMIT_REACHED",
-          "องค์กรนี้มีมอนิเตอร์ครบจำนวนสูงสุดแล้ว",
-        );
-      }
+    }
 
-      const inserted = await client.query<MonitorRow>(
-        `insert into monitors
-         (tenant_id, client_request_id, name, url, method, headers,
+    const inserted = await client.query<MonitorRow>(
+      `insert into monitors
+         (tenant_id, project_id, client_request_id, name, url, method, headers,
           query_params, body_type, body_content, auth_type,
           api_key_header_name, expected_status_text, expected_status_ranges,
           assertions, interval_seconds, timeout_seconds,
           alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
           alert_ssl_caution_days)
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12,
-               $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12,
+               $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21)
        returning ${MONITOR_COLUMNS}`,
-        [
-          input.organizationId,
-          input.input.clientRequestId,
-          ...configParameters(stored),
-        ],
-      );
-      const row = inserted.rows[0];
-      if (!row) throw new Error("monitor insert returned no row");
-      await client.query(
-        `insert into monitor_schedule
+      [
+        input.organizationId,
+        context.projectId,
+        input.input.clientRequestId,
+        ...configParameters(stored),
+      ],
+    );
+    const row = inserted.rows[0];
+    if (!row) throw new Error("monitor insert returned no row");
+    await client.query(
+      `insert into monitor_schedule
          (monitor_id, tenant_id, next_check_at, check_config_version,
           interval_seconds, timeout_seconds)
        values ($1, $2, now(), 1, $3, $4)`,
-        [row.id, input.organizationId, row.intervalSeconds, row.timeoutSeconds],
-      );
-      await storeSecrets(client, input, row.id, plan, input.credentialEnv);
-      await recordAuditEvent(client, {
-        organizationId: input.organizationId,
-        actorUserId: input.actorUserId,
-        actorRole,
-        action: "organization.monitor.create",
-        target: { type: "monitor", id: row.id },
-        changes: [],
-        requestId: input.requestId,
-      });
-      return {
-        monitor: toRecord(row, plan.writes.map((write) => write.slot).sort()),
-        changed: true,
-      };
-    },
-  );
+      [row.id, input.organizationId, row.intervalSeconds, row.timeoutSeconds],
+    );
+    await storeSecrets(client, input, row.id, plan, input.credentialEnv);
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorRole,
+      action: "organization.monitor.create",
+      target: monitorTarget(row.id, context.projectId),
+      changes: [],
+      requestId: input.requestId,
+    });
+    return {
+      monitor: toRecord(row, plan.writes.map((write) => write.slot).sort()),
+      changed: true,
+    };
+  });
 }
 
 export async function editMonitor(
@@ -438,56 +432,47 @@ export async function editMonitor(
     credentialEnv?: CredentialEnv;
   },
 ): Promise<MonitorMutation> {
-  await assertMemberPermissionBeforeTenantContext(database, {
-    organizationId: input.organizationId,
-    userId: input.actorUserId,
-    permission: "write",
-  });
-  const monitorId = parseMonitorId(input.monitorId);
-  await assertMonitorExists(database, input, monitorId);
+  const monitorId = await assertMonitorExists(database, input, input.monitorId);
   if (input.input.secrets.some((entry) => entry.action === "replace")) {
     requireCredentials(input.credentialEnv);
   }
   const maskedUrl = await validateSaveTarget(input.input, input.outbound ?? {});
   const next = toStoredConfig(input.input);
 
-  return withTenantContextRaw(
-    database,
-    input.organizationId,
-    async (client) => {
-      const actorRole = await enterOrganization(client, input);
-      const row = await lockMonitor(client, input, monitorId);
-      if (row.version !== input.input.expectedVersion) {
-        throw new AppError(
-          409,
-          "MONITOR_VERSION_CONFLICT",
-          "มอนิเตอร์ถูกแก้ไขแล้ว",
-          { currentVersion: row.version },
-        );
-      }
-      const previous = storedFromRow(row);
-      next.headers = assignHeaderIds(next.headers, previous.headers);
-      next.alerts = input.input.alerts ?? previous.alerts;
-      const stored = new Set(await secretSlots(client, monitorId));
-      const plan = planSecrets({
-        required: requiredSlots(next),
-        entries: input.input.secrets,
-        stored,
-        mode: "save",
-      });
-      // A kept value was entered for the old destination (AC-44).
-      if (plan.keeps.length > 0) assertSameOrigin(previous, next);
-      const secretsChanged = plan.writes.length > 0 || plan.deletes.length > 0;
-      if (sameConfig(previous, next) && !secretsChanged) {
-        return { monitor: await loadRecord(client, row), changed: false };
-      }
+  return withMonitorWriteAccess(database, input, async (client, context) => {
+    const { actorRole } = context;
+    const row = await lockMonitor(client, input, context, monitorId);
+    if (row.version !== input.input.expectedVersion) {
+      throw new AppError(
+        409,
+        "MONITOR_VERSION_CONFLICT",
+        "มอนิเตอร์ถูกแก้ไขแล้ว",
+        { currentVersion: row.version },
+      );
+    }
+    const previous = storedFromRow(row);
+    next.headers = assignHeaderIds(next.headers, previous.headers);
+    next.alerts = input.input.alerts ?? previous.alerts;
+    const stored = new Set(await secretSlots(client, monitorId));
+    const plan = planSecrets({
+      required: requiredSlots(next),
+      entries: input.input.secrets,
+      stored,
+      mode: "save",
+    });
+    // A kept value was entered for the old destination (AC-44).
+    if (plan.keeps.length > 0) assertSameOrigin(previous, next);
+    const secretsChanged = plan.writes.length > 0 || plan.deletes.length > 0;
+    if (sameConfig(previous, next) && !secretsChanged) {
+      return { monitor: await loadRecord(client, row), changed: false };
+    }
 
-      const impacted = secretsChanged || affectsChecks(previous, next);
-      const intervalChanged = previous.intervalSeconds !== next.intervalSeconds;
-      const updated = await client.query<
-        MonitorRow & { checkConfigVersion: number }
-      >(
-        `update monitors set
+    const impacted = secretsChanged || affectsChecks(previous, next);
+    const intervalChanged = previous.intervalSeconds !== next.intervalSeconds;
+    const updated = await client.query<
+      MonitorRow & { checkConfigVersion: number }
+    >(
+      `update monitors set
          name = $3, url = $4, method = $5, headers = $6::jsonb,
          query_params = $7::jsonb, body_type = $8, body_content = $9,
          auth_type = $10, api_key_header_name = $11,
@@ -511,80 +496,80 @@ export async function editMonitor(
          ssl_notified_level = case when $22::boolean then null
                                    else ssl_notified_level end,
          updated_at = now()
-       where id = $1 and tenant_id = $2
+       where id = $1 and tenant_id = $2 and project_id = $23
        returning ${MONITOR_COLUMNS}, check_config_version as "checkConfigVersion"`,
-        [
-          monitorId,
-          input.organizationId,
-          ...configParameters(next),
-          impacted ? 1 : 0,
-          !sameOrigin(previous, next),
-        ],
-      );
-      const saved = updated.rows[0];
-      if (!saved) throw new Error("monitor update returned no row");
+      [
+        monitorId,
+        input.organizationId,
+        ...configParameters(next),
+        impacted ? 1 : 0,
+        !sameOrigin(previous, next),
+        context.projectId,
+      ],
+    );
+    const saved = updated.rows[0];
+    if (!saved) throw new Error("monitor update returned no row");
 
-      // A paused monitor keeps next_check_at NULL, so it stays unclaimable.
-      // GREATEST ignores NULL, so a never-checked monitor stays due now.
-      if (impacted) {
-        await client.query(
-          `update monitor_schedule set
+    // A paused monitor keeps next_check_at NULL, so it stays unclaimable.
+    // GREATEST ignores NULL, so a never-checked monitor stays due now.
+    if (impacted) {
+      await client.query(
+        `update monitor_schedule set
            check_config_version = $2, interval_seconds = $3,
            timeout_seconds = $4, claim_token = null, claimed_until = null,
            next_check_at = case when $5 = 'paused' then null else now() end
          where monitor_id = $1`,
-          [
-            monitorId,
-            saved.checkConfigVersion,
-            next.intervalSeconds,
-            next.timeoutSeconds,
-            saved.status,
-          ],
-        );
-      } else if (intervalChanged) {
-        await client.query(
-          `update monitor_schedule set interval_seconds = $2::int,
+        [
+          monitorId,
+          saved.checkConfigVersion,
+          next.intervalSeconds,
+          next.timeoutSeconds,
+          saved.status,
+        ],
+      );
+    } else if (intervalChanged) {
+      await client.query(
+        `update monitor_schedule set interval_seconds = $2::int,
            next_check_at = case
              when next_check_at is null then null
              else greatest(now(), $3::timestamptz + make_interval(secs => $2::int))
            end
          where monitor_id = $1`,
-          [monitorId, next.intervalSeconds, saved.lastCheckAt],
-        );
-      }
+        [monitorId, next.intervalSeconds, saved.lastCheckAt],
+      );
+    }
 
-      await client.query(
-        `insert into monitor_events
+    await client.query(
+      `insert into monitor_events
          (monitor_id, tenant_id, kind, url_masked, actor_kind, actor_user_id,
           changes)
        values ($1, $2, 'config_changed', $3, 'user', $4, $5::jsonb)`,
-        [
-          monitorId,
-          input.organizationId,
-          urlMarker(previous, maskedUrl),
-          input.actorUserId,
-          JSON.stringify(diffConfig(previous, next, plan, stored)),
-        ],
-      );
-      await storeSecrets(client, input, monitorId, plan, input.credentialEnv);
-      // Slot names only: the plan's values never reach the audit diff.
-      const slotChanges = {
-        written: plan.writes.map((write) => write.slot),
-        stored,
-        deleted: plan.deletes,
-      };
-      await recordAuditEvent(client, {
-        organizationId: input.organizationId,
-        actorUserId: input.actorUserId,
-        actorRole,
-        action: editAuditAction(!sameConfig(previous, next), slotChanges),
-        target: { type: "monitor", id: monitorId },
-        changes: monitorAuditChanges(previous, next, slotChanges),
-        requestId: input.requestId,
-      });
-      return { monitor: await loadRecord(client, saved), changed: true };
-    },
-  );
+      [
+        monitorId,
+        input.organizationId,
+        urlMarker(previous, maskedUrl),
+        input.actorUserId,
+        JSON.stringify(diffConfig(previous, next, plan, stored)),
+      ],
+    );
+    await storeSecrets(client, input, monitorId, plan, input.credentialEnv);
+    // Slot names only: the plan's values never reach the audit diff.
+    const slotChanges = {
+      written: plan.writes.map((write) => write.slot),
+      stored,
+      deleted: plan.deletes,
+    };
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorRole,
+      action: editAuditAction(!sameConfig(previous, next), slotChanges),
+      target: monitorTarget(monitorId, context.projectId),
+      changes: monitorAuditChanges(previous, next, slotChanges),
+      requestId: input.requestId,
+    });
+    return { monitor: await loadRecord(client, saved), changed: true };
+  });
 }
 
 export async function pauseMonitor(
@@ -606,78 +591,68 @@ async function changeMonitorStatus(
   input: Identity & { monitorId: string },
   target: "active" | "paused",
 ): Promise<MonitorMutation> {
-  await assertMemberPermissionBeforeTenantContext(database, {
-    organizationId: input.organizationId,
-    userId: input.actorUserId,
-    permission: "write",
-  });
-  const monitorId = parseMonitorId(input.monitorId);
+  return withMonitorWriteAccess(database, input, async (client, context) => {
+    const { actorRole } = context;
+    const monitorId = parseMonitorId(input.monitorId);
+    const row = await lockMonitor(client, input, context, monitorId);
+    if (row.status === target) {
+      return { monitor: await loadRecord(client, row), changed: false };
+    }
 
-  return withTenantContextRaw(
-    database,
-    input.organizationId,
-    async (client) => {
-      const actorRole = await enterOrganization(client, input);
-      const row = await lockMonitor(client, input, monitorId);
-      if (row.status === target) {
-        return { monitor: await loadRecord(client, row), changed: false };
-      }
-
-      const updated = await client.query<MonitorRow>(
-        // Resume restarts the failure streak (AC-19).
-        `update monitors set status = $3, version = version + 1,
+    const updated = await client.query<MonitorRow>(
+      // Resume restarts the failure streak (AC-19).
+      `update monitors set status = $3, version = version + 1,
          consecutive_failures = case when $3 = 'active' then 0
                                      else consecutive_failures end,
          updated_at = now()
-       where id = $1 and tenant_id = $2
+       where id = $1 and tenant_id = $2 and project_id = $4
        returning ${MONITOR_COLUMNS}`,
-        [monitorId, input.organizationId, target],
-      );
-      const saved = updated.rows[0];
-      if (!saved) throw new Error("monitor update returned no row");
+      [monitorId, input.organizationId, target, context.projectId],
+    );
+    const saved = updated.rows[0];
+    if (!saved) throw new Error("monitor update returned no row");
 
-      // Pause clears the claim so a late result is dropped, and NULL makes the
-      // row unclaimable; Resume is due immediately (AC-54).
-      await client.query(
-        `update monitor_schedule set claim_token = null, claimed_until = null,
+    // Pause clears the claim so a late result is dropped, and NULL makes the
+    // row unclaimable; Resume is due immediately (AC-54).
+    await client.query(
+      `update monitor_schedule set claim_token = null, claimed_until = null,
          next_check_at = case when $2 = 'paused' then null else now() end
        where monitor_id = $1`,
-        [monitorId, target],
-      );
-      if (target === "paused") {
-        await client.query(
-          `update monitor_incidents set ended_at = now(),
+      [monitorId, target],
+    );
+    if (target === "paused") {
+      await client.query(
+        `update monitor_incidents set ended_at = now(),
            end_reason = 'paused_by_user'
          where monitor_id = $1 and ended_at is null`,
-          [monitorId],
-        );
-      }
-      await client.query(
-        `insert into monitor_events
+        [monitorId],
+      );
+    }
+    await client.query(
+      `insert into monitor_events
          (monitor_id, tenant_id, kind, actor_kind, actor_user_id)
        values ($1, $2, $3, 'user', $4)`,
-        [
-          monitorId,
-          input.organizationId,
-          target === "paused" ? "paused" : "resumed",
-          input.actorUserId,
-        ],
-      );
-      await recordAuditEvent(client, {
-        organizationId: input.organizationId,
-        actorUserId: input.actorUserId,
-        actorRole,
-        action:
-          target === "paused"
-            ? "organization.monitor.pause"
-            : "organization.monitor.resume",
-        target: { type: "monitor", id: monitorId },
-        changes: [],
-        requestId: input.requestId,
-      });
-      return { monitor: await loadRecord(client, saved), changed: true };
-    },
-  );
+      [
+        monitorId,
+        input.organizationId,
+        target === "paused" ? "paused" : "resumed",
+        input.actorUserId,
+      ],
+    );
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorRole,
+      action:
+        target === "paused"
+          ? "organization.monitor.pause"
+          : "organization.monitor.resume",
+      target: monitorTarget(monitorId, context.projectId),
+      changes: [],
+      requestId: input.requestId,
+    });
+    return { monitor: await loadRecord(client, saved), changed: true };
+  });
 }
 
 // Children (schedule, secrets, results, incidents, events) go with the row, so
@@ -687,26 +662,20 @@ export async function deleteMonitor(
   database: Database,
   input: Identity & { monitorId: string },
 ): Promise<void> {
-  await assertMemberPermissionBeforeTenantContext(database, {
-    organizationId: input.organizationId,
-    userId: input.actorUserId,
-    permission: "write",
-  });
-  const monitorId = parseMonitorId(input.monitorId);
-
-  await withTenantContextRaw(database, input.organizationId, async (client) => {
-    const actorRole = await enterOrganization(client, input);
-    await lockMonitor(client, input, monitorId);
+  await withMonitorWriteAccess(database, input, async (client, context) => {
+    const { actorRole } = context;
+    const monitorId = parseMonitorId(input.monitorId);
+    await lockMonitor(client, input, context, monitorId);
     await client.query(
-      "delete from monitors where id = $1 and tenant_id = $2",
-      [monitorId, input.organizationId],
+      "delete from monitors where id = $1 and tenant_id = $2 and project_id = $3",
+      [monitorId, input.organizationId, context.projectId],
     );
     await recordAuditEvent(client, {
       organizationId: input.organizationId,
       actorUserId: input.actorUserId,
       actorRole,
       action: "organization.monitor.delete",
-      target: { type: "monitor", id: monitorId },
+      target: monitorTarget(monitorId, context.projectId),
       changes: [],
       requestId: input.requestId,
     });

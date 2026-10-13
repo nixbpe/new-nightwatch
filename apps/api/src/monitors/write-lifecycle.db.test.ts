@@ -4,7 +4,7 @@ import {
   type MonitorConfigInput,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   blockAuditInserts,
@@ -27,11 +27,20 @@ let org: TestOrganization;
 
 beforeAll(async () => {
   isolated = await openIsolatedAuditDatabase();
-  ctx = await openMonitorTestContext({ urls: isolated.urls });
+  ctx = await openMonitorTestContext({
+    defaultProject: true,
+    urls: isolated.urls,
+  });
   org = await ctx.createOrganization("lifecycle");
   // Results are partitioned by month; the delete test inserts one.
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
 }, 120_000);
+
+// A Project holds at most 20 monitors; a fresh one per test keeps the shared
+// Organization below it.
+beforeEach(async () => {
+  await ctx.rotateDefaultProject(org);
+});
 
 afterAll(async () => {
   await ctx.close();
@@ -290,31 +299,39 @@ describe("Create", () => {
     expect(JSON.stringify(lines[0])).not.toContain(STUB_HOSTS.public);
   });
 
-  async function seed(organization: TestOrganization, count: number) {
+  async function seed(
+    organization: TestOrganization,
+    count: number,
+    projectId = organization.projectId,
+  ) {
     await ctx.owner.sql.query(
-      `insert into monitors (tenant_id, client_request_id, name, url)
-       select $1, gen_random_uuid(), 'seed-' || n, 'https://seed.example/'
+      `insert into monitors (tenant_id, project_id, client_request_id, name, url)
+       select $1, $3, gen_random_uuid(), 'seed-' || n, 'https://seed.example/'
        from generate_series(1, $2) as n`,
-      [organization.id, count],
+      [organization.id, count, projectId],
     );
   }
-  const count = async (organization: TestOrganization) =>
+  const count = async (
+    organization: TestOrganization,
+    projectId = organization.projectId,
+  ) =>
     Number(
       (
         await ctx.owner.sql.query<{ total: string }>(
-          "select count(*) as total from monitors where tenant_id = $1",
-          [organization.id],
+          "select count(*) as total from monitors where tenant_id = $1 and project_id = $2",
+          [organization.id, projectId],
         )
       ).rows[0]?.total,
     );
 
-  it("accepts the 50th monitor, rejects the 51st and replays the 50th without an audit", async () => {
+  it("accepts the 20th monitor of a Project, rejects the 21st and replays the 20th without an audit (AC-06)", async () => {
     const limited = await ctx.createOrganization("limit");
-    await seed(limited, 49);
-    const fiftieth = await create(validConfig(), limited);
-    expect(fiftieth.response.status).toBe(201);
+    await ctx.rotateDefaultProject(limited);
+    await seed(limited, 19);
+    const twentieth = await create(validConfig(), limited);
+    expect(twentieth.response.status).toBe(201);
     const { monitor } = monitorWriteResponseSchema.parse(
-      fiftieth.response.json,
+      twentieth.response.json,
     );
 
     const overflow = await create(validConfig(), limited);
@@ -322,25 +339,26 @@ describe("Create", () => {
     expect(overflow.response.json).toMatchObject({
       error: { code: "MONITOR_LIMIT_REACHED" },
     });
-    expect(await count(limited)).toBe(50);
+    expect(await count(limited)).toBe(20);
 
     // The replay wins over the limit and writes nothing.
     const replay = await create(
       validConfig({ name: "different body" }),
       limited,
-      fiftieth.clientRequestId,
+      twentieth.clientRequestId,
     );
     expect(replay.response.status).toBe(201);
     expect(
       monitorWriteResponseSchema.parse(replay.response.json).monitor.id,
     ).toBe(monitor.id);
-    expect(await count(limited)).toBe(50);
+    expect(await count(limited)).toBe(20);
     expect(await mutationLines(monitor.id)).toHaveLength(1);
   });
 
-  it("lets exactly one of two concurrent creates take the 50th slot", async () => {
+  it("lets exactly one of two concurrent creates take the 20th slot (AC-06)", async () => {
     const limited = await ctx.createOrganization("concurrent-limit");
-    await seed(limited, 49);
+    await ctx.rotateDefaultProject(limited);
+    await seed(limited, 19);
     const results = await Promise.all([
       create(validConfig(), limited),
       create(validConfig(), limited),
@@ -348,7 +366,43 @@ describe("Create", () => {
     expect(results.map((result) => result.response.status).sort()).toEqual([
       201, 409,
     ]);
-    expect(await count(limited)).toBe(50);
+    expect(await count(limited)).toBe(20);
+  });
+
+  it("counts monitors per Project: a full Project blocks only itself, there is no Organization cap", async () => {
+    const limited = await ctx.createOrganization("per-project-limit");
+    await ctx.rotateDefaultProject(limited);
+    const full = limited.projectId;
+    await seed(limited, 20);
+    const other = await ctx.createProject(limited.id, "second");
+    const blocked = await create(validConfig(), limited);
+    expect(blocked.response.status).toBe(409);
+    const accepted = await ctx.call(
+      limited.users.owner,
+      "POST",
+      monitorsPath(limited.id, "", other),
+      { ...validConfig(), clientRequestId: crypto.randomUUID() },
+    );
+    expect(accepted.status).toBe(201);
+    expect(await count(limited, full)).toBe(20);
+    expect(await count(limited, other)).toBe(1);
+  });
+
+  it("keys a replay by Project: the same clientRequestId in another Project creates its own monitor", async () => {
+    const clientRequestId = crypto.randomUUID();
+    const first = await create(validConfig(), org, clientRequestId);
+    expect(first.response.status).toBe(201);
+    const other = await ctx.createProject(org.id, "replay-other");
+    const second = await ctx.call(
+      org.users.owner,
+      "POST",
+      monitorsPath(org.id, "", other),
+      { ...validConfig(), clientRequestId },
+    );
+    expect(second.status).toBe(201);
+    expect(monitorWriteResponseSchema.parse(second.json).monitor.id).not.toBe(
+      monitorWriteResponseSchema.parse(first.response.json).monitor.id,
+    );
   });
 
   it("returns the original monitor for concurrent requests with one clientRequestId", async () => {
@@ -1186,7 +1240,7 @@ describe("audit failure (AC-21)", () => {
   it("rolls back create, edit, pause, resume and delete when the event insert fails", async () => {
     const rollbackOrg = await ctx.createOrganization("audit-rollback");
     const as = rollbackOrg.users.owner;
-    const base = `/api/organizations/${rollbackOrg.id}/monitors`;
+    const base = monitorsPath(rollbackOrg.id);
     const make = async (): Promise<MonitorRecord> => {
       const response = await ctx.call(as, "POST", base, {
         ...validConfig(),

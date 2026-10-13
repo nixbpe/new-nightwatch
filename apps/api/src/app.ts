@@ -206,10 +206,6 @@ function logSafeOrganizationPath(path: string): string {
         state = "other";
         return "resend";
       }
-      if (state === "organization-route" && segment === monitorsSegment) {
-        state = "monitors";
-        return monitorsSegment;
-      }
       if (state === "organization-route" && segment === projectsSegment) {
         state = "projects";
         return projectsSegment;
@@ -221,6 +217,10 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === auditLogSegment) {
         state = "audit-log";
         return auditLogSegment;
+      }
+      if (state === "project-route" && segment === monitorsSegment) {
+        state = "monitors";
+        return monitorsSegment;
       }
       if (state === "project-route" && segment === membersSegment) {
         state = "project-members";

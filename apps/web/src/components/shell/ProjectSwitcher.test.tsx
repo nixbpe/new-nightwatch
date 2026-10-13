@@ -130,7 +130,7 @@ function meContext(
   };
 }
 
-// When set, the Project members route redirects there, as a route guard would.
+// When set, the Project pages redirect there, as a route guard would.
 let membersRedirect: string | null = null;
 
 function Probe() {
@@ -193,6 +193,12 @@ function renderShell({
               membersRedirect === null ? null : redirect(membersRedirect),
             element: <Probe />,
           },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
+            loader: () =>
+              membersRedirect === null ? null : redirect(membersRedirect),
+            element: <Probe />,
+          },
         ],
       },
     ],
@@ -219,6 +225,8 @@ function mockNarrowViewport(): void {
 
 const membersPath = (projectId: string) =>
   `/organizations/${ORG_A}/projects/${projectId}/members`;
+const monitorsPath = (projectId: string) =>
+  `/organizations/${ORG_A}/projects/${projectId}/monitors`;
 
 async function openMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByTestId("shell-project-switch"));
@@ -378,14 +386,26 @@ describe("ProjectSwitcher", () => {
     expect(screen.getByTestId("shell-project-switch")).toHaveFocus();
   });
 
-  it("AC-04: switching from a page outside any Project lands on the new Project's members page", async () => {
+  it("AC-04: switching from a page outside any Project lands on the new Project's monitors, its first page", async () => {
     const user = userEvent.setup();
     renderShell({ path: "/workspace" });
     await openMenu(user);
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     await waitFor(() => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
-        membersPath(P_ALPHA),
+        monitorsPath(P_ALPHA),
+      );
+    });
+  });
+
+  it("AC-04: switching from a monitor's detail page opens the new Project's monitor list", async () => {
+    const user = userEvent.setup();
+    renderShell({ path: monitorsPath(P_ALPHA) });
+    await openMenu(user);
+    await user.click(screen.getByTestId(`shell-project-option-${P_BRAVO}`));
+    await waitFor(() => {
+      expect(screen.getByTestId("probe")).toHaveTextContent(
+        monitorsPath(P_BRAVO),
       );
     });
   });
@@ -449,6 +469,15 @@ describe("ProjectSwitcher", () => {
     const cached = (view: ReturnType<typeof renderShell>) =>
       view.queryClient.getQueryData(projectQueryKeys.last(ORG_A));
 
+    // The landing time is taken in the effect of the render that commits the route; under load that render
+    // can be late, so a test that moves the clock or counts saves waits for it, not for a fixed delay.
+    const routeCommitted = (projectId: string) =>
+      waitFor(() => {
+        expect(screen.getByTestId("probe")).toHaveTextContent(
+          membersPath(projectId),
+        );
+      });
+
     it("holds the next save until the one in flight settles, and the cache ends on the newest", async () => {
       // Nothing remembered yet, so only a save can put a Project in the cache.
       const view = renderShell({ path: "/workspace", last: null });
@@ -458,6 +487,7 @@ describe("ProjectSwitcher", () => {
         expect(sentIds(saves)).toEqual([P_ALPHA]);
       });
       await view.router.navigate(membersPath(P_BRAVO));
+      await routeCommitted(P_BRAVO);
       await settled();
       expect(sentIds(saves)).toEqual([P_ALPHA]);
 
@@ -485,6 +515,7 @@ describe("ProjectSwitcher", () => {
         });
         clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
         await view.router.navigate(membersPath(P_BRAVO));
+        await routeCommitted(P_BRAVO);
         await waitFor(() => {
           expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
             "Bravo",
@@ -522,6 +553,7 @@ describe("ProjectSwitcher", () => {
         const saves = deferSaves();
         clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
         await view.router.navigate(membersPath(P_BRAVO));
+        await routeCommitted(P_BRAVO);
         await settled();
         expect(saves).toEqual([]);
         // The list is slow; another tab could land and save in the meantime.
@@ -763,7 +795,7 @@ describe("ProjectSwitcher", () => {
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     await waitFor(() => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
-        membersPath(P_ALPHA),
+        monitorsPath(P_ALPHA),
       );
       expect(rememberLastProjectMock).toHaveBeenCalledWith(
         ORG_A,
@@ -1140,6 +1172,7 @@ describe("ProjectSwitcher", () => {
         .filter((link) => link.closest(`[data-scope="${scope}"]`) !== null)
         .map((link) => link.getAttribute("data-testid"));
     expect(scoped("project")).toEqual([
+      "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);
     expect(scoped("organization")).toEqual([
@@ -1148,15 +1181,12 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/notification-settings",
       "shell-nav-/organizations/:organizationId/audit-log",
     ]);
-    // The overview and the monitors stay top-level, above every group.
+    // Only the overview stays top-level, above every group; the monitors belong to the Project.
     const topLevel = within(nav)
       .getAllByRole("link")
       .filter((link) => link.closest("[data-scope]") === null)
       .map((link) => link.getAttribute("data-testid"));
-    expect(topLevel).toEqual([
-      "shell-nav-/workspace",
-      "shell-nav-/organizations/:organizationId/monitors",
-    ]);
+    expect(topLevel).toEqual(["shell-nav-/workspace"]);
     expect(scoped("personal")).toEqual([
       "shell-nav-/notifications",
       "shell-nav-/settings",

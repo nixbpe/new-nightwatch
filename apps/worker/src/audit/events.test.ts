@@ -22,8 +22,8 @@ function row(overrides: Partial<AuditEventBatchRow>): AuditEventBatchRow {
     targetCurrent: false,
     monitorExists: false,
     projectExists: true,
-    memberProjectName: null,
-    memberProjectExists: false,
+    targetProjectName: null,
+    targetProjectExists: false,
     ...overrides,
   };
 }
@@ -58,6 +58,35 @@ describe("export target of a Project event (AC-09)", () => {
   });
 });
 
+describe("export target of a monitor event (AC-09)", () => {
+  const monitor = {
+    targetType: "monitor",
+    action: "organization.monitor.pause",
+    category: "monitor",
+    targetName: "Checkout",
+    monitorExists: true,
+    targetProjectName: "Payments",
+    targetProjectExists: true,
+    targetAttributes: { projectId: crypto.randomUUID() },
+  } as const;
+
+  it("names the monitor and its Project, hides what was deleted, and leaves an event without a Project as it was", async () => {
+    expect(
+      await targetsOf([
+        row(monitor),
+        row({ ...monitor, targetProjectExists: false }),
+        row({ ...monitor, monitorExists: false }),
+        row({ ...monitor, targetAttributes: {} }),
+      ]),
+    ).toEqual([
+      "Checkout ในโปรเจกต์ Payments",
+      "Checkout ในโปรเจกต์ ถูกลบแล้ว",
+      "ถูกลบแล้ว ในโปรเจกต์ Payments",
+      "Checkout",
+    ]);
+  });
+});
+
 describe("export target of a Project member event", () => {
   const member = {
     targetType: "member",
@@ -65,8 +94,8 @@ describe("export target of a Project member event", () => {
     targetAttributes: { projectId: crypto.randomUUID() },
     targetName: "Somchai",
     targetCurrent: true,
-    memberProjectName: "Payments",
-    memberProjectExists: true,
+    targetProjectName: "Payments",
+    targetProjectExists: true,
   } as const;
 
   it("names the member and the Project, and hides what no longer exists", async () => {
@@ -77,8 +106,8 @@ describe("export target of a Project member event", () => {
           ...member,
           targetCurrent: false,
           targetName: null,
-          memberProjectExists: false,
-          memberProjectName: null,
+          targetProjectExists: false,
+          targetProjectName: null,
         }),
       ]),
     ).toEqual([

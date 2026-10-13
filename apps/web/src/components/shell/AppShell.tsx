@@ -31,7 +31,7 @@ const FOCUSABLE_DRAWER_SELECTOR = [
 // sit in the initial containing block at their scrolled position and make the document taller than h-dvh.
 // Grain belongs to data-dense views only (monitor list, inbox), never to forms or detail pages.
 const DATA_DENSE_ROUTE =
-  /^\/notifications(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/;
+  /^\/notifications(\/|$)|^\/organizations\/[^/]+\/projects\/[^/]+\/monitors\/?$/;
 // Workspace gets a deeper canvas and a hairline texture instead of the dot grain
 // (docs/design-system.md, Layout LAY-08/LAY-09).
 const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
@@ -39,16 +39,22 @@ const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 // Use the router's ranked/end matching for static segments and trailing slashes.
 // In particular, `new` is the create route, not the dynamic Detail exception.
 const MONITOR_ROUTES = [
-  { path: "/organizations/:organizationId/monitors/new", id: "create" },
   {
-    path: "/organizations/:organizationId/monitors/:monitorId/edit",
+    path: "/organizations/:organizationId/projects/:projectId/monitors/new",
+    id: "create",
+  },
+  {
+    path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
     id: "edit",
   },
   {
-    path: "/organizations/:organizationId/monitors/:monitorId/checks",
+    path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
     id: "checks",
   },
-  { path: "/organizations/:organizationId/monitors/:monitorId", id: "detail" },
+  {
+    path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
+    id: "detail",
+  },
 ];
 
 export function AppShell() {

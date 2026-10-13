@@ -1,6 +1,6 @@
 import {
   MONITOR_HISTORY_DEFAULT_LIMIT,
-  MONITOR_LIMIT_PER_ORGANIZATION,
+  MONITOR_LIMIT_PER_PROJECT,
   MONITOR_LIST_DEFAULT_LIMIT,
   MONITOR_RECENT_EVENTS_DEFAULT,
   monitorChecksResponseSchema,
@@ -49,10 +49,10 @@ export type MonitorRecentEventsResponse = z.infer<
 
 export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
 
-// Overview list: one request returns every monitor of the organization (the per-organization cap fits one page).
-// The Overview page and the workspace loader share it so both use the same query key.
+// Overview list: one request returns every monitor of the Project (the per-Project cap fits one page).
+// The Workspace shares it with the list so both use the same query key.
 export const OVERVIEW_LIST_PARAMS = {
-  limit: MONITOR_LIMIT_PER_ORGANIZATION,
+  limit: MONITOR_LIMIT_PER_PROJECT,
   offset: 0,
 };
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
@@ -73,13 +73,21 @@ export type MonitorListParams = {
 
 // Every key sits under TENANT_QUERY_PREFIX so switching Organization cancels and removes it.
 export const monitorQueryKeys = {
+  // `all` of an Organization covers every Project's monitors; `project` only one Project's.
   all: (organizationId: string) =>
     [...TENANT_QUERY_PREFIX, "monitors", organizationId] as const,
-  list: (organizationId: string, params: MonitorListParams) =>
+  project: (organizationId: string, projectId: string) =>
+    [...TENANT_QUERY_PREFIX, "monitors", organizationId, projectId] as const,
+  list: (
+    organizationId: string,
+    projectId: string,
+    params: MonitorListParams,
+  ) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "list",
       {
         limit: params.limit,
@@ -89,32 +97,40 @@ export const monitorQueryKeys = {
         ...(params.sort === undefined ? {} : { sort: params.sort }),
       },
     ] as const,
-  recentEvents: (organizationId: string) =>
+  recentEvents: (organizationId: string, projectId: string) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "recent-events",
     ] as const,
-  detail: (organizationId: string, monitorId: string) =>
+  detail: (organizationId: string, projectId: string, monitorId: string) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "detail",
       monitorId,
     ] as const,
   // `useInfiniteQuery` of the checks history page: its own shape, never shared with a single-page query.
-  checksHistory: (organizationId: string, monitorId: string) =>
+  checksHistory: (
+    organizationId: string,
+    projectId: string,
+    monitorId: string,
+  ) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "checks-history",
       monitorId,
     ] as const,
   incidents: (
     organizationId: string,
+    projectId: string,
     monitorId: string,
     page: { limit: number; offset: number },
   ) =>
@@ -122,12 +138,14 @@ export const monitorQueryKeys = {
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "incidents",
       monitorId,
       page,
     ] as const,
   events: (
     organizationId: string,
+    projectId: string,
     monitorId: string,
     page: { limit: number; offset: number },
   ) =>
@@ -135,20 +153,27 @@ export const monitorQueryKeys = {
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "events",
       monitorId,
       page,
     ] as const,
-  lastResponse: (organizationId: string, monitorId: string) =>
+  lastResponse: (
+    organizationId: string,
+    projectId: string,
+    monitorId: string,
+  ) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "last-response",
       monitorId,
     ] as const,
   responseTimes: (
     organizationId: string,
+    projectId: string,
     monitorId: string,
     range: MonitorResponseRange,
   ) =>
@@ -156,6 +181,7 @@ export const monitorQueryKeys = {
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
+      projectId,
       "response-times",
       monitorId,
       range,
@@ -164,13 +190,14 @@ export const monitorQueryKeys = {
 
 export function fetchMonitorList(
   organizationId: string,
+  projectId: string,
   params: MonitorListParams,
 ): Promise<MonitorListResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors",
     monitorListResponseSchema,
     {
-      params: { organizationId },
+      params: { organizationId, projectId },
       query: {
         limit: params.limit,
         offset: params.offset,
@@ -184,12 +211,13 @@ export function fetchMonitorList(
 
 export function fetchMonitorRecentEvents(
   organizationId: string,
+  projectId: string,
   limit: number = MONITOR_RECENT_EVENTS_LIMIT,
 ): Promise<MonitorRecentEventsResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/recent-events",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/recent-events",
     monitorRecentEventsResponseSchema,
-    { params: { organizationId }, query: { limit } },
+    { params: { organizationId, projectId }, query: { limit } },
   );
 }
 
@@ -197,152 +225,165 @@ export type MonitorResponseRange = "24h" | "7d" | "30d";
 
 export function fetchMonitorDetail(
   organizationId: string,
+  projectId: string,
   monitorId: string,
 ): Promise<MonitorDetailResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}",
     monitorDetailResponseSchema,
-    { params: { organizationId, monitorId } },
+    { params: { organizationId, projectId, monitorId } },
   );
 }
 
 export function fetchMonitorChecks(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   page: { limit: number; offset: number },
 ): Promise<MonitorChecksResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/checks",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/checks",
     monitorChecksResponseSchema,
-    { params: { organizationId, monitorId }, query: page },
+    { params: { organizationId, projectId, monitorId }, query: page },
   );
 }
 
 export function fetchMonitorIncidents(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   page: { limit: number; offset: number },
 ): Promise<MonitorIncidentsResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/incidents",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/incidents",
     monitorIncidentsResponseSchema,
-    { params: { organizationId, monitorId }, query: page },
+    { params: { organizationId, projectId, monitorId }, query: page },
   );
 }
 
 export function fetchMonitorEvents(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   page: { limit: number; offset: number },
 ): Promise<MonitorEventsResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/events",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/events",
     monitorEventsResponseSchema,
-    { params: { organizationId, monitorId }, query: page },
+    { params: { organizationId, projectId, monitorId }, query: page },
   );
 }
 
-/** Owner and admin only: the caller must not request it for another role. */
+/** Project admin, Organization Owner or Admin only: the caller must not request it for anyone else. */
 export function fetchMonitorLastResponse(
   organizationId: string,
+  projectId: string,
   monitorId: string,
 ): Promise<MonitorLastResponseResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/last-response",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/last-response",
     monitorLastResponseResponseSchema,
-    { params: { organizationId, monitorId } },
+    { params: { organizationId, projectId, monitorId } },
   );
 }
 
 export function fetchMonitorResponseTimes(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   range: MonitorResponseRange,
 ): Promise<MonitorResponseTimesResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/response-times",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/response-times",
     monitorResponseTimesResponseSchema,
-    { params: { organizationId, monitorId }, query: { range } },
+    { params: { organizationId, projectId, monitorId }, query: { range } },
   );
 }
 
 export function pauseMonitor(
   organizationId: string,
+  projectId: string,
   monitorId: string,
 ): Promise<MonitorWriteResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/pause",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/pause",
     monitorWriteResponseSchema,
-    { method: "POST", params: { organizationId, monitorId } },
+    { method: "POST", params: { organizationId, projectId, monitorId } },
   );
 }
 
 export function resumeMonitor(
   organizationId: string,
+  projectId: string,
   monitorId: string,
 ): Promise<MonitorWriteResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/resume",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/resume",
     monitorWriteResponseSchema,
-    { method: "POST", params: { organizationId, monitorId } },
+    { method: "POST", params: { organizationId, projectId, monitorId } },
   );
 }
 
 export function deleteMonitor(
   organizationId: string,
+  projectId: string,
   monitorId: string,
 ): Promise<undefined> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}",
     undefined,
-    { method: "DELETE", params: { organizationId, monitorId } },
+    { method: "DELETE", params: { organizationId, projectId, monitorId } },
   );
 }
 
 export function createMonitor(
   organizationId: string,
+  projectId: string,
   body: MonitorCreateBody,
 ): Promise<MonitorWriteResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors",
     monitorWriteResponseSchema,
-    { method: "POST", params: { organizationId }, body },
+    { method: "POST", params: { organizationId, projectId }, body },
   );
 }
 
 export function updateMonitor(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   body: MonitorEditBody,
 ): Promise<MonitorWriteResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}",
     monitorWriteResponseSchema,
-    { method: "PATCH", params: { organizationId, monitorId }, body },
+    { method: "PATCH", params: { organizationId, projectId, monitorId }, body },
   );
 }
 
 /** Test of a configuration that is not saved yet; nothing is stored. */
 export function testMonitorDraft(
   organizationId: string,
+  projectId: string,
   body: MonitorTestCreateBody,
 ): Promise<MonitorTestResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/test",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/test",
     monitorTestResponseSchema,
-    { method: "POST", params: { organizationId }, body },
+    { method: "POST", params: { organizationId, projectId }, body },
   );
 }
 
 /** Test in the Edit form: the complete configuration; `keep` uses the stored secret, `replace` a value for this test only. */
 export function testMonitorEdit(
   organizationId: string,
+  projectId: string,
   monitorId: string,
   body: MonitorTestEditBody,
 ): Promise<MonitorTestResponse> {
   return request(
-    "/api/organizations/{organizationId}/monitors/{monitorId}/test",
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/test",
     monitorTestResponseSchema,
-    { method: "POST", params: { organizationId, monitorId }, body },
+    { method: "POST", params: { organizationId, projectId, monitorId }, body },
   );
 }

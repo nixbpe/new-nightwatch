@@ -58,7 +58,8 @@ export async function createPerson(
 ): Promise<Person> {
   const userId = randomUUID();
   const password = `monitor-e2e-${randomUUID()}`;
-  const email = `monitor-${label}-${randomUUID()}@nightwatch.invalid`;
+  // Sign-in matches the address in lower case, so a label with capitals must not reach it.
+  const email = `monitor-${label.toLowerCase()}-${randomUUID()}@nightwatch.invalid`;
   await pool.query(
     `insert into "user"
        (id, name, email, email_verified, last_active_tenant_id, created_at, updated_at)
@@ -87,6 +88,37 @@ export async function addMember(
     [id, organizationId, userId, role],
   );
   return id;
+}
+
+/** A Project of the Organization; monitors live under one (F-011). */
+export async function createProject(
+  pool: Pool,
+  organizationId: string,
+  name: string,
+): Promise<string> {
+  const id = randomUUID();
+  await pool.query(
+    `insert into projects (id, tenant_id, name, slug, created_at, updated_at)
+     values ($1, $2, $3, $4, now(), now())`,
+    // The slug column allows 3 to 40 of a-z, 0-9 and hyphen.
+    [id, organizationId, name, `e2e-${id.slice(0, 18)}`],
+  );
+  return id;
+}
+
+/** The person must already be a member of the Organization. */
+export async function addProjectMember(
+  pool: Pool,
+  organizationId: string,
+  projectId: string,
+  userId: string,
+  role: "admin" | "member",
+): Promise<void> {
+  await pool.query(
+    `insert into project_members (project_id, tenant_id, user_id, role)
+     values ($1, $2, $3, $4)`,
+    [projectId, organizationId, userId, role],
+  );
 }
 
 /** Removes everything a run created; users first so sessions and members go with them. */
@@ -146,8 +178,21 @@ export async function signInApi(person: Person): Promise<ApiSession> {
   };
 }
 
-export function monitorPath(organizationId: string, suffix = ""): string {
-  return `/api/organizations/${organizationId}/monitors${suffix}`;
+export function monitorPath(
+  organizationId: string,
+  projectId: string,
+  suffix = "",
+): string {
+  return `/api/organizations/${organizationId}/projects/${projectId}/monitors${suffix}`;
+}
+
+/** The web route of a Project's monitors, or of one of its pages when `suffix` is given. */
+export function monitorUrl(
+  organizationId: string,
+  projectId: string,
+  suffix = "",
+): string {
+  return `/organizations/${organizationId}/projects/${projectId}/monitors${suffix}`;
 }
 
 export function basicConfig(name: string, url: string) {

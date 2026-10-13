@@ -31,10 +31,12 @@ type Tile = {
 // Four tiles as on the canvas; `unknown` rides in the first note so the state stays visible.
 export function StatStrip({
   organizationId,
+  projectId,
   summary,
   monitors,
 }: {
   organizationId: string;
+  projectId: string;
   summary: MonitorListResponse["summary"];
   monitors: MonitorRow[];
 }) {
@@ -88,7 +90,7 @@ export function StatStrip({
           data-testid={`workspace-stat-${tile.key}`}
           data-expired-count={tile.key === "ssl" ? expired : undefined}
           key={tile.key}
-          to={`/organizations/${organizationId}/monitors`}
+          to={`/organizations/${organizationId}/projects/${projectId}/monitors`}
           className={cn(
             STAT_TILE_CLASS,
             "text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",

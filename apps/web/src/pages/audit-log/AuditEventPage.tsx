@@ -383,16 +383,19 @@ function TargetValue({
   const { target } = detail;
   const linkClass =
     "rounded-[4px] text-primary underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  // Events recorded before monitors belonged to a Project name none, so there is no page to link to.
   if (
     target.type === "monitor" &&
     !target.deleted &&
-    target.displayName !== null
+    target.displayName !== null &&
+    target.project !== undefined &&
+    !target.project.deleted
   ) {
     return (
       <Link
         data-testid="audit-event-target-link"
         className={linkClass}
-        to={`/organizations/${organizationId}/monitors/${target.monitorId}`}
+        to={`/organizations/${organizationId}/projects/${target.project.projectId}/monitors/${target.monitorId}`}
         aria-label={`เปิดมอนิเตอร์ ${target.displayName}`}
       >
         {target.displayName}

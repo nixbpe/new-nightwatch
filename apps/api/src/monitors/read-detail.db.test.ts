@@ -37,7 +37,7 @@ let other: TestOrganization;
 let outsider: string;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
   health = await ctx.createOrganization("detail-health");
   detail = await ctx.createOrganization("detail-view");
@@ -874,7 +874,11 @@ describe("Detail, Checks and Incidents: access", () => {
       const absent = await ctx.call(
         outsider,
         "GET",
-        monitorsPath(crypto.randomUUID(), `/${id}${suffix}`),
+        monitorsPath(
+          crypto.randomUUID(),
+          `/${id}${suffix}`,
+          crypto.randomUUID(),
+        ),
       );
       expect(denied.status).toBe(403);
       expect(denied.json).toEqual(absent.json);

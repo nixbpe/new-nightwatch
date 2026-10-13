@@ -2,7 +2,7 @@ import {
   CHECK_FAILURE_REASONS,
   LAST_RESPONSE_BODY_OMITTED_REASONS,
   MONITOR_EVENTS_WINDOW_DAYS,
-  MONITOR_LIMIT_PER_ORGANIZATION,
+  MONITOR_LIMIT_PER_PROJECT,
   MONITOR_RESPONSE_POINTS_MAX,
   TLS_REASONS,
   lastResponseSchema,
@@ -27,20 +27,14 @@ import {
   type MonitorRecentEvent,
   type SslLevelName,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 import { z } from "zod";
 
-import { normalizeOrganizationRole } from "../me/service";
+import { withProjectAccess } from "../projects/service";
 
 import { computeHealth, computeSsl } from "./health";
-import {
-  assertMemberPermissionBeforeTenantContext,
-  assertMonitorPermission,
-  membershipDenied,
-  type MonitorPermission,
-} from "./permissions";
 import { MONITOR_COLUMNS, toRecord, type MonitorRow } from "./record";
 import {
   computeGaps,
@@ -53,7 +47,14 @@ import {
   type UptimeWindow,
 } from "./uptime";
 
-export type ReadIdentity = { organizationId: string; actorUserId: string };
+export type ReadIdentity = {
+  organizationId: string;
+  /** Raw path value: a malformed or hidden Project answers 404. */
+  projectId: string;
+  actorUserId: string;
+};
+
+type MonitorReadPermission = "read" | "readResponse";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,47 +70,36 @@ export function parseMonitorId(raw: string): string {
 }
 
 /**
- * Membership and read permission are checked before tenant context (cheap
- * denial, no transaction), then again inside the transaction under the
- * organization row lock, the same first step as the write path: a removal that
- * commits between the two checks cannot hand the removed user the data. All
- * queries of a request run in that one transaction, so `now()` is one instant
- * for freshness, SSL level, uptime windows and `dataAsOf`.
+ * Organization membership and the Project permission are checked before any
+ * monitor data is read (the same helper as the Project routes), under the
+ * organization and Project row locks (FOR SHARE): a removal that commits
+ * between the first check and the reads cannot hand the removed user the data,
+ * and a Project delete either finishes first (404) or waits. A Project the
+ * caller cannot see answers 404 whatever the monitor id. All queries of a
+ * request run in that one transaction, so `now()` is one instant for freshness,
+ * SSL level, uptime windows and `dataAsOf`.
  */
 export async function readInTenant<T>(
   database: Database,
   identity: ReadIdentity,
-  work: (client: PoolClient, now: Date, role: OrganizationRole) => Promise<T>,
-  permission: MonitorPermission = "read",
+  work: (
+    client: PoolClient,
+    now: Date,
+    role: OrganizationRole,
+    projectId: string,
+  ) => Promise<T>,
+  permission: MonitorReadPermission = "read",
 ): Promise<T> {
-  await assertMemberPermissionBeforeTenantContext(database, {
-    organizationId: identity.organizationId,
-    userId: identity.actorUserId,
-    permission,
-  });
-  return withTenantContextRaw(
+  return withProjectAccess(
     database,
-    identity.organizationId,
-    async (client) => {
-      const organization = await client.query(
-        "select id from organization where id = $1 for share",
-        [identity.organizationId],
-      );
-      if (organization.rows.length === 0) membershipDenied();
-      const member = await client.query<{ role: string }>(
-        "select role from member where organization_id = $1 and user_id = $2",
-        [identity.organizationId, identity.actorUserId],
-      );
-      const rawRole = member.rows[0]?.role;
-      assertMonitorPermission(rawRole, permission);
-      // The permission check passed, so the role is one of the known four.
-      const role = normalizeOrganizationRole(rawRole ?? "");
-      if (role === null) membershipDenied();
-
+    identity,
+    permission === "read" ? "monitor.read" : "monitor.readResponse",
+    false,
+    async (client, { projectId, actorRole }) => {
       const clock = await client.query<{ now: Date }>("select now() as now");
       const now = clock.rows[0]?.now;
       if (!now) throw new Error("database returned no time");
-      return work(client, now, role);
+      return work(client, now, actorRole, projectId);
     },
   );
 }
@@ -202,7 +192,8 @@ const STATE_QUERY = `
     select started_at, start_reason from monitor_incidents
     where monitor_id = m.id and tenant_id = m.tenant_id and ended_at is null
   ) i on true
-  where m.tenant_id = $1 and ($2::uuid is null or m.id = $2)
+  where m.tenant_id = $1 and m.project_id = $4
+    and ($2::uuid is null or m.id = $2)
   order by lower(m.name), m.id`;
 
 // Bound as a parameter; `%`, `_` and the escape character match literally.
@@ -214,12 +205,14 @@ function likePattern(q: string | undefined): string | null {
 export async function loadStates(
   client: PoolClient,
   organizationId: string,
+  projectId: string,
   options: { monitorId?: string; q?: string } = {},
 ): Promise<StateRow[]> {
   const result = await client.query<StateRow>(STATE_QUERY, [
     organizationId,
     options.monitorId ?? null,
     likePattern(options.q),
+    projectId,
   ]);
   return result.rows;
 }
@@ -521,6 +514,46 @@ async function loadSparklines(
   );
 }
 
+/**
+ * p95 of the response times of the last 24 h, computed exactly like the `24h`
+ * summary of the response-times route: the newest MONITOR_RESPONSE_POINTS_MAX
+ * checks of the window, null response times left out.
+ */
+async function loadResponseP95s24h(
+  client: PoolClient,
+  organizationId: string,
+  monitorIds: string[],
+  now: Date,
+): Promise<Map<string, number | null>> {
+  if (monitorIds.length === 0) return new Map();
+  const result = await client.query<{
+    monitorId: string;
+    p95Ms: number | null;
+  }>(
+    `select t.id as "monitorId", p.p95 as "p95Ms"
+     from unnest($2::uuid[]) as t(id)
+     cross join lateral (
+       select percentile_disc(0.95) within group (order by scoped.response_time_ms) as p95
+       from (
+         select response_time_ms from monitor_check_results
+         where monitor_id = t.id and tenant_id = $1
+           and scheduled_for >= $3 and scheduled_for <= $4
+         order by scheduled_for desc
+         limit $5
+       ) scoped
+       where scoped.response_time_ms is not null
+     ) p`,
+    [
+      organizationId,
+      monitorIds,
+      windowStart("24h", now),
+      now,
+      MONITOR_RESPONSE_POINTS_MAX,
+    ],
+  );
+  return new Map(result.rows.map((row) => [row.monitorId, row.p95Ms]));
+}
+
 type Scored = {
   row: StateRow;
   state: ReturnType<typeof healthOf>;
@@ -532,6 +565,7 @@ type Scored = {
 function compareBy(
   sort: MonitorListSort,
   uptime: Map<string, UptimeWindows> | null,
+  p95s: Map<string, number | null> | null,
 ): ((left: Scored, right: Scored) => number) | null {
   switch (sort) {
     case "problems":
@@ -548,9 +582,10 @@ function compareBy(
         );
     case "response_time":
       return (left, right) =>
+        // The column the list shows: the 24 h p95, not the latest check.
         nullsLast(
-          left.row.latestResponseTimeMs,
-          right.row.latestResponseTimeMs,
+          p95s?.get(left.row.id) ?? null,
+          p95s?.get(right.row.id) ?? null,
           -1,
         );
     case "newest":
@@ -576,91 +611,118 @@ export async function listMonitors(
   identity: ReadIdentity,
   query: MonitorListQuery,
 ): Promise<MonitorListResponse> {
-  return readInTenant(database, identity, async (client, now) => {
-    // At most 50 rows per Organization, so health is computed for all of them
-    // and the summary never depends on the filters. The database orders by
-    // lower(name), id; the requested sort is stable on top of that.
-    const rows = await loadStates(client, identity.organizationId, {
-      q: query.q,
-    });
-    const scored = rows.map((row) => ({ row, state: healthOf(row) }));
+  return readInTenant(
+    database,
+    identity,
+    async (client, now, _role, projectId) => {
+      // At most 20 rows per Project, so health is computed for all of them
+      // and the summary never depends on the filters. The database orders by
+      // lower(name), id; the requested sort is stable on top of that.
+      const rows = await loadStates(
+        client,
+        identity.organizationId,
+        projectId,
+        {
+          q: query.q,
+        },
+      );
+      const scored = rows.map((row) => ({ row, state: healthOf(row) }));
 
-    const summary = { up: 0, down: 0, unknown: 0, paused: 0 };
-    for (const { state } of scored) summary[state.health] += 1;
+      const summary = { up: 0, down: 0, unknown: 0, paused: 0 };
+      for (const { state } of scored) summary[state.health] += 1;
 
-    const filtered = scored.filter(
-      ({ row, state }) =>
-        row.matches &&
-        (query.health === undefined || state.health === query.health),
-    );
-    // Uptime is needed for every row only to sort by it; otherwise just for
-    // the page.
-    let uptime: Map<string, UptimeWindows> | null =
-      query.sort === "uptime"
-        ? await loadUptime(
-            client,
-            identity.organizationId,
-            filtered.map(({ row }) => row),
-            now,
-          )
-        : null;
-    const compare = compareBy(query.sort, uptime);
-    if (compare) filtered.sort(compare);
-    const pageRows = filtered.slice(query.offset, query.offset + query.limit);
-    uptime ??= await loadUptime(
-      client,
-      identity.organizationId,
-      pageRows.map(({ row }) => row),
-      now,
-    );
-    const sparklines = await loadSparklines(
-      client,
-      identity.organizationId,
-      pageRows.map(({ row }) => row.id),
-      now,
-    );
+      const filtered = scored.filter(
+        ({ row, state }) =>
+          row.matches &&
+          (query.health === undefined || state.health === query.health),
+      );
+      // Uptime is needed for every row only to sort by it; otherwise just for
+      // the page.
+      let uptime: Map<string, UptimeWindows> | null =
+        query.sort === "uptime"
+          ? await loadUptime(
+              client,
+              identity.organizationId,
+              filtered.map(({ row }) => row),
+              now,
+            )
+          : null;
+      // The p95 is needed for every row only to sort by it; otherwise just
+      // for the page.
+      let p95s: Map<string, number | null> | null =
+        query.sort === "response_time"
+          ? await loadResponseP95s24h(
+              client,
+              identity.organizationId,
+              filtered.map(({ row }) => row.id),
+              now,
+            )
+          : null;
+      const compare = compareBy(query.sort, uptime, p95s);
+      if (compare) filtered.sort(compare);
+      const pageRows = filtered.slice(query.offset, query.offset + query.limit);
+      uptime ??= await loadUptime(
+        client,
+        identity.organizationId,
+        pageRows.map(({ row }) => row),
+        now,
+      );
+      const sparklines = await loadSparklines(
+        client,
+        identity.organizationId,
+        pageRows.map(({ row }) => row.id),
+        now,
+      );
+      p95s ??= await loadResponseP95s24h(
+        client,
+        identity.organizationId,
+        pageRows.map(({ row }) => row.id),
+        now,
+      );
 
-    return {
-      summary: {
-        ...summary,
-        total: scored.length,
-        limit: MONITOR_LIMIT_PER_ORGANIZATION,
-      },
-      monitors: pageRows.map(({ row, state }) => {
-        const windows = uptime.get(row.id);
-        const responseSparkline = sparklines.get(row.id);
-        if (!windows || !responseSparkline) {
-          throw new Error("uptime or sparkline missing for a listed monitor");
-        }
-        const ssl = sslOf(row, now);
-        return {
-          id: row.id,
-          name: row.name,
-          url: row.url,
-          method: row.method,
-          status: row.status,
-          intervalSeconds: row.intervalSeconds,
-          ...state,
-          lastResponseTimeMs: row.latestResponseTimeMs,
-          ssl: {
-            level: ssl.level,
-            daysRemaining: ssl.daysRemaining,
-            host: row.sslHost,
-            issuer: row.sslIssuer,
-            notAfter: row.sslNotAfter?.toISOString() ?? null,
-          },
-          uptime: { h24: windows.h24, d30: windows.d30 },
-          responseSparkline,
-        };
-      }),
-      page: {
-        limit: query.limit,
-        offset: query.offset,
-        total: filtered.length,
-      },
-      dataAsOf: now.toISOString(),
-    };
-  });
+      return {
+        summary: {
+          ...summary,
+          total: scored.length,
+          limit: MONITOR_LIMIT_PER_PROJECT,
+        },
+        monitors: pageRows.map(({ row, state }) => {
+          const windows = uptime.get(row.id);
+          const responseSparkline = sparklines.get(row.id);
+          if (!windows || !responseSparkline) {
+            throw new Error("uptime or sparkline missing for a listed monitor");
+          }
+          const ssl = sslOf(row, now);
+          return {
+            id: row.id,
+            name: row.name,
+            url: row.url,
+            method: row.method,
+            status: row.status,
+            intervalSeconds: row.intervalSeconds,
+            ...state,
+            lastResponseTimeMs: row.latestResponseTimeMs,
+            responseP95Ms24h: p95s.get(row.id) ?? null,
+            ssl: {
+              level: ssl.level,
+              daysRemaining: ssl.daysRemaining,
+              host: row.sslHost,
+              issuer: row.sslIssuer,
+              notAfter: row.sslNotAfter?.toISOString() ?? null,
+            },
+            uptime: { h24: windows.h24, d30: windows.d30 },
+            responseSparkline,
+          };
+        }),
+        page: {
+          limit: query.limit,
+          offset: query.offset,
+          total: filtered.length,
+        },
+        dataAsOf: now.toISOString(),
+      };
+    },
+  );
 }
 
 // ---- Recent events ---------------------------------------------------------
@@ -682,13 +744,16 @@ export async function listRecentEvents(
   identity: ReadIdentity,
   limit: number,
 ): Promise<{ events: MonitorRecentEvent[] }> {
-  return readInTenant(database, identity, async (client, now) => {
-    const since = new Date(now.getTime() - RECENT_DAYS * 86_400_000);
-    // Both branches are driven from the tenant's monitors, so each probe is a
-    // single-monitor range on monitor_incidents_history_idx and no other
-    // Organization's incidents are scanned.
-    const incidents = await client.query<IncidentEventRow>(
-      `(select 'incident_opened' as kind, m.id as "monitorId",
+  return readInTenant(
+    database,
+    identity,
+    async (client, now, _role, projectId) => {
+      const since = new Date(now.getTime() - RECENT_DAYS * 86_400_000);
+      // Both branches are driven from the tenant's monitors, so each probe is a
+      // single-monitor range on monitor_incidents_history_idx and no other
+      // Organization's incidents are scanned.
+      const incidents = await client.query<IncidentEventRow>(
+        `(select 'incident_opened' as kind, m.id as "monitorId",
           m.name as "monitorName", i.started_at as at,
           i.start_reason as reason, null::int as "durationSeconds",
           i.start_http_status as "httpStatus"
@@ -698,7 +763,7 @@ export async function listRecentEvents(
           where monitor_id = m.id and tenant_id = m.tenant_id and started_at >= $2
           order by started_at desc limit $3
         ) i
-        where m.tenant_id = $1
+        where m.tenant_id = $1 and m.project_id = $4
         order by i.started_at desc limit $3)
        union all
        (select 'incident_closed', m.id, m.name, i.ended_at, i.end_reason,
@@ -710,77 +775,78 @@ export async function listRecentEvents(
           where monitor_id = m.id and tenant_id = m.tenant_id and ended_at >= $2
           order by ended_at desc limit $3
         ) i
-        where m.tenant_id = $1
+        where m.tenant_id = $1 and m.project_id = $4
         order by i.ended_at desc limit $3)`,
-      [identity.organizationId, since, limit],
-    );
+        [identity.organizationId, since, limit, projectId],
+      );
 
-    // The SSL level now is not an event in the table: a monitor whose level
-    // computed from the database time is caution, danger or expired is listed,
-    // stamped with the time it entered that level (clamped to the window and
-    // to the monitor's creation), so it ages out like an incident.
-    const monitors = await client.query<{
-      id: string;
-      name: string;
-      createdAt: Date;
-      lastCheckAt: Date | null;
-      updatedAt: Date;
-      sslHost: string | null;
-      sslIssuer: string | null;
-      sslNotAfter: Date | null;
-      sslState: string | null;
-      sslReason: string | null;
-    }>(
-      `select id, name, created_at as "createdAt", last_check_at as "lastCheckAt",
+      // The SSL level now is not an event in the table: a monitor whose level
+      // computed from the database time is caution, danger or expired is listed,
+      // stamped with the time it entered that level (clamped to the window and
+      // to the monitor's creation), so it ages out like an incident.
+      const monitors = await client.query<{
+        id: string;
+        name: string;
+        createdAt: Date;
+        lastCheckAt: Date | null;
+        updatedAt: Date;
+        sslHost: string | null;
+        sslIssuer: string | null;
+        sslNotAfter: Date | null;
+        sslState: string | null;
+        sslReason: string | null;
+      }>(
+        `select id, name, created_at as "createdAt", last_check_at as "lastCheckAt",
          updated_at as "updatedAt", ssl_host as "sslHost",
          ssl_issuer as "sslIssuer", ssl_not_after as "sslNotAfter",
          ssl_state as "sslState", ssl_reason as "sslReason"
-       from monitors where tenant_id = $1`,
-      [identity.organizationId],
-    );
-    const sslEvents: MonitorRecentEvent[] = [];
-    for (const monitor of monitors.rows) {
-      const ssl = computeSsl(
-        {
-          host: monitor.sslHost,
-          issuer: monitor.sslIssuer,
-          notAfter: monitor.sslNotAfter,
-          state: monitor.sslState,
-          reason: monitor.sslReason,
-        },
-        now,
+       from monitors where tenant_id = $1 and project_id = $2`,
+        [identity.organizationId, projectId],
       );
-      if (!isSslProblem(ssl.level)) continue;
-      sslEvents.push({
-        kind: "ssl_level",
-        monitorId: monitor.id,
-        monitorName: monitor.name,
-        at: sslEnteredAt(ssl.level, monitor, since).toISOString(),
-        reason: null,
-        sslLevel: ssl.level,
-        ...(ssl.daysRemaining === null
-          ? {}
-          : { daysRemaining: ssl.daysRemaining }),
-      });
-    }
+      const sslEvents: MonitorRecentEvent[] = [];
+      for (const monitor of monitors.rows) {
+        const ssl = computeSsl(
+          {
+            host: monitor.sslHost,
+            issuer: monitor.sslIssuer,
+            notAfter: monitor.sslNotAfter,
+            state: monitor.sslState,
+            reason: monitor.sslReason,
+          },
+          now,
+        );
+        if (!isSslProblem(ssl.level)) continue;
+        sslEvents.push({
+          kind: "ssl_level",
+          monitorId: monitor.id,
+          monitorName: monitor.name,
+          at: sslEnteredAt(ssl.level, monitor, since).toISOString(),
+          reason: null,
+          sslLevel: ssl.level,
+          ...(ssl.daysRemaining === null
+            ? {}
+            : { daysRemaining: ssl.daysRemaining }),
+        });
+      }
 
-    const events: MonitorRecentEvent[] = [
-      ...incidents.rows.map((row) => ({
-        kind: row.kind,
-        monitorId: row.monitorId,
-        monitorName: row.monitorName,
-        at: row.at.toISOString(),
-        reason: row.reason,
-        ...(row.durationSeconds === null
-          ? {}
-          : { durationSeconds: row.durationSeconds }),
-        ...(row.httpStatus === null ? {} : { httpStatus: row.httpStatus }),
-      })),
-      ...sslEvents,
-    ];
-    events.sort(compareEvents);
-    return { events: events.slice(0, limit) };
-  });
+      const events: MonitorRecentEvent[] = [
+        ...incidents.rows.map((row) => ({
+          kind: row.kind,
+          monitorId: row.monitorId,
+          monitorName: row.monitorName,
+          at: row.at.toISOString(),
+          reason: row.reason,
+          ...(row.durationSeconds === null
+            ? {}
+            : { durationSeconds: row.durationSeconds }),
+          ...(row.httpStatus === null ? {} : { httpStatus: row.httpStatus }),
+        })),
+        ...sslEvents,
+      ];
+      events.sort(compareEvents);
+      return { events: events.slice(0, limit) };
+    },
+  );
 }
 
 const DAY_MS = 86_400_000;
@@ -854,63 +920,74 @@ export async function getMonitor(
   identity: ReadIdentity,
   rawMonitorId: string,
 ): Promise<MonitorDetailResponse> {
-  return readInTenant(database, identity, async (client, now) => {
-    const monitorId = parseMonitorId(rawMonitorId);
-    const found = await client.query<MonitorRow>(
-      `select ${MONITOR_COLUMNS} from monitors
-       where id = $1 and tenant_id = $2`,
-      [monitorId, identity.organizationId],
-    );
-    const monitor = found.rows[0];
-    if (!monitor) monitorNotFound();
-    const slots = await client.query<{ slot: string }>(
-      "select slot from monitor_secrets where monitor_id = $1 and tenant_id = $2 order by slot",
-      [monitorId, identity.organizationId],
-    );
-    const [state] = await loadStates(client, identity.organizationId, {
-      monitorId,
-    });
-    if (!state) monitorNotFound();
-    const windows = (
-      await loadUptime(client, identity.organizationId, [state], now)
-    ).get(monitorId);
-    if (!windows) throw new Error("uptime missing for the monitor");
-    const ssl = sslOf(state, now);
-
-    return {
-      monitor: {
-        ...toRecord(
-          monitor,
-          slots.rows.map((row) => row.slot),
-        ),
-        ...healthOf(state),
-        lastResult: latestResultOf(state),
-        ssl: {
-          state: ssl.level,
-          host: state.sslHost,
-          issuer: state.sslIssuer,
-          notAfter: state.sslNotAfter?.toISOString() ?? null,
-          daysRemaining: ssl.daysRemaining,
-          reason: state.sslReason,
+  return readInTenant(
+    database,
+    identity,
+    async (client, now, _role, projectId) => {
+      const monitorId = parseMonitorId(rawMonitorId);
+      const found = await client.query<MonitorRow>(
+        `select ${MONITOR_COLUMNS} from monitors
+       where id = $1 and tenant_id = $2 and project_id = $3`,
+        [monitorId, identity.organizationId, projectId],
+      );
+      const monitor = found.rows[0];
+      if (!monitor) monitorNotFound();
+      const slots = await client.query<{ slot: string }>(
+        "select slot from monitor_secrets where monitor_id = $1 and tenant_id = $2 order by slot",
+        [monitorId, identity.organizationId],
+      );
+      const [state] = await loadStates(
+        client,
+        identity.organizationId,
+        projectId,
+        {
+          monitorId,
         },
-        uptime: windows,
-        dataAsOf: now.toISOString(),
-      },
-    };
-  });
+      );
+      if (!state) monitorNotFound();
+      const windows = (
+        await loadUptime(client, identity.organizationId, [state], now)
+      ).get(monitorId);
+      if (!windows) throw new Error("uptime missing for the monitor");
+      const ssl = sslOf(state, now);
+
+      return {
+        monitor: {
+          ...toRecord(
+            monitor,
+            slots.rows.map((row) => row.slot),
+          ),
+          ...healthOf(state),
+          lastResult: latestResultOf(state),
+          ssl: {
+            state: ssl.level,
+            host: state.sslHost,
+            issuer: state.sslIssuer,
+            notAfter: state.sslNotAfter?.toISOString() ?? null,
+            daysRemaining: ssl.daysRemaining,
+            reason: state.sslReason,
+          },
+          uptime: windows,
+          dataAsOf: now.toISOString(),
+        },
+      };
+    },
+  );
 }
 
 // ---- Check history and incidents -------------------------------------------
 
-async function assertMonitorInTenant(
+// A monitor of another Project answers like a missing one (IDOR across Projects).
+async function assertMonitorInProject(
   client: PoolClient,
   organizationId: string,
+  projectId: string,
   rawMonitorId: string,
 ): Promise<string> {
   const monitorId = parseMonitorId(rawMonitorId);
   const found = await client.query(
-    "select 1 from monitors where id = $1 and tenant_id = $2",
-    [monitorId, organizationId],
+    "select 1 from monitors where id = $1 and tenant_id = $2 and project_id = $3",
+    [monitorId, organizationId, projectId],
   );
   if (found.rows.length === 0) monitorNotFound();
   return monitorId;
@@ -927,16 +1004,20 @@ export async function listChecks(
   rawMonitorId: string,
   query: MonitorHistoryQuery,
 ): Promise<MonitorChecksResponse> {
-  return readInTenant(database, identity, async (client) => {
-    const monitorId = await assertMonitorInTenant(
-      client,
-      identity.organizationId,
-      rawMonitorId,
-    );
-    // One row more than the page: it is the check just before the page, which
-    // bounds the URL changes that belong to this page.
-    const rows = await client.query<CheckRow>(
-      `select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,
+  return readInTenant(
+    database,
+    identity,
+    async (client, _now, _role, projectId) => {
+      const monitorId = await assertMonitorInProject(
+        client,
+        identity.organizationId,
+        projectId,
+        rawMonitorId,
+      );
+      // One row more than the page: it is the check just before the page, which
+      // bounds the URL changes that belong to this page.
+      const rows = await client.query<CheckRow>(
+        `select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,
          http_status as "httpStatus", response_time_ms as "responseTimeMs",
          failure_reason as "failureReason", tls_reason as "tlsReason", assertions,
          url_masked as url, check_config_version as "configVersion",
@@ -945,56 +1026,57 @@ export async function listChecks(
        where monitor_id = $1 and tenant_id = $2
        order by scheduled_for desc
        offset $3 limit $4`,
-      [monitorId, identity.organizationId, query.offset, query.limit + 1],
-    );
-    const total = await client.query<{ total: number }>(
-      `select count(*)::int as total from monitor_check_results
+        [monitorId, identity.organizationId, query.offset, query.limit + 1],
+      );
+      const total = await client.query<{ total: number }>(
+        `select count(*)::int as total from monitor_check_results
        where monitor_id = $1 and tenant_id = $2`,
-      [monitorId, identity.organizationId],
-    );
-    const page = rows.rows.slice(0, query.limit);
-    const before = rows.rows[query.limit]?.scheduledFor ?? null;
-    const newest = page[0]?.scheduledFor ?? null;
+        [monitorId, identity.organizationId],
+      );
+      const page = rows.rows.slice(0, query.limit);
+      const before = rows.rows[query.limit]?.scheduledFor ?? null;
+      const newest = page[0]?.scheduledFor ?? null;
 
-    // A URL change belongs to the page that holds the first check after it.
-    // The first page also takes changes newer than every check.
-    const changes =
-      query.offset > 0 && newest === null
-        ? []
-        : (
-            await client.query<{ at: Date; url: string }>(
-              `select occurred_at as at, url_masked as url from monitor_events
+      // A URL change belongs to the page that holds the first check after it.
+      // The first page also takes changes newer than every check.
+      const changes =
+        query.offset > 0 && newest === null
+          ? []
+          : (
+              await client.query<{ at: Date; url: string }>(
+                `select occurred_at as at, url_masked as url from monitor_events
                where monitor_id = $1 and tenant_id = $2
                  and kind = 'config_changed' and url_masked is not null
                  and ($3::timestamptz is null or occurred_at > $3)
                  and ($4::timestamptz is null or occurred_at <= $4)
                order by occurred_at desc, id`,
-              [
-                monitorId,
-                identity.organizationId,
-                before,
-                query.offset === 0 ? null : newest,
-              ],
-            )
-          ).rows;
+                [
+                  monitorId,
+                  identity.organizationId,
+                  before,
+                  query.offset === 0 ? null : newest,
+                ],
+              )
+            ).rows;
 
-    return {
-      checks: page.map((row) => ({
-        ...row,
-        scheduledFor: row.scheduledFor.toISOString(),
-        checkedAt: row.checkedAt.toISOString(),
-      })),
-      page: {
-        limit: query.limit,
-        offset: query.offset,
-        total: total.rows[0]?.total ?? 0,
-      },
-      urlChanges: changes.map((change) => ({
-        at: change.at.toISOString(),
-        url: change.url,
-      })),
-    };
-  });
+      return {
+        checks: page.map((row) => ({
+          ...row,
+          scheduledFor: row.scheduledFor.toISOString(),
+          checkedAt: row.checkedAt.toISOString(),
+        })),
+        page: {
+          limit: query.limit,
+          offset: query.offset,
+          total: total.rows[0]?.total ?? 0,
+        },
+        urlChanges: changes.map((change) => ({
+          at: change.at.toISOString(),
+          url: change.url,
+        })),
+      };
+    },
+  );
 }
 
 export async function listIncidents(
@@ -1003,22 +1085,26 @@ export async function listIncidents(
   rawMonitorId: string,
   query: MonitorHistoryQuery,
 ): Promise<MonitorIncidentsResponse> {
-  return readInTenant(database, identity, async (client) => {
-    const monitorId = await assertMonitorInTenant(
-      client,
-      identity.organizationId,
-      rawMonitorId,
-    );
-    const rows = await client.query<{
-      id: string;
-      startedAt: Date;
-      endedAt: Date | null;
-      durationSeconds: number;
-      startReason: string;
-      startHttpStatus: number | null;
-      endReason: "recovered" | "paused_by_user" | null;
-    }>(
-      `select id, started_at as "startedAt", ended_at as "endedAt",
+  return readInTenant(
+    database,
+    identity,
+    async (client, _now, _role, projectId) => {
+      const monitorId = await assertMonitorInProject(
+        client,
+        identity.organizationId,
+        projectId,
+        rawMonitorId,
+      );
+      const rows = await client.query<{
+        id: string;
+        startedAt: Date;
+        endedAt: Date | null;
+        durationSeconds: number;
+        startReason: string;
+        startHttpStatus: number | null;
+        endReason: "recovered" | "paused_by_user" | null;
+      }>(
+        `select id, started_at as "startedAt", ended_at as "endedAt",
          floor(extract(epoch from (coalesce(ended_at, now()) - started_at)))::int
            as "durationSeconds",
          start_reason as "startReason", start_http_status as "startHttpStatus",
@@ -1027,26 +1113,27 @@ export async function listIncidents(
        where monitor_id = $1 and tenant_id = $2
        order by started_at desc, id
        offset $3 limit $4`,
-      [monitorId, identity.organizationId, query.offset, query.limit],
-    );
-    const total = await client.query<{ total: number }>(
-      `select count(*)::int as total from monitor_incidents
+        [monitorId, identity.organizationId, query.offset, query.limit],
+      );
+      const total = await client.query<{ total: number }>(
+        `select count(*)::int as total from monitor_incidents
        where monitor_id = $1 and tenant_id = $2`,
-      [monitorId, identity.organizationId],
-    );
-    return {
-      incidents: rows.rows.map((row) => ({
-        ...row,
-        startedAt: row.startedAt.toISOString(),
-        endedAt: row.endedAt?.toISOString() ?? null,
-      })),
-      page: {
-        limit: query.limit,
-        offset: query.offset,
-        total: total.rows[0]?.total ?? 0,
-      },
-    };
-  });
+        [monitorId, identity.organizationId],
+      );
+      return {
+        incidents: rows.rows.map((row) => ({
+          ...row,
+          startedAt: row.startedAt.toISOString(),
+          endedAt: row.endedAt?.toISOString() ?? null,
+        })),
+        page: {
+          limit: query.limit,
+          offset: query.offset,
+          total: total.rows[0]?.total ?? 0,
+        },
+      };
+    },
+  );
 }
 
 // ---- Response times --------------------------------------------------------
@@ -1057,40 +1144,44 @@ export async function getResponseTimes(
   rawMonitorId: string,
   range: "24h" | "7d" | "30d",
 ): Promise<MonitorResponseTimesResponse> {
-  return readInTenant(database, identity, async (client, now) => {
-    const monitorId = parseMonitorId(rawMonitorId);
-    const start = windowStart(range, now);
-    type Sample = {
-      checkedAt: string;
-      responseTimeMs: number | null;
-      outcome: "pass" | "fail" | "check_error";
-      intervalSeconds: number;
-    };
-    const result = await client.query<{
-      status: "active" | "paused";
-      events: {
-        kind: "paused" | "resumed" | "config_changed";
-        at: string;
-        url: string | null;
-        afterBoundary: boolean;
-      }[];
-      points: Sample[];
-      summary: {
-        p50Ms: number | null;
-        p95Ms: number | null;
-        checks: number;
-        failed: number;
+  return readInTenant(
+    database,
+    identity,
+    async (client, now, _role, projectId) => {
+      const monitorId = parseMonitorId(rawMonitorId);
+      const start = windowStart(range, now);
+      type Sample = {
+        checkedAt: string;
+        responseTimeMs: number | null;
+        outcome: "pass" | "fail" | "check_error";
+        intervalSeconds: number;
       };
-      buckets: {
-        hourStart: string;
-        avgMs: number | null;
-        maxMs: number | null;
-        checks: number;
-        responseChecks: number;
-      }[];
-    }>(
-      `with response_monitor as (
-         select status from monitors where id = $1 and tenant_id = $2
+      const result = await client.query<{
+        status: "active" | "paused";
+        events: {
+          kind: "paused" | "resumed" | "config_changed";
+          at: string;
+          url: string | null;
+          afterBoundary: boolean;
+        }[];
+        points: Sample[];
+        summary: {
+          p50Ms: number | null;
+          p95Ms: number | null;
+          checks: number;
+          failed: number;
+        };
+        buckets: {
+          hourStart: string;
+          avgMs: number | null;
+          maxMs: number | null;
+          checks: number;
+          responseChecks: number;
+        }[];
+      }>(
+        `with response_monitor as (
+         select status from monitors
+         where id = $1 and tenant_id = $2 and project_id = $6
        ), scoped as materialized (
          select scheduled_for, checked_at, response_time_ms, outcome, interval_seconds
          from monitor_check_results
@@ -1126,88 +1217,90 @@ export async function getResponseTimes(
            'maxMs', max_ms, 'checks', checks, 'responseChecks', response_checks) order by hour)
            from hourly), '[]'::jsonb) as buckets
        from response_monitor m cross join stats`,
-      [
-        monitorId,
-        identity.organizationId,
-        start,
-        now,
-        range === "24h" ? MONITOR_RESPONSE_POINTS_MAX : null,
-      ],
-    );
-    const snapshot = result.rows[0];
-    if (!snapshot) monitorNotFound();
-    // Compare event bounds in SQL, before Date truncates PostgreSQL microseconds.
-    const transitions = snapshot.events.filter(
-      (event) => event.kind === "paused" || event.kind === "resumed",
-    );
-    let statusAtT = snapshot.status;
-    for (const event of [...transitions].reverse()) {
-      if (event.afterBoundary)
-        statusAtT = event.kind === "paused" ? "active" : "paused";
-    }
-    const pauseEvents = transitions
-      .filter((event) => !event.afterBoundary)
-      .map((event): PauseEvent => ({
-        kind: event.kind === "paused" ? "paused" : "resumed",
-        at: new Date(event.at),
-      }));
-    const pauses = derivePauses(pauseEvents, statusAtT, start, now);
-    const common = {
-      dataAsOf: now.toISOString(),
-      window: { from: start.toISOString(), to: now.toISOString() },
-      unit: "ms" as const,
-      pauses: pauses.map(toIsoInterval),
-      configChanges: snapshot.events
-        .filter((event) => event.kind === "config_changed")
-        .map((change) => ({
-          at: new Date(change.at).toISOString(),
-          urlChanged: change.url !== null,
-          ...(change.url === null ? {} : { url: change.url }),
-        })),
-    };
-
-    if (range === "24h") {
-      const ordered = snapshot.points.map((row) => ({
-        ...row,
-        checkedAt: new Date(row.checkedAt),
-      }));
-      const gaps = computeGaps(
-        ordered
-          .filter((row) => row.outcome !== "check_error")
-          .map((row) => ({
-            at: row.checkedAt,
-            intervalSeconds: row.intervalSeconds,
-          })),
-        pauses,
+        [
+          monitorId,
+          identity.organizationId,
+          start,
+          now,
+          range === "24h" ? MONITOR_RESPONSE_POINTS_MAX : null,
+          projectId,
+        ],
       );
-      return {
-        range,
-        points: ordered.map((row) => ({
-          at: row.checkedAt.toISOString(),
-          responseTimeMs: row.responseTimeMs,
-          outcome: row.outcome,
-        })),
-        gaps: gaps.map(toIsoInterval),
-        ...common,
+      const snapshot = result.rows[0];
+      if (!snapshot) monitorNotFound();
+      // Compare event bounds in SQL, before Date truncates PostgreSQL microseconds.
+      const transitions = snapshot.events.filter(
+        (event) => event.kind === "paused" || event.kind === "resumed",
+      );
+      let statusAtT = snapshot.status;
+      for (const event of [...transitions].reverse()) {
+        if (event.afterBoundary)
+          statusAtT = event.kind === "paused" ? "active" : "paused";
+      }
+      const pauseEvents = transitions
+        .filter((event) => !event.afterBoundary)
+        .map((event): PauseEvent => ({
+          kind: event.kind === "paused" ? "paused" : "resumed",
+          at: new Date(event.at),
+        }));
+      const pauses = derivePauses(pauseEvents, statusAtT, start, now);
+      const common = {
+        dataAsOf: now.toISOString(),
+        window: { from: start.toISOString(), to: now.toISOString() },
+        unit: "ms" as const,
+        pauses: pauses.map(toIsoInterval),
+        configChanges: snapshot.events
+          .filter((event) => event.kind === "config_changed")
+          .map((change) => ({
+            at: new Date(change.at).toISOString(),
+            urlChanged: change.url !== null,
+            ...(change.url === null ? {} : { url: change.url }),
+          })),
       };
-    }
 
-    const byHour = new Map(
-      snapshot.buckets.map((row) => [new Date(row.hourStart).getTime(), row]),
-    );
-    const buckets = [];
-    for (let hour = start.getTime(); hour <= now.getTime(); hour += HOUR_MS) {
-      const row = byHour.get(hour);
-      buckets.push({
-        hourStart: new Date(hour).toISOString(),
-        avgMs: row?.avgMs ?? null,
-        maxMs: row?.maxMs ?? null,
-        checks: row?.checks ?? 0,
-        responseChecks: row?.responseChecks ?? 0,
-      });
-    }
-    return { range, buckets, summary: snapshot.summary, ...common };
-  });
+      if (range === "24h") {
+        const ordered = snapshot.points.map((row) => ({
+          ...row,
+          checkedAt: new Date(row.checkedAt),
+        }));
+        const gaps = computeGaps(
+          ordered
+            .filter((row) => row.outcome !== "check_error")
+            .map((row) => ({
+              at: row.checkedAt,
+              intervalSeconds: row.intervalSeconds,
+            })),
+          pauses,
+        );
+        return {
+          range,
+          points: ordered.map((row) => ({
+            at: row.checkedAt.toISOString(),
+            responseTimeMs: row.responseTimeMs,
+            outcome: row.outcome,
+          })),
+          gaps: gaps.map(toIsoInterval),
+          ...common,
+        };
+      }
+
+      const byHour = new Map(
+        snapshot.buckets.map((row) => [new Date(row.hourStart).getTime(), row]),
+      );
+      const buckets = [];
+      for (let hour = start.getTime(); hour <= now.getTime(); hour += HOUR_MS) {
+        const row = byHour.get(hour);
+        buckets.push({
+          hourStart: new Date(hour).toISOString(),
+          avgMs: row?.avgMs ?? null,
+          maxMs: row?.maxMs ?? null,
+          checks: row?.checks ?? 0,
+          responseChecks: row?.responseChecks ?? 0,
+        });
+      }
+      return { range, buckets, summary: snapshot.summary, ...common };
+    },
+  );
 }
 
 // ---- Event feed (#58) ------------------------------------------------------
@@ -1371,16 +1464,22 @@ export async function listEvents(
   rawMonitorId: string,
   query: MonitorHistoryQuery,
 ): Promise<MonitorEventsResponse> {
-  return readInTenant(database, identity, async (client, now, role) => {
-    const monitorId = await assertMonitorInTenant(
-      client,
-      identity.organizationId,
-      rawMonitorId,
-    );
-    const since = new Date(now.getTime() - MONITOR_EVENTS_WINDOW_DAYS * DAY_MS);
-    const params = [monitorId, identity.organizationId, since];
-    const page = await client.query<FeedRow>(
-      `select kind, id, at, incident_id as "incidentId", reason,
+  return readInTenant(
+    database,
+    identity,
+    async (client, now, role, projectId) => {
+      const monitorId = await assertMonitorInProject(
+        client,
+        identity.organizationId,
+        projectId,
+        rawMonitorId,
+      );
+      const since = new Date(
+        now.getTime() - MONITOR_EVENTS_WINDOW_DAYS * DAY_MS,
+      );
+      const params = [monitorId, identity.organizationId, since];
+      const page = await client.query<FeedRow>(
+        `select kind, id, at, incident_id as "incidentId", reason,
          end_reason as "endReason", duration_seconds as "durationSeconds",
          http_status as "httpStatus", response_time_ms as "responseTimeMs",
          failure_reason as "failureReason", tls_reason as "tlsReason",
@@ -1388,30 +1487,31 @@ export async function listEvents(
        from (${FEED_SOURCES}) feed
        order by at desc, rank, id collate "C" desc
        offset $4 limit $5`,
-      [...params, query.offset, query.limit],
-    );
-    const total = await client.query<{ total: number }>(
-      `select count(*)::int as total from (${FEED_SOURCES}) feed`,
-      params,
-    );
-    const actorOf = await actorResolver(
-      client,
-      identity.organizationId,
-      role,
-      page.rows,
-    );
-    return {
-      events: page.rows.flatMap((row) => {
-        const event = eventOf(row, actorOf);
-        return event === null ? [] : [event];
-      }),
-      page: {
-        limit: query.limit,
-        offset: query.offset,
-        total: total.rows[0]?.total ?? 0,
-      },
-    };
-  });
+        [...params, query.offset, query.limit],
+      );
+      const total = await client.query<{ total: number }>(
+        `select count(*)::int as total from (${FEED_SOURCES}) feed`,
+        params,
+      );
+      const actorOf = await actorResolver(
+        client,
+        identity.organizationId,
+        role,
+        page.rows,
+      );
+      return {
+        events: page.rows.flatMap((row) => {
+          const event = eventOf(row, actorOf);
+          return event === null ? [] : [event];
+        }),
+        page: {
+          limit: query.limit,
+          offset: query.offset,
+          total: total.rows[0]?.total ?? 0,
+        },
+      };
+    },
+  );
 }
 
 // ---- Last response (#58) ---------------------------------------------------
@@ -1496,10 +1596,11 @@ export async function getLastResponse(
   return readInTenant(
     database,
     identity,
-    async (client) => {
-      const monitorId = await assertMonitorInTenant(
+    async (client, _now, _role, projectId) => {
+      const monitorId = await assertMonitorInProject(
         client,
         identity.organizationId,
+        projectId,
         rawMonitorId,
       );
       const found = await client.query<LastResponseRow>(

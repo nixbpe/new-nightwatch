@@ -527,6 +527,8 @@ export interface paths {
                                 category: "monitor";
                                 subject: {
                                     /** Format: uuid */
+                                    projectId: string;
+                                    /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
                                 };
@@ -550,6 +552,8 @@ export interface paths {
                                 category: "monitor";
                                 subject: {
                                     /** Format: uuid */
+                                    projectId: string;
+                                    /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
                                 };
@@ -572,6 +576,8 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor";
                                 subject: {
+                                    /** Format: uuid */
+                                    projectId: string;
                                     /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
@@ -817,6 +823,8 @@ export interface paths {
                             category: "monitor";
                             subject: {
                                 /** Format: uuid */
+                                projectId: string;
+                                /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
                             };
@@ -840,6 +848,8 @@ export interface paths {
                             category: "monitor";
                             subject: {
                                 /** Format: uuid */
+                                projectId: string;
+                                /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
                             };
@@ -862,6 +872,8 @@ export interface paths {
                             /** @enum {string} */
                             category: "monitor";
                             subject: {
+                                /** Format: uuid */
+                                projectId: string;
                                 /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
@@ -1807,7 +1819,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/test": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -1823,6 +1835,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                 };
                 cookie?: never;
             };
@@ -2042,6 +2055,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The Project does not exist, is malformed or the caller cannot see it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description The request body is not JSON */
                 415: {
                     headers: {
@@ -2104,7 +2132,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/test": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -2120,6 +2148,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -2342,13 +2371,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -2434,7 +2469,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors": {
         parameters: {
             query?: never;
             header?: never;
@@ -2454,12 +2489,13 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                 };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description One page of monitors and the Organization summary */
+                /** @description One page of monitors and the Project summary */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2473,7 +2509,7 @@ export interface paths {
                                 paused: number;
                                 total: number;
                                 /** @enum {number} */
-                                limit: 50;
+                                limit: 20;
                             };
                             monitors: {
                                 /** Format: uuid */
@@ -2499,6 +2535,7 @@ export interface paths {
                                 method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
                                 intervalSeconds: number;
                                 lastResponseTimeMs: number | null;
+                                responseP95Ms24h: number | null;
                                 ssl: {
                                     /** @enum {string} */
                                     level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
@@ -2598,6 +2635,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The Project does not exist, is malformed or the caller cannot see it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         put?: never;
@@ -2608,6 +2660,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                 };
                 cookie?: never;
             };
@@ -2866,7 +2919,22 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The Organization is at its monitor limit */
+                /** @description The Project does not exist, is malformed or the caller cannot see it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The Project is at its monitor limit */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -2938,7 +3006,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2952,6 +3020,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -3173,13 +3242,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -3199,6 +3274,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -3287,13 +3363,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -3313,6 +3395,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -3561,13 +3644,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -3653,7 +3742,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/pause": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/pause": {
         parameters: {
             query?: never;
             header?: never;
@@ -3669,6 +3758,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -3832,13 +3922,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -3855,7 +3951,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/resume": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/resume": {
         parameters: {
             query?: never;
             header?: never;
@@ -3871,6 +3967,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -4034,13 +4131,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -4057,14 +4160,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/recent-events": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/recent-events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Recent incidents and SSL levels across the Organization */
+        /** Recent incidents and SSL levels across the Project */
         get: {
             parameters: {
                 query?: {
@@ -4073,6 +4176,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                 };
                 cookie?: never;
             };
@@ -4165,6 +4269,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The Project does not exist, is malformed or the caller cannot see it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         put?: never;
@@ -4175,7 +4294,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/checks": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/checks": {
         parameters: {
             query?: never;
             header?: never;
@@ -4192,6 +4311,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -4309,13 +4429,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -4334,7 +4460,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/incidents": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/incidents": {
         parameters: {
             query?: never;
             header?: never;
@@ -4351,6 +4477,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -4447,13 +4574,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -4472,7 +4605,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/response-times": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/response-times": {
         parameters: {
             query?: never;
             header?: never;
@@ -4488,6 +4621,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -4642,13 +4776,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -4667,7 +4807,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/events": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -4684,6 +4824,7 @@ export interface paths {
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -4892,13 +5033,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -4917,20 +5064,21 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/last-response": {
+    "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/last-response": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Redacted last response of the monitor (owner and admin) */
+        /** Redacted last response of the monitor (Project admin, Owner and Admin) */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
                     organizationId: string;
+                    projectId: string;
                     monitorId: string;
                 };
                 cookie?: never;
@@ -5047,13 +5195,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                /** @description The Project is hidden from the caller, or the monitor does not exist, is malformed or belongs to another Project */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        } | {
                             error: {
                                 /** @enum {string} */
                                 code: "MONITOR_NOT_FOUND";
@@ -5139,6 +5293,12 @@ export interface paths {
                                     monitorId: string;
                                     displayName: string | null;
                                     deleted: boolean;
+                                    project?: {
+                                        /** Format: uuid */
+                                        projectId: string;
+                                        displayName: string | null;
+                                        deleted: boolean;
+                                    };
                                 } | {
                                     /** @enum {string} */
                                     type: "project";
@@ -5311,6 +5471,12 @@ export interface paths {
                                     monitorId: string;
                                     displayName: string | null;
                                     deleted: boolean;
+                                    project?: {
+                                        /** Format: uuid */
+                                        projectId: string;
+                                        displayName: string | null;
+                                        deleted: boolean;
+                                    };
                                 } | {
                                     /** @enum {string} */
                                     type: "project";

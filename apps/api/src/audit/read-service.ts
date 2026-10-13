@@ -110,8 +110,8 @@ type EventRow = {
   targetCurrent: boolean;
   monitorExists: boolean;
   projectExists: boolean;
-  memberProjectName: string | null;
-  memberProjectExists: boolean;
+  targetProjectName: string | null;
+  targetProjectExists: boolean;
 };
 
 function actorOf(row: EventRow): AuditEventSummary["actor"] {
@@ -127,13 +127,28 @@ function actorOf(row: EventRow): AuditEventSummary["actor"] {
 function targetOf(row: EventRow): AuditTarget {
   const targetId = row.targetId ?? "";
   switch (row.targetType) {
-    case "monitor":
-      return {
-        type: "monitor",
+    case "monitor": {
+      const monitor = {
+        type: "monitor" as const,
         monitorId: targetId,
         displayName: row.monitorExists ? row.targetName : null,
         deleted: !row.monitorExists,
       };
+      // Events recorded before monitors belonged to Projects have no projectId.
+      const projectId = row.targetAttributes.projectId;
+      return typeof projectId === "string"
+        ? {
+            ...monitor,
+            project: {
+              projectId,
+              displayName: row.targetProjectExists
+                ? row.targetProjectName
+                : null,
+              deleted: !row.targetProjectExists,
+            },
+          }
+        : monitor;
+    }
     case "project":
       return {
         type: "project",
@@ -156,10 +171,10 @@ function targetOf(row: EventRow): AuditTarget {
             ...member,
             project: {
               projectId,
-              displayName: row.memberProjectExists
-                ? row.memberProjectName
+              displayName: row.targetProjectExists
+                ? row.targetProjectName
                 : null,
-              deleted: !row.memberProjectExists,
+              deleted: !row.targetProjectExists,
             },
           }
         : member;

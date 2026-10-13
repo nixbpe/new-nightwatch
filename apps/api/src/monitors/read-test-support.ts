@@ -1,10 +1,12 @@
-import type { MonitorTestContext } from "./test-support";
+import { defaultProjectId, type MonitorTestContext } from "./test-support";
 
 // Fixtures are written straight into the tables (no Worker) with the owner
 // connection. Every time is "seconds before the database now()", so a fixture
 // is independent of the test process clock.
 
 export type SeedMonitor = {
+  /** Defaults to the Organization's fixture Project. */
+  projectId?: string;
   name?: string;
   url?: string;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
@@ -31,12 +33,12 @@ export async function seedMonitor(
   const interval = options.intervalSeconds ?? 300;
   const result = await ctx.owner.sql.query<{ id: string }>(
     `insert into monitors
-       (tenant_id, client_request_id, name, url, status, interval_seconds,
+       (tenant_id, project_id, client_request_id, name, url, status, interval_seconds,
         timeout_seconds, check_config_version, consecutive_failures,
         last_passed_config_version, last_check_at, ssl_host, ssl_not_after,
         ssl_state, ssl_reason, created_at, updated_at, alert_failure_threshold,
         method, ssl_issuer)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, 10, $6, $7, $8,
+     values ($1, $18, gen_random_uuid(), $2, $3, $4, $5, 10, $6, $7, $8,
        case when $9::float8 is null then null
             else now() - make_interval(secs => $9::float8) end,
        $10,
@@ -67,6 +69,7 @@ export async function seedMonitor(
       options.alertFailureThreshold ?? 2,
       options.method ?? "GET",
       options.sslIssuer ?? null,
+      options.projectId ?? defaultProjectId(organizationId),
     ],
   );
   const row = result.rows[0];

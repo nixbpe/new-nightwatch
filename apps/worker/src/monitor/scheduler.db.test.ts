@@ -121,6 +121,11 @@ async function seed(
     "insert into organization (id, name, slug) values ($1, 'Sched', $2)",
     [tenantId, `sched-${randomUUID()}`],
   );
+  const projectId = randomUUID();
+  await owner.sql.query(
+    "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'Sched', $3)",
+    [projectId, tenantId, `sched-${projectId.slice(0, 8)}`],
+  );
   const monitorIds: string[] = [];
   await withTenantContextRaw(runtime, tenantId, async (client) => {
     for (let index = 0; index < count; index += 1) {
@@ -128,9 +133,10 @@ async function seed(
       monitorIds.push(id);
       await client.query(
         `insert into monitors
-           (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-         values ($1, $2, 'm', 'https://target.example.test/health', $3, 10, $4)`,
-        [id, tenantId, intervalSeconds, randomUUID()],
+           (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds,
+            client_request_id)
+         values ($1, $2, $5, 'm', 'https://target.example.test/health', $3, 10, $4)`,
+        [id, tenantId, intervalSeconds, randomUUID(), projectId],
       );
       await client.query(
         `insert into monitor_schedule

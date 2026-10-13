@@ -57,11 +57,15 @@ const MONITOR_TABLES = [
 
 type Seeded = { monitorId: string };
 
+/** One Project per tenant; every monitor belongs to its tenant's Project. */
+const projectOf = new Map<string, string>();
+
 async function insertMonitor(
   client: PoolClient | Client,
   tenantId: string,
   input: {
     id?: string;
+    projectId?: string;
     intervalSeconds?: number;
     timeoutSeconds?: number;
   } = {},
@@ -69,8 +73,9 @@ async function insertMonitor(
   const id = input.id ?? randomUUID();
   await client.query(
     `insert into monitors
-       (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-     values ($1, $2, $3, 'https://target.example.test/health', $4, $5, $6)`,
+       (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds,
+        client_request_id)
+     values ($1, $2, $7, $3, 'https://target.example.test/health', $4, $5, $6)`,
     [
       id,
       tenantId,
@@ -78,6 +83,7 @@ async function insertMonitor(
       input.intervalSeconds ?? 60,
       input.timeoutSeconds ?? 10,
       randomUUID(),
+      input.projectId ?? projectOf.get(tenantId),
     ],
   );
   return id;
@@ -99,9 +105,12 @@ async function insertSchedule(
 }
 
 /** One row in every monitor table for the tenant, through the runtime role. */
-async function seedTenant(tenantId: string): Promise<Seeded> {
+async function seedTenant(
+  tenantId: string,
+  projectId?: string,
+): Promise<Seeded> {
   return withTenantContextRaw(database, tenantId, async (client) => {
-    const monitorId = await insertMonitor(client, tenantId);
+    const monitorId = await insertMonitor(client, tenantId, { projectId });
     await insertSchedule(client, tenantId, monitorId, null);
     await client.query(
       `insert into monitor_secrets
@@ -216,6 +225,14 @@ beforeAll(async () => {
      values ($1, 'Monitor A', $2), ($3, 'Monitor B', $4)`,
     [tenantA, `monitor-a-${run}`, tenantB, `monitor-b-${run}`],
   );
+  for (const tenantId of [tenantA, tenantB]) {
+    const projectId = randomUUID();
+    projectOf.set(tenantId, projectId);
+    await owner.query(
+      `insert into projects (id, tenant_id, name, slug) values ($1, $2, 'P', $3)`,
+      [projectId, tenantId, `p-${projectId.slice(0, 8)}`],
+    );
+  }
   seededA = await seedTenant(tenantA);
   seededB = await seedTenant(tenantB);
 }, 120_000);
@@ -319,6 +336,55 @@ describe("monitor tenant isolation", () => {
     );
     expect(outcome).toEqual([0, 0]);
     expect(await ownerCount("monitors", [seededB.monitorId])).toBe(1);
+  });
+
+  it.each(MONITOR_TABLES)(
+    "%s rows go with the Project when it is deleted, other Projects keep theirs",
+    async (table) => {
+      const doomed = randomUUID();
+      const kept = randomUUID();
+      for (const projectId of [doomed, kept]) {
+        await owner.query(
+          `insert into projects (id, tenant_id, name, slug) values ($1, $2, 'X', $3)`,
+          [projectId, tenantA, `x-${projectId.slice(0, 8)}`],
+        );
+      }
+      const inDoomed = await seedTenant(tenantA, doomed);
+      const inKept = await seedTenant(tenantA, kept);
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query("delete from projects where id = $1", [doomed]),
+      );
+      expect(await ownerCount(table, [inDoomed.monitorId])).toBe(0);
+      expect(await ownerCount(table, [inKept.monitorId])).toBe(1);
+    },
+  );
+
+  it("rejects a monitor whose Project belongs to another Organization", async () => {
+    await expect(
+      owner.query(
+        `insert into monitors (tenant_id, project_id, name, url, client_request_id)
+         values ($1, $2, 'cross', 'https://target.example.test/', $3)`,
+        [tenantA, projectOf.get(tenantB), randomUUID()],
+      ),
+    ).rejects.toThrow(/monitors_project_fkey/);
+  });
+
+  it("replays are keyed by Project: one client_request_id may exist once per Project", async () => {
+    const other = randomUUID();
+    await owner.query(
+      `insert into projects (id, tenant_id, name, slug) values ($1, $2, 'R', $3)`,
+      [other, tenantA, `r-${other.slice(0, 8)}`],
+    );
+    const requestId = randomUUID();
+    const insert = (projectId: string | undefined) =>
+      owner.query(
+        `insert into monitors (tenant_id, project_id, name, url, client_request_id)
+         values ($1, $2, 'r', 'https://target.example.test/', $3)`,
+        [tenantA, projectId, requestId],
+      );
+    await insert(projectOf.get(tenantA));
+    await insert(other);
+    await expect(insert(other)).rejects.toThrow(/monitors_client_request_key/);
   });
 
   it("rejects inserting a monitor for tenant B from tenant A context", async () => {
@@ -576,13 +642,13 @@ describe("monitors config CHECK constraints", () => {
     await withTenantContextRaw(database, tenantA, (client) =>
       client.query(
         `insert into monitors
-           (tenant_id, client_request_id, ${[...columns, column].join(", ")})
-         values ($1, $2, ${[...columns, column]
+           (tenant_id, project_id, client_request_id, ${[...columns, column].join(", ")})
+         values ($1, $2, $3, ${[...columns, column]
            .map(
-             (_, i) => `$${String(i + 3)}${i === columns.length ? cast : ""}`,
+             (_, i) => `$${String(i + 4)}${i === columns.length ? cast : ""}`,
            )
            .join(", ")})`,
-        [tenantA, randomUUID(), ...values, value],
+        [tenantA, projectOf.get(tenantA), randomUUID(), ...values, value],
       ),
     );
   }
@@ -672,9 +738,9 @@ describe("monitors alert settings defaults and bounds", () => {
     await withTenantContextRaw(database, tenantA, (client) =>
       client.query(
         `insert into monitors
-           (tenant_id, client_request_id, name, url, ${column})
-         values ($1, $2, 'cfg', 'https://target.example.test/', $3)`,
-        [tenantA, randomUUID(), value],
+           (tenant_id, project_id, client_request_id, name, url, ${column})
+         values ($1, $2, $3, 'cfg', 'https://target.example.test/', $4)`,
+        [tenantA, projectOf.get(tenantA), randomUUID(), value],
       ),
     );
   }
@@ -778,7 +844,10 @@ describe("monitors alert settings backfill from migration 0022", () => {
     const source = new URL("../migrations", import.meta.url).pathname;
     const allNames = (await readdir(source)).sort();
     const preNames = allNames.filter((name) => name < "0022_");
-    const postNames = allNames.filter((name) => !preNames.includes(name));
+    // 0026 wipes monitors, so the row this test follows would not survive it.
+    const postNames = allNames.filter(
+      (name) => !preNames.includes(name) && name < "0026_",
+    );
 
     preDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-pre-"));
     await copyIdempotent(preNames, preDir);
@@ -830,6 +899,180 @@ describe("monitors alert settings backfill from migration 0022", () => {
       alert_ssl_caution_days: 30,
     });
   }, 60_000);
+});
+
+describe("0026 wipes monitor data and scopes monitors to a Project", () => {
+  // Builds a database at 0025, seeds monitor rows, monitor notifications, an
+  // unrelated notification and an audit event, then applies 0026.
+  const wipeDbName = `monitor_wipe_${randomUUID().replaceAll("-", "")}`;
+  const wipeOwnerUrl = new URL(ownerUrl);
+  wipeOwnerUrl.pathname = `/${wipeDbName}`;
+  let wipeOwner: Client | undefined;
+  const dirs: string[] = [];
+
+  async function copyIdempotent(names: string[]): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-wipe-"));
+    dirs.push(dir);
+    const source = new URL("../migrations", import.meta.url).pathname;
+    for (const name of names) {
+      const sql = (await readFile(join(source, name), "utf8")).replace(
+        /create role (\w+)([^;]*);/g,
+        (_match, role: string, options: string) =>
+          `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
+      );
+      await writeFile(join(dir, name), sql);
+    }
+    return dir;
+  }
+
+  afterAll(async () => {
+    await wipeOwner?.end().catch(() => undefined);
+    if (adminConnected) {
+      await admin
+        .query(
+          `select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = $1 and pid <> pg_backend_pid()`,
+          [wipeDbName],
+        )
+        .catch(() => undefined);
+      await admin.query(`drop database if exists ${wipeDbName}`);
+    }
+    for (const dir of dirs) await rm(dir, { recursive: true, force: true });
+  }, 60_000);
+
+  it("empties monitor tables and monitor notifications, keeps other notifications and audit events", async () => {
+    await admin.query(`create database ${wipeDbName}`);
+    await admin.query(
+      `grant connect, temporary on database ${wipeDbName} to nightwatch`,
+    );
+    const source = new URL("../migrations", import.meta.url).pathname;
+    const names = (await readdir(source)).sort();
+    const before = names.filter((name) => name < "0026_");
+    const after = names.filter((name) => name >= "0026_");
+    expect(after).toEqual(["0026_project_monitors.sql"]);
+    await runMigrations({
+      url: wipeOwnerUrl.toString(),
+      migrationsDir: await copyIdempotent(before),
+      log: () => undefined,
+    });
+
+    wipeOwner = new Client({ connectionString: wipeOwnerUrl.toString() });
+    await wipeOwner.connect();
+    const tenantId = randomUUID();
+    const userId = randomUUID();
+    const monitorId = randomUUID();
+    await wipeOwner.query(
+      `insert into organization (id, name, slug) values ($1, 'Wipe', $2)`,
+      [tenantId, `wipe-${run}`],
+    );
+    await wipeOwner.query(
+      `insert into "user" (id, name, email, email_verified) values ($1, 'u', $2, true)`,
+      [userId, `wipe-${run}@example.test`],
+    );
+    await wipeOwner.query(
+      `insert into monitors (id, tenant_id, name, url, client_request_id)
+       values ($1, $2, 'old', 'https://target.example.test/', $3)`,
+      [monitorId, tenantId, randomUUID()],
+    );
+    await wipeOwner.query(
+      `insert into monitor_schedule
+         (monitor_id, tenant_id, next_check_at, check_config_version,
+          interval_seconds, timeout_seconds)
+       values ($1, $2, now(), 1, 60, 10)`,
+      [monitorId, tenantId],
+    );
+    await wipeOwner.query(
+      `insert into monitor_check_results
+         (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
+          url_masked, check_config_version, interval_seconds)
+       values ($1, $2, now(), now(), 'pass', 'https://target.example.test/', 1, 60)`,
+      [monitorId, tenantId],
+    );
+    await wipeOwner.query(
+      `insert into monitor_events (monitor_id, tenant_id, kind)
+       values ($1, $2, 'paused')`,
+      [monitorId, tenantId],
+    );
+    const intents = [
+      { id: randomUUID(), type: "MONITOR_DOWN" },
+      { id: randomUUID(), type: "ORG-NOTIFICATION-SETTINGS-CHANGED" },
+    ];
+    for (const intent of intents) {
+      const origin = `wipe-${intent.id}`;
+      await wipeOwner.query(
+        `insert into notification_intents
+           (id, scope_kind, tenant_id, origin, event_type, occurred_at)
+         values ($1, 'tenant', $2, $3, $4, now())`,
+        [intent.id, tenantId, origin, intent.type],
+      );
+      await wipeOwner.query(
+        `insert into notification_inbox_items
+           (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
+            event_type, occurred_at)
+         values ($1, $2, $3, $4, 'tenant', $5, $6, now())`,
+        [randomUUID(), intent.id, origin, userId, tenantId, intent.type],
+      );
+      await wipeOwner.query(
+        `insert into notification_dispatch_ledger
+           (id, intent_id, scope_kind, tenant_id)
+         values ($1, $2, 'tenant', $3)`,
+        [randomUUID(), intent.id, tenantId],
+      );
+    }
+    await wipeOwner.query(
+      `insert into audit_events
+         (tenant_id, actor_user_id, actor_role, category, action, target_type, target_id)
+       values ($1, $2, 'owner', 'monitor', 'organization.monitor.create', 'monitor', $3)`,
+      [tenantId, userId, monitorId],
+    );
+
+    await runMigrations({
+      url: wipeOwnerUrl.toString(),
+      migrationsDir: await copyIdempotent(after),
+      log: () => undefined,
+    });
+
+    const count = async (table: string, where = "true"): Promise<number> =>
+      Number(
+        (
+          await must(wipeOwner).query<{ n: string }>(
+            `select count(*) as n from ${table} where ${where}`,
+          )
+        ).rows[0]?.n,
+      );
+    for (const table of MONITOR_TABLES) expect(await count(table)).toBe(0);
+    for (const table of [
+      "notification_intents",
+      "notification_inbox_items",
+      "notification_dispatch_ledger",
+    ]) {
+      const ledger = table === "notification_dispatch_ledger";
+      const monitorRows = await count(
+        table,
+        ledger
+          ? `intent_id = '${must(intents[0]).id}'`
+          : "event_type like 'MONITOR\\_%'",
+      );
+      expect({ table, monitorRows }).toEqual({ table, monitorRows: 0 });
+      expect(
+        await count(
+          table,
+          table === "notification_dispatch_ledger"
+            ? `intent_id = '${must(intents[1]).id}'`
+            : "event_type = 'ORG-NOTIFICATION-SETTINGS-CHANGED'",
+        ),
+      ).toBe(1);
+    }
+    expect(await count("audit_events", `target_id = '${monitorId}'`)).toBe(1);
+
+    // FORCE RLS is back on the table the migration relaxed.
+    const forced = await must(wipeOwner).query<{
+      relforcerowsecurity: boolean;
+    }>(
+      "select relforcerowsecurity from pg_class where relname = 'notification_intents'",
+    );
+    expect(forced.rows[0]?.relforcerowsecurity).toBe(true);
+  }, 120_000);
 });
 
 describe("claim_due_monitor_checks", () => {

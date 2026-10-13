@@ -23,7 +23,7 @@ let ctx: MonitorTestContext;
 let org: TestOrganization;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
   org = await ctx.createOrganization("times");
 }, 120_000);
@@ -393,7 +393,11 @@ async function fixedSeries(
   return monitorResponseTimesResponseSchema.parse(
     await getResponseTimes(
       atClock(now, before, after),
-      { organizationId: org.id, actorUserId: org.users.viewer },
+      {
+        organizationId: org.id,
+        projectId: org.projectId,
+        actorUserId: org.users.viewer,
+      },
       id,
       range,
     ),
@@ -625,7 +629,11 @@ describe("exact raw populations", () => {
     ]);
     const body = await getResponseTimes(
       atClock(now, undefined, undefined, "Asia/Kathmandu"),
-      { organizationId: org.id, actorUserId: org.users.viewer },
+      {
+        organizationId: org.id,
+        projectId: org.projectId,
+        actorUserId: org.users.viewer,
+      },
       id,
       "7d",
     );

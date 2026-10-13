@@ -80,7 +80,7 @@ const asActors = (response: { json: unknown }) =>
   response.json as AuditLogActorsResponse;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   orgA = await organization("auditread-a");
   orgB = await organization("auditread-b");
   await seed(orgA.id, {
@@ -293,9 +293,9 @@ describe("filters and search (AC-10)", () => {
     org = await organization("auditread-search");
     monitorId = crypto.randomUUID();
     await ctx.owner.sql.query(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, $3, 'https://x.example.test/', 60, 10, $4)`,
-      [monitorId, org.id, monitorName, crypto.randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $5, $3, 'https://x.example.test/', 60, 10, $4)`,
+      [monitorId, org.id, monitorName, crypto.randomUUID(), org.projectId],
     );
     events.monitor = await seed(org.id, {
       actorUserId: org.users.admin,
@@ -415,14 +415,58 @@ describe("filters and search (AC-10)", () => {
   });
 });
 
+describe("monitor targets name their Project (AC-09)", () => {
+  it("shows the Project while it exists and says it was deleted after; an event without a Project shows none", async () => {
+    const org = await organization("auditread-monitor-project");
+    const project = await ctx.createProject(org.id, "Payments");
+    const monitorId = crypto.randomUUID();
+    const withProject = await seed(org.id, {
+      actorUserId: org.users.owner,
+      action: "organization.monitor.pause",
+      targetType: "monitor",
+      targetId: monitorId,
+      attributes: { projectId: project },
+    });
+    const goneProject = crypto.randomUUID();
+    const deletedProject = await seed(org.id, {
+      actorUserId: org.users.owner,
+      action: "organization.monitor.resume",
+      targetType: "monitor",
+      targetId: monitorId,
+      attributes: { projectId: goneProject },
+    });
+    const legacy = await seed(org.id, {
+      actorUserId: org.users.owner,
+      action: "organization.monitor.delete",
+      targetType: "monitor",
+      targetId: monitorId,
+    });
+    const get = async (id: string) =>
+      asEvent(await detail(org.users.auditor, org.id, id)).event.target;
+
+    expect(await get(withProject)).toMatchObject({
+      type: "monitor",
+      project: {
+        projectId: project,
+        displayName: `Payments ${ctx.run}`,
+        deleted: false,
+      },
+    });
+    expect(await get(deletedProject)).toMatchObject({
+      project: { projectId: goneProject, displayName: null, deleted: true },
+    });
+    expect(await get(legacy)).not.toHaveProperty("project");
+  });
+});
+
 describe("detail (AC-12, AC-13)", () => {
   it("returns every category with display names, deleted targets, former members and export scope", async () => {
     const org = await organization("auditread-detail");
     const monitorId = crypto.randomUUID();
     await ctx.owner.sql.query(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, 'Live monitor', 'https://x.example.test/', 60, 10, $3)`,
-      [monitorId, org.id, crypto.randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $4, 'Live monitor', 'https://x.example.test/', 60, 10, $3)`,
+      [monitorId, org.id, crypto.randomUUID(), org.projectId],
     );
     const former = await ctx.createUser("auditread-former");
     const changes = [

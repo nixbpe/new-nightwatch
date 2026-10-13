@@ -118,3 +118,30 @@ warning when fewer than 2 months ahead exist. On a `lock timeout` exit nothing
 changed: rerun at low traffic with a short timeout (default 5000 ms, max 30000
 ms). Do not raise the timeout to wait out a long lock. Creating or dropping a
 partition is inferred to lock the parent table.
+
+## Project-scoped monitors (F-011)
+
+Migration `0026_project_monitors.sql` deletes all existing monitor data and
+does not move it into a Project (AC-08): it truncates `monitors` and the seven
+tables that reference it, and deletes the `MONITOR_*` notification intents with
+their recipients, inbox items and dispatch ledger rows. `audit_events` is
+untouched. Confirm that the target environment holds no monitor data to keep
+before `bun run db:migrate`; the deletion cannot be undone from the migration.
+
+- A monitor belongs to one Project. Deleting a Project removes its monitors,
+  results, rollups, incidents, events, secrets, last responses and schedule rows
+  through the foreign key cascade. A check or result still in flight for a
+  deleted monitor finds no row and is discarded.
+- The limit is 20 monitors per Project. There is no Organization cap.
+- Down, recovered and SSL notifications go to the Project members and the
+  Organization Owners and Admins, once each. A BullMQ materialize job queued for
+  a deleted `MONITOR_*` dispatch fails with `notification dispatch claim is
+  unavailable`; it needs no action.
+
+### Rollout order
+
+Deploy the API, the Worker and migration `0026` together, or stop the old API
+and Worker before the migration. After `0026`, an old API or Worker fails every
+monitor insert (`monitors.project_id` is `not null`) and every `MONITOR_*`
+notification intent insert (`subject_project_id` is required), so old and new
+versions must not run side by side.

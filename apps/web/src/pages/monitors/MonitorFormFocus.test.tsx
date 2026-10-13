@@ -41,12 +41,21 @@ import {
 } from "../../lib/queryClient";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import {
-  monitorsOverviewLoader,
+  projectsLoader,
   monitorCreateLoader,
   monitorEditLoader,
 } from "../../lib/auth/loaders";
 import { guardUnassignedNetwork } from "../../test/guard-network";
-import { A, B, context, detail, MONITOR_ID, must } from "./detail-test-support";
+import {
+  A,
+  B,
+  context,
+  detail,
+  MONITOR_ID,
+  must,
+  P,
+  projectDetail,
+} from "./detail-test-support";
 import { MonitorFormPage } from "./MonitorFormPage";
 
 vi.mock("../../lib/auth-client", () => ({
@@ -79,6 +88,7 @@ vi.mock("../../lib/api/projects", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchProjectList: () => Promise.resolve({ projects: [] }),
   fetchLastProject: () => Promise.resolve({ projectId: null }),
+  fetchProjectDetail: () => Promise.resolve(projectDetail()),
 }));
 vi.mock("../../lib/api/notifications", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -95,7 +105,7 @@ beforeEach(() => {
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -144,8 +154,8 @@ async function openForm(
           {
             path:
               mode === "edit"
-                ? "/organizations/:organizationId/monitors/:monitorId/edit"
-                : "/organizations/:organizationId/monitors/new",
+                ? "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit"
+                : "/organizations/:organizationId/projects/:projectId/monitors/new",
             element: <MonitorFormPage mode={mode} />,
             loader: withLoaders
               ? mode === "edit"
@@ -154,10 +164,10 @@ async function openForm(
               : undefined,
           },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects",
             loader: withLoaders
               ? async (args: LoaderFunctionArgs) => {
-                  const result = await monitorsOverviewLoader(args);
+                  const result = await projectsLoader(args);
                   await beforeOverviewCommit?.(args.params.organizationId);
                   return result;
                 }
@@ -171,7 +181,7 @@ async function openForm(
     ],
     {
       initialEntries: [
-        `/organizations/${routeOrg}/monitors/${mode === "edit" ? `${MONITOR_ID}/edit` : "new"}`,
+        `/organizations/${routeOrg}/projects/${P}/monitors/${mode === "edit" ? `${MONITOR_ID}/edit` : "new"}`,
       ],
     },
   );
@@ -419,7 +429,7 @@ it.each(["create", "edit"] as const)(
         await screen.findByTestId("test-monitor-scope-overview"),
       ).toHaveTextContent(/^Scope overview$/);
       expect(router.state.location.pathname).toBe(
-        `/organizations/${B}/monitors`,
+        `/organizations/${B}/projects`,
       );
       expect(fetchMeContext).toHaveBeenCalledTimes(2);
       expect(screen.queryByTestId("monitor-form-name")).toBeNull();
@@ -477,14 +487,14 @@ it.each(["create", "edit"] as const)(
     await switchTo(B, "Beta");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
-        `/organizations/${B}/monitors`,
+        `/organizations/${B}/projects`,
       );
     });
     withdrawn();
     await switchTo(A, "Acme");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
-        `/organizations/${A}/monitors`,
+        `/organizations/${A}/projects`,
       );
     });
     withdrawn();
@@ -494,12 +504,12 @@ it.each(["create", "edit"] as const)(
       await b.promise;
     });
     expect(router.state.navigation.location?.pathname).toBe(
-      `/organizations/${A}/monitors`,
+      `/organizations/${A}/projects`,
     );
     await switchTo(C, "Gamma");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
-        `/organizations/${C}/monitors`,
+        `/organizations/${C}/projects`,
       );
     });
     withdrawn();
@@ -509,7 +519,7 @@ it.each(["create", "edit"] as const)(
       await a.promise;
     });
     expect(router.state.navigation.location?.pathname).toBe(
-      `/organizations/${C}/monitors`,
+      `/organizations/${C}/projects`,
     );
     await act(async () => {
       c.resolve(undefined);
@@ -518,10 +528,10 @@ it.each(["create", "edit"] as const)(
     expect(
       await screen.findByTestId("test-monitor-scope-overview"),
     ).toHaveTextContent(/^Scope overview$/);
-    expect(router.state.location.pathname).toBe(`/organizations/${C}/monitors`);
+    expect(router.state.location.pathname).toBe(`/organizations/${C}/projects`);
     await act(async () => {
       await router.navigate(
-        `/organizations/${A}/monitors/${mode === "edit" ? `${MONITOR_ID}/edit` : "new"}`,
+        `/organizations/${A}/projects/${P}/monitors/${mode === "edit" ? `${MONITOR_ID}/edit` : "new"}`,
       );
     });
     expect(await screen.findByTestId("monitor-form-name")).toHaveValue(
@@ -540,7 +550,7 @@ it("CR88-R3 an existing member bookmark stays at its original URL until a genuin
   const { router } = must(resources.at(-1));
   const navigate = vi.spyOn(router, "navigate");
   expect(router.state.location.pathname).toBe(
-    `/organizations/${B}/monitors/new`,
+    `/organizations/${B}/projects/${P}/monitors/new`,
   );
   expect(navigate).not.toHaveBeenCalled();
   vi.mocked(updateActiveOrganization).mockResolvedValueOnce({
@@ -559,6 +569,6 @@ it("CR88-R3 an existing member bookmark stays at its original URL until a genuin
   expect(
     await screen.findByTestId("test-monitor-scope-overview"),
   ).toHaveTextContent(/^Scope overview$/);
-  expect(router.state.location.pathname).toBe(`/organizations/${A}/monitors`);
+  expect(router.state.location.pathname).toBe(`/organizations/${A}/projects`);
   expect(navigate).toHaveBeenCalledTimes(1);
 });

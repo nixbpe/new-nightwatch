@@ -10,7 +10,7 @@ import { cn } from "../../../lib/utils";
 import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
 import { IntervalText } from "../detail/IntervalText";
 import { HealthPill } from "../HealthPill";
-import { NO_DATA, StatusDetail, Uptime } from "../MonitorTable";
+import { NO_DATA, NoData, StatusDetail, Uptime } from "../MonitorTable";
 import { SslLabel } from "../SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
@@ -76,9 +76,11 @@ function Sparkline({ points }: { points: Row["responseSparkline"] }) {
 // The name stays its own link so its accessible name is the monitor name.
 export function MonitorCards({
   organizationId,
+  projectId,
   monitors,
 }: {
   organizationId: string;
+  projectId: string;
   monitors: Row[];
 }) {
   return (
@@ -108,7 +110,7 @@ export function MonitorCards({
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <Link
                   data-testid={`monitor-list-name-${row.id}`}
-                  to={`/organizations/${organizationId}/monitors/${row.id}`}
+                  to={`/organizations/${organizationId}/projects/${projectId}/monitors/${row.id}`}
                   className="text-[15px] font-semibold text-heading underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {row.name}
@@ -162,24 +164,28 @@ export function MonitorCards({
               </div>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
-              <span className="sr-only">ตอบสนอง</span>
+              <span className="sr-only">เวลาตอบสนอง p95 24 ชม.</span>
               <span
-                data-testid="monitor-list-cell-responseTime"
+                data-testid="monitor-list-cell-p95"
                 className={cn(
                   "text-lg font-medium text-heading tabular-nums",
-                  row.lastResponseTimeMs !== null && "font-mono",
+                  row.responseP95Ms24h !== null && "font-mono",
                 )}
               >
-                {row.lastResponseTimeMs === null
-                  ? NO_DATA
-                  : `${formatNumber(row.lastResponseTimeMs)} ms`}
+                {row.responseP95Ms24h === null ? (
+                  <NoData />
+                ) : (
+                  `${formatNumber(row.responseP95Ms24h)} ms`
+                )}
               </span>
-              <span className="text-xs text-foreground-secondary">30 วัน</span>
+              <span className="text-xs text-foreground-secondary">
+                p95 · 24 ชม.
+              </span>
               <span
-                data-testid="monitor-list-cell-d30"
+                data-testid="monitor-list-cell-h24"
                 className="text-xs text-foreground-secondary"
               >
-                <Uptime window={row.uptime.d30} />
+                <Uptime window={row.uptime.h24} />
               </span>
             </div>
           </li>

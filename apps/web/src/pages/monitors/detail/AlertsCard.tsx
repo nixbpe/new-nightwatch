@@ -20,11 +20,11 @@ function isDenied(error: unknown): boolean {
   return error instanceof ApiError && error.code === "PERMISSION_DENIED";
 }
 
-function useOrgAlertsSetting(organizationId: string, canWrite: boolean) {
+function useOrgAlertsSetting(organizationId: string, enabled: boolean) {
   return useQuery({
     queryKey: organizationNotificationSettingsQueryKey(organizationId),
     queryFn: () => fetchOrganizationNotificationSettings(organizationId),
-    enabled: canWrite,
+    enabled,
     refetchInterval: (current) =>
       isDenied(current.state.error) ? false : MONITOR_REFETCH_INTERVAL_MS,
   });
@@ -83,15 +83,18 @@ function OrgAlertsValue({
 export function AlertsCard({
   monitor,
   organizationId,
-  canWrite,
+  canReadOrganizationSettings,
 }: {
   monitor: Monitor;
   organizationId: string;
-  canWrite: boolean;
+  /** The Organization's own setting is for its Owners and Admins; a Project admin does not read it. */
+  canReadOrganizationSettings: boolean;
 }) {
-  const org = useOrgAlertsSetting(organizationId, canWrite);
+  const org = useOrgAlertsSetting(organizationId, canReadOrganizationSettings);
   const orgKnownOff =
-    canWrite && !org.isError && org.data?.monitorAlertsEnabled === false;
+    canReadOrganizationSettings &&
+    !org.isError &&
+    org.data?.monitorAlertsEnabled === false;
   return (
     <Card
       as="section"
@@ -104,7 +107,7 @@ export function AlertsCard({
         className="border-b border-foreground/10 p-4"
       />
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 text-sm [&>dd]:text-right [&>dd]:break-words">
-        {canWrite ? (
+        {canReadOrganizationSettings ? (
           <>
             <dt className="text-foreground-secondary">
               การแจ้งเตือนระดับองค์กร

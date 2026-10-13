@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import {
   deleteMonitor,
   fetchMonitorChecks,
@@ -36,6 +37,9 @@ import {
   noResponseTimes,
   NOW,
   renderDetail,
+  P,
+  PROJECT_NAME,
+  projectDetail,
 } from "./detail-test-support";
 
 guardUnassignedNetwork();
@@ -44,6 +48,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -73,13 +81,14 @@ const deleteMock = vi.mocked(deleteMonitor);
 const OTHER_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const emptyList: MonitorListResponse = {
-  summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+  summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
   monitors: [],
   page: { limit: 25, offset: 0, total: 0 },
   dataAsOf: "2026-09-30T07:32:05.000Z",
 };
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   fetchMeContextMock.mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
@@ -140,7 +149,7 @@ describe("Pause and Resume", () => {
     expect(
       await screen.findByTestId("monitor-detail-notice"),
     ).toHaveTextContent(/\S/);
-    expect(pauseMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
+    expect(pauseMock).toHaveBeenCalledExactlyOnceWith(A, P, MONITOR_ID);
     expect(button).toHaveAttribute("data-status", "paused");
     expect(button).toHaveAccessibleName(/\S/);
     expect(button.textContent).not.toBe(previousLabel);
@@ -153,11 +162,11 @@ describe("Pause and Resume", () => {
     );
     expect(screen.getByTestId("monitor-detail-paused")).toBeInTheDocument();
     expect(invalidate).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["tenant", "monitors", A] }),
+      expect.objectContaining({ queryKey: ["tenant", "monitors", A, P] }),
     );
   });
 
-  it("resumes into 'ไม่ทราบสถานะ', never 'ปกติ' from the old result", async () => {
+  it("resumes into 'ไม่ทราบสถานะ', never 'ใช้งานได้' from the old result", async () => {
     fetchDetailMock.mockResolvedValue({
       monitor: detail({ status: "paused", health: "paused" }),
     });
@@ -179,7 +188,7 @@ describe("Pause and Resume", () => {
     expect(
       await screen.findByTestId("monitor-detail-notice"),
     ).toHaveTextContent(/\S/);
-    expect(resumeMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
+    expect(resumeMock).toHaveBeenCalledExactlyOnceWith(A, P, MONITOR_ID);
     expect(button).toHaveAttribute("data-status", "active");
     expect(button).toHaveAccessibleName(/\S/);
     expect(button.textContent).not.toBe(previousLabel);
@@ -307,7 +316,7 @@ describe("Delete", () => {
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveTextContent("Payments API");
     expect(dialog).toHaveTextContent("https://api.acme.example/health");
-    expect(dialog).toHaveTextContent("Acme");
+    expect(dialog).toHaveTextContent(PROJECT_NAME);
     expect(dialog).toHaveTextContent(
       "ประวัติการตรวจและเหตุการณ์จะหายและกู้คืนไม่ได้ ถ้าต้องการเก็บประวัติ ให้ใช้หยุดชั่วคราวแทน",
     );
@@ -358,16 +367,16 @@ describe("Delete", () => {
     expect(
       await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
-    expect(deleteMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
+    expect(deleteMock).toHaveBeenCalledExactlyOnceWith(A, P, MONITOR_ID);
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors`,
+      `/organizations/${A}/projects/${P}/monitors`,
     );
     const heading = screen.getByTestId("monitor-overview-heading");
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
     expect(invalidate).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["tenant", "monitors", A] }),
+      expect.objectContaining({ queryKey: ["tenant", "monitors", A, P] }),
     );
     // The deleted monitor is not read again on the way out.
     expect(fetchDetailMock).toHaveBeenCalledTimes(1);
@@ -403,6 +412,7 @@ describe("Delete", () => {
       lastCheckAt: "2026-09-30T07:30:00.000Z",
       openIncident: null,
       lastResponseTimeMs: 100,
+      responseP95Ms24h: 100,
       ssl: {
         level: "ok" as const,
         daysRemaining: 100,
@@ -420,7 +430,7 @@ describe("Delete", () => {
       },
     });
     const cached: MonitorListResponse = {
-      summary: { up: 2, down: 0, unknown: 0, paused: 0, total: 2, limit: 50 },
+      summary: { up: 2, down: 0, unknown: 0, paused: 0, total: 2, limit: 20 },
       monitors: [item(MONITOR_ID, "Payments API"), item(OTHER_ID, "Docs")],
       page: { limit: 25, offset: 0, total: 2 },
       dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -428,7 +438,7 @@ describe("Delete", () => {
     const user = userEvent.setup();
     const { queryClient } = renderDetail();
     queryClient.setQueryData(
-      monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+      monitorQueryKeys.list(A, P, { limit: 25, offset: 0 }),
       cached,
     );
     const { dialog } = await openDialog(user);
@@ -444,12 +454,12 @@ describe("Delete", () => {
     ).toHaveTextContent(/^Docs$/);
     expect(screen.getByTestId("monitor-list-name-" + OTHER_ID)).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${OTHER_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${OTHER_ID}`,
     );
     expect(screen.queryByTestId("monitor-list-name-" + MONITOR_ID)).toBeNull();
     expect(
       queryClient.getQueryData<MonitorListResponse>(
-        monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+        monitorQueryKeys.list(A, P, { limit: 25, offset: 0 }),
       )?.summary,
     ).toMatchObject({ up: 1, total: 1 });
   });
@@ -476,8 +486,8 @@ describe("Delete", () => {
     };
     const user = userEvent.setup();
     const { queryClient } = renderDetail();
-    queryClient.setQueryData(monitorQueryKeys.recentEvents(A), mine);
-    queryClient.setQueryData(monitorQueryKeys.recentEvents(B), theirs);
+    queryClient.setQueryData(monitorQueryKeys.recentEvents(A, P), mine);
+    queryClient.setQueryData(monitorQueryKeys.recentEvents(B, P), theirs);
     const { dialog } = await openDialog(user);
     await user.click(
       within(dialog).getByTestId("monitor-detail-delete-confirm"),
@@ -486,10 +496,10 @@ describe("Delete", () => {
 
     expect(
       queryClient
-        .getQueryData<typeof mine>(monitorQueryKeys.recentEvents(A))
+        .getQueryData<typeof mine>(monitorQueryKeys.recentEvents(A, P))
         ?.events.map((item) => item.monitorName),
     ).toEqual(["Docs"]);
-    expect(queryClient.getQueryData(monitorQueryKeys.recentEvents(B))).toBe(
+    expect(queryClient.getQueryData(monitorQueryKeys.recentEvents(B, P))).toBe(
       theirs,
     );
   });
@@ -524,7 +534,7 @@ describe("Delete", () => {
       await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors`,
+      `/organizations/${A}/projects/${P}/monitors`,
     );
   });
 
@@ -543,7 +553,7 @@ describe("Delete", () => {
     expect(screen.queryByTestId("monitor-detail-delete-dialog")).toBeNull();
     expect(opener).toHaveFocus();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
   });
 
@@ -569,7 +579,7 @@ describe("Delete", () => {
       expect(screen.queryByTestId("monitor-detail-delete")).toBeNull();
     });
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
   });
 });

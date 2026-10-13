@@ -21,7 +21,7 @@ export function guardUnassignedNetwork(): void {
       const path =
         endpoint === undefined
           ? "/api/<unassigned>"
-          : `/api/organizations/:organizationId/monitors/:monitorId/${endpoint}`;
+          : `/api/organizations/:organizationId/projects/:projectId/monitors/:monitorId/${endpoint}`;
       const method = init?.method ?? request?.method ?? "GET";
       const error = new Error(
         `Unassigned network request in isolated unit test: ${method} ${path}`,

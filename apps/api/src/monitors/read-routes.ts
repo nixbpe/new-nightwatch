@@ -11,9 +11,6 @@ import {
   monitorLastResponseResponseSchema,
   monitorListQuerySchema,
   monitorListResponseSchema,
-  monitorNotFoundErrorResponseSchema,
-  monitorOrganizationParamsSchema,
-  monitorParamsSchema,
   monitorRecentEventsQuerySchema,
   monitorRecentEventsResponseSchema,
   monitorResponseTimesQuerySchema,
@@ -29,6 +26,13 @@ import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
+import {
+  monitorBase,
+  monitorNotFoundResponse,
+  monitorParamsSchema,
+  monitorProjectParamsSchema,
+  projectNotFoundResponse,
+} from "./params";
 import {
   getLastResponse,
   getMonitor,
@@ -56,12 +60,6 @@ const readErrors = {
   ),
 } as const;
 
-const notFoundResponse = jsonError(
-  "The monitor does not exist, is malformed or belongs to another Organization",
-  monitorNotFoundErrorResponseSchema,
-);
-
-const monitorBase = "/api/organizations/{organizationId}/monitors";
 const tags = ["monitors"];
 
 export const monitorReadRouteDeclarations = {
@@ -71,24 +69,25 @@ export const monitorReadRouteDeclarations = {
     tags,
     summary: "List monitors with health, SSL level and uptime",
     request: {
-      params: monitorOrganizationParamsSchema,
+      params: monitorProjectParamsSchema,
       query: monitorListQuerySchema,
     },
     responses: {
       200: {
-        description: "One page of monitors and the Organization summary",
+        description: "One page of monitors and the Project summary",
         content: { "application/json": { schema: monitorListResponseSchema } },
       },
       ...readErrors,
+      404: projectNotFoundResponse,
     },
   }),
   recentEvents: createRoute({
     method: "get",
     path: `${monitorBase}/recent-events`,
     tags,
-    summary: "Recent incidents and SSL levels across the Organization",
+    summary: "Recent incidents and SSL levels across the Project",
     request: {
-      params: monitorOrganizationParamsSchema,
+      params: monitorProjectParamsSchema,
       query: monitorRecentEventsQuerySchema,
     },
     responses: {
@@ -99,6 +98,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
+      404: projectNotFoundResponse,
     },
   }),
   detail: createRoute({
@@ -115,7 +115,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   checks: createRoute({
@@ -132,7 +132,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   responseTimes: createRoute({
@@ -153,7 +153,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   incidents: createRoute({
@@ -170,7 +170,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   events: createRoute({
@@ -188,14 +188,15 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   lastResponse: createRoute({
     method: "get",
     path: `${monitorBase}/{monitorId}/last-response`,
     tags,
-    summary: "Redacted last response of the monitor (owner and admin)",
+    summary:
+      "Redacted last response of the monitor (Project admin, Owner and Admin)",
     request: { params: monitorParamsSchema },
     responses: {
       200: {
@@ -205,7 +206,7 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
 } as const;
@@ -228,7 +229,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.recentEvents,
     async (c) => {
-      const { organizationId } = c.req.valid("param");
+      const { organizationId, projectId } = c.req.valid("param");
       const { limit } = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -237,7 +238,11 @@ export function registerMonitorReadRoutes(
         actorUserId,
         "organization.monitor.list",
         () =>
-          listRecentEvents(database, { organizationId, actorUserId }, limit),
+          listRecentEvents(
+            database,
+            { organizationId, projectId, actorUserId },
+            limit,
+          ),
       );
       return c.json(body, 200);
     },
@@ -247,7 +252,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.list,
     async (c) => {
-      const { organizationId } = c.req.valid("param");
+      const { organizationId, projectId } = c.req.valid("param");
       const query = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -255,7 +260,12 @@ export function registerMonitorReadRoutes(
         logger,
         actorUserId,
         "organization.monitor.list",
-        () => listMonitors(database, { organizationId, actorUserId }, query),
+        () =>
+          listMonitors(
+            database,
+            { organizationId, projectId, actorUserId },
+            query,
+          ),
       );
       return c.json(body, 200);
     },
@@ -265,14 +275,19 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.detail,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
       const body = await auditMonitorDenials(
         logger,
         actorUserId,
         "organization.monitor.read",
-        () => getMonitor(database, { organizationId, actorUserId }, monitorId),
+        () =>
+          getMonitor(
+            database,
+            { organizationId, projectId, actorUserId },
+            monitorId,
+          ),
       );
       return c.json(body, 200);
     },
@@ -282,7 +297,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.checks,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const query = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -293,7 +308,7 @@ export function registerMonitorReadRoutes(
         () =>
           listChecks(
             database,
-            { organizationId, actorUserId },
+            { organizationId, projectId, actorUserId },
             monitorId,
             query,
           ),
@@ -306,7 +321,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.incidents,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const query = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -317,7 +332,7 @@ export function registerMonitorReadRoutes(
         () =>
           listIncidents(
             database,
-            { organizationId, actorUserId },
+            { organizationId, projectId, actorUserId },
             monitorId,
             query,
           ),
@@ -330,7 +345,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.responseTimes,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const { range } = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -341,7 +356,7 @@ export function registerMonitorReadRoutes(
         () =>
           getResponseTimes(
             database,
-            { organizationId, actorUserId },
+            { organizationId, projectId, actorUserId },
             monitorId,
             range,
           ),
@@ -354,7 +369,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.events,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const query = c.req.valid("query");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -365,7 +380,7 @@ export function registerMonitorReadRoutes(
         () =>
           listEvents(
             database,
-            { organizationId, actorUserId },
+            { organizationId, projectId, actorUserId },
             monitorId,
             query,
           ),
@@ -378,7 +393,7 @@ export function registerMonitorReadRoutes(
   app.openapi(
     routes.lastResponse,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
       const body = await auditMonitorDenials(
@@ -386,7 +401,11 @@ export function registerMonitorReadRoutes(
         actorUserId,
         "organization.monitor.read-response",
         () =>
-          getLastResponse(database, { organizationId, actorUserId }, monitorId),
+          getLastResponse(
+            database,
+            { organizationId, projectId, actorUserId },
+            monitorId,
+          ),
       );
       return c.json(body, 200);
     },

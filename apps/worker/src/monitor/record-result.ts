@@ -23,6 +23,7 @@ export type RecordOutcome = "recorded" | "discarded" | "duplicate";
 
 type EventContext = {
   tenantId: string;
+  projectId: string;
   monitorId: string;
   monitorName: string;
   occurredAt: Date;
@@ -68,6 +69,7 @@ export type RecordOptions = { onEvent?: MonitorEventHook };
 
 type LockedMonitor = {
   name: string;
+  project_id: string;
   consecutive_failures: number;
   last_passed_config_version: number | null;
   ssl_host: string | null;
@@ -129,7 +131,7 @@ function attempt(
       ]);
     }
     const monitorRows = await client.query<LockedMonitor>(
-      `select name, consecutive_failures, last_passed_config_version,
+      `select name, project_id, consecutive_failures, last_passed_config_version,
               ssl_host, ssl_issuer, ssl_not_after,
               ssl_notified_level, ssl_notified_not_after,
               alert_failure_threshold, alert_down_enabled,
@@ -176,6 +178,7 @@ function attempt(
 
     const context: EventContext = {
       tenantId: input.tenantId,
+      projectId: monitor.project_id,
       monitorId: input.monitorId,
       monitorName: monitor.name,
       occurredAt: result.checkedAt,

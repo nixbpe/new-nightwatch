@@ -65,10 +65,12 @@ const idempotentRole = (_match: string, role: string, options: string) =>
  *
  * `skip` leaves migration files out (a later migration that alters what the
  * skipped one creates must be listed too); `applySkipped` runs them later, for
- * a test that needs data in place before that migration.
+ * a test that needs data in place before that migration. `leaveOut` omits
+ * files for good, for a later migration that would erase that data.
  */
 export async function openIsolatedAuditDatabase(options?: {
   skip?: readonly string[];
+  leaveOut?: readonly string[];
 }): Promise<{
   database: Database;
   ownerDatabase: Database;
@@ -133,7 +135,9 @@ export async function openIsolatedAuditDatabase(options?: {
     );
     copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
     for (const file of await readdir(source)) {
-      if (options?.skip?.includes(file)) continue;
+      if (options?.skip?.includes(file) || options?.leaveOut?.includes(file)) {
+        continue;
+      }
       const sql = (await readFile(join(source, file), "utf8")).replace(
         IDEMPOTENT_ROLE,
         idempotentRole,

@@ -20,12 +20,12 @@ import {
   RouterProvider,
   Outlet,
   useLocation,
-  useNavigate,
 } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
@@ -35,6 +35,7 @@ import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
+import { PROJECT_NAME, projectDetail } from "./detail-test-support";
 
 guardUnassignedNetwork();
 
@@ -42,6 +43,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -55,6 +60,7 @@ const fetchListMock = vi.mocked(fetchMonitorList);
 const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
 
 const A = "11111111-1111-4111-8111-111111111111";
+const P = "33333333-3333-4333-8333-333333333333";
 const B = "22222222-2222-4222-8222-222222222222";
 const DATA_AS_OF = "2026-09-30T07:32:05.000Z";
 
@@ -106,6 +112,7 @@ function item(overrides: Partial<Item> = {}): Item {
     lastCheckAt: "2026-09-30T07:30:00.000Z",
     openIncident: null,
     lastResponseTimeMs: 182,
+    responseP95Ms24h: 182,
     responseSparkline: sparkline(),
     ssl: {
       level: "ok",
@@ -141,7 +148,7 @@ function list(
       unknown: count("unknown"),
       paused: count("paused"),
       total,
-      limit: 50,
+      limit: 20,
       ...options.summary,
     },
     monitors,
@@ -158,17 +165,12 @@ const noEvents = { events: [] as MonitorRecentEvent[] };
 
 function Harness({ children }: { children?: React.ReactNode }) {
   const { switchOrg } = useTenant();
-  const navigate = useNavigate();
   return (
     <>
       <button
         data-testid="overview-switch-organization"
         type="button"
-        onClick={() =>
-          void switchOrg(B).then((switched) => {
-            if (switched) void navigate(`/organizations/${B}/monitors`);
-          })
-        }
+        onClick={() => void switchOrg(B)}
       >
         switch to B
       </button>
@@ -204,15 +206,22 @@ function renderPage(organizationId = A, state?: unknown) {
         element: <Harness />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
             element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects",
+            element: <p data-testid="projects-page">projects</p>,
           },
         ],
       },
     ],
     {
       initialEntries: [
-        { pathname: `/organizations/${organizationId}/monitors`, state },
+        {
+          pathname: `/organizations/${organizationId}/projects/${P}/monitors`,
+          state,
+        },
       ],
     },
   );
@@ -234,6 +243,7 @@ function renderPage(organizationId = A, state?: unknown) {
 const NOW = new Date("2026-09-30T08:00:00.000Z");
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   fetchMeContextMock.mockResolvedValue(context());
   fetchEventsMock.mockResolvedValue(noEvents);
@@ -268,7 +278,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
+      `/organizations/${A}/projects/${P}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
     );
     expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
 
@@ -277,9 +287,9 @@ describe("Overview view toggle", () => {
     expect(window.localStorage.getItem("nightwatch:monitors-view")).toBe(
       "cards",
     );
-    expect(
-      screen.getByTestId("monitor-list-cell-responseTime"),
-    ).toHaveTextContent(/^182 ms$/);
+    expect(screen.getByTestId("monitor-list-cell-p95")).toHaveTextContent(
+      /^182 ms$/,
+    );
     expect(screen.getByTestId("monitor-list-check-time")).toHaveAttribute(
       "datetime",
       "2026-09-30T07:30:00.000Z",
@@ -295,7 +305,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
+      `/organizations/${A}/projects/${P}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
     );
 
     expect(screen.getByTestId("monitor-overview-view-cards")).toHaveAttribute(
@@ -314,7 +324,7 @@ describe("Overview view toggle", () => {
     expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
   });
 
-  it("names the status chip group and keeps counts out of the chip names", async () => {
+  it("names the status chip group and puts each count in its chip name", async () => {
     fetchListMock.mockResolvedValue(
       list([item({ id: "cc2c1bb9-982f-4928-b022-8f808a7a1926", name: "Web" })]),
     );
@@ -330,7 +340,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/cc2c1bb9-982f-4928-b022-8f808a7a1926`,
+      `/organizations/${A}/projects/${P}/monitors/cc2c1bb9-982f-4928-b022-8f808a7a1926`,
     );
     const group = screen.getByTestId("monitor-overview-health-filter");
     expect(group).toHaveRole("group");
@@ -339,8 +349,38 @@ describe("Overview view toggle", () => {
     expect(all).toHaveAccessibleName();
     expect(all).toHaveAttribute("aria-pressed", "true");
     const count = within(all).getByTestId("monitor-overview-health-count");
-    expect(count).toHaveAttribute("aria-hidden", "true");
+    expect(count).not.toHaveAttribute("aria-hidden");
     expect(count).toHaveTextContent(/^1$/);
+    expect(all).toHaveAccessibleName("ทั้งหมด 1");
+  });
+
+  it("reads every status chip's count in its accessible name", async () => {
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "a2000000-0000-4000-8000-000000000001", health: "down" }),
+        item({ id: "a2000000-0000-4000-8000-000000000002", health: "up" }),
+        item({ id: "a2000000-0000-4000-8000-000000000003", health: "up" }),
+        item({
+          id: "a2000000-0000-4000-8000-000000000004",
+          health: "paused",
+          status: "paused",
+        }),
+      ]),
+    );
+    renderPage();
+    const group = await screen.findByTestId("monitor-overview-health-filter");
+    const expected: [string, string][] = [
+      ["all", "ทั้งหมด 4"],
+      ["down", "ล่ม 1"],
+      ["up", "ใช้งานได้ 2"],
+      ["paused", "หยุดชั่วคราว 1"],
+      ["unknown", "ไม่ทราบสถานะ 0"],
+    ];
+    for (const [key, name] of expected) {
+      expect(
+        within(group).getByTestId(`monitor-overview-health-${key}`),
+      ).toHaveAccessibleName(name);
+    }
   });
 
   it("shows no-data text without a time zone note and the full URL in cards", async () => {
@@ -354,6 +394,7 @@ describe("Overview view toggle", () => {
           url,
           lastCheckAt: null,
           lastResponseTimeMs: null,
+          responseP95Ms24h: null,
         }),
       ]),
     );
@@ -369,7 +410,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f0067249-5706-4d15-8c26-20883d42c86e`,
+      `/organizations/${A}/projects/${P}/monitors/f0067249-5706-4d15-8c26-20883d42c86e`,
     );
     expect(screen.getByTestId("monitor-list-cell-url")).toHaveTextContent(url);
     expect(screen.queryByTestId("monitor-list-check-time")).toBeNull();
@@ -377,11 +418,11 @@ describe("Overview view toggle", () => {
       screen.getByTestId("monitor-list-check-empty"),
     ).not.toBeEmptyDOMElement();
     expect(
-      screen.getByTestId("monitor-list-cell-responseTime"),
+      screen.getByTestId("monitor-list-cell-p95"),
     ).not.toBeEmptyDOMElement();
-    expect(
-      screen.getByTestId("monitor-list-cell-responseTime"),
-    ).not.toHaveTextContent(/\d/);
+    expect(screen.getByTestId("monitor-list-cell-p95")).not.toHaveTextContent(
+      /\d/,
+    );
   });
 
   it("restores the persisted cards view and falls back to the table when storage throws", async () => {
@@ -401,7 +442,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/3852bb10-1633-4893-8308-22781b496670`,
+      `/organizations/${A}/projects/${P}/monitors/3852bb10-1633-4893-8308-22781b496670`,
     );
     expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
     first.unmount();
@@ -423,7 +464,7 @@ describe("Overview view toggle", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/3852bb10-1633-4893-8308-22781b496670`,
+      `/organizations/${A}/projects/${P}/monitors/3852bb10-1633-4893-8308-22781b496670`,
     );
     expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
     getItem.mockRestore();
@@ -447,7 +488,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/2dffe3b9-9919-40f5-b97d-48bce56292b2`,
+      `/organizations/${A}/projects/${P}/monitors/2dffe3b9-9919-40f5-b97d-48bce56292b2`,
     );
     const select = screen.getByTestId("monitor-overview-sort");
     expect(
@@ -457,7 +498,7 @@ describe("Overview sort", () => {
     ).toEqual(["problems", "name", "uptime", "response_time", "newest"]);
     expect(select).toHaveAccessibleName();
     expect(select).toHaveValue("problems");
-    expect(fetchListMock.mock.calls[0]?.[1].sort).toBeUndefined();
+    expect(fetchListMock.mock.calls[0]?.[2].sort).toBeUndefined();
   });
 
   it("caches the default order under the loader and nav counts key", async () => {
@@ -476,11 +517,11 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f6f65455-42cb-4673-9f75-cffc5d108f77`,
+      `/organizations/${A}/projects/${P}/monitors/f6f65455-42cb-4673-9f75-cffc5d108f77`,
     );
     expect(
       queryClient.getQueryData(
-        monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+        monitorQueryKeys.list(A, P, { limit: 25, offset: 0 }),
       ),
     ).toBeDefined();
   });
@@ -497,7 +538,7 @@ describe("Overview sort", () => {
         item({ name: `Row${String(index + 1)}` }),
       ),
     ];
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       Promise.resolve(
         list(
           params.offset === 0
@@ -528,7 +569,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
+      `/organizations/${A}/projects/${P}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
     );
     await user.click(screen.getByTestId("monitor-overview-next"));
     expect(
@@ -542,7 +583,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6`,
+      `/organizations/${A}/projects/${P}/monitors/1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6`,
     );
 
     const select = screen.getByTestId("monitor-overview-sort");
@@ -560,7 +601,7 @@ describe("Overview sort", () => {
         ),
       ).toHaveAttribute(
         "href",
-        `/organizations/${A}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
+        `/organizations/${A}/projects/${P}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
       );
       await waitFor(() => {
         expect(
@@ -569,7 +610,7 @@ describe("Overview sort", () => {
             .textContent.match(/\d+/g),
         ).toEqual(["26", "26"]);
       });
-      expect(fetchListMock).toHaveBeenLastCalledWith(A, {
+      expect(fetchListMock).toHaveBeenLastCalledWith(A, P, {
         limit: 25,
         offset: 0,
         health: undefined,
@@ -578,13 +619,13 @@ describe("Overview sort", () => {
       });
       expect(
         queryClient.getQueryData(
-          monitorQueryKeys.list(A, { limit: 25, offset: 0, sort: value }),
+          monitorQueryKeys.list(A, P, { limit: 25, offset: 0, sort: value }),
         ),
       ).toBeDefined();
     }
     const keys = sorted.map((value) =>
       JSON.stringify(
-        monitorQueryKeys.list(A, { limit: 25, offset: 0, sort: value }),
+        monitorQueryKeys.list(A, P, { limit: 25, offset: 0, sort: value }),
       ),
     );
     expect(new Set(keys).size).toBe(sorted.length);
@@ -616,7 +657,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
+      `/organizations/${A}/projects/${P}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
     );
     await user.selectOptions(
       screen.getByTestId("monitor-overview-sort"),
@@ -640,7 +681,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
+      `/organizations/${A}/projects/${P}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
     );
     expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("problems");
   });
@@ -648,7 +689,7 @@ describe("Overview sort", () => {
   it("does not let an older sort response replace the newer one", async () => {
     const user = userEvent.setup();
     const resolvers: Record<string, (value: MonitorListResponse) => void> = {};
-    fetchListMock.mockImplementation((_org, params) => {
+    fetchListMock.mockImplementation((_org, _project, params) => {
       if (params.sort === undefined) {
         return Promise.resolve(
           list([
@@ -675,7 +716,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
+      `/organizations/${A}/projects/${P}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
     );
     const select = screen.getByTestId("monitor-overview-sort");
 
@@ -695,7 +736,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
+      `/organizations/${A}/projects/${P}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
     );
 
     await act(async () => {
@@ -720,7 +761,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
+      `/organizations/${A}/projects/${P}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
     );
     await act(async () => {
       resolvers["name"]?.(
@@ -744,7 +785,7 @@ describe("Overview sort", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
+      `/organizations/${A}/projects/${P}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
     );
     expect(
       screen.queryByTestId(
@@ -783,7 +824,7 @@ describe("Overview method, interval and sparkline", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/51fd0299-e05f-437b-81c5-d7848b70e032`,
+      `/organizations/${A}/projects/${P}/monitors/51fd0299-e05f-437b-81c5-d7848b70e032`,
     );
     const card = rowOf("51fd0299-e05f-437b-81c5-d7848b70e032");
     const cardScope = within(card);
@@ -798,24 +839,12 @@ describe("Overview method, interval and sparkline", () => {
     ).toHaveTextContent(/\b15\b/);
 
     await user.click(screen.getByTestId("monitor-overview-view-table"));
-    expect(screen.getByTestId("monitor-list-heading-method")).toHaveRole(
-      "columnheader",
-    );
-    expect(screen.getByTestId("monitor-list-heading-url")).toHaveRole(
-      "columnheader",
-    );
-    expect(screen.getByTestId("monitor-list-heading-interval")).toHaveRole(
-      "columnheader",
-    );
+    // The Project table is the design's five columns: the URL sits under the name, method and interval are on the monitor page.
+    expect(screen.queryByTestId("monitor-list-heading-method")).toBeNull();
+    expect(screen.queryByTestId("monitor-list-heading-interval")).toBeNull();
     const row = within(rowOf("51fd0299-e05f-437b-81c5-d7848b70e032"));
-    expect(row.getByTestId("monitor-list-cell-method")).toHaveTextContent(
-      /^POST$/,
-    );
-    expect(row.getByTestId("monitor-list-cell-url")).toHaveTextContent(
+    expect(row.getByTestId("monitor-list-url")).toHaveTextContent(
       /^https:\/\/api\.example\.test\/v1$/,
-    );
-    expect(row.getByTestId("monitor-list-cell-interval")).toHaveTextContent(
-      /\b15\b/,
     );
   });
 
@@ -846,7 +875,7 @@ describe("Overview method, interval and sparkline", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/1b3ebf89-4943-45fb-a57c-97e8c6802978`,
+      `/organizations/${A}/projects/${P}/monitors/1b3ebf89-4943-45fb-a57c-97e8c6802978`,
     );
     const card = within(rowOf("1b3ebf89-4943-45fb-a57c-97e8c6802978"));
     const text = card.getByTestId("monitor-list-spark-description");
@@ -898,7 +927,7 @@ describe("Overview method, interval and sparkline", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/e3c050b4-64fb-434f-a75a-6d13efef0ae4`,
+      `/organizations/${A}/projects/${P}/monitors/e3c050b4-64fb-434f-a75a-6d13efef0ae4`,
     );
     const card = within(rowOf("e3c050b4-64fb-434f-a75a-6d13efef0ae4"));
     expect(
@@ -948,7 +977,7 @@ describe("Overview states", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/fdd8cde2-5118-480e-9c3d-3e151e41e003`,
+      `/organizations/${A}/projects/${P}/monitors/fdd8cde2-5118-480e-9c3d-3e151e41e003`,
     );
   });
 
@@ -960,7 +989,7 @@ describe("Overview states", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("monitor-overview-empty-add")).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/new`,
+      `/organizations/${A}/projects/${P}/monitors/new`,
     );
     expect(screen.getByTestId("monitor-overview-empty-add")).toHaveRole("link");
   });
@@ -1004,11 +1033,11 @@ describe("Overview states", () => {
     },
   );
 
-  it("shows the reason beside a disabled add button at the 50 monitor limit", async () => {
+  it("shows the reason beside a disabled add button at the 20 monitor limit", async () => {
     fetchListMock.mockResolvedValue(
       list(
         [item({ id: "869529e6-7823-4561-adf8-f1cef3c79ce4", name: "Web" })],
-        { total: 50 },
+        { total: 20 },
       ),
     );
     renderPage();
@@ -1016,7 +1045,7 @@ describe("Overview states", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription();
     const reason = screen.getByTestId("monitor-overview-limit-reason");
-    expect(reason).toHaveTextContent(/\b50\b/);
+    expect(reason).toHaveTextContent(/\b20\b/);
     expect(button).toHaveAttribute("aria-describedby", reason.id);
     expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
   });
@@ -1075,7 +1104,7 @@ describe("Overview states", () => {
 
   it("shows the filtered empty state with a clear action and announces the result once", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       Promise.resolve(
         params.health === "down"
           ? list([], { total: 2, pageTotal: 0 })
@@ -1100,7 +1129,7 @@ describe("Overview states", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
+      `/organizations/${A}/projects/${P}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
     );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
@@ -1125,7 +1154,7 @@ describe("Overview states", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
+      `/organizations/${A}/projects/${P}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
     );
     expect(
       screen
@@ -1151,7 +1180,7 @@ describe("Overview states", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/904289d6-2334-48c7-9cd6-ff076ed1c9bd`,
+      `/organizations/${A}/projects/${P}/monitors/904289d6-2334-48c7-9cd6-ff076ed1c9bd`,
     );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
@@ -1164,7 +1193,9 @@ describe("Overview states", () => {
 });
 
 function summaryCount(health: string): string {
-  return screen.getByTestId(`monitor-overview-summary-${health}`).textContent;
+  return within(
+    screen.getByTestId(`monitor-overview-health-${health}`),
+  ).getByTestId("monitor-overview-health-count").textContent;
 }
 
 describe("Overview success", () => {
@@ -1211,7 +1242,7 @@ describe("Overview success", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/5a39cdda-9552-4e75-a4a1-1290ef26c13b`,
+      `/organizations/${A}/projects/${P}/monitors/5a39cdda-9552-4e75-a4a1-1290ef26c13b`,
     );
 
     expect(
@@ -1260,6 +1291,7 @@ describe("Overview success", () => {
           healthReason: "never_checked",
           lastCheckAt: null,
           lastResponseTimeMs: null,
+          responseP95Ms24h: null,
         }),
         item({
           id: "a68aa8f9-e3eb-448e-9776-83d1af0913cc",
@@ -1287,7 +1319,7 @@ describe("Overview success", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96`,
+      `/organizations/${A}/projects/${P}/monitors/4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96`,
     );
 
     for (const [name, health] of [
@@ -1355,7 +1387,7 @@ describe("Overview success", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/ceadac25-860f-450b-8a5a-919bed1d4be9`,
+      `/organizations/${A}/projects/${P}/monitors/ceadac25-860f-450b-8a5a-919bed1d4be9`,
     );
 
     const flaky = rowOf("ceadac25-860f-450b-8a5a-919bed1d4be9");
@@ -1389,6 +1421,8 @@ describe("Overview success", () => {
   });
 
   it("renders every SSL level and its actual days remaining", async () => {
+    // The table keeps to the design's columns; SSL stays on the cards.
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
     const levels: Item["ssl"][] = [
       {
         level: "ok",
@@ -1470,49 +1504,59 @@ describe("Overview success", () => {
     }
   });
 
-  it("writes missing uptime and response time as text and shows partial coverage", async () => {
+  it("writes missing uptime, p95 and last check as text and shows partial coverage", async () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
           id: "6bbcaabc-5861-41de-a99a-6cab673d04ac",
           name: "Fresh",
           lastResponseTimeMs: null,
+          responseP95Ms24h: null,
           lastCheckAt: null,
           uptime: {
             h24: { percent: null, checks: 0, coveragePercent: 0 },
-            d30: { percent: 97.5, checks: 10, coveragePercent: 61 },
+            d30: { percent: null, checks: 0, coveragePercent: 0 },
+          },
+        }),
+        item({
+          id: "0d3c2a55-0b0e-4d0a-9d36-1f1d2f0c7a11",
+          name: "Partial",
+          responseP95Ms24h: 240,
+          uptime: {
+            h24: { percent: 97.5, checks: 10, coveragePercent: 61 },
+            d30: { percent: 99, checks: 10, coveragePercent: 61 },
           },
         }),
       ]),
     );
     renderPage();
-    expect(
-      await screen.findByTestId(
-        "monitor-list-name-6bbcaabc-5861-41de-a99a-6cab673d04ac",
-      ),
-    ).toHaveTextContent(/^Fresh$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-6bbcaabc-5861-41de-a99a-6cab673d04ac",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/monitors/6bbcaabc-5861-41de-a99a-6cab673d04ac`,
+    await screen.findByTestId(
+      "monitor-list-name-6bbcaabc-5861-41de-a99a-6cab673d04ac",
     );
-    const row = within(rowOf("6bbcaabc-5861-41de-a99a-6cab673d04ac"));
-    for (const key of ["h24", "responseTime", "lastCheck"]) {
+    const fresh = within(rowOf("6bbcaabc-5861-41de-a99a-6cab673d04ac"));
+    for (const key of ["h24", "p95", "lastCheck"]) {
       expect(
-        row.getByTestId(`monitor-list-cell-${key}`),
+        fresh.getByTestId(`monitor-list-cell-${key}`),
       ).not.toBeEmptyDOMElement();
-      expect(row.getByTestId(`monitor-list-cell-${key}`)).not.toHaveTextContent(
-        /\d/,
+      expect(
+        fresh.getByTestId(`monitor-list-cell-${key}`),
+      ).not.toHaveTextContent(/\d/);
+      // The dash is the mark; the sentence is for screen readers.
+      expect(fresh.getByTestId(`monitor-list-cell-${key}`)).toHaveTextContent(
+        "ไม่มีข้อมูล",
       );
     }
-    expect(row.getByTestId("monitor-list-uptime-value")).toHaveTextContent(
+    const partial = within(rowOf("0d3c2a55-0b0e-4d0a-9d36-1f1d2f0c7a11"));
+    expect(partial.getByTestId("monitor-list-p95-value")).toHaveTextContent(
+      /^240 ms$/,
+    );
+    expect(partial.getByTestId("monitor-list-uptime-value")).toHaveTextContent(
       /^97\.50%$/,
     );
     expect(
-      row.getByTestId("monitor-list-coverage").textContent.match(/[\d.]+%/g),
+      partial
+        .getByTestId("monitor-list-coverage")
+        .textContent.match(/[\d.]+%/g),
     ).toEqual(["61.00%"]);
   });
 
@@ -1538,7 +1582,7 @@ describe("Overview success", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/cde37086-af6e-4878-abc7-84b2238f07a7`,
+      `/organizations/${A}/projects/${P}/monitors/cde37086-af6e-4878-abc7-84b2238f07a7`,
     );
     expect(
       within(rowOf("cde37086-af6e-4878-abc7-84b2238f07a7")).getByTestId(
@@ -1589,7 +1633,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/5189c3f5-3cef-4149-92be-d16080697bc0`,
+      `/organizations/${A}/projects/${P}/monitors/5189c3f5-3cef-4149-92be-d16080697bc0`,
     );
 
     const withDate = formatDateTime(earlier);
@@ -1657,7 +1701,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/69dfad28-dc40-44c9-a526-6355ac476e6e`,
+      `/organizations/${A}/projects/${P}/monitors/69dfad28-dc40-44c9-a526-6355ac476e6e`,
     );
 
     const pending = Promise.withResolvers<MonitorListResponse>();
@@ -1686,7 +1730,7 @@ describe("Overview times, focus and filter failures", () => {
 
   it("keeps the filter controls and offers a clear action when a new filter fails to load", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       params.health === "down"
         ? Promise.reject(new ApiError("NETWORK_ERROR", "x", 0))
         : Promise.resolve(
@@ -1707,7 +1751,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
+      `/organizations/${A}/projects/${P}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
     );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
@@ -1733,7 +1777,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
+      `/organizations/${A}/projects/${P}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
     );
     expect(screen.getByTestId("monitor-overview-health-all")).toHaveAttribute(
       "aria-pressed",
@@ -1765,7 +1809,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/5e6076a6-6e93-4a7d-b2b3-95cd099e403c`,
+      `/organizations/${A}/projects/${P}/monitors/5e6076a6-6e93-4a7d-b2b3-95cd099e403c`,
     );
     const row = within(rowOf("5e6076a6-6e93-4a7d-b2b3-95cd099e403c"));
     expect(row.getByTestId("monitor-list-failures")).toHaveTextContent(/\b1\b/);
@@ -1784,7 +1828,7 @@ describe("Overview times, focus and filter failures", () => {
 
   it("hides the pagination summary under the filtered-empty state", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       Promise.resolve(
         params.health === "down"
           ? list([], { total: 2, pageTotal: 0 })
@@ -1805,7 +1849,7 @@ describe("Overview times, focus and filter failures", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/0efa9833-5468-426d-83e5-077fc85d867d`,
+      `/organizations/${A}/projects/${P}/monitors/0efa9833-5468-426d-83e5-077fc85d867d`,
     );
     await user.click(screen.getByTestId("monitor-overview-health-down"));
     await screen.findByTestId("monitor-overview-filtered-empty");
@@ -1880,7 +1924,7 @@ describe("Overview recent events", () => {
       expect.arrayContaining([
         {
           kind: "incident_opened",
-          href: `/organizations/${A}/monitors/${opened.id}`,
+          href: `/organizations/${A}/projects/${P}/monitors/${opened.id}`,
           reason: "timeout",
           sslLevel: "",
           days: "",
@@ -1891,7 +1935,7 @@ describe("Overview recent events", () => {
         },
         {
           kind: "ssl_level",
-          href: `/organizations/${A}/monitors/${warned.id}`,
+          href: `/organizations/${A}/projects/${P}/monitors/${warned.id}`,
           reason: "",
           sslLevel: "danger",
           days: "5",
@@ -1902,7 +1946,7 @@ describe("Overview recent events", () => {
         },
         {
           kind: "incident_closed",
-          href: `/organizations/${A}/monitors/${closed.id}`,
+          href: `/organizations/${A}/projects/${P}/monitors/${closed.id}`,
           reason: "recovered",
           sslLevel: "",
           days: "",
@@ -1948,7 +1992,7 @@ describe("Overview recent events", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/f00e20af-74f7-4105-a609-63f14cebb06b`,
+      `/organizations/${A}/projects/${P}/monitors/f00e20af-74f7-4105-a609-63f14cebb06b`,
     );
 
     fetchEventsMock.mockResolvedValue(noEvents);
@@ -1972,7 +2016,7 @@ describe("Overview refetch and announcements", () => {
       advanceTimers: (ms) => vi.advanceTimersByTime(ms),
     });
     let calls = 0;
-    fetchListMock.mockImplementation((_org, params) => {
+    fetchListMock.mockImplementation((_org, _project, params) => {
       calls += 1;
       if (params.health === "down") {
         // Later refetches report other totals: a live region bound to the data would change.
@@ -2010,7 +2054,7 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/5c7aa54f-24bd-46b6-a1e0-c33542227d8c`,
+      `/organizations/${A}/projects/${P}/monitors/5c7aa54f-24bd-46b6-a1e0-c33542227d8c`,
     );
     const region = screen.getByTestId("monitor-overview-announcement");
     expect(region).toHaveTextContent("");
@@ -2027,7 +2071,7 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/b4c61fe5-fa39-466d-b38f-2909834195e7`,
+      `/organizations/${A}/projects/${P}/monitors/b4c61fe5-fa39-466d-b38f-2909834195e7`,
     );
     await waitFor(() => {
       expect(region.textContent.match(/\d+/g)).toHaveLength(2);
@@ -2054,7 +2098,7 @@ describe("Overview refetch and announcements", () => {
 
   it("debounces the search and resets to the first page", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       Promise.resolve(
         params.q === "pay"
           ? list(
@@ -2089,7 +2133,7 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/7e634261-a627-4884-a7e4-61ecef13ae89`,
+      `/organizations/${A}/projects/${P}/monitors/7e634261-a627-4884-a7e4-61ecef13ae89`,
     );
     await user.type(screen.getByTestId("monitor-overview-search"), "pay");
     expect(
@@ -2103,14 +2147,14 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/145b829a-4b43-4c4a-89fc-904b5256ee80`,
+      `/organizations/${A}/projects/${P}/monitors/145b829a-4b43-4c4a-89fc-904b5256ee80`,
     );
     expect(
       screen
         .getByTestId("monitor-overview-announcement")
         .textContent.match(/\d+/g),
     ).toEqual(["1", "12"]);
-    const queries = fetchListMock.mock.calls.map(([, params]) => params.q);
+    const queries = fetchListMock.mock.calls.map(([, , params]) => params.q);
     expect(queries).not.toContain("p");
     expect(queries).not.toContain("pa");
   });
@@ -2133,7 +2177,7 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
+      `/organizations/${A}/projects/${P}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
     );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
@@ -2151,14 +2195,14 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
+      `/organizations/${A}/projects/${P}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
     );
     expect(screen.queryByTestId("monitor-overview-error")).toBeNull();
   });
 
   it("pages with the server offset", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, params) =>
+    fetchListMock.mockImplementation((_org, _project, params) =>
       Promise.resolve(
         params.offset === 0
           ? list(
@@ -2197,7 +2241,7 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/df1835fa-2769-4db7-9344-a88a483ceaa9`,
+      `/organizations/${A}/projects/${P}/monitors/df1835fa-2769-4db7-9344-a88a483ceaa9`,
     );
     await user.click(screen.getByTestId("monitor-overview-next"));
     expect(
@@ -2211,28 +2255,19 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/7e0ff85c-bf37-4aa4-b51a-610770787bf2`,
+      `/organizations/${A}/projects/${P}/monitors/7e0ff85c-bf37-4aa4-b51a-610770787bf2`,
     );
     expect(screen.getByTestId("monitor-overview-previous")).toBeEnabled();
   });
 });
 
 describe("Overview Organization switch", () => {
+  // A Project belongs to one Organization, so a switch made on the list leaves it for the new
+  // Organization's Projects (useLeaveOnOrganizationSwitch); nothing of the origin stays on screen.
   it("shows no data of the previous Organization while its request is pending or after it resolves late", async () => {
     const user = userEvent.setup();
     const late = Promise.withResolvers<MonitorListResponse>();
-    fetchListMock.mockImplementation((organizationId) =>
-      organizationId === A
-        ? late.promise
-        : Promise.resolve(
-            list([
-              item({
-                id: "127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-                name: "BetaMonitor",
-              }),
-            ]),
-          ),
-    );
+    fetchListMock.mockImplementation(() => late.promise);
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
       lastActiveTenantId: B,
@@ -2241,21 +2276,9 @@ describe("Overview Organization switch", () => {
     await screen.findByTestId("monitor-overview-loading");
 
     await user.click(screen.getByTestId("overview-switch-organization"));
-    expect(
-      await screen.findByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveTextContent(/^BetaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${B}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
-    );
+    expect(await screen.findByTestId("projects-page")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${B}/monitors`,
+      `/organizations/${B}/projects`,
     );
 
     await act(async () => {
@@ -2275,35 +2298,23 @@ describe("Overview Organization switch", () => {
       ),
     ).toBeNull();
     expect(document.body.textContent).not.toContain("AlphaMonitor");
+    // The new Organization's list is never requested for the old Project.
     expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      fetchListMock.mock.calls.every(
+        ([organizationId]) => organizationId === A,
       ),
-    ).toHaveTextContent(/^BetaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${B}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
-    );
+    ).toBe(true);
   });
 
-  it("hides origin organization rows while the destination organization loads", async () => {
+  it("hides origin organization rows once the switch is confirmed", async () => {
     const user = userEvent.setup();
-    const pendingB = Promise.withResolvers<MonitorListResponse>();
-    fetchListMock.mockImplementation((organizationId) =>
-      organizationId === A
-        ? Promise.resolve(
-            list([
-              item({
-                id: "5446de89-f053-45c5-a4e1-c13b82620c60",
-                name: "AlphaMonitor",
-              }),
-            ]),
-          )
-        : pendingB.promise,
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          id: "5446de89-f053-45c5-a4e1-c13b82620c60",
+          name: "AlphaMonitor",
+        }),
+      ]),
     );
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
@@ -2315,19 +2326,9 @@ describe("Overview Organization switch", () => {
         "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
       ),
     ).toHaveTextContent(/^AlphaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/monitors/5446de89-f053-45c5-a4e1-c13b82620c60`,
-    );
 
     await user.click(screen.getByTestId("overview-switch-organization"));
-    expect(
-      await screen.findByTestId("monitor-overview-loading"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("projects-page")).toBeInTheDocument();
     expect(
       screen.queryByTestId(
         "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
@@ -2365,5 +2366,284 @@ describe("Overview one-time notice", () => {
     await screen.findByTestId("monitor-overview-heading");
     expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
     expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
+  });
+});
+
+describe("A Project that is gone after the list loaded", () => {
+  it("hides the cached rows and shows the not-found state", async () => {
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "a3000000-0000-4000-8000-000000000001", name: "Cached" }),
+      ]),
+    );
+    const { queryClient } = renderPage();
+    await screen.findByTestId(
+      "monitor-list-name-a3000000-0000-4000-8000-000000000001",
+    );
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(
+      await screen.findByTestId("monitor-overview-project-gone"),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Cached");
+  });
+});
+
+describe("Project monitor list", () => {
+  const ids = {
+    down: "a1000000-0000-4000-8000-000000000001",
+    up: "a1000000-0000-4000-8000-000000000002",
+    paused: "a1000000-0000-4000-8000-000000000003",
+  };
+  const monitors = () => [
+    item({
+      id: ids.down,
+      name: "Checkout API",
+      url: "https://api.acme.example/checkout/health",
+      health: "down",
+      intervalSeconds: 60,
+      responseP95Ms24h: null,
+      uptime: {
+        h24: { percent: 98.12, checks: 100, coveragePercent: 100 },
+        d30: { percent: 99, checks: 100, coveragePercent: 100 },
+      },
+    }),
+    item({
+      id: ids.up,
+      name: "Payment Gateway",
+      url: "https://pay.acme.example",
+      health: "up",
+      intervalSeconds: 60,
+      responseP95Ms24h: 212,
+    }),
+    item({
+      id: ids.paused,
+      name: "Batch Settlement",
+      health: "paused",
+      status: "paused",
+      intervalSeconds: 300,
+    }),
+  ];
+
+  it("names the Project and the caller's Project role in the header", async () => {
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-scope"),
+    ).toHaveTextContent(PROJECT_NAME);
+    expect(screen.getByTestId("page-scope-tag")).toHaveTextContent(
+      "โปรเจกต์ · ผู้ดูแล",
+    );
+    expect(screen.getByTestId("monitor-overview-heading")).toHaveTextContent(
+      "ตรวจสถานะบริการ",
+    );
+  });
+
+  it("names the Organization role for an Owner who is not a member of the Project", async () => {
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: null }),
+    );
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    await screen.findByTestId("monitor-overview-scope");
+    expect(screen.getByTestId("page-scope-tag")).toHaveTextContent(
+      "องค์กร · เจ้าของ",
+    );
+  });
+
+  it("requests the Project's own list and sums the summary line", async () => {
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    await screen.findByTestId("monitor-overview-total");
+    expect(fetchListMock).toHaveBeenCalledWith(A, P, expect.any(Object));
+    expect(screen.getByTestId("monitor-overview-total")).toHaveTextContent(
+      "3 มอนิเตอร์",
+    );
+    expect(screen.getByTestId("monitor-overview-down")).toHaveTextContent(
+      "ล่ม 1",
+    );
+    // Mixed intervals: the shortest one is named as the fastest pace.
+    expect(screen.getByTestId("monitor-overview-interval")).toHaveTextContent(
+      /ตรวจถี่สุดทุก 1 นาที/,
+    );
+  });
+
+  it("names the one interval when every monitor shares it", async () => {
+    fetchListMock.mockResolvedValue(list(monitors().slice(0, 2)));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-interval"),
+    ).toHaveTextContent(/^ตรวจทุก 1 นาที$/);
+  });
+
+  it("filters by status in the design's order, each with its count and a pressed state", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    const group = await screen.findByTestId("monitor-overview-health-filter");
+    expect(group).toHaveRole("group");
+    const labels = within(group)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(labels).toEqual([
+      "ทั้งหมด 3",
+      "ล่ม 1",
+      "ใช้งานได้ 1",
+      "หยุดชั่วคราว 1",
+      "ไม่ทราบสถานะ 0",
+    ]);
+    expect(screen.getByTestId("monitor-overview-health-all")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    expect(screen.getByTestId("monitor-overview-health-down")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(fetchListMock).toHaveBeenLastCalledWith(
+      A,
+      P,
+      expect.objectContaining({ health: "down" }),
+    );
+  });
+
+  it("lists name with URL, status, p95, 24 h availability and last check", async () => {
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    await screen.findByTestId(`monitor-list-name-${ids.down}`);
+    const headings = within(screen.getByTestId("monitor-overview-table"))
+      .getAllByRole("columnheader")
+      .map((heading) => heading.textContent);
+    expect(headings).toEqual([
+      "มอนิเตอร์",
+      "สถานะ",
+      "เวลาตอบสนอง · p95 · 24 ชม.",
+      "ความพร้อมใช้งาน · 24 ชม.",
+      `ตรวจล่าสุด (${TIME_ZONE})`,
+    ]);
+    const down = within(rowOf(ids.down));
+    expect(down.getByTestId("monitor-list-url")).toHaveTextContent(
+      "https://api.acme.example/checkout/health",
+    );
+    expect(down.getByTestId("monitor-list-cell-p95")).toHaveTextContent(
+      "ไม่มีข้อมูล",
+    );
+    expect(down.getByTestId("monitor-list-uptime-value")).toHaveTextContent(
+      "98.12%",
+    );
+    expect(
+      within(rowOf(ids.up)).getByTestId("monitor-list-p95-value"),
+    ).toHaveTextContent("212 ms");
+  });
+
+  it("closes the list with the range shown and the Project it is limited to", async () => {
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-pagination"),
+    ).toHaveTextContent(`แสดง 1–3 จาก 3 · เฉพาะมอนิเตอร์ของ ${PROJECT_NAME}`);
+  });
+
+  it("tells a Project without monitors that it has none and offers the add link to a Project admin", async () => {
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    fetchListMock.mockResolvedValue(list([]));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-empty"),
+    ).toHaveTextContent("ยังไม่มีมอนิเตอร์ในโปรเจกต์นี้");
+    expect(screen.getByTestId("monitor-overview-empty-add")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/projects/${P}/monitors/new`,
+    );
+  });
+
+  it("gives a Project admin who is only an Organization viewer the add control", async () => {
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    expect(await screen.findByTestId("monitor-overview-add")).toHaveRole(
+      "link",
+    );
+    expect(screen.queryByTestId("monitor-overview-readonly")).toBeNull();
+  });
+
+  it("keeps a Project member who is only an Organization viewer read-only", async () => {
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "member" }),
+    );
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-readonly"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
+  });
+
+  it("shows the same gone state for a Project the caller cannot read", async () => {
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    fetchListMock.mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-project-gone"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-total")).toBeNull();
+    expect(document.body.textContent).not.toContain(PROJECT_NAME);
+  });
+});
+
+describe("A failed Project lookup", () => {
+  it("shows an error with a retry, not a read-only list, and recovers the write controls", async () => {
+    const user = userEvent.setup();
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    vi.mocked(fetchProjectDetail).mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-access-error"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-readonly")).toBeNull();
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    await user.click(screen.getByTestId("monitor-overview-access-retry"));
+    expect(
+      await screen.findByTestId("monitor-overview-add"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an Organization Owner writable, who does not depend on it", async () => {
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-add"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-access-error")).toBeNull();
   });
 });

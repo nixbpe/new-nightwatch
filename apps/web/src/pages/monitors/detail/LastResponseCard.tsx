@@ -15,7 +15,8 @@ import {
 import { formatTimeOrDate, Time, TIME_ZONE } from "../format";
 import { failureCauseText } from "./labels";
 
-const READ_ROLE_ONLY_TEXT = "เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา";
+const READ_ROLE_ONLY_TEXT =
+  "เฉพาะผู้ดูแลโปรเจกต์ และเจ้าของหรือผู้ดูแลองค์กรเห็น headers และเนื้อหา";
 const REQUEST_VALUES_TEXT =
   "ไม่เก็บ headers และเนื้อหา เพราะคำขอมี query หรือ body ซึ่งเป้าหมายอาจสะท้อนกลับ";
 const FROM_TARGET_TEXT = "เนื้อหานี้มาจากเป้าหมายโดยตรง";
@@ -235,16 +236,23 @@ function isDenied(error: unknown): boolean {
 
 function LastResponsePanel({
   organizationId,
+  projectId,
   monitorId,
   code,
 }: {
   code?: string;
   organizationId: string;
+  projectId: string;
   monitorId: string;
 }) {
   const query = useQuery({
-    queryKey: monitorQueryKeys.lastResponse(organizationId, monitorId),
-    queryFn: () => fetchMonitorLastResponse(organizationId, monitorId),
+    queryKey: monitorQueryKeys.lastResponse(
+      organizationId,
+      projectId,
+      monitorId,
+    ),
+    queryFn: () =>
+      fetchMonitorLastResponse(organizationId, projectId, monitorId),
     // A 403 means the role changed: stop polling and show only the role note.
     refetchInterval: (current) =>
       isDenied(current.state.error) ? false : MONITOR_REFETCH_INTERVAL_MS,
@@ -310,7 +318,7 @@ function LastResponsePanel({
   );
 }
 
-/** Only owner and admin may read the response; any other role never sends the request. */
+/** Only a Project admin, or an Organization Owner or Admin, may read the response; any other caller never sends the request. */
 export function LastResponseCard({
   canRead,
   ...rest
@@ -318,6 +326,7 @@ export function LastResponseCard({
   canRead: boolean;
   code?: string;
   organizationId: string;
+  projectId: string;
   monitorId: string;
 }) {
   if (!canRead) {

@@ -74,6 +74,11 @@ export function makeEvent(
       monitorId: "99999999-9999-4999-8999-999999999999",
       displayName: "api-prod",
       deleted: false,
+      project: {
+        projectId: "88888888-8888-4888-8888-888888888888",
+        displayName: "Payments Platform",
+        deleted: false,
+      },
     },
     ...overrides,
   };

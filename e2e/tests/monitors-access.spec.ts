@@ -9,12 +9,15 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
+  addProjectMember,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
+  monitorUrl,
   shot,
   signInApi,
   targetHostname,
@@ -36,9 +39,13 @@ let probe: Target;
 let host: string;
 let orgA: string;
 let orgB: string;
+let projA: string;
 let monitorId: string;
 let ownerSession: ApiSession;
-const people = {} as Record<Role | "nonmember" | "demoted" | "removed", Person>;
+const people = {} as Record<
+  Role | "nonmember" | "demoted" | "removed" | "projectAdmin" | "outsider",
+  Person
+>;
 const memberIds = {} as Record<string, string>;
 const userIds: string[] = [];
 const monitorName = `access-${run}`;
@@ -72,13 +79,30 @@ test.beforeAll(async () => {
     userIds.push(people[key].userId);
     memberIds[key] = await addMember(pool, orgA, people[key].userId, "admin");
   }
+  // A Project admin who is only an Organization viewer, and a viewer outside the Project.
+  for (const key of ["projectAdmin", "outsider"] as const) {
+    people[key] = await createPerson(pool, key, orgA);
+    userIds.push(people[key].userId);
+    memberIds[key] = await addMember(pool, orgA, people[key].userId, "viewer");
+  }
+  projA = await createProject(pool, orgA, `E2E Access ${run}`);
+  for (const key of ["viewer", "auditor", "demoted", "removed"] as const) {
+    await addProjectMember(pool, orgA, projA, people[key].userId, "member");
+  }
+  await addProjectMember(
+    pool,
+    orgA,
+    projA,
+    people.projectAdmin.userId,
+    "admin",
+  );
   people.nonmember = await createPerson(pool, "nonmember", orgB);
   userIds.push(people.nonmember.userId);
   await addMember(pool, orgB, people.nonmember.userId, "owner");
   await addMember(pool, orgB, people.owner.userId, "owner");
 
   ownerSession = await signInApi(people.owner);
-  const created = await ownerSession.request("POST", monitorPath(orgA), {
+  const created = await ownerSession.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(monitorName, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
@@ -96,15 +120,24 @@ test.afterAll(async () => {
   }
 });
 
-const overview = () => `/organizations/${orgA}/monitors`;
+const overview = () => monitorUrl(orgA, projA);
 const detail = () => `${overview()}/${monitorId}`;
 
 test.describe("monitor permissions by role and screen", () => {
-  for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
+  // Write access is the Project admin's and the Organization Owner's and Admin's (AC-03);
+  // the viewer and the auditor read as Project members, the Project admin is only a viewer of the Organization.
+  for (const role of [
+    "owner",
+    "admin",
+    "projectAdmin",
+    "viewer",
+    "auditor",
+  ] as const) {
     test(`${role}: Overview, Detail, new and edit screens`, async ({
       page,
     }) => {
-      const writes = role === "owner" || role === "admin";
+      const writes =
+        role === "owner" || role === "admin" || role === "projectAdmin";
       await signIn(page, people[role]);
 
       await page.goto(overview());
@@ -151,6 +184,30 @@ test.describe("monitor permissions by role and screen", () => {
       expect(probe.hits.length).toBe(hits);
     });
   }
+
+  test("an Organization viewer outside the Project gets the not-found state and no monitor data", async ({
+    page,
+  }) => {
+    await signIn(page, people.outsider);
+    await page.goto(overview());
+    await expect(
+      page.getByTestId("monitor-overview-project-gone"),
+    ).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await page.goto(detail());
+    await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await page.goto(`${overview()}/new`);
+    await expect(page.getByTestId("monitor-form-project-gone")).toBeVisible();
+    await expect(page.getByTestId("monitor-form-test")).toHaveCount(0);
+    const session = await signInApi(people.outsider);
+    const read = await session.request("GET", monitorPath(orgA, projA));
+    expect(read.status).toBe(404);
+  });
 
   test("non-member sees a denied state and no monitor data", async ({
     page,
@@ -350,7 +407,7 @@ test.describe("monitor role changes across signed-in sessions", () => {
       .getByTestId(`shell-organization-${orgB}`)
       .click();
     await expect(page).toHaveURL(
-      new RegExp(`/organizations/${orgB}/monitors$`),
+      new RegExp(`/organizations/${orgB}/projects$`),
     );
     await expect
       .poll(() => page.evaluate(() => document.body.textContent))
@@ -504,7 +561,11 @@ for (const theme of ["light", "dark"] as const) {
           async () => {
             const reply = await ownerSession.request(
               "GET",
-              monitorPath(orgA, `/${monitorId}/response-times?range=24h`),
+              monitorPath(
+                orgA,
+                projA,
+                `/${monitorId}/response-times?range=24h`,
+              ),
             );
             expect(reply.status).toBe(200);
             const series = monitorResponseTimesResponseSchema.parse(reply.body);
@@ -520,7 +581,7 @@ for (const theme of ["light", "dark"] as const) {
       const seriesResponse = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname ===
-            monitorPath(orgA, `/${monitorId}/response-times`) &&
+            monitorPath(orgA, projA, `/${monitorId}/response-times`) &&
           new URL(response.url()).searchParams.get("range") === "24h" &&
           response.status() === 200,
       );
@@ -584,10 +645,17 @@ for (const theme of ["light", "dark"] as const) {
     test("Delete confirm returns focus to the Overview heading", async ({
       page,
     }) => {
-      const created = await ownerSession.request("POST", monitorPath(orgA), {
-        ...basicConfig(`disposable-${theme}-${run}`, urlOf(target, "/health")),
-        clientRequestId: randomUUID(),
-      });
+      const created = await ownerSession.request(
+        "POST",
+        monitorPath(orgA, projA),
+        {
+          ...basicConfig(
+            `disposable-${theme}-${run}`,
+            urlOf(target, "/health"),
+          ),
+          clientRequestId: randomUUID(),
+        },
+      );
       const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
       await signIn(page, people.owner);
       await page.goto(`${overview()}/${id}`);

@@ -23,6 +23,8 @@ const PROJECT_AUDIT_MIGRATION = "0023_projects.sql";
 const PROJECT_MEMBERS_MIGRATION = "0024_project_members.sql";
 // Creates a table that references the 0023 projects table.
 const LAST_PROJECT_MIGRATION = "0025_member_last_project.sql";
+// Wipes monitors, which this test needs to find again after 0020.
+const PROJECT_MONITORS_MIGRATION = "0026_project_monitors.sql";
 let database: Database;
 let ownerDatabase: Database;
 let owner: Client;
@@ -105,6 +107,7 @@ beforeAll(async () => {
       PROJECT_MEMBERS_MIGRATION,
       LAST_PROJECT_MIGRATION,
     ],
+    leaveOut: [PROJECT_MONITORS_MIGRATION],
   }));
   await owner.query(
     `insert into organization (id, name, slug, created_at)

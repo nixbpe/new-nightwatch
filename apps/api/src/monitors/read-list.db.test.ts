@@ -31,7 +31,7 @@ let empty: TestOrganization;
 let outsider: string;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
   order = await ctx.createOrganization("read-order");
   filters = await ctx.createOrganization("read-filters");
@@ -109,7 +109,7 @@ describe("List: order and summary", () => {
       unknown: 2,
       paused: 1,
       total: 7,
-      limit: 50,
+      limit: 20,
     });
     const { up: a, down: b, unknown: c, paused: d, total } = body.summary;
     expect(a + b + c + d).toBe(total);
@@ -147,7 +147,7 @@ describe("List: order and summary", () => {
       unknown: 0,
       paused: 0,
       total: 0,
-      limit: 50,
+      limit: 20,
     });
   });
 
@@ -520,6 +520,38 @@ describe("List: sort", () => {
       sorted.ids.Alpha,
     );
     expect(namesOf(body)).toEqual(SORT_ORDERS.uptime);
+  });
+
+  it("orders response_time by the 24 h p95 the list shows, across a page boundary, not by the latest check", async () => {
+    const org = await ctx.createOrganization("read-sort-p95");
+    const make = async (name: string, samples: [number, number][]) => {
+      const id = await seedMonitor(ctx, org.id, { name });
+      for (const [ago, ms] of samples) {
+        await seedResults(ctx, org.id, id, [ago], { responseTimeMs: ms });
+      }
+    };
+    // latest check / p95: m1 100 / 800, m2 300 / 300, m3 200 / 600, m4 900 / 900.
+    await make("m1", [
+      [10, 100],
+      [600, 800],
+      [700, 800],
+    ]);
+    await make("m2", [
+      [10, 300],
+      [600, 300],
+    ]);
+    await make("m3", [
+      [10, 200],
+      [600, 600],
+    ]);
+    await make("m4", [[10, 900]]);
+    const first = await list(org, "?sort=response_time&limit=2&offset=0");
+    const second = await list(org, "?sort=response_time&limit=2&offset=2");
+    expect(namesOf(first)).toEqual(["m4", "m1"]);
+    expect(namesOf(second)).toEqual(["m3", "m2"]);
+    expect(
+      [...first.monitors, ...second.monitors].map((m) => m.responseP95Ms24h),
+    ).toEqual([900, 800, 600, 300]);
   });
 
   it("moves page 2 to the new order when a key changes between the two requests", async () => {
@@ -946,7 +978,7 @@ describe("List and Recent events: access", () => {
       const absent = await ctx.call(
         outsider,
         "GET",
-        monitorsPath(missing, route),
+        monitorsPath(missing, route, crypto.randomUUID()),
       );
       expect(denied.status).toBe(403);
       expect(denied.json).toEqual(absent.json);

@@ -51,7 +51,7 @@ export function registerMonitorRoutes(
   app.openapi(
     routes.create,
     async (c) => {
-      const { organizationId } = c.req.valid("param");
+      const { organizationId, projectId } = c.req.valid("param");
       const input = c.req.valid("json");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -62,6 +62,7 @@ export function registerMonitorRoutes(
         () =>
           createMonitor(database, {
             organizationId,
+            projectId,
             actorUserId,
             input,
             outbound,
@@ -77,7 +78,7 @@ export function registerMonitorRoutes(
   app.openapi(
     routes.edit,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const input = c.req.valid("json");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
@@ -88,6 +89,7 @@ export function registerMonitorRoutes(
         () =>
           editMonitor(database, {
             organizationId,
+            projectId,
             actorUserId,
             monitorId,
             input,
@@ -104,7 +106,7 @@ export function registerMonitorRoutes(
   app.openapi(
     routes.pause,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
       const result = await auditMonitorDenials(
@@ -114,6 +116,7 @@ export function registerMonitorRoutes(
         () =>
           pauseMonitor(database, {
             organizationId,
+            projectId,
             actorUserId,
             monitorId,
             requestId: c.get("requestId"),
@@ -127,7 +130,7 @@ export function registerMonitorRoutes(
   app.openapi(
     routes.resume,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
       const result = await auditMonitorDenials(
@@ -137,6 +140,7 @@ export function registerMonitorRoutes(
         () =>
           resumeMonitor(database, {
             organizationId,
+            projectId,
             actorUserId,
             monitorId,
             requestId: c.get("requestId"),
@@ -150,7 +154,7 @@ export function registerMonitorRoutes(
   app.openapi(
     routes.delete,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
       await auditMonitorDenials(
@@ -160,6 +164,7 @@ export function registerMonitorRoutes(
         () =>
           deleteMonitor(database, {
             organizationId,
+            projectId,
             actorUserId,
             monitorId,
             requestId: c.get("requestId"),

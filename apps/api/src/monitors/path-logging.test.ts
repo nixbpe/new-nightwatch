@@ -6,6 +6,7 @@ import { createApp } from "../app";
 const env: Env = { PORT: 4000, LOG_LEVEL: "info", NODE_ENV: "test" };
 const authEnv = {} as AuthEnv;
 const organizationId = crypto.randomUUID();
+const projectId = crypto.randomUUID();
 const monitorId = crypto.randomUUID();
 
 async function loggedPath(method: string, path: string): Promise<string> {
@@ -25,11 +26,13 @@ async function loggedPath(method: string, path: string): Promise<string> {
   if (!entry?.path) throw new Error("request log line missing");
   expect(lines.join("\n")).not.toContain(monitorId);
   expect(lines.join("\n")).not.toContain(organizationId);
+  expect(lines.join("\n")).not.toContain(projectId);
   return entry.path;
 }
 
 describe("request log path templates for monitors", () => {
-  const base = "/api/organizations/:organizationId/monitors";
+  const base =
+    "/api/organizations/:organizationId/projects/:projectId/monitors";
 
   it.each([
     ["GET", `/monitors`, base],
@@ -52,7 +55,19 @@ describe("request log path templates for monitors", () => {
     ["GET", `/monitors/test/extra`, `${base}/test/:segment`],
   ])("%s %s is logged as its template", async (method, suffix, expected) => {
     expect(
-      await loggedPath(method, `/api/organizations/${organizationId}${suffix}`),
+      await loggedPath(
+        method,
+        `/api/organizations/${organizationId}/projects/${projectId}${suffix}`,
+      ),
     ).toBe(expected);
+  });
+
+  it("no longer treats an Organization-level monitors path as a monitor route", async () => {
+    expect(
+      await loggedPath(
+        "GET",
+        `/api/organizations/${organizationId}/monitors/${monitorId}`,
+      ),
+    ).toBe("/api/organizations/:organizationId/:segment/:segment");
   });
 });

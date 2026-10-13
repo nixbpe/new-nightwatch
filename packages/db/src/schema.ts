@@ -250,6 +250,8 @@ export const notificationIntents = pgTable(
     actorDisplayName: text("actor_display_name"),
     // No FK: a monitor notification outlives its monitor (AC-19).
     subjectMonitorId: uuid("subject_monitor_id"),
+    // No FK: the notification outlives the Project too.
+    subjectProjectId: uuid("subject_project_id"),
     // No FK: the export row is deleted after 7 days, the notification after 30.
     subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
@@ -333,6 +335,8 @@ export const notificationInboxItems = pgTable(
     actorDisplayName: text("actor_display_name"),
     // No FK: a monitor notification outlives its monitor (AC-19).
     subjectMonitorId: uuid("subject_monitor_id"),
+    // No FK: the notification outlives the Project too.
+    subjectProjectId: uuid("subject_project_id"),
     // No FK: the export row is deleted after 7 days, the notification after 30.
     subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
@@ -476,6 +480,7 @@ export const monitors = pgTable(
       .notNull()
       .default(30),
     clientRequestId: uuid("client_request_id").notNull(),
+    projectId: uuid("project_id").notNull(),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -487,9 +492,16 @@ export const monitors = pgTable(
     unique("monitors_id_tenant_key").on(table.id, table.tenantId),
     unique("monitors_client_request_key").on(
       table.tenantId,
+      table.projectId,
       table.clientRequestId,
     ),
     index("monitors_tenant_idx").on(table.tenantId, table.id),
+    index("monitors_project_idx").on(table.tenantId, table.projectId, table.id),
+    foreignKey({
+      name: "monitors_project_fkey",
+      columns: [table.projectId, table.tenantId],
+      foreignColumns: [projects.id, projects.tenantId],
+    }).onDelete("cascade"),
   ],
 );
 

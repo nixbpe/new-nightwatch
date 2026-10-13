@@ -26,10 +26,12 @@ export function problemRows(monitors: MonitorRow[]): MonitorRow[] {
 
 function IssueRow({
   organizationId,
+  projectId,
   row,
   now,
 }: {
   organizationId: string;
+  projectId: string;
   row: MonitorRow;
   now: number;
 }) {
@@ -47,7 +49,7 @@ function IssueRow({
       data-testid={`monitor-list-row-${row.id}`}
       data-health={row.health}
       data-ssl-level={row.ssl.level}
-      to={`/organizations/${organizationId}/monitors/${row.id}`}
+      to={`/organizations/${organizationId}/projects/${projectId}/monitors/${row.id}`}
       className="grid grid-cols-[44px_minmax(0,1fr)] gap-4 p-5 text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary sm:grid-cols-[44px_minmax(0,1fr)_170px]"
     >
       <span
@@ -159,10 +161,12 @@ function IssueRow({
 
 export function IssuesSection({
   organizationId,
+  projectId,
   monitors,
   now,
 }: {
   organizationId: string;
+  projectId: string;
   monitors: MonitorRow[];
   now: number;
 }) {
@@ -183,7 +187,7 @@ export function IssuesSection({
               <span className="font-mono">{rows.length}</span> รายการ
             </span>
             <Link
-              to={`/organizations/${organizationId}/monitors`}
+              to={`/organizations/${organizationId}/projects/${projectId}/monitors`}
               className="text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               ดูทั้งหมด →
@@ -199,7 +203,12 @@ export function IssuesSection({
         <HairlineGrid as="ul" className="rounded-t-none border-t-0">
           {rows.map((row) => (
             <li key={row.id}>
-              <IssueRow organizationId={organizationId} row={row} now={now} />
+              <IssueRow
+                organizationId={organizationId}
+                projectId={projectId}
+                row={row}
+                now={now}
+              />
             </li>
           ))}
         </HairlineGrid>

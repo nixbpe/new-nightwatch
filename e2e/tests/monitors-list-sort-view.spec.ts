@@ -8,10 +8,12 @@ import {
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   shot,
   signInApi,
   monitorPath,
+  monitorUrl,
   type Person,
 } from "../support/monitor-fixtures";
 
@@ -80,9 +82,11 @@ const ALPHA_HOURS: [number, number, number][] = [
 const sslNotAfter = new Date(Date.now() + 12 * DAY_MS);
 
 let orgId: string;
+let projectId: string;
 let owner: Person;
+const projectName = `E2E List Sort ${run}`;
 
-const overview = () => `/organizations/${orgId}/monitors`;
+const overview = () => monitorUrl(orgId, projectId);
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
@@ -134,14 +138,15 @@ test.beforeAll(async () => {
   orgId = await createOrganization(pool, `E2E List Sort ${run}`);
   owner = await createPerson(pool, "list-sort", orgId);
   await addMember(pool, orgId, owner.userId, "owner");
+  projectId = await createProject(pool, orgId, projectName);
   for (const seed of SEEDS) {
     const ssl = seed.key === "zulu";
     const inserted = await pool.query<{ id: string }>(
       `insert into monitors
-         (tenant_id, name, url, method, interval_seconds, timeout_seconds,
+         (tenant_id, project_id, name, url, method, interval_seconds, timeout_seconds,
           consecutive_failures, last_passed_config_version,
           ssl_host, ssl_issuer, ssl_not_after, ssl_state, client_request_id)
-       values ($1, $2, $3, $4, $5, 10, $6, $7, $8, $9, $10, $11, $12)
+       values ($1, $13, $2, $3, $4, $5, 10, $6, $7, $8, $9, $10, $11, $12)
        returning id`,
       [
         orgId,
@@ -156,6 +161,7 @@ test.beforeAll(async () => {
         ssl ? sslNotAfter : null,
         ssl ? "caution" : null,
         randomUUID(),
+        projectId,
       ],
     );
     ids[seed.key] = inserted.rows[0]!.id;
@@ -238,14 +244,8 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await expect(
     page.getByTestId("monitor-overview-table-region"),
   ).toHaveAccessibleName(/\S/);
-  for (const key of [
-    "name",
-    "url",
-    "method",
-    "interval",
-    "ssl",
-    "responseTime",
-  ]) {
+  // AC-04: name with URL, status, p95 and availability over 24 h, last check.
+  for (const key of ["name", "health", "p95", "h24", "lastCheck"]) {
     await expect(
       table.getByTestId(`monitor-list-heading-${key}`),
     ).toHaveAttribute("scope", "col");
@@ -253,23 +253,39 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
       /\S/,
     );
   }
+  for (const key of ["method", "interval", "ssl", "responseTime"]) {
+    await expect(table.getByTestId(`monitor-list-heading-${key}`)).toHaveCount(
+      0,
+    );
+  }
+  const firstPage = monitorListResponseSchema.parse(
+    (
+      await (
+        await signInApi(owner)
+      ).request("GET", monitorPath(orgId, projectId))
+    ).body,
+  );
   for (const seed of SEEDS) {
     const row = table.getByTestId(`monitor-list-row-${ids[seed.key]}`);
     await expect(row).toHaveRole("row");
-    await expect(row.getByTestId("monitor-list-cell-method")).toHaveText(
-      seed.method,
-    );
-    await expect(row.getByTestId("monitor-list-cell-interval")).toContainText(
-      new RegExp(`\\b${String(seed.intervalSeconds / 60)}\\b`),
-    );
-    await expect(row.getByTestId("monitor-list-cell-url")).toHaveText(
+    await expect(row.getByTestId("monitor-list-url")).toHaveText(
       `https://${seed.key}-${run}.example.invalid/health`,
+    );
+    const p95 = firstPage.monitors.find(
+      (monitor) => monitor.id === ids[seed.key],
+    )?.responseP95Ms24h;
+    await expect(row.getByTestId("monitor-list-cell-p95")).toContainText(
+      p95 === null || p95 === undefined ? "ไม่มีข้อมูล" : `${String(p95)} ms`,
+    );
+    await expect(row.getByTestId("monitor-list-cell-h24")).toHaveText(/\S/);
+    await expect(row.getByTestId("monitor-list-cell-lastCheck")).toHaveText(
+      /\S/,
     );
   }
   // "ชื่อ A-Z" reorders by name and announces the sort with the result count.
   const sortedResponse = page.waitForResponse(
     (response) =>
-      new URL(response.url()).pathname === monitorPath(orgId) &&
+      new URL(response.url()).pathname === monitorPath(orgId, projectId) &&
       new URL(response.url()).searchParams.get("sort") === "name",
   );
   await sort.selectOption("name");
@@ -324,7 +340,7 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   );
   const session = await signInApi(owner);
   const list = monitorListResponseSchema.parse(
-    (await session.request("GET", monitorPath(orgId))).body,
+    (await session.request("GET", monitorPath(orgId, projectId))).body,
   );
   expect(list.monitors.map((monitor) => monitor.id)).toEqual([
     ids.mike,
@@ -376,6 +392,41 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   );
   await expect(cardItems(page)).toHaveCount(3);
   expect(await orderOf(cardItems(page))).toEqual(PROBLEMS_ORDER);
+});
+
+test("Overview: summary line, status filter counts and the Project footer", async ({
+  page,
+}) => {
+  await signIn(page, owner);
+  await page.goto(overview());
+  await expect(page.getByTestId("monitor-overview-scope")).toHaveText(
+    projectName,
+  );
+  await expect(page.getByTestId("page-scope-tag")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-overview-total")).toContainText("3");
+  await expect(page.getByTestId("monitor-overview-down")).toContainText("1");
+  await expect(page.getByTestId("monitor-overview-interval")).toContainText(
+    /ตรวจ/,
+  );
+  const filter = page.getByTestId("monitor-overview-health-filter");
+  await expect(filter).toHaveAccessibleName(/\S/);
+  await expect(filter.getByTestId("monitor-overview-health-all")).toContainText(
+    "3",
+  );
+  await expect(
+    filter.getByTestId("monitor-overview-health-down"),
+  ).toContainText("1");
+  await expect(
+    filter.getByTestId("monitor-overview-health-all"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await filter.getByTestId("monitor-overview-health-down").click();
+  await expect(
+    filter.getByTestId("monitor-overview-health-down"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(tableRows(page)).toHaveCount(1);
+  await expect(page.getByTestId("monitor-overview-pagination")).toContainText(
+    `เฉพาะมอนิเตอร์ของ ${projectName}`,
+  );
 });
 
 test("Workspace section 01: SSL warning row shows issuer and expiry, down row does not", async ({

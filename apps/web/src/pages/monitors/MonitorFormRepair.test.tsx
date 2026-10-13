@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -23,7 +24,13 @@ import {
   fetchMonitorResponseTimes,
   updateMonitor,
 } from "../../lib/api/monitors";
-import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
+import {
+  noChecks,
+  noIncidents,
+  noResponseTimes,
+  P,
+  projectDetail,
+} from "./detail-test-support";
 import {
   A,
   B,
@@ -41,6 +48,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -80,6 +91,7 @@ function threeOrgs(active: string) {
 const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
     organizationId: A,
     version: 1,
@@ -92,7 +104,7 @@ beforeEach(() => {
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -149,7 +161,7 @@ describe("a route Organization that is not the server-active one", () => {
     await user.click(saveCreate());
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${A}/monitors/${MONITOR_ID}`,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
       );
     });
   });
@@ -202,7 +214,7 @@ describe("a route Organization that is not the server-active one", () => {
     await screen.findByTestId("shell-organization-switch");
     await flush();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}/edit`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
     );
     expect(screen.getByTestId("monitor-form-name")).toHaveValue(
       "Payments API typed",
@@ -225,14 +237,14 @@ describe("a route Organization that is not the server-active one", () => {
       lastActiveTenantId: A,
     });
     const user = userEvent.setup();
-    renderForm(`/organizations/${A}/monitors/${MONITOR_ID}`);
+    renderForm(`/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`);
     await screen.findByTestId("monitor-detail-title");
     await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(screen.getByTestId(`shell-organization-${A}`));
     await screen.findByTestId("shell-organization-switch");
     await flush();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
     expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
       "Payments API",
@@ -249,7 +261,7 @@ describe("a route Organization that is not the server-active one", () => {
     await user.click(screen.getByTestId(`shell-organization-${C}`));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${C}/monitors`,
+        `/organizations/${C}/projects`,
       );
     });
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
@@ -278,7 +290,7 @@ describe("a route Organization that is not the server-active one", () => {
     await user.click(screen.getByTestId(`shell-organization-${B}`));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${B}/monitors`,
+        `/organizations/${B}/projects`,
       );
     });
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
@@ -297,7 +309,7 @@ describe("a route Organization that is not the server-active one", () => {
     await user.click(saveCreate());
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${A}/monitors/${MONITOR_ID}`,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
       );
     });
   });
@@ -319,7 +331,7 @@ describe("a route Organization that is not the server-active one", () => {
     await user.click(screen.getByTestId(`shell-organization-${C}`));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${C}/monitors`,
+        `/organizations/${C}/projects`,
       );
     });
     await flush();
@@ -328,7 +340,7 @@ describe("a route Organization that is not the server-active one", () => {
     await flush();
     expect(detailMock.mock.calls).toHaveLength(readsBefore);
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${C}/monitors`,
+      `/organizations/${C}/projects`,
     );
     expect(screen.getByTestId("location")).not.toHaveTextContent(MONITOR_ID);
   });
@@ -475,7 +487,7 @@ describe("after MEMBERSHIP_DENIED", () => {
 
 describe("the client request id", () => {
   const ids = () =>
-    createMock.mock.calls.map((call) => call[1].clientRequestId);
+    createMock.mock.calls.map((call) => call[2].clientRequestId);
 
   it("stays the same when unchanged values are retried after a refusal", async () => {
     createMock

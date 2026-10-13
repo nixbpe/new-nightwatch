@@ -63,7 +63,9 @@ import {
   A,
   B,
   MONITOR_ID,
+  P,
   detail,
+  projectDetail,
   baseResult,
   noChecks,
   noIncidents,
@@ -111,6 +113,7 @@ vi.mock("../api/projects", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchProjectList: () => Promise.resolve({ projects: [] }),
   fetchLastProject: () => Promise.resolve({ projectId: null }),
+  fetchProjectDetail: () => Promise.resolve(projectDetail()),
 }));
 vi.mock("../api/notifications", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -172,13 +175,13 @@ function renderCreateForm(c: QueryClient) {
         element: <Boundary />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/new",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
             element: <MonitorFormPage mode="create" />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/new`] },
+    { initialEntries: [`/organizations/${A}/projects/${P}/monitors/new`] },
   );
   render(
     <QueryClientProvider client={c}>
@@ -361,13 +364,17 @@ it.each(["pause", "dialog"] as const)(
           element: <Boundary />,
           children: [
             {
-              path: "/organizations/:organizationId/monitors/:monitorId",
+              path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
               element: <DetailPage />,
             },
           ],
         },
       ],
-      { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}`] },
+      {
+        initialEntries: [
+          `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+        ],
+      },
     );
     render(
       <QueryClientProvider client={c}>
@@ -904,17 +911,17 @@ it("scope replacement destroys local form snapshot before old values can reopen"
         element: <Boundary />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/new",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
             element: <MonitorFormPage mode="create" />,
           },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects",
             element: <p data-testid="new-scope-overview">new scope overview</p>,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/new`] },
+    { initialEntries: [`/organizations/${A}/projects/${P}/monitors/new`] },
   );
   render(
     <QueryClientProvider client={c}>
@@ -957,13 +964,13 @@ it("destroys form input and local draft when SessionQueryProvider replaces ident
         element: <Boundary />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/new",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
             element: <MonitorFormPage mode="create" />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/new`] },
+    { initialEntries: [`/organizations/${A}/projects/${P}/monitors/new`] },
   );
   const tree = render(
     <SessionQueryProvider>
@@ -1093,13 +1100,17 @@ it("keeps only the edit draft and generic heading during resolution delay and fa
         element: <Boundary />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
             element: <MonitorFormPage mode="edit" />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/edit`] },
+    {
+      initialEntries: [
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
+      ],
+    },
   );
   render(
     <QueryClientProvider client={c}>
@@ -1162,19 +1173,19 @@ it.each(["create", "edit"] as const)(
     );
     const path =
       mode === "create"
-        ? `/organizations/${A}/monitors/new`
-        : `/organizations/${A}/monitors/${MONITOR_ID}/edit`;
+        ? `/organizations/${A}/projects/${P}/monitors/new`
+        : `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`;
     const router = createMemoryRouter(
       [
         {
           element: <Boundary />,
           children: [
             {
-              path: "/organizations/:organizationId/monitors/new",
+              path: "/organizations/:organizationId/projects/:projectId/monitors/new",
               element: <MonitorFormPage mode="create" />,
             },
             {
-              path: "/organizations/:organizationId/monitors/:monitorId/edit",
+              path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
               element: <MonitorFormPage mode="edit" />,
             },
           ],
@@ -1229,13 +1240,17 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
         ),
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
             element: <MonitorFormPage mode="edit" />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/edit`] },
+    {
+      initialEntries: [
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
+      ],
+    },
   );
   render(
     <QueryClientProvider client={c}>
@@ -1396,13 +1411,17 @@ it("viewer confirmation preserves disabled edit draft/refusal and never restores
         ),
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
             element: <MonitorFormPage mode="edit" />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/edit`] },
+    {
+      initialEntries: [
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
+      ],
+    },
   );
   render(
     <QueryClientProvider client={c}>
@@ -1467,7 +1486,7 @@ function renderPrivateRoute(
         children: [
           {
             path:
-              "/organizations/:organizationId/monitors/" +
+              "/organizations/:organizationId/projects/:projectId/monitors/" +
               (page === "new" ? "new" : ":monitorId/" + page),
             element:
               page === "checks" ? (
@@ -1482,8 +1501,8 @@ function renderPrivateRoute(
     {
       initialEntries: [
         uppercase
-          ? `/ORGANIZATIONS/${A}/MONITORS/${page === "new" ? "NEW" : `${MONITOR_ID}/${page.toUpperCase()}`}${suffix}`
-          : `/organizations/${A}/monitors/${page === "new" ? "new" : `${MONITOR_ID}/${page}`}${suffix}`,
+          ? `/ORGANIZATIONS/${A}/PROJECTS/${P}/MONITORS/${page === "new" ? "NEW" : `${MONITOR_ID}/${page.toUpperCase()}`}${suffix}`
+          : `/organizations/${A}/projects/${P}/monitors/${page === "new" ? "new" : `${MONITOR_ID}/${page}`}${suffix}`,
       ],
     },
   );
@@ -1657,8 +1676,8 @@ it.each([
   "EG88-01 preserves privately loaded chunks across native shell %s pending/failure and same-member retry without offset zero reload (suffix %s, uppercase %s)",
   async (cause, suffix, uppercase) => {
     const c = client();
-    vi.mocked(fetchMonitorChecks).mockImplementation((_org, _id, page) =>
-      Promise.resolve(historyChunk(page.offset)),
+    vi.mocked(fetchMonitorChecks).mockImplementation(
+      (_org, _project, _id, page) => Promise.resolve(historyChunk(page.offset)),
     );
     const router = renderPrivateRoute(c, "checks", suffix, uppercase);
     await waitFor(() => {
@@ -1672,7 +1691,7 @@ it.each([
         screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
       ).toEqual(["1", "2", "4"]);
     });
-    const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
+    const key = monitorQueryKeys.checksHistory(A, P, MONITOR_ID),
       before = c.getQueryData(key);
     const detailReads = vi.mocked(fetchMonitorDetail).mock.calls.length;
     const checkReads = vi.mocked(fetchMonitorChecks).mock.calls.length;
@@ -1774,7 +1793,7 @@ it("EG88-01 load-more 403 confirms once, retains chunks and error, then requires
       screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
     ).toEqual(["1", "3", "4"]);
   });
-  expect(vi.mocked(fetchMonitorChecks).mock.calls.at(-1)?.[2]?.offset).toBe(2);
+  expect(vi.mocked(fetchMonitorChecks).mock.calls.at(-1)?.[3]?.offset).toBe(2);
   router.dispose();
   await c.cancelQueries();
   c.clear();
@@ -1877,7 +1896,7 @@ it.each([
     expect(screen.getByTestId("monitor-test-result-url")).toHaveTextContent(
       "https://protected.example/test-result",
     );
-    const key = monitorQueryKeys.detail(A, MONITOR_ID);
+    const key = monitorQueryKeys.detail(A, P, MONITOR_ID);
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context("owner", []));
     fireEvent.click(screen.getByTestId("refresh-membership"));
     await screen.findByTestId("monitor-form-denied");
@@ -1958,8 +1977,8 @@ it.each(["role", "removal", "scope"] as const)(
   "EG88-01 evicts private history before publishing changed %s context",
   async (change) => {
     const c = client();
-    vi.mocked(fetchMonitorChecks).mockImplementation((_org, _id, page) =>
-      Promise.resolve(historyChunk(page.offset)),
+    vi.mocked(fetchMonitorChecks).mockImplementation(
+      (_org, _project, _id, page) => Promise.resolve(historyChunk(page.offset)),
     );
     const router = renderPrivateRoute(c, "checks");
     await waitFor(() => {
@@ -1973,7 +1992,7 @@ it.each(["role", "removal", "scope"] as const)(
         screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
       ).toEqual(["1", "2", "4"]);
     });
-    const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
+    const key = monitorQueryKeys.checksHistory(A, P, MONITOR_ID),
       original = c.getQueryCache().find({ queryKey: key });
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
@@ -2088,13 +2107,17 @@ it("EG88-01 native SessionQueryProvider identity replacement ignores a late old 
         element: <Boundary />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/checks",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
             element: <ChecksHistoryPage />,
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/checks`] },
+    {
+      initialEntries: [
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
+      ],
+    },
   );
   const tree = render(
     <SessionQueryProvider>
@@ -2105,7 +2128,7 @@ it("EG88-01 native SessionQueryProvider identity replacement ignores a late old 
     expect(fetchMonitorChecks).toHaveBeenCalledTimes(1);
   });
   const old = resolveQueryClientForIdentity("user-1"),
-    key = monitorQueryKeys.checksHistory(A, MONITOR_ID);
+    key = monitorQueryKeys.checksHistory(A, P, MONITOR_ID);
   sessionState.data = { user: { id: "user-b" } };
   vi.mocked(fetchMeContext).mockResolvedValue({
     ...context(),
@@ -2265,9 +2288,9 @@ it.each(["new", "edit", "checks"] as const)(
       });
     else await screen.findByTestId("monitor-form-name");
     if (page !== "new")
-      expect(fetchMonitorDetail).toHaveBeenCalledWith(A, MONITOR_ID);
+      expect(fetchMonitorDetail).toHaveBeenCalledWith(A, P, MONITOR_ID);
     expect(router.state.location.pathname).toContain(
-      `/ORGANIZATIONS/${A}/MONITORS/`,
+      `/ORGANIZATIONS/${A}/PROJECTS/${P}/MONITORS/`,
     );
     router.dispose();
     await c.cancelQueries();
@@ -2288,7 +2311,7 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
   await act(async () => {
-    await router.navigate(`/organizations/${B}/monitors/new/`);
+    await router.navigate(`/organizations/${B}/projects/${P}/monitors/new/`);
   });
   assertPrivatePresentationWithdrawn();
   await act(async () => {

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   fetchMonitorChecks,
@@ -22,6 +23,7 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
+  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -39,6 +41,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -63,6 +69,7 @@ const updateMock = vi.mocked(updateMonitor);
 const detailMock = vi.mocked(fetchMonitorDetail);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
     organizationId: A,
     version: 1,
@@ -75,7 +82,7 @@ beforeEach(() => {
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -192,7 +199,9 @@ describe("Edit opens with the saved configuration", () => {
   });
 
   it("keeps the nav leaf active on /new and /edit", () => {
-    const leaf = { path: "/organizations/:organizationId/monitors" };
+    const leaf = {
+      path: "/organizations/:organizationId/projects/:projectId/monitors",
+    };
     expect(isLeafActive(leaf, newPath())).toBe(true);
     expect(isLeafActive(leaf, editPath())).toBe(true);
   });
@@ -245,7 +254,7 @@ describe("Edit save", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       alerts: {
         failureThreshold: 3,
         downEnabled: false,

@@ -19,7 +19,7 @@ let org: TestOrganization;
 let other: TestOrganization;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   org = await ctx.createOrganization("feed");
   other = await ctx.createOrganization("feed-other");
 }, 120_000);

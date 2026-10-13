@@ -4,7 +4,7 @@ import {
   type MonitorRecord,
 } from "@nightwatch/api-contract";
 import net from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   monitorsPath,
@@ -20,17 +20,24 @@ import {
 let ctx: MonitorTestContext;
 let org: TestOrganization;
 let otherOrg: TestOrganization;
-// Separate Organizations keep each section below the 50-monitor limit.
+// Separate Organizations, each with a fresh Project per test, keep every
+// Project below the 20-monitor limit.
 let vOrg: TestOrganization;
 let outsider: string;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   org = await ctx.createOrganization("monitor-a");
   otherOrg = await ctx.createOrganization("monitor-b");
   vOrg = await ctx.createOrganization("monitor-v");
   outsider = await ctx.createUser("monitor-outsider");
 }, 120_000);
+
+beforeEach(async () => {
+  for (const organization of [org, otherOrg, vOrg]) {
+    await ctx.rotateDefaultProject(organization);
+  }
+});
 
 afterAll(async () => {
   await ctx.close();
@@ -76,13 +83,14 @@ function request(
   operation: Operation,
   organizationId: string,
   monitor: MonitorRecord,
+  projectId?: string,
 ): { method: "DELETE" | "PATCH" | "POST"; path: string; body?: unknown } {
-  const item = monitorsPath(organizationId, `/${monitor.id}`);
+  const item = monitorsPath(organizationId, `/${monitor.id}`, projectId);
   switch (operation) {
     case "create":
       return {
         method: "POST",
-        path: monitorsPath(organizationId),
+        path: monitorsPath(organizationId, "", projectId),
         body: { ...validConfig(), clientRequestId: crypto.randomUUID() },
       };
     case "edit":
@@ -160,7 +168,12 @@ describe("role x operation", () => {
     const missingOrganization = crypto.randomUUID();
     for (const operation of OPERATIONS) {
       const nonmember = request(operation, org.id, target);
-      const missing = request(operation, missingOrganization, target);
+      const missing = request(
+        operation,
+        missingOrganization,
+        target,
+        crypto.randomUUID(),
+      );
       const first = await ctx.call(
         outsider,
         nonmember.method,

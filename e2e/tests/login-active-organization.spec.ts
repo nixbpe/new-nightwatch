@@ -350,13 +350,16 @@ for (const action of ["switch", "leave", "revoke"] as const) {
         });
         if (action !== "switch") {
           const denied = await page.evaluate(
-            async (org) =>
+            async ({ org, project }) =>
               (
-                await fetch(`/api/organizations/${org}/monitors`, {
-                  credentials: "include",
-                })
+                await fetch(
+                  `/api/organizations/${org}/projects/${project}/monitors`,
+                  {
+                    credentials: "include",
+                  },
+                )
               ).status,
-            identity.organizationId,
+            { org: identity.organizationId, project: randomUUID() },
           );
           expect(denied).toBe(403);
         }
@@ -544,7 +547,8 @@ test("a bookmarked member organization names its URL scope without switching the
   expect((await selection())?.last_active_tenant_id).toBe(
     identity.organizationId,
   );
-  await page.goto(`/organizations/${organizationId}/monitors`);
+  // Monitors live under a Project; the Projects page is the organization-level route that names its scope.
+  await page.goto(`/organizations/${organizationId}/projects`);
   await expect(page.getByTestId("shell-breadcrumb-organization")).toContainText(
     name,
   );

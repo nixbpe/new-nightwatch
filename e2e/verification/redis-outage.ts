@@ -20,11 +20,13 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
+  addProjectMember,
   apiOrigin,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
   signInApi,
@@ -74,6 +76,8 @@ const owner = await createPerson(pool, "redis-owner", org);
 await addMember(pool, org, owner.userId, "owner");
 const viewer = await createPerson(pool, "redis-viewer", org);
 await addMember(pool, org, viewer.userId, "viewer");
+const project = await createProject(pool, org, "verify");
+await addProjectMember(pool, org, project, viewer.userId, "member");
 const session = await signInApi(owner);
 const viewerSession = await signInApi(viewer);
 const flap = await startMonitorTarget();
@@ -120,7 +124,7 @@ try {
   const ready0 = await fetch(`${apiOrigin}/ready`).then((r) => r.status);
   check("stack ready with Redis up", ready0 === 200, ready0);
 
-  const created = await session.request("POST", monitorPath(org), {
+  const created = await session.request("POST", monitorPath(org, project), {
     ...basicConfig(
       `redis-${randomUUID().slice(0, 6)}`,
       `http://${host}:${String(flap.port)}/health`,
@@ -178,7 +182,7 @@ try {
   const t0 = Date.now();
   const testDown = await session.request(
     "POST",
-    monitorPath(org, "/test"),
+    monitorPath(org, project, "/test"),
     basicConfig("probe", `http://${host}:${String(probe.port)}/status/200`),
   );
   evidence.testWhileStopped = {
@@ -195,7 +199,7 @@ try {
   );
   const denied = await viewerSession.request(
     "POST",
-    monitorPath(org, "/test"),
+    monitorPath(org, project, "/test"),
     basicConfig("probe", `http://${host}:${String(probe.port)}/status/200`),
   );
   check(
@@ -203,7 +207,7 @@ try {
     denied.status === 403,
     denied.status,
   );
-  const write = await session.request("POST", monitorPath(org), {
+  const write = await session.request("POST", monitorPath(org, project), {
     ...basicConfig(
       `w-${randomUUID().slice(0, 6)}`,
       `http://${host}:${String(probe.port)}/status/200`,
@@ -273,7 +277,7 @@ try {
   const t1 = Date.now();
   const testSlow = await session.request(
     "POST",
-    monitorPath(org, "/test"),
+    monitorPath(org, project, "/test"),
     basicConfig("probe", `http://${host}:${String(probe.port)}/status/200`),
   );
   const took = Date.now() - t1;
@@ -296,7 +300,7 @@ try {
       (
         await session.request(
           "POST",
-          monitorPath(org, "/test"),
+          monitorPath(org, project, "/test"),
           basicConfig(
             "probe",
             `http://${host}:${String(probe.port)}/status/200`,

@@ -32,8 +32,16 @@ export type BatchCursor = { occurredAt: string; id: string };
 
 function targetLabel(row: AuditEventBatchRow): string {
   switch (row.targetType) {
-    case "monitor":
-      return row.monitorExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
+    case "monitor": {
+      const monitor =
+        row.monitorExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
+      if (typeof row.targetAttributes.projectId !== "string") return monitor;
+      const project =
+        row.targetProjectExists && row.targetProjectName
+          ? row.targetProjectName
+          : "ถูกลบแล้ว";
+      return `${monitor} ในโปรเจกต์ ${project}`;
+    }
     case "project":
       return row.projectExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
     case "member": {
@@ -43,8 +51,8 @@ function targetLabel(row: AuditEventBatchRow): string {
           : FORMER_MEMBER_LABEL;
       if (typeof row.targetAttributes.projectId !== "string") return member;
       const project =
-        row.memberProjectExists && row.memberProjectName
-          ? row.memberProjectName
+        row.targetProjectExists && row.targetProjectName
+          ? row.targetProjectName
           : "ถูกลบแล้ว";
       return `${member} ในโปรเจกต์ ${project}`;
     }

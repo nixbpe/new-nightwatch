@@ -105,7 +105,7 @@ async function viaExport(
 }
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   org = await ctx.createOrganization("auditparity");
   await ctx.owner.sql.query(
     "update organization set audit_recording_started_at = now() - interval '400 days' where id = $1",
@@ -113,9 +113,9 @@ beforeAll(async () => {
   );
   monitorId = crypto.randomUUID();
   await ctx.owner.sql.query(
-    `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-     values ($1, $2, 'Parity_100%_Checkout', 'https://x.example.test/', 60, 10, $3)`,
-    [monitorId, org.id, crypto.randomUUID()],
+    `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+     values ($1, $2, $4, 'Parity_100%_Checkout', 'https://x.example.test/', 60, 10, $3)`,
+    [monitorId, org.id, crypto.randomUUID(), org.projectId],
   );
   const owner = org.users.owner;
   const admin = org.users.admin;

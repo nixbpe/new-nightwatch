@@ -313,6 +313,9 @@ async function createUser(label: string): Promise<string> {
   return id;
 }
 
+// The one Project of each fixture Organization; viewer and auditor are its members.
+const projectOf = new Map<string, string>();
+
 async function createOrganization(
   label: string,
   extraAdmins = 0,
@@ -345,6 +348,18 @@ async function createOrganization(
       [crypto.randomUUID(), id, userId, role],
     );
   }
+  const projectId = crypto.randomUUID();
+  await owner.sql.query(
+    "insert into projects (id, tenant_id, name, slug) values ($1, $2, $3, $4)",
+    [projectId, id, `${label} ${run}`, `p-${projectId.slice(0, 8)}`],
+  );
+  for (const userId of [users.viewer, users.auditor]) {
+    await owner.sql.query(
+      "insert into project_members (project_id, tenant_id, user_id, role) values ($1, $2, $3, 'member')",
+      [projectId, id, userId],
+    );
+  }
+  projectOf.set(id, projectId);
   return { id, users, admins };
 }
 
@@ -376,7 +391,7 @@ async function call(
 }
 
 const testPath = (organizationId: string, monitorId?: string) =>
-  `/api/organizations/${organizationId}/monitors/${monitorId ? `${monitorId}/` : ""}test`;
+  `/api/organizations/${organizationId}/projects/${String(projectOf.get(organizationId))}/monitors/${monitorId ? `${monitorId}/` : ""}test`;
 
 const target = (
   listener: Listener,
@@ -617,7 +632,7 @@ async function createMonitor(
   const reply = await call(
     fullApp,
     userId,
-    `/api/organizations/${organizationId}/monitors`,
+    `/api/organizations/${organizationId}/projects/${String(projectOf.get(organizationId))}/monitors`,
     {
       ...config(overrides.url ?? target(http1, "/ok")),
       ...overrides,

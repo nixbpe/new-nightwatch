@@ -83,6 +83,19 @@ async function seedMembers(monitor: SeededMonitor): Promise<Members> {
   return members;
 }
 
+async function addProjectMember(
+  monitor: SeededMonitor,
+  userId: string,
+  role: "admin" | "member",
+  projectId = monitor.projectId,
+): Promise<void> {
+  await db.owner.sql.query(
+    `insert into project_members (project_id, tenant_id, user_id, role)
+     values ($1, $2, $3, $4)`,
+    [projectId, monitor.tenantId, userId, role],
+  );
+}
+
 function httpResult(
   outcome: "pass" | "fail",
   checkedAt = new Date(),
@@ -363,6 +376,76 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     });
   });
 
+  it("reaches every Project member and Owner/Admin once each, and nobody outside the Project (AC-05)", async () => {
+    const monitor = await seedMonitor(db);
+    const members = await seedMembers(monitor);
+    await db.owner.sql.query(
+      "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'Other', 'other-project')",
+      [monitor.otherProjectId, monitor.tenantId],
+    );
+    // The owner is an Organization owner and a Project admin (one item), the
+    // viewer a Project member, the auditor belongs to a different Project.
+    await addProjectMember(monitor, members.owner, "admin");
+    await addProjectMember(monitor, members.viewer, "member");
+    await addProjectMember(
+      monitor,
+      members.auditor,
+      "member",
+      monitor.otherProjectId,
+    );
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("pass"));
+    await materializeAll();
+    const two = ["MONITOR_DOWN", "MONITOR_RECOVERED"];
+    expect(await inboxByUser(monitor)).toEqual({
+      [members.owner]: two,
+      [members.admin]: two,
+      [members.viewer]: two,
+    });
+    const [item] = await rows<{ subject_project_id: string }>(
+      db,
+      monitor,
+      `select subject_project_id from notification_inbox_items
+       where recipient_user_id = $1 limit 1`,
+      [members.viewer],
+    );
+    expect(item?.subject_project_id).toBe(monitor.projectId);
+  });
+
+  it("a Project member removed before materialize gets nothing", async () => {
+    const monitor = await seedMonitor(db);
+    const members = await seedMembers(monitor);
+    await addProjectMember(monitor, members.viewer, "member");
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await db.owner.sql.query(
+      "delete from project_members where project_id = $1 and user_id = $2",
+      [monitor.projectId, members.viewer],
+    );
+    await materializeAll();
+    expect(await inboxByUser(monitor)).toEqual({
+      [members.owner]: ["MONITOR_DOWN"],
+      [members.admin]: ["MONITOR_DOWN"],
+    });
+  });
+
+  it("a result that arrives after its Project was deleted is discarded and notifies nobody (AC-07)", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, httpResult("fail"));
+    await db.owner.sql.query("delete from projects where id = $1", [
+      monitor.projectId,
+    ]);
+    expect(await record(monitor, httpResult("fail"))).toBe("discarded");
+    expect(await intentTypes(monitor)).toEqual([]);
+    const left = await db.owner.sql.query(
+      "select 1 from monitor_schedule where tenant_id = $1",
+      [monitor.tenantId],
+    );
+    expect(left.rowCount).toBe(0);
+  });
+
   it("a pause that ended the incident sends no recovered", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
@@ -381,6 +464,7 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
       writeMonitorNotification(tx, {
         type: "incident_closed",
         tenantId: monitor.tenantId,
+        projectId: monitor.projectId,
         monitorId: monitor.monitorId,
         monitorName: "Checked monitor",
         occurredAt: new Date(),

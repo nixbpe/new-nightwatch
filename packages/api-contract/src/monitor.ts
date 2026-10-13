@@ -7,7 +7,7 @@ import { z } from "zod";
 
 // ---- Limits (spec: Design decisions, OD-20) --------------------------------
 
-export const MONITOR_LIMIT_PER_ORGANIZATION = 50;
+export const MONITOR_LIMIT_PER_PROJECT = 20;
 export const MONITOR_NAME_MAX_LENGTH = 100;
 export const MONITOR_URL_MAX_LENGTH = 2048;
 export const MONITOR_MAX_HEADERS = 20;
@@ -987,6 +987,8 @@ export const monitorListItemSchema = z.object({
   method: monitorMethodSchema,
   intervalSeconds: z.number().int(),
   lastResponseTimeMs: z.number().int().nullable(),
+  /** p95 over the last 24 h, computed like the `24h` response-times summary; null without data. */
+  responseP95Ms24h: z.number().int().nullable(),
   ssl: sslListSchema.extend({
     issuer: z.string().nullable(),
     notAfter: isoDateTime.nullable(),
@@ -1069,7 +1071,7 @@ export const monitorListResponseSchema = z.object({
     unknown: z.number().int().min(0),
     paused: z.number().int().min(0),
     total: z.number().int().min(0),
-    limit: z.literal(MONITOR_LIMIT_PER_ORGANIZATION),
+    limit: z.literal(MONITOR_LIMIT_PER_PROJECT),
   }),
   monitors: z.array(monitorListItemSchema).max(50),
   page: pageSchema,
@@ -1334,14 +1336,6 @@ export type MonitorResponseTimesResponse = z.infer<
 >;
 
 // ---- Route parameters and error envelopes ------------------------------------
-
-export const monitorOrganizationParamsSchema = z.object({
-  organizationId: z.uuid(),
-});
-/** A malformed id must answer 404, not 400, so it is parsed in the handler (AC-48). */
-export const monitorParamsSchema = monitorOrganizationParamsSchema.extend({
-  monitorId: z.string().max(64),
-});
 
 function monitorErrorSchema<Code extends string>(code: Code) {
   return z.object({

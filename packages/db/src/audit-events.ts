@@ -34,7 +34,7 @@ export const AUDIT_EVENT_JOINS = `
   left join member tm on e.target_type = 'member'
     and tm.organization_id = $1 and tm.user_id = e.target_id
   left join "user" tu on tu.id = tm.user_id
-  left join projects tp on e.target_type = 'member'
+  left join projects tp on e.target_type in ('member', 'monitor')
     and tp.tenant_id = $1 and tp.id::text = e.target_attributes ->> 'projectId'`;
 
 export const AUDIT_EVENT_COLUMNS = `
@@ -47,7 +47,7 @@ export const AUDIT_EVENT_COLUMNS = `
   (tm.user_id is not null) as "targetCurrent",
   (mo.id is not null) as "monitorExists",
   (pr.id is not null) as "projectExists",
-  tp.name as "memberProjectName", (tp.id is not null) as "memberProjectExists"`;
+  tp.name as "targetProjectName", (tp.id is not null) as "targetProjectExists"`;
 
 /**
  * The seven values of `auditEventFilterWhere`, in order. `actionCodes` are the
@@ -127,8 +127,8 @@ export type AuditEventBatchRow = {
   targetCurrent: boolean;
   monitorExists: boolean;
   projectExists: boolean;
-  memberProjectName: string | null;
-  memberProjectExists: boolean;
+  targetProjectName: string | null;
+  targetProjectExists: boolean;
 };
 
 /**

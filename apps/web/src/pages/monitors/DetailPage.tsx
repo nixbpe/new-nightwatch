@@ -24,7 +24,6 @@ import {
   resumeMonitor,
 } from "../../lib/api/monitors";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { AlertsCard } from "./detail/AlertsCard";
 import { ConfigCard } from "./detail/ConfigCard";
@@ -45,26 +44,30 @@ import {
 } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useDataFresh } from "./useDataFresh";
+import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
-
-function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.code === "MONITOR_NOT_FOUND";
-}
 
 function isPermissionDenied(error: unknown): boolean {
   return error instanceof ApiError && error.code === "PERMISSION_DENIED";
 }
 
 export function DetailPage() {
-  const { organizationId, monitorId } = useParams();
-  if (organizationId === undefined || monitorId === undefined) return null;
-  // Keyed so nothing carries over to another Organization or monitor.
+  const { organizationId, projectId, monitorId } = useParams();
+  if (
+    organizationId === undefined ||
+    projectId === undefined ||
+    monitorId === undefined
+  ) {
+    return null;
+  }
+  // Keyed so nothing carries over to another Project or monitor.
   return (
     <DetailForMonitor
-      key={`${organizationId}:${monitorId}`}
+      key={`${organizationId}:${projectId}:${monitorId}`}
       organizationId={organizationId}
+      projectId={projectId}
       monitorId={monitorId}
     />
   );
@@ -125,30 +128,37 @@ function StateAlerts({ monitor }: { monitor: Monitor }) {
 
 function DetailForMonitor({
   organizationId,
+  projectId,
   monitorId,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string;
 }) {
-  const { me, mePending, meError, refreshMembershipContext } = useTenant();
+  const { mePending, meError, refreshMembershipContext } = useTenant();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { notice: flashNotice, heading } = useFlashNotice();
   const switchedOrganization = useLeaveOnOrganizationSwitch(organizationId);
-  const organization = me?.organizations.find(
-    (item) => item.id === organizationId,
+  const access = useMonitorAccess(
+    organizationId,
+    projectId,
+    !switchedOrganization,
   );
+  const { organization, project } = access;
   const isMember = organization !== undefined;
-  const overviewPath = `/organizations/${organizationId}/monitors`;
+  const overviewPath = `/organizations/${organizationId}/projects/${projectId}/monitors`;
 
   // While the membership is re-read after a refusal, the page shows loading, never "denied" for a member who can still read.
   const [refreshing, setRefreshing] = useState(false);
   const [readRefresh, setReadRefresh] = useState<"idle" | "started">("idle");
   const refreshContext = () => {
     setRefreshing(true);
-    void refreshMembershipContext().finally(() => {
-      setRefreshing(false);
-    });
+    void Promise.all([refreshMembershipContext(), access.refresh()]).finally(
+      () => {
+        setRefreshing(false);
+      },
+    );
   };
 
   const [notice, setNotice] = useState<string | null>(null);
@@ -158,31 +168,34 @@ function DetailForMonitor({
   } | null>(null);
 
   const detail = useQuery({
-    queryKey: monitorQueryKeys.detail(organizationId, monitorId),
-    queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+    queryKey: monitorQueryKeys.detail(organizationId, projectId, monitorId),
+    queryFn: () => fetchMonitorDetail(organizationId, projectId, monitorId),
     enabled: isMember && !switchedOrganization,
     refetchInterval: (query) =>
-      isNotFound(query.state.error) || isDenied(query.state.error)
+      isMonitorNotFound(query.state.error) || isDenied(query.state.error)
         ? false
         : MONITOR_REFETCH_INTERVAL_MS,
   });
 
   const fresh = useDataFresh(detail);
-  const notFound = isNotFound(detail.error);
+  const refreshAccess = access.refresh;
+  const notFound = isMonitorNotFound(detail.error) || access.projectGone;
   const denied = isDenied(detail.error);
   useEffect(() => {
     if (!denied || readRefresh !== "idle") return;
     setReadRefresh("started");
     setRefreshing(true);
-    void refreshMembershipContext().finally(() => {
-      setRefreshing(false);
-    });
-  }, [denied, readRefresh, refreshMembershipContext]);
+    void Promise.all([refreshMembershipContext(), refreshAccess()]).finally(
+      () => {
+        setRefreshing(false);
+      },
+    );
+  }, [denied, readRefresh, refreshMembershipContext, refreshAccess]);
   const monitor = notFound || denied ? undefined : detail.data?.monitor;
 
   const invalidateAll = (refetchType: "active" | "none" = "active") =>
     queryClient.invalidateQueries({
-      queryKey: monitorQueryKeys.all(organizationId),
+      queryKey: monitorQueryKeys.project(organizationId, projectId),
       refetchType,
     });
 
@@ -190,8 +203,8 @@ function DetailForMonitor({
   function dropFromCachedLists() {
     queryClient.setQueriesData<MonitorListResponse>(
       {
-        queryKey: monitorQueryKeys.all(organizationId),
-        predicate: (query) => query.queryKey[3] === "list",
+        queryKey: monitorQueryKeys.project(organizationId, projectId),
+        predicate: (query) => query.queryKey[4] === "list",
       },
       (cached) => {
         const gone = cached?.monitors.find((item) => item.id === monitorId);
@@ -210,8 +223,8 @@ function DetailForMonitor({
     );
     queryClient.setQueriesData<MonitorRecentEventsResponse>(
       {
-        queryKey: monitorQueryKeys.all(organizationId),
-        predicate: (query) => query.queryKey[3] === "recent-events",
+        queryKey: monitorQueryKeys.project(organizationId, projectId),
+        predicate: (query) => query.queryKey[4] === "recent-events",
       },
       (cached) =>
         cached === undefined
@@ -228,7 +241,7 @@ function DetailForMonitor({
     if (isPermissionDenied(error)) {
       setActionError(ROLE_CHANGED);
       refreshContext();
-    } else if (isNotFound(error)) {
+    } else if (isMonitorNotFound(error)) {
       // Deleted elsewhere: the refetch turns the page into the "not found" state.
       setActionError(null);
       void invalidateAll();
@@ -241,8 +254,8 @@ function DetailForMonitor({
   const toggle = useMutation({
     mutationFn: (action: "pause" | "resume") =>
       action === "pause"
-        ? pauseMonitor(organizationId, monitorId)
-        : resumeMonitor(organizationId, monitorId),
+        ? pauseMonitor(organizationId, projectId, monitorId)
+        : resumeMonitor(organizationId, projectId, monitorId),
     onMutate: () => {
       setNotice(null);
       setActionError(null);
@@ -263,7 +276,7 @@ function DetailForMonitor({
   });
 
   const remove = useMutation({
-    mutationFn: () => deleteMonitor(organizationId, monitorId),
+    mutationFn: () => deleteMonitor(organizationId, projectId, monitorId),
     onMutate: () => {
       setNotice(null);
       setActionError(null);
@@ -277,7 +290,7 @@ function DetailForMonitor({
       });
     },
     onError: async (error) => {
-      if (isNotFound(error)) {
+      if (isMonitorNotFound(error)) {
         dropFromCachedLists();
         await invalidateAll("none");
         void navigate(overviewPath, {
@@ -308,12 +321,12 @@ function DetailForMonitor({
         titleTestId="monitor-detail-title"
         scopeTestId="monitor-detail-scope"
         scope={
-          organization === undefined
+          project === undefined
             ? undefined
             : {
-                mark: organization.name,
-                label: organization.name,
-                tag: ROLE_LABELS[organization.role] ?? organization.role,
+                mark: project.name,
+                label: project.name,
+                tag: access.roleTag,
               }
         }
         eyebrow="// monitor · http"
@@ -329,6 +342,7 @@ function DetailForMonitor({
   if (
     mePending ||
     switchedOrganization ||
+    access.pending ||
     refreshing ||
     (denied && readRefresh === "idle")
   ) {
@@ -367,7 +381,7 @@ function DetailForMonitor({
         <PageState
           kind="denied"
           data-testid="monitor-detail-denied"
-          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
+          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
         />
       </Page>
     );
@@ -395,6 +409,21 @@ function DetailForMonitor({
       </Page>
     );
   }
+  if (access.failed) {
+    return (
+      <Page>
+        {header()}
+        <PageState
+          kind="error"
+          data-testid="monitor-detail-access-error"
+          retryTestId="monitor-detail-access-retry"
+          message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={access.retry}
+        />
+      </Page>
+    );
+  }
   if (monitor === undefined) {
     return (
       <Page>
@@ -416,11 +445,9 @@ function DetailForMonitor({
     );
   }
 
-  const canWrite =
-    organization.role === "owner" || organization.role === "admin";
-  // OD-58-04: the last response is readable by owner and admin only.
-  const canReadResponse =
-    organization.role === "owner" || organization.role === "admin";
+  const canWrite = access.canWrite;
+  // AC-03: the last response is readable by whoever may write (Project admin, Organization Owner or Admin).
+  const canReadResponse = canWrite;
   const paused = monitor.status === "paused";
   const busy = toggle.isPending;
   const actions = canWrite ? (
@@ -511,7 +538,7 @@ function DetailForMonitor({
       {canWrite ? null : (
         <span
           data-testid="monitor-detail-read-only"
-          data-role={organization.role}
+          data-role={project?.myRole ?? ""}
         >
           สิทธิ์ของคุณ: ดูอย่างเดียว
         </span>
@@ -554,6 +581,7 @@ function DetailForMonitor({
         <div className="flex min-w-0 flex-col gap-8">
           <ResponseTimeCard
             organizationId={organizationId}
+            projectId={projectId}
             monitorId={monitorId}
             lastCheckAt={monitor.lastCheckAt}
             intervalSeconds={monitor.intervalSeconds}
@@ -562,11 +590,13 @@ function DetailForMonitor({
           <StatusCard monitor={monitor} fresh={fresh} />
           <MonitorEventsCard
             organizationId={organizationId}
+            projectId={projectId}
             monitorId={monitorId}
             headers={monitor.headers}
           />
           <IncidentsCard
             organizationId={organizationId}
+            projectId={projectId}
             monitorId={monitorId}
           />
         </div>
@@ -593,12 +623,15 @@ function DetailForMonitor({
           <AlertsCard
             monitor={monitor}
             organizationId={organizationId}
-            canWrite={canWrite}
+            canReadOrganizationSettings={
+              organization.role === "owner" || organization.role === "admin"
+            }
           />
           <SslCard ssl={monitor.ssl} />
           <LastResponseCard
             canRead={canReadResponse}
             organizationId={organizationId}
+            projectId={projectId}
             monitorId={monitorId}
           />
         </aside>
@@ -612,8 +645,8 @@ function DetailForMonitor({
             <>
               <p>
                 ลบ {monitor.name} (
-                <span className="font-mono">{monitor.url}</span>) ออกจากองค์กร{" "}
-                {organization.name}
+                <span className="font-mono">{monitor.url}</span>) ออกจากโปรเจกต์{" "}
+                {project?.name}
               </p>
               <p className="mt-2">
                 ประวัติการตรวจและเหตุการณ์จะหายและกู้คืนไม่ได้

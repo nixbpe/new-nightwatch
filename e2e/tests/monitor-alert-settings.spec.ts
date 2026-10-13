@@ -13,8 +13,10 @@ import {
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
+  monitorUrl,
   signInApi,
   targetHostname,
   type Person,
@@ -27,6 +29,7 @@ const pool = database.sql;
 type Target = Awaited<ReturnType<typeof startMonitorTarget>>;
 let host: string;
 let org: string;
+let project: string;
 let owner: Person;
 const userIds: string[] = [];
 let targetThreshold: Target;
@@ -88,6 +91,7 @@ test.beforeAll(async () => {
   owner = await createPerson(pool, "owner", org);
   userIds.push(owner.userId);
   await addMember(pool, org, owner.userId, "owner");
+  project = await createProject(pool, org, `E2E Alert Settings ${run}`);
 });
 
 test.afterAll(async () => {
@@ -106,7 +110,7 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   test.setTimeout(8 * 60_000);
   await signIn(page, owner);
 
-  await page.goto(`/organizations/${org}/monitors/new`);
+  await page.goto(monitorUrl(org, project, "/new"));
   await page.getByTestId("monitor-form-name").fill(thresholdName);
   await page
     .getByTestId("monitor-form-url")
@@ -116,7 +120,7 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   const createdResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === monitorPath(org),
+      new URL(response.url()).pathname === monitorPath(org, project),
   );
   await page.getByTestId("monitor-form-save").click();
   const createdReply = await createdResponse;
@@ -134,7 +138,10 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(createdMonitor.version).toBe(1);
 
   const session = await signInApi(owner);
-  const read1 = await session.request("GET", monitorPath(org, `/${m1}`));
+  const read1 = await session.request(
+    "GET",
+    monitorPath(org, project, `/${m1}`),
+  );
   expect(read1.status).toBe(200);
   expect(monitorDetailResponseSchema.parse(read1.body).monitor.alerts).toEqual({
     failureThreshold: 3,
@@ -143,20 +150,23 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
     sslCautionDays: 30,
   });
 
-  const create2 = await session.request("POST", monitorPath(org), {
+  const create2 = await session.request("POST", monitorPath(org, project), {
     ...basicConfig(toggleName, urlOf(targetToggle, "/health")),
     clientRequestId: randomUUID(),
   });
   expect(create2.status).toBe(201);
   const m2 = monitorWriteResponseSchema.parse(create2.body).monitor.id;
 
-  await page.goto(`/organizations/${org}/monitors/${m2}/edit`);
+  await page.goto(monitorUrl(org, project, `/${m2}/edit`));
   await expect(page.getByTestId("monitor-form-name")).toHaveValue(toggleName);
   await page.getByTestId("monitor-form-alert-down").uncheck();
   await page.getByTestId("monitor-form-save").click();
   await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
   await expect(page.getByTestId("monitor-detail-title")).toHaveText(toggleName);
-  const read2Before = await session.request("GET", monitorPath(org, `/${m2}`));
+  const read2Before = await session.request(
+    "GET",
+    monitorPath(org, project, `/${m2}`),
+  );
   const edited = monitorDetailResponseSchema.parse(read2Before.body).monitor;
   expect(edited.alerts).toEqual({
     failureThreshold: 2,
@@ -207,7 +217,10 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(incident2!.down_notified).toBe(false);
   expect(await countInbox(m2, "MONITOR_DOWN")).toBe(0);
 
-  const read2After = await session.request("GET", monitorPath(org, `/${m2}`));
+  const read2After = await session.request(
+    "GET",
+    monitorPath(org, project, `/${m2}`),
+  );
   expect(
     monitorDetailResponseSchema.parse(read2After.body).monitor.health,
   ).toBe("down");
