@@ -1,6 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-const saves = new WeakMap<QueryClient, Map<string, Set<Promise<void>>>>();
+type LandingSaves = { pending: Set<Promise<void>>; revision: symbol };
+const saves = new WeakMap<QueryClient, Map<string, LandingSaves>>();
+
+export function getLastProjectLandingRevision(
+  client: QueryClient,
+  organizationId: string,
+): symbol | undefined {
+  return saves.get(client)?.get(organizationId)?.revision;
+}
 
 export function trackLastProjectSave(
   client: QueryClient,
@@ -12,11 +20,9 @@ export function trackLastProjectSave(
     organizations = new Map();
     saves.set(client, organizations);
   }
-  let pending = organizations.get(organizationId);
-  if (pending === undefined) {
-    pending = new Set();
-    organizations.set(organizationId, pending);
-  }
+  const pending =
+    organizations.get(organizationId)?.pending ?? new Set<Promise<void>>();
+  organizations.set(organizationId, { pending, revision: Symbol() });
   const tracked = completion.then(
     () => undefined,
     () => undefined,
@@ -24,7 +30,6 @@ export function trackLastProjectSave(
   pending.add(tracked);
   void tracked.then(() => {
     pending.delete(tracked);
-    if (pending.size === 0) organizations.delete(organizationId);
   });
 }
 
@@ -33,9 +38,10 @@ export async function waitForLastProjectSaves(
   organizationId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  if (signal.aborted) return;
   while (!signal.aborted) {
-    const pending = [...(saves.get(client)?.get(organizationId) ?? [])];
+    const pending = [
+      ...(saves.get(client)?.get(organizationId)?.pending ?? []),
+    ];
     if (pending.length === 0) return;
     await new Promise<void>((resolve) => {
       const stop = () => {
