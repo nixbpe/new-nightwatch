@@ -18,7 +18,7 @@ import {
 } from "../support/monitor-fixtures";
 
 // Issue #59 browser evidence: server-side sort, method / interval columns, the
-// Cards sparkline, the Workspace section 01 SSL issuer, and the layout at 640 px.
+// Cards sparkline, the Detail SSL issuer, and the layout at 640 px.
 // Covers P59-02, P59-03, P59-04, P59-05, P59-06, P59-10 (NODE-59-03).
 //
 // Rows are written straight into the run's own organization. No monitor_schedule
@@ -30,7 +30,6 @@ const pool = database.sql;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
-// No space or hyphen: only overflow-wrap can break it inside the 170 px column.
 const LONG_ISSUER =
   "CNNightwatchExampleIntermediateCertificateAuthorityGlobalTrustServicesG32026";
 
@@ -431,38 +430,49 @@ test("Overview: summary line, status filter counts and the Project footer", asyn
   );
 });
 
-test("Workspace section 01: SSL warning row shows issuer and expiry, down row does not", async ({
+async function openWorkspaceCertificate(page: Page) {
+  await page.goto("/workspace");
+  await expect(page).toHaveURL(overview());
+  await scrollListIntoView(page, "table");
+  const zulu = page
+    .getByTestId("monitor-overview-table")
+    .getByTestId(`monitor-list-row-${ids.zulu}`);
+  await expect(zulu).toBeVisible();
+  const link = zulu.getByTestId(`monitor-list-name-${ids.zulu}`);
+  await expect(link).toHaveAttribute("href", `${overview()}/${ids.zulu}`);
+  await link.click();
+  await expect(page).toHaveURL(`${overview()}/${ids.zulu}`);
+  const certificate = page.getByTestId("monitor-detail-ssl");
+  await expect(certificate.getByTestId("monitor-detail-ssl-issuer")).toHaveText(
+    LONG_ISSUER,
+  );
+  const expiry = certificate.getByTestId("monitor-detail-ssl-expiry");
+  await expect(expiry).toHaveAttribute("datetime", sslNotAfter.toISOString());
+  await expect(expiry).toHaveText(/\S/);
+  await certificate.scrollIntoViewIfNeeded();
+}
+
+test("Workspace redirects to Monitors: Detail shows issuer and expiry, down monitor has no certificate", async ({
   page,
 }) => {
   await signIn(page, owner);
-  await page.goto("/workspace");
-  const section = page.getByTestId("workspace-issues");
-  const zulu = section.getByTestId(`monitor-list-row-${ids.zulu}`);
-  await expect(zulu).toBeVisible();
-  await expect(zulu.getByTestId("workspace-ssl-issuer")).toContainText(
-    LONG_ISSUER,
-  );
-  const expiry = zulu.getByTestId("workspace-ssl-expiry");
-  await expect(expiry).toHaveAttribute("dateTime", sslNotAfter.toISOString());
-  const dateText = (await expiry.textContent()) ?? "";
-  expect(dateText).not.toBe("");
-  await expect(expiry).toHaveText(dateText);
-  await expect(zulu).toHaveAttribute("href", `${overview()}/${ids.zulu}`);
+  await openWorkspaceCertificate(page);
 
-  const mike = section.getByTestId(`monitor-list-row-${ids.mike}`);
+  await page.goto(overview());
+  const mike = page
+    .getByTestId("monitor-overview-table")
+    .getByTestId(`monitor-list-row-${ids.mike}`);
   await expect(mike).toBeVisible();
-  await expect(mike.getByTestId("workspace-ssl-issuer")).toHaveCount(0);
-  await expect(mike.getByTestId("workspace-ssl-expiry")).toHaveCount(0);
-
-  // The Detail certificate card words the same expiry date.
-  await page.goto(`${overview()}/${ids.zulu}`);
-  await expect(page.getByTestId("monitor-detail-ssl-expiry")).toHaveText(
-    dateText,
-  );
-  await expect(page.getByTestId("monitor-detail-ssl-expiry")).toHaveAttribute(
-    "datetime",
-    sslNotAfter.toISOString(),
-  );
+  await mike.getByTestId(`monitor-list-name-${ids.mike}`).click();
+  await expect(page).toHaveURL(`${overview()}/${ids.mike}`);
+  const certificate = page.getByTestId("monitor-detail-ssl");
+  await expect(certificate).toBeVisible();
+  await expect(
+    certificate.getByTestId("monitor-detail-ssl-issuer"),
+  ).toHaveCount(0);
+  await expect(
+    certificate.getByTestId("monitor-detail-ssl-expiry"),
+  ).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -483,28 +493,14 @@ for (const theme of ["light", "dark"] as const) {
       ).toHaveCount(3);
     }
 
-    async function expectIssuer(page: Page) {
-      const row = page
-        .getByTestId("workspace-issues")
-        .getByTestId(`monitor-list-row-${ids.zulu}`);
-      await expect(row.getByTestId("workspace-ssl-issuer")).toContainText(
-        LONG_ISSUER,
-      );
-      await expect(row.getByTestId("workspace-ssl-expiry")).toHaveAttribute(
-        "datetime",
-        sslNotAfter.toISOString(),
-      );
-      await expect(row).toHaveAttribute("href", `${overview()}/${ids.zulu}`);
-      await row.scrollIntoViewIfNeeded();
-    }
-
-    test("section 01 at desktop width", async ({ page }) => {
+    test("Workspace redirect to Detail certificate at desktop width", async ({
+      page,
+    }) => {
       await signIn(page, owner);
-      await page.goto("/workspace");
+      await openWorkspaceCertificate(page);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expectIssuer(page);
 
-      await shot(page, `workspace-section01-${theme}`);
+      await shot(page, `workspace-detail-ssl-${theme}`);
     });
 
     test.describe("640 px viewport (LAY-02)", () => {
@@ -517,15 +513,14 @@ for (const theme of ["light", "dark"] as const) {
         await shot(page, `table-640-${theme}`, true);
       });
 
-      test("section 01: long issuer wraps in the 170 px column, no sideways scroll", async ({
+      test("Workspace redirect to Detail certificate with long issuer at 640 px", async ({
         page,
       }) => {
         await signIn(page, owner);
-        await page.goto("/workspace");
+        await openWorkspaceCertificate(page);
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-        await expectIssuer(page);
 
-        await shot(page, `workspace-section01-640-${theme}`, true);
+        await shot(page, `workspace-detail-ssl-640-${theme}`, true);
       });
     });
   });
