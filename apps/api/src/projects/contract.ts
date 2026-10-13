@@ -226,8 +226,7 @@ export const projectRouteDeclarations = {
     method: "get",
     path: `${projectsBase}/{projectId}/member-candidates`,
     tags,
-    summary:
-      "Search Organization members to add; projectRole is null for one who is not in the Project",
+    summary: "Search Organization members who are not already Project members",
     request: {
       params: projectParamsSchema,
       query: projectMemberCandidatesQuerySchema,

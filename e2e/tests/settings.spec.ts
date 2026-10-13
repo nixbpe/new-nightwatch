@@ -77,7 +77,9 @@ async function signIn(page: Page, password: string) {
   await page.getByTestId("login-email").fill(EMAIL!);
   await page.getByTestId("login-password").fill(password);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 test.describe("signed-in settings", () => {

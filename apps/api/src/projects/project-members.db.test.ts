@@ -779,7 +779,7 @@ describe("member candidates", () => {
       .candidates;
   };
 
-  it("returns every matching Organization member with their Project role, by name or email, ignoring case", async () => {
+  it("returns eligible Organization members by name or email, ignoring case", async () => {
     const projectId = await projectWith(org, [
       [org.users.viewer, "admin"],
       [org.users.auditor, "member"],
@@ -791,28 +791,20 @@ describe("member candidates", () => {
           [userId],
         )
       ).rows[0]?.email ?? "";
-    const email = await emailOf(org.users.viewer);
+    const email = await emailOf(org.users.admin);
     const byEmail = await candidates(
       projectId,
       `?q=${encodeURIComponent(email.toUpperCase())}`,
     );
     expect(byEmail).toHaveLength(1);
     expect(byEmail[0]).toMatchObject({
-      userId: org.users.viewer,
-      projectRole: "admin",
-      organizationRole: "viewer",
+      userId: org.users.admin,
+      organizationRole: "admin",
     });
     const all = await candidates(projectId, `?q=pmember-a-`);
-    expect(
-      Object.fromEntries(
-        all.map((candidate) => [candidate.userId, candidate.projectRole]),
-      ),
-    ).toEqual({
-      [org.users.owner]: null,
-      [org.users.admin]: null,
-      [org.users.viewer]: "admin",
-      [org.users.auditor]: "member",
-    });
+    expect(all.map((candidate) => candidate.userId).sort()).toEqual(
+      [org.users.owner, org.users.admin].sort(),
+    );
     const none = await candidates(projectId, "?q=zzz-no-match-zzz");
     expect(none).toEqual([]);
   });
@@ -820,17 +812,21 @@ describe("member candidates", () => {
   it.each(["empty", "name", "email"] as const)(
     "regression excludes existing Project members from %s candidate searches",
     async (search) => {
-      const isolated = await ctx.createOrganization(`pmember-exclude-${search}`);
+      const isolated = await ctx.createOrganization(
+        `pmember-exclude-${search}`,
+      );
       const projectId = await projectWith(isolated, [
         [isolated.users.viewer, "admin"],
         [isolated.users.auditor, "member"],
       ]);
-      const email = (
-        await ctx.owner.sql.query<{ email: string }>(
-          'select email from "user" where id = $1',
-          [isolated.users.viewer],
-        )
-      ).rows[0]!.email;
+      const email =
+        (
+          await ctx.owner.sql.query<{ email: string }>(
+            'select email from "user" where id = $1',
+            [isolated.users.viewer],
+          )
+        ).rows[0]?.email ?? "";
+      expect(email).not.toBe("");
       const query = {
         empty: "",
         name: `?q=${encodeURIComponent(`PMEMBER-EXCLUDE-${search.toUpperCase()}`)}`,
@@ -842,8 +838,9 @@ describe("member candidates", () => {
         `${base(isolated, projectId)}/member-candidates${query}`,
       );
       expect(response.status).toBe(200);
-      const list = projectMemberCandidatesResponseSchema.parse(response.json)
-        .candidates;
+      const list = projectMemberCandidatesResponseSchema.parse(
+        response.json,
+      ).candidates;
       expect(list.map((candidate) => candidate.userId).sort()).toEqual(
         search === "email"
           ? []
@@ -872,12 +869,14 @@ describe("member candidates", () => {
       "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'auditor')",
       [crypto.randomUUID(), isolated.id, eligible],
     );
-    const email = (
-      await ctx.owner.sql.query<{ email: string }>(
-        'select email from "user" where id = $1',
-        [eligible],
-      )
-    ).rows[0]!.email;
+    const email =
+      (
+        await ctx.owner.sql.query<{ email: string }>(
+          'select email from "user" where id = $1',
+          [eligible],
+        )
+      ).rows[0]?.email ?? "";
+    expect(email).not.toBe("");
     const projectId = await projectWith(isolated, members);
     const response = await ctx.call(
       isolated.users.owner,

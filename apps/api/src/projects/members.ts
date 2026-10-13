@@ -122,16 +122,17 @@ export async function listMemberCandidates(
         name: string;
         email: string;
         organizationRole: string;
-        projectRole: ProjectRole | null;
       }>(
         `select m.user_id as "userId", u.name, u.email,
-                m.role as "organizationRole", pm.role as "projectRole"
+                m.role as "organizationRole"
          from member m
          join "user" u on u.id = m.user_id
-         left join project_members pm
-           on pm.tenant_id = m.organization_id and pm.project_id = $2
-          and pm.user_id = m.user_id
          where m.organization_id = $1
+           and not exists (
+             select 1 from project_members pm
+             where pm.tenant_id = m.organization_id and pm.project_id = $2
+               and pm.user_id = m.user_id
+           )
            and ($3::text is null or u.name ilike $3::text or u.email ilike $3::text)
          order by u.name, m.user_id
          limit $4`,
@@ -148,7 +149,6 @@ export async function listMemberCandidates(
           name: row.name,
           email: row.email,
           organizationRole: displayRole(row.organizationRole),
-          projectRole: row.projectRole,
         })),
       };
     },

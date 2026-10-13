@@ -7331,7 +7331,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search Organization members to add; projectRole is null for one who is not in the Project */
+        /** Search Organization members who are not already Project members */
         get: {
             parameters: {
                 query?: {
@@ -7359,8 +7359,6 @@ export interface paths {
                                 email: string;
                                 /** @enum {string} */
                                 organizationRole: "owner" | "admin" | "viewer" | "auditor";
-                                /** @enum {string|null} */
-                                projectRole: "admin" | "member" | null;
                             }[];
                         };
                     };

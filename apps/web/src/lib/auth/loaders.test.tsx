@@ -30,7 +30,6 @@ import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
-  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import {
   fetchProjectDetail,
@@ -47,6 +46,8 @@ import {
 } from "../api/notifications";
 import {
   peekStagedQueryClient,
+  retireContextPublication,
+  publishActiveQueryClient,
   publishTenantScope,
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
@@ -547,68 +548,97 @@ describe("workspaceLoader", () => {
     },
   );
 
-  it("seeds the Project list, the last Project and the remembered Project's monitors", async () => {
+  it("redirects without fetching the Project list or monitors", async () => {
     signedInMember();
-    fetchProjectListMock.mockResolvedValue({
-      projects: [
-        summary(PROJECT_FIRST, "Alpha"),
-        summary(PROJECT_LAST, "Bravo"),
-      ],
-    });
     fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
-    fetchMonitorListMock.mockResolvedValue(overviewList);
     renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
-      organizationId,
-      PROJECT_LAST,
-      OVERVIEW_LIST_PARAMS,
+    expect((await screen.findByTestId("location")).textContent).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
     );
-    const client = peekStagedQueryClient()?.client;
-    expect(
-      client?.getQueryData(projectQueryKeys.list(organizationId)),
-    ).toBeDefined();
-    expect(client?.getQueryData(projectQueryKeys.last(organizationId))).toEqual(
-      { projectId: PROJECT_LAST },
-    );
-    expect(
-      client?.getQueryData(
-        monitorQueryKeys.list(
-          organizationId,
-          PROJECT_LAST,
-          OVERVIEW_LIST_PARAMS,
-        ),
-      ),
-    ).toEqual(overviewList);
-  });
-
-  it("falls to the first Project when the remembered one is no longer readable", async () => {
-    signedInMember();
-    fetchProjectListMock.mockResolvedValue({
-      projects: [summary(PROJECT_FIRST, "Alpha")],
-    });
-    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
-    fetchMonitorListMock.mockResolvedValue(overviewList);
-    renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
-      organizationId,
-      PROJECT_FIRST,
-      OVERVIEW_LIST_PARAMS,
-    );
-  });
-
-  it("requests no monitors when the caller has no readable Project", async () => {
-    signedInMember();
-    fetchProjectListMock.mockResolvedValue({ projects: [] });
-    fetchLastProjectMock.mockResolvedValue({ projectId: null });
-    renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
+    expect(fetchProjectListMock).not.toHaveBeenCalled();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
+
+  it("keeps the workspace fallback when last-project fails", async () => {
+    signedInMember();
+    fetchLastProjectMock.mockRejectedValue(new Error("api down"));
+    renderAt([protectedWorkspace], "/workspace");
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
+  });
+
+  it.each(["abort", "retire", "identity"] as const)(
+    "does not redirect after %s while last-project is pending",
+    async (change) => {
+      signedInMember();
+      const controller = new AbortController();
+      let finish!: (value: { projectId: string }) => void;
+      let started!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      fetchLastProjectMock.mockImplementation(() => {
+        started();
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      });
+      const result = workspaceLoader({
+        request: new Request("http://localhost/workspace", {
+          signal: controller.signal,
+        }),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await pending;
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      if (change === "abort") controller.abort();
+      if (change === "retire") retireContextPublication(client);
+      if (change === "identity") {
+        const otherClient = resolveQueryClientForIdentity("other-user");
+        publishActiveQueryClient("other-user", otherClient);
+      }
+      finish({ projectId: PROJECT_LAST });
+      expect(await result).toBeNull();
+    },
+  );
+
+  it.each(["abort", "retire", "identity"] as const)(
+    "stops after %s while membership resolution is pending",
+    async (change) => {
+      signedInMember();
+      const resolution = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock.mockReturnValue(resolution.promise);
+      const controller = new AbortController();
+      const result = workspaceLoader({
+        request: new Request("http://localhost/workspace", {
+          signal: controller.signal,
+        }),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await vi.waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+      });
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      if (change === "abort") controller.abort();
+      if (change === "retire") retireContextPublication(client);
+      if (change === "identity") {
+        const otherClient = resolveQueryClientForIdentity("other-user");
+        publishActiveQueryClient("other-user", otherClient);
+      }
+      resolution.resolve({
+        ...meContext,
+        organizations: orgs,
+        lastActiveTenantId: organizationId,
+      });
+      expect(await result).toBeNull();
+      expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not prefetch a tenant without server-confirmed selection", async () => {
     sessionState.data = { user: VERIFIED };
@@ -1910,6 +1940,7 @@ describe("verified bootstrap barrier", () => {
       page: { limit: 50, offset: 0, total: 0 },
       dataAsOf: "2026-09-30T07:32:05.000Z",
     });
+    fetchLastProjectMock.mockResolvedValue({ projectId: null });
     fetchNotificationsMock.mockResolvedValue({
       organizationId,
       items: [],
@@ -1932,7 +1963,10 @@ describe("verified bootstrap barrier", () => {
       ],
       lastActiveTenantId: organizationId,
     });
-    await loading;
+    const [workspaceResult] = await loading;
+    expect((workspaceResult as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects",
+    );
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
     expect(fetchNotificationsMock).toHaveBeenCalledWith(organizationId);

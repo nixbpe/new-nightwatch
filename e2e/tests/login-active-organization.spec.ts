@@ -53,7 +53,9 @@ async function signIn(
   await page.getByTestId("login-email").fill(loginEmail);
   await page.getByTestId("login-password").fill(loginPassword);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace$/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function selection() {
@@ -84,7 +86,7 @@ test("single-member cold login and existing-session reload resolve before tenant
       requests.push(path);
   });
   await signIn(page);
-  await expect(page.getByTestId("workspace-identity")).toBeVisible();
+  await expect(page.getByTestId("projects-total")).toHaveText("0");
   await expect(page.getByTestId("shell-breadcrumb-organization")).toContainText(
     "NightWatch E2E Settings",
   );
@@ -105,7 +107,7 @@ test("single-member cold login and existing-session reload resolve before tenant
     await page.emulateMedia({ colorScheme });
     requests.length = 0;
     await page.reload();
-    await expect(page.getByTestId("workspace-identity")).toBeVisible();
+    await expect(page.getByTestId("projects-total")).toHaveText("0");
     expect(requests[0]).toBe("/api/me/resolve-active-org");
     expect(await selection()).toEqual({
       last_active_tenant_id: identity.organizationId,
@@ -161,7 +163,7 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
   page,
 }) => {
   await signIn(page);
-  const overview = page.getByTestId("workspace-identity");
+  const overview = page.getByTestId("projects-total");
   await expect(overview).toBeVisible();
   const resolverStarted = Promise.withResolvers<void>();
   const releaseResolver = Promise.withResolvers<void>();
@@ -289,9 +291,11 @@ for (const action of ["switch", "leave", "revoke"] as const) {
       const release = Promise.withResolvers<void>();
       try {
         await signIn(page);
-        await expect(page.getByTestId("workspace-identity")).toBeVisible();
+        await page.goto("/settings/profile");
+        await expect(page.getByTestId("profile-name")).toBeVisible();
         await signIn(otherPage, action === "revoke" ? actorEmail : email);
-        await expect(otherPage.getByTestId("workspace-identity")).toBeVisible();
+        await otherPage.goto("/settings/profile");
+        await expect(otherPage.getByTestId("profile-name")).toBeVisible();
         await page.route(
           "**/api/notifications?*",
           async (route) => {
@@ -336,12 +340,8 @@ for (const action of ["switch", "leave", "revoke"] as const) {
           await expect
             .poll(async () => (await selection())?.last_active_tenant_id)
             .toBe(actorIdentity.organizationId);
-          await expect(page.getByTestId("workspace-identity")).toBeVisible();
-        } else {
-          await expect(
-            page.getByTestId("workspace-access-needed"),
-          ).toBeVisible();
         }
+        await expect(page.getByTestId("profile-name")).toBeVisible();
         expect(await selection()).toEqual({
           last_active_tenant_id: remaining
             ? actorIdentity.organizationId
@@ -402,7 +402,7 @@ test("successful invitation retains pending selection then explicitly switches b
   );
   try {
     await signIn(page);
-    await expect(page.getByTestId("workspace-identity")).toBeVisible();
+    await expect(page.getByTestId("projects-total")).toHaveText("0");
     await page.goto(`/accept-invitation/${invitation}`);
     await expect(page.getByTestId("invitation-accept")).toBeVisible();
     expect((await selection())?.last_active_tenant_id).toBe(
@@ -419,7 +419,7 @@ test("successful invitation retains pending selection then explicitly switches b
         operations.push(path);
     });
     await page.getByTestId("invitation-accept").click();
-    await page.waitForURL(/\/workspace$/);
+    await page.waitForURL(`/organizations/${invitedOrg}/projects`);
     await expect(
       page.getByTestId("shell-breadcrumb-organization"),
     ).toContainText(name);
@@ -519,8 +519,10 @@ test.describe("final MFA login bootstrap", () => {
           .fill(mode === "recovery" ? backupCode : totpCode(secret));
         await page.getByTestId("two-factor-submit").click();
       }
-      await page.waitForURL(/\/workspace$/);
-      await expect(page.getByTestId("workspace-identity")).toBeVisible();
+      await page.waitForURL(
+        `/organizations/${identity.organizationId}/projects`,
+      );
+      await expect(page.getByTestId("projects-total")).toHaveText("0");
       expect(await selection()).toEqual({
         last_active_tenant_id: identity.organizationId,
         mirrors_match: true,
@@ -543,7 +545,7 @@ test("a bookmarked member organization names its URL scope without switching the
     [randomUUID(), organizationId, identity.userId],
   );
   await signIn(page);
-  await expect(page.getByTestId("workspace-identity")).toBeVisible();
+  await expect(page.getByTestId("projects-total")).toHaveText("0");
   expect((await selection())?.last_active_tenant_id).toBe(
     identity.organizationId,
   );

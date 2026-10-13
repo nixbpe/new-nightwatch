@@ -15,9 +15,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web side of F-010: the sidebar's Project switcher. An owner switches Project
-// with the keyboard from a Project page and from the workspace, the server
-// remembers the choice, and a viewer sees only the Projects they joined.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -38,7 +35,9 @@ async function signIn(page: Page, person: Person) {
   await page.getByTestId("login-email").fill(person.email);
   await page.getByTestId("login-password").fill(person.password);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function createProject(name: string, slug: string): Promise<string> {
@@ -88,6 +87,9 @@ test("an owner switches Project with the keyboard and the server remembers it", 
   page,
 }) => {
   await signIn(page, people.owner);
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${alpha}/monitors`,
+  );
   await page.goto(membersUrl(alpha));
   const button = page.getByTestId("shell-project-switch");
   await expect(button).toContainText(`Alpha ${run}`);
@@ -131,10 +133,17 @@ test("an owner switches Project with the keyboard and the server remembers it", 
     .toBe(bravo);
 });
 
-test("outside a Project the sidebar opens the remembered Project and its pages", async ({
+test("workspace and root open the remembered Project and its sidebar pages", async ({
   page,
 }) => {
   await signIn(page, people.owner);
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${bravo}/monitors`,
+  );
+  await page.goto("/");
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${bravo}/monitors`,
+  );
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Bravo ${run}`,
   );

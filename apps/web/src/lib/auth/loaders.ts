@@ -30,7 +30,6 @@ import {
   fetchMonitorList,
   monitorQueryKeys,
   MONITOR_LIST_PAGE_SIZE,
-  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import {
@@ -40,6 +39,7 @@ import {
   fetchProjectMembers,
   projectQueryKeys,
 } from "../api/projects";
+import { projectSwitchDestination } from "../../components/shell/nav-config";
 import { authClient } from "../auth-client";
 import { formatAuditDate, readPreferences } from "../preferences";
 import {
@@ -56,6 +56,7 @@ import {
   hasContextPublicationClaim,
   publishContextPublication,
   peekActiveQueryClientIdentity,
+  getContextPublicationSnapshot,
   resolveQueryClientForIdentity,
 } from "../queryClient";
 import {
@@ -146,54 +147,30 @@ export async function workspaceLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  const userId = sessionOrRedirect.user.id;
+  const queryClient = resolveQueryClientForIdentity(userId);
+  const isCurrent = () => {
+    const activeIdentity = peekActiveQueryClientIdentity();
+    return (
+      !request.signal.aborted &&
+      getContextPublicationSnapshot(queryClient).admission.kind !== "retired" &&
+      (activeIdentity === undefined || activeIdentity === userId)
+    );
+  };
+  if (!isCurrent()) return null;
+  const context = await prefetchMeContext(userId);
+  if (!isCurrent()) return null;
   const organization = context?.organizations.find(
     (item) => item.id === context.lastActiveTenantId,
   );
-  if (organization === undefined) {
-    return null;
-  }
-  // The overview shows the current Project's monitors, resolved as useCurrentProject does (the
-  // remembered Project while readable, else the first one), so the page needs no round after this.
-  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  const [list, last] = await Promise.all([
-    queryClient
-      .query({
-        queryKey: projectQueryKeys.list(organization.id),
-        queryFn: () => fetchProjectList(organization.id),
-        staleTime: "static",
-      })
-      .catch(() => undefined),
-    queryClient
-      .query({
-        queryKey: projectQueryKeys.last(organization.id),
-        queryFn: () => fetchLastProject(organization.id),
-        staleTime: "static",
-      })
-      .catch(() => undefined),
-  ]);
-  if (list === undefined || last === undefined) {
-    return null;
-  }
-  const current =
-    list.projects.find((item) => item.id === last.projectId) ??
-    list.projects[0];
-  if (current === undefined) {
-    return null;
-  }
-  await queryClient
-    .query({
-      queryKey: monitorQueryKeys.list(
-        organization.id,
-        current.id,
-        OVERVIEW_LIST_PARAMS,
-      ),
-      queryFn: () =>
-        fetchMonitorList(organization.id, current.id, OVERVIEW_LIST_PARAMS),
-      staleTime: "static",
-    })
-    .catch(() => undefined);
-  return null;
+  if (organization === undefined) return null;
+  const last = await fetchLastProject(organization.id).catch(() => undefined);
+  if (!isCurrent() || last === undefined) return null;
+  const destination =
+    last.projectId === null
+      ? `/organizations/${organization.id}/projects`
+      : projectSwitchDestination("/workspace", organization.id, last.projectId);
+  return destination === null ? null : replace(destination);
 }
 
 export async function notificationsLoader({
