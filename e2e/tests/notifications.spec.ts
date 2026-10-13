@@ -64,7 +64,9 @@ async function signIn(page: Page, value: string) {
   await page.getByTestId("login-email").fill(email);
   await page.getByTestId("login-password").fill(value);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function seedItem(
@@ -967,8 +969,12 @@ test("deferred notification responses cannot cross confirmed organization or ide
     await expect
       .poll(() => page.evaluate(() => document.body.textContent))
       .not.toContain(deferredPrimaryActor);
-    await page.getByTestId("shell-nav-/workspace").click();
-    await expect(page).toHaveURL(/\/workspace$/);
+    await page
+      .getByTestId("shell-nav-/organizations/:organizationId/projects")
+      .click();
+    await expect(page).toHaveURL(
+      `/organizations/${alternateIdentity.organizationId}/projects`,
+    );
     await organizationBell.click();
     await expect(
       identityPopover.getByTestId("shell-notifications-empty"),

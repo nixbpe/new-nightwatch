@@ -137,10 +137,11 @@ export type AddProjectMembersResponse = z.infer<
   typeof addProjectMembersResponseSchema
 >;
 
-/** Any Organization member matching `q`; `projectRole` is `null` for one who is not in the Project. */
-export const projectMemberCandidateSchema = projectMemberSchema
-  .omit({ projectRole: true, joinedAt: true })
-  .extend({ projectRole: projectRoleSchema.nullable() });
+/** Organization members matching `q` who are not already Project members. */
+export const projectMemberCandidateSchema = projectMemberSchema.omit({
+  projectRole: true,
+  joinedAt: true,
+});
 export type ProjectMemberCandidate = z.infer<
   typeof projectMemberCandidateSchema
 >;

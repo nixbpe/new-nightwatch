@@ -6,6 +6,7 @@ import {
   createProjectRequestSchema,
   projectDetailSchema,
   projectMemberCandidatesQuerySchema,
+  projectMemberCandidateSchema,
   PROJECT_MEMBER_ADD_MAX,
   PROJECT_MEMBER_SEARCH_MAX_LENGTH,
   updateProjectMemberRequestSchema,
@@ -178,6 +179,25 @@ describe("update project member request", () => {
         userId: "u",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("member candidate response", () => {
+  it("returns identity and Organization role without a Project role", () => {
+    expect(
+      projectMemberCandidateSchema.parse({
+        userId: "user-1",
+        name: "Eligible User",
+        email: "eligible@example.test",
+        organizationRole: "viewer",
+        projectRole: null,
+      }),
+    ).toEqual({
+      userId: "user-1",
+      name: "Eligible User",
+      email: "eligible@example.test",
+      organizationRole: "viewer",
+    });
   });
 });
 

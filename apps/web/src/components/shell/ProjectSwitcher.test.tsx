@@ -33,6 +33,7 @@ import {
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { AppShell } from "./AppShell";
+import { waitForLastProjectSaves } from "../../lib/lastProjectSave";
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
@@ -477,6 +478,146 @@ describe("ProjectSwitcher", () => {
           membersPath(projectId),
         );
       });
+
+    it("tracks the landing while Project-list validation is still pending", async () => {
+      const list = Promise.withResolvers<undefined>();
+      const view = renderShell({
+        path: membersPath(P_ALPHA),
+        listGate: list.promise,
+      });
+      const saves = deferSaves();
+      await routeCommitted(P_ALPHA);
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      await waitFor(() => {
+        expect(fetchProjectListMock).toHaveBeenCalled();
+      });
+      expect(sentIds(saves)).toEqual([]);
+      expect(done).not.toHaveBeenCalled();
+      list.resolve(undefined);
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      expect(done).not.toHaveBeenCalled();
+      saves[0]?.settle("ok");
+      await waiting;
+      expect(cached(view)).toEqual({ projectId: P_ALPHA });
+    });
+
+    it("tracks the raw Project landing before membership context resolves", async () => {
+      const context = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock.mockReturnValueOnce(context.promise);
+      const view = renderShell({ path: membersPath(P_ALPHA) });
+      const saves = deferSaves();
+      await waitFor(() => {
+        expect(view.router.state.location.pathname).toBe(membersPath(P_ALPHA));
+        expect(screen.getByTestId("app-shell")).toBeInTheDocument();
+      });
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalled();
+      });
+      expect(done).not.toHaveBeenCalled();
+      expect(sentIds(saves)).toEqual([]);
+      context.resolve(meContext("owner"));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      saves[0]?.settle("ok");
+      await waiting;
+    });
+
+    it.each(["failed", "absent"] as const)(
+      "releases the landing after %s validation without a save",
+      async (outcome) => {
+        const list = Promise.withResolvers<undefined>();
+        const view = renderShell({
+          path: membersPath(P_ALPHA),
+          listGate: list.promise,
+          projects: [],
+        });
+        const saves = deferSaves();
+        await routeCommitted(P_ALPHA);
+        const waiting = waitForLastProjectSaves(
+          view.queryClient,
+          ORG_A,
+          new AbortController().signal,
+        );
+        if (outcome === "failed") list.reject(new Error("list failed"));
+        else list.resolve(undefined);
+        await waiting;
+        expect(sentIds(saves)).toEqual([]);
+      },
+    );
+
+    it("keeps a confirmed queued Project when the newer landing is unreadable", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await routeCommitted(P_BRAVO);
+      const list = Promise.withResolvers<{ projects: ProjectSummary[] }>();
+      fetchProjectListMock.mockReturnValueOnce(list.promise);
+      const refreshing = view.queryClient.resetQueries({
+        queryKey: projectQueryKeys.list(ORG_A),
+        exact: true,
+      });
+      await view.router.navigate(membersPath(P_CHARLIE));
+      await routeCommitted(P_CHARLIE);
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      );
+      list.resolve({ projects: [ALPHA, BRAVO] });
+      await refreshing;
+      saves[0]?.settle("ok");
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
+      });
+      saves[1]?.settle("ok");
+      await waiting;
+      expect(cached(view)).toEqual({ projectId: P_BRAVO });
+    });
+
+    it("keeps the workspace barrier pending until the latest queued landing is saved", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await view.router.navigate(membersPath(P_CHARLIE));
+      await routeCommitted(P_CHARLIE);
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      saves[0]?.settle("ok");
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA, P_CHARLIE]);
+      });
+      expect(done).not.toHaveBeenCalled();
+      saves[1]?.settle("ok");
+      await waiting;
+      expect(cached(view)).toEqual({ projectId: P_CHARLIE });
+      expect(done).toHaveBeenCalledTimes(1);
+    });
 
     it("holds the next save until the one in flight settles, and the cache ends on the newest", async () => {
       // Nothing remembered yet, so only a save can put a Project in the cache.
@@ -1181,12 +1322,11 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/notification-settings",
       "shell-nav-/organizations/:organizationId/audit-log",
     ]);
-    // Only the overview stays top-level, above every group; the monitors belong to the Project.
     const topLevel = within(nav)
       .getAllByRole("link")
       .filter((link) => link.closest("[data-scope]") === null)
       .map((link) => link.getAttribute("data-testid"));
-    expect(topLevel).toEqual(["shell-nav-/workspace"]);
+    expect(topLevel).toEqual([]);
     expect(scoped("personal")).toEqual([
       "shell-nav-/notifications",
       "shell-nav-/settings",

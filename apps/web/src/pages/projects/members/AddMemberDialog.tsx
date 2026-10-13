@@ -106,22 +106,6 @@ export function AddMemberDialog({
     placeholderData: keepPreviousData,
   });
 
-  // A refreshed list can show a selected person as already in the Project
-  // (someone else added them). Their row disables, so drop the id here or it
-  // would hold a slot under the cap that the user cannot free.
-  const [reconciled, setReconciled] = useState(candidates.data);
-  if (candidates.data !== reconciled) {
-    setReconciled(candidates.data);
-    const joined = new Set(
-      (candidates.data?.candidates ?? [])
-        .filter((candidate) => candidate.projectRole !== null)
-        .map((candidate) => candidate.userId),
-    );
-    if (selected.some((id) => joined.has(id))) {
-      setSelected(selected.filter((id) => !joined.has(id)));
-    }
-  }
-
   useEffect(() => {
     searchInput.current?.focus();
     const fallback = fallbackFocus.current;
@@ -352,7 +336,6 @@ export function AddMemberDialog({
               </p>
             ) : (
               rows.map((candidate) => {
-                const inProject = candidate.projectRole !== null;
                 const noteId = `${hintId}-note-${candidate.userId}`;
                 const capped = full && !selected.includes(candidate.userId);
                 return (
@@ -365,10 +348,8 @@ export function AddMemberDialog({
                       data-testid="add-member-checkbox"
                       type="checkbox"
                       className="h-4 w-4 shrink-0 accent-primary"
-                      checked={
-                        !inProject && selected.includes(candidate.userId)
-                      }
-                      disabled={inProject || capped}
+                      checked={selected.includes(candidate.userId)}
+                      disabled={capped}
                       aria-describedby={
                         capped ? `${noteId} ${hintId}-limit` : noteId
                       }
@@ -385,11 +366,7 @@ export function AddMemberDialog({
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span
                         data-testid="add-member-name"
-                        className={
-                          inProject
-                            ? "break-words text-foreground-secondary"
-                            : "font-medium break-words"
-                        }
+                        className="font-medium break-words"
                       >
                         {candidate.name}
                       </span>
@@ -402,9 +379,7 @@ export function AddMemberDialog({
                       data-testid="add-member-note"
                       className="shrink-0 text-xs text-foreground-secondary"
                     >
-                      {candidate.projectRole === null
-                        ? `องค์กร · ${ROLE_LABELS[candidate.organizationRole] ?? candidate.organizationRole}`
-                        : `อยู่ในโปรเจกต์แล้ว · ${PROJECT_ROLE_LABELS[candidate.projectRole]}`}
+                      {`องค์กร · ${ROLE_LABELS[candidate.organizationRole] ?? candidate.organizationRole}`}
                     </span>
                   </label>
                 );

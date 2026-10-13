@@ -30,7 +30,6 @@ import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
-  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import {
   fetchProjectDetail,
@@ -47,6 +46,8 @@ import {
 } from "../api/notifications";
 import {
   peekStagedQueryClient,
+  retireContextPublication,
+  publishActiveQueryClient,
   publishTenantScope,
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
@@ -54,6 +55,7 @@ import {
 import { AuditLogPage } from "../../pages/audit-log/AuditLogPage";
 import { detail } from "../../pages/monitors/detail-test-support";
 import { TenantProvider } from "../tenant/TenantProvider";
+import { trackLastProjectSave } from "../lastProjectSave";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   auditLogEventLoader,
@@ -498,68 +500,322 @@ describe("workspaceLoader", () => {
     });
   }
 
-  it("seeds the Project list, the last Project and the remembered Project's monitors", async () => {
+  it.each([
+    {
+      selection: "latest Project",
+      cachedProjectId: PROJECT_FIRST,
+      serverProjectId: PROJECT_LAST,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
+    },
+    {
+      selection: "first server fallback",
+      cachedProjectId: PROJECT_LAST,
+      serverProjectId: PROJECT_FIRST,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    },
+    {
+      selection: "no readable Project",
+      cachedProjectId: PROJECT_LAST,
+      serverProjectId: null,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects",
+    },
+  ])(
+    "regression redirects workspace to $selection from fresh last-project instead of a cached hint",
+    async ({ cachedProjectId, serverProjectId, destination }) => {
+      signedInMember();
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      client.setQueryData(projectQueryKeys.last(organizationId), {
+        projectId: cachedProjectId,
+      });
+      client.setQueryData(projectQueryKeys.list(organizationId), {
+        projects: [summary(cachedProjectId, "Cached")],
+      });
+      fetchLastProjectMock.mockResolvedValue({ projectId: serverProjectId });
+      fetchProjectListMock.mockResolvedValue({ projects: [] });
+      fetchMonitorListMock.mockResolvedValue(overviewList);
+      renderAt([protectedWorkspace], "/workspace");
+
+      expect(await screen.findByTestId("location")).toHaveTextContent(
+        destination,
+      );
+      expect(screen.getByTestId("location").textContent).toBe(destination);
+      expect(screen.queryByTestId("protected-area")).toBeNull();
+      expect(fetchLastProjectMock).toHaveBeenCalledExactlyOnceWith(
+        organizationId,
+        expect.any(AbortSignal),
+      );
+    },
+  );
+
+  it("redirects without fetching the Project list or monitors", async () => {
     signedInMember();
-    fetchProjectListMock.mockResolvedValue({
-      projects: [
-        summary(PROJECT_FIRST, "Alpha"),
-        summary(PROJECT_LAST, "Bravo"),
-      ],
-    });
     fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
-    fetchMonitorListMock.mockResolvedValue(overviewList);
     renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
-      organizationId,
-      PROJECT_LAST,
-      OVERVIEW_LIST_PARAMS,
+    expect((await screen.findByTestId("location")).textContent).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
     );
-    const client = peekStagedQueryClient()?.client;
-    expect(
-      client?.getQueryData(projectQueryKeys.list(organizationId)),
-    ).toBeDefined();
-    expect(client?.getQueryData(projectQueryKeys.last(organizationId))).toEqual(
-      { projectId: PROJECT_LAST },
-    );
-    expect(
-      client?.getQueryData(
-        monitorQueryKeys.list(
-          organizationId,
-          PROJECT_LAST,
-          OVERVIEW_LIST_PARAMS,
-        ),
-      ),
-    ).toEqual(overviewList);
-  });
-
-  it("falls to the first Project when the remembered one is no longer readable", async () => {
-    signedInMember();
-    fetchProjectListMock.mockResolvedValue({
-      projects: [summary(PROJECT_FIRST, "Alpha")],
-    });
-    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
-    fetchMonitorListMock.mockResolvedValue(overviewList);
-    renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
-      organizationId,
-      PROJECT_FIRST,
-      OVERVIEW_LIST_PARAMS,
-    );
-  });
-
-  it("requests no monitors when the caller has no readable Project", async () => {
-    signedInMember();
-    fetchProjectListMock.mockResolvedValue({ projects: [] });
-    fetchLastProjectMock.mockResolvedValue({ projectId: null });
-    renderAt([protectedWorkspace], "/workspace");
-
-    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
+    expect(fetchProjectListMock).not.toHaveBeenCalled();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
+
+  it("waits for a pending landing save before sending the fresh workspace GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const save = Promise.withResolvers<undefined>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_FIRST });
+    save.resolve(undefined);
+    const response = await loading;
+    expect((response as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    );
+  });
+
+  it("aborts while a landing save is pending without sending a GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const save = Promise.withResolvers<undefined>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    const controller = new AbortController();
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace", {
+        signal: controller.signal,
+      }),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    controller.abort();
+    expect(await loading).toBeNull();
+    expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    save.resolve(undefined);
+  });
+
+  it.each(["retire", "identity"] as const)(
+    "does not send the workspace GET after %s during a landing save",
+    async (change) => {
+      signedInMember();
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      const save = Promise.withResolvers<undefined>();
+      trackLastProjectSave(client, organizationId, save.promise);
+      const loading = workspaceLoader({
+        request: new Request("http://localhost/workspace"),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await vi.waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+      });
+      if (change === "retire") retireContextPublication(client);
+      else
+        publishActiveQueryClient(
+          "other-user",
+          resolveQueryClientForIdentity("other-user"),
+        );
+      save.resolve(undefined);
+      expect(await loading).toBeNull();
+      expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reads fresh server selection after a failed save instead of joining an older GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const older = Promise.withResolvers<{ projectId: string }>();
+    fetchLastProjectMock.mockReturnValueOnce(older.promise);
+    const previousRead = client
+      .query({
+        queryKey: projectQueryKeys.last(organizationId),
+        queryFn: () => fetchLastProjectMock(organizationId),
+      })
+      .catch(() => undefined);
+    const save = Promise.withResolvers<undefined>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_FIRST });
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchLastProjectMock).toHaveBeenCalledTimes(1);
+    save.reject(new Error("save failed"));
+    const response = await loading;
+    expect((response as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    );
+    expect(fetchLastProjectMock).toHaveBeenCalledTimes(2);
+    older.resolve({ projectId: PROJECT_LAST });
+    await previousRead;
+    expect(client.getQueryData(projectQueryKeys.last(organizationId))).toEqual({
+      projectId: PROJECT_FIRST,
+    });
+  });
+
+  it.each(["pending", "settled"] as const)(
+    "re-reads when a landing registered during the GET is %s",
+    async (phase) => {
+      signedInMember();
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      const older = Promise.withResolvers<{ projectId: string }>();
+      fetchLastProjectMock
+        .mockReturnValueOnce(older.promise)
+        .mockResolvedValue({ projectId: PROJECT_FIRST });
+      const loading = workspaceLoader({
+        request: new Request("http://localhost/workspace"),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await vi.waitFor(() => {
+        expect(fetchLastProjectMock).toHaveBeenCalledTimes(1);
+      });
+      const landing = Promise.withResolvers<undefined>();
+      trackLastProjectSave(client, organizationId, landing.promise);
+      if (phase === "settled") {
+        landing.resolve(undefined);
+        await landing.promise;
+      }
+      older.resolve({ projectId: PROJECT_LAST });
+      landing.resolve(undefined);
+      const response = await loading;
+      expect((response as Response).headers.get("Location")).toBe(
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+      );
+      expect(fetchLastProjectMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("does not redirect to an older Project after a landing save cancels its read", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const pending = Promise.withResolvers<{ projectId: string }>();
+    fetchLastProjectMock.mockReturnValue(pending.promise);
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchLastProjectMock).toHaveBeenCalledTimes(1);
+    });
+    const key = projectQueryKeys.last(organizationId);
+    await client.cancelQueries({ queryKey: key });
+    client.setQueryData(key, { projectId: PROJECT_FIRST });
+    await client.invalidateQueries({ queryKey: key });
+    pending.resolve({ projectId: PROJECT_LAST });
+    expect(await loading).toBeNull();
+    expect(client.getQueryData(key)).toEqual({ projectId: PROJECT_FIRST });
+  });
+
+  it("keeps the workspace fallback when last-project fails", async () => {
+    signedInMember();
+    fetchLastProjectMock.mockRejectedValue(new Error("api down"));
+    renderAt([protectedWorkspace], "/workspace");
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
+  });
+
+  it.each(["abort", "retire", "identity"] as const)(
+    "does not redirect after %s while last-project is pending",
+    async (change) => {
+      signedInMember();
+      const controller = new AbortController();
+      let finish!: (value: { projectId: string }) => void;
+      let started!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      fetchLastProjectMock.mockImplementation(() => {
+        started();
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      });
+      const result = workspaceLoader({
+        request: new Request("http://localhost/workspace", {
+          signal: controller.signal,
+        }),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await pending;
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      if (change === "abort") controller.abort();
+      if (change === "retire") retireContextPublication(client);
+      if (change === "identity") {
+        const otherClient = resolveQueryClientForIdentity("other-user");
+        publishActiveQueryClient("other-user", otherClient);
+      }
+      finish({ projectId: PROJECT_LAST });
+      expect(await result).toBeNull();
+    },
+  );
+
+  it.each(["abort", "retire", "identity"] as const)(
+    "stops after %s while membership resolution is pending",
+    async (change) => {
+      signedInMember();
+      const resolution = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock.mockReturnValue(resolution.promise);
+      const controller = new AbortController();
+      const result = workspaceLoader({
+        request: new Request("http://localhost/workspace", {
+          signal: controller.signal,
+        }),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await vi.waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+      });
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      if (change === "abort") controller.abort();
+      if (change === "retire") retireContextPublication(client);
+      if (change === "identity") {
+        const otherClient = resolveQueryClientForIdentity("other-user");
+        publishActiveQueryClient("other-user", otherClient);
+      }
+      resolution.resolve({
+        ...meContext,
+        organizations: orgs,
+        lastActiveTenantId: organizationId,
+      });
+      expect(await result).toBeNull();
+      expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not prefetch a tenant without server-confirmed selection", async () => {
     sessionState.data = { user: VERIFIED };
@@ -1861,6 +2117,7 @@ describe("verified bootstrap barrier", () => {
       page: { limit: 50, offset: 0, total: 0 },
       dataAsOf: "2026-09-30T07:32:05.000Z",
     });
+    fetchLastProjectMock.mockResolvedValue({ projectId: null });
     fetchNotificationsMock.mockResolvedValue({
       organizationId,
       items: [],
@@ -1883,7 +2140,10 @@ describe("verified bootstrap barrier", () => {
       ],
       lastActiveTenantId: organizationId,
     });
-    await loading;
+    const [workspaceResult] = await loading;
+    expect((workspaceResult as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects",
+    );
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
     expect(fetchNotificationsMock).toHaveBeenCalledWith(organizationId);

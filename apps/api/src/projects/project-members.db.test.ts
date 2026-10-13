@@ -779,7 +779,7 @@ describe("member candidates", () => {
       .candidates;
   };
 
-  it("returns every matching Organization member with their Project role, by name or email, ignoring case", async () => {
+  it("returns eligible Organization members by name or email, ignoring case", async () => {
     const projectId = await projectWith(org, [
       [org.users.viewer, "admin"],
       [org.users.auditor, "member"],
@@ -791,30 +791,145 @@ describe("member candidates", () => {
           [userId],
         )
       ).rows[0]?.email ?? "";
-    const email = await emailOf(org.users.viewer);
+    const email = await emailOf(org.users.admin);
     const byEmail = await candidates(
       projectId,
       `?q=${encodeURIComponent(email.toUpperCase())}`,
     );
     expect(byEmail).toHaveLength(1);
     expect(byEmail[0]).toMatchObject({
-      userId: org.users.viewer,
-      projectRole: "admin",
-      organizationRole: "viewer",
+      userId: org.users.admin,
+      organizationRole: "admin",
     });
     const all = await candidates(projectId, `?q=pmember-a-`);
-    expect(
-      Object.fromEntries(
-        all.map((candidate) => [candidate.userId, candidate.projectRole]),
-      ),
-    ).toEqual({
-      [org.users.owner]: null,
-      [org.users.admin]: null,
-      [org.users.viewer]: "admin",
-      [org.users.auditor]: "member",
-    });
+    expect(all.map((candidate) => candidate.userId).sort()).toEqual(
+      [org.users.owner, org.users.admin].sort(),
+    );
     const none = await candidates(projectId, "?q=zzz-no-match-zzz");
     expect(none).toEqual([]);
+  });
+
+  it.each(["empty", "name", "email"] as const)(
+    "regression excludes existing Project members from %s candidate searches",
+    async (search) => {
+      const isolated = await ctx.createOrganization(
+        `pmember-exclude-${search}`,
+      );
+      const projectId = await projectWith(isolated, [
+        [isolated.users.viewer, "admin"],
+        [isolated.users.auditor, "member"],
+      ]);
+      const email =
+        (
+          await ctx.owner.sql.query<{ email: string }>(
+            'select email from "user" where id = $1',
+            [isolated.users.viewer],
+          )
+        ).rows[0]?.email ?? "";
+      expect(email).not.toBe("");
+      const query = {
+        empty: "",
+        name: `?q=${encodeURIComponent(`PMEMBER-EXCLUDE-${search.toUpperCase()}`)}`,
+        email: `?q=${encodeURIComponent(email.toUpperCase())}`,
+      }[search];
+      const response = await ctx.call(
+        isolated.users.owner,
+        "GET",
+        `${base(isolated, projectId)}/member-candidates${query}`,
+      );
+      expect(response.status).toBe(200);
+      const list = projectMemberCandidatesResponseSchema.parse(
+        response.json,
+      ).candidates;
+      expect(list.map((candidate) => candidate.userId).sort()).toEqual(
+        search === "email"
+          ? []
+          : [isolated.users.owner, isolated.users.admin].sort(),
+      );
+    },
+  );
+
+  it("regression excludes more than 50 existing members before applying the candidate limit", async () => {
+    const isolated = await ctx.createOrganization("pmember-limit-exclude");
+    const members: [string, Role][] = Object.values(isolated.users).map(
+      (userId) => [userId, "member"],
+    );
+    for (let index = 0; index < 51; index += 1) {
+      const userId = await ctx.createUser(
+        `aaa-existing-${String(index).padStart(2, "0")}`,
+      );
+      await ctx.owner.sql.query(
+        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'viewer')",
+        [crypto.randomUUID(), isolated.id, userId],
+      );
+      members.push([userId, "member"]);
+    }
+    const eligible = await ctx.createUser("zzz-eligible-candidate");
+    await ctx.owner.sql.query(
+      "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'auditor')",
+      [crypto.randomUUID(), isolated.id, eligible],
+    );
+    const email =
+      (
+        await ctx.owner.sql.query<{ email: string }>(
+          'select email from "user" where id = $1',
+          [eligible],
+        )
+      ).rows[0]?.email ?? "";
+    expect(email).not.toBe("");
+    const projectId = await projectWith(isolated, members);
+    const response = await ctx.call(
+      isolated.users.owner,
+      "GET",
+      `${base(isolated, projectId)}/member-candidates`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.json).toEqual({
+      candidates: [
+        {
+          userId: eligible,
+          name: "zzz-eligible-candidate",
+          email,
+          organizationRole: "auditor",
+        },
+      ],
+    });
+  });
+
+  it("regression keeps POST idempotent after an added user leaves the candidate list", async () => {
+    const isolated = await ctx.createOrganization("pmember-candidate-retry");
+    const projectId = await projectWith(isolated, []);
+    const first = await add(isolated, isolated.users.owner, projectId, {
+      userIds: [isolated.users.viewer],
+      role: "admin",
+    });
+    expect(first.status).toBe(200);
+    expect(
+      addProjectMembersResponseSchema.parse(first.json).addedUserIds,
+    ).toEqual([isolated.users.viewer]);
+    const again = await add(isolated, isolated.users.owner, projectId, {
+      userIds: [isolated.users.viewer],
+      role: "member",
+    });
+    expect(again.status).toBe(200);
+    expect(
+      addProjectMembersResponseSchema.parse(again.json).addedUserIds,
+    ).toEqual([]);
+    expect(await rolesOf(projectId)).toEqual({
+      [isolated.users.viewer]: "admin",
+    });
+    expect(
+      (await memberEvents(isolated.id, projectId)).map(
+        (event) => event.target_id,
+      ),
+    ).toEqual([isolated.users.viewer]);
+    const response = await ctx.call(
+      isolated.users.owner,
+      "GET",
+      `${base(isolated, projectId)}/member-candidates?q=pmember-candidate-retry-viewer`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.json).toEqual({ candidates: [] });
   });
 
   it("treats % and _ in q literally and rejects a q over 100 characters", async () => {

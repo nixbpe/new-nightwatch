@@ -79,7 +79,9 @@ async function signIn(page: Page, person: Person) {
   await page.getByTestId("login-email").fill(person.email);
   await page.getByTestId("login-password").fill(person.password);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function startTarget(

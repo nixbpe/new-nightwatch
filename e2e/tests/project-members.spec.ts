@@ -38,7 +38,9 @@ async function signIn(page: Page, person: Person) {
   await page.getByTestId("login-email").fill(person.email);
   await page.getByTestId("login-password").fill(person.password);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function projectRoles() {
@@ -103,12 +105,9 @@ test.describe("owner manages members", () => {
     await page.getByTestId("project-members-add").click();
     const dialog = page.getByTestId("add-member-dialog");
     await expect(dialog.getByTestId("add-member-search")).toBeFocused();
-    // The owner is already in the Project: listed, but not selectable.
     await expect(
-      dialog
-        .getByTestId(`add-member-row-${people.owner.userId}`)
-        .getByTestId("add-member-checkbox"),
-    ).toBeDisabled();
+      dialog.getByTestId(`add-member-row-${people.owner.userId}`),
+    ).toHaveCount(0);
     for (const person of [people.viewer, people.auditor]) {
       await dialog.getByTestId("add-member-search").fill(person.email);
       const candidate = dialog.getByTestId(`add-member-row-${person.userId}`);

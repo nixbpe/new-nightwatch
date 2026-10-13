@@ -15,9 +15,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web side of F-010: the sidebar's Project switcher. An owner switches Project
-// with the keyboard from a Project page and from the workspace, the server
-// remembers the choice, and a viewer sees only the Projects they joined.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -38,7 +35,9 @@ async function signIn(page: Page, person: Person) {
   await page.getByTestId("login-email").fill(person.email);
   await page.getByTestId("login-password").fill(person.password);
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/workspace/);
+  await page.waitForURL(
+    /\/(?:workspace$|organizations\/[^/]+\/projects(?:\/|$))/,
+  );
 }
 
 async function createProject(name: string, slug: string): Promise<string> {
@@ -88,6 +87,9 @@ test("an owner switches Project with the keyboard and the server remembers it", 
   page,
 }) => {
   await signIn(page, people.owner);
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${alpha}/monitors`,
+  );
   await page.goto(membersUrl(alpha));
   const button = page.getByTestId("shell-project-switch");
   await expect(button).toContainText(`Alpha ${run}`);
@@ -113,7 +115,7 @@ test("an owner switches Project with the keyboard and the server remembers it", 
   await expect(page.getByTestId(`shell-project-option-${bravo}`)).toBeFocused();
   await page.keyboard.press("Enter");
 
-  await expect(page).toHaveURL(new RegExp(`${membersUrl(bravo)}$`));
+  await expect(page).toHaveURL(membersUrl(bravo));
   await expect(button).toContainText(`Bravo ${run}`);
   await expect(button).toBeFocused();
   await shot(page, "project-switcher-closed");
@@ -131,10 +133,17 @@ test("an owner switches Project with the keyboard and the server remembers it", 
     .toBe(bravo);
 });
 
-test("outside a Project the sidebar opens the remembered Project and its pages", async ({
+test("workspace and root open the remembered Project and its sidebar pages", async ({
   page,
 }) => {
   await signIn(page, people.owner);
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${bravo}/monitors`,
+  );
+  await page.goto("/");
+  await expect(page).toHaveURL(
+    `/organizations/${org}/projects/${bravo}/monitors`,
+  );
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Bravo ${run}`,
   );
@@ -143,7 +152,7 @@ test("outside a Project the sidebar opens the remembered Project and its pages",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     )
     .click();
-  await expect(page).toHaveURL(new RegExp(`${membersUrl(bravo)}$`));
+  await expect(page).toHaveURL(membersUrl(bravo));
 });
 
 test("the create link opens the create dialog on the projects page", async ({
@@ -154,7 +163,7 @@ test("the create link opens the create dialog on the projects page", async ({
   await page.getByTestId("shell-project-create").click();
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
   // The parameter is dropped once the dialog is open, so a reload does not reopen it.
-  await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+  await expect(page).toHaveURL(`/organizations/${org}/projects`);
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("project-create-dialog")).toHaveCount(0);
@@ -197,7 +206,7 @@ test("opening a Project page by its link saves it as the last Project", async ({
       return (resolved.body as { projectId: string }).projectId;
     })
     .toBe(alpha);
-  await page.getByTestId("shell-nav-/workspace").click();
+  await page.goto("/workspace");
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Alpha ${run}`,
   );

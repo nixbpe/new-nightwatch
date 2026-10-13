@@ -156,6 +156,7 @@ beforeEach(() => {
   candidatesMock.mockImplementation((_org, _project, q) => {
     const needle = q.toLowerCase();
     const candidates: ProjectMemberCandidate[] = orgPeople
+      .filter((person) => !roster.some((item) => item.userId === person.userId))
       .filter(
         (person) =>
           needle === "" ||
@@ -167,9 +168,6 @@ beforeEach(() => {
         name: person.name,
         email: `${person.userId}@example.test`,
         organizationRole: person.organizationRole,
-        projectRole:
-          roster.find((item) => item.userId === person.userId)?.projectRole ??
-          null,
       }));
     return Promise.resolve({ candidates });
   });
@@ -683,7 +681,7 @@ describe("add member dialog", () => {
   const candidate = (dialog: HTMLElement, userId: string) =>
     within(within(dialog).getByTestId(`add-member-row-${userId}`));
 
-  it("lists organization members only, disables those already in the project (AC-01)", async () => {
+  it("lists only organization members who have not joined the project", async () => {
     const user = userEvent.setup();
     renderPage();
     const dialog = await openDialog(user);
@@ -693,14 +691,9 @@ describe("add member dialog", () => {
         candidate(dialog, id).getByTestId("add-member-checkbox"),
       ).toBeEnabled();
     }
-    const inProject = candidate(dialog, "thanakorn");
-    expect(inProject.getByTestId("add-member-checkbox")).toBeDisabled();
-    expect(inProject.getByTestId("add-member-note")).toHaveTextContent(
-      "อยู่ในโปรเจกต์แล้ว · สมาชิก",
-    );
-    expect(
-      candidate(dialog, "siriporn").getByTestId("add-member-note"),
-    ).toHaveTextContent("อยู่ในโปรเจกต์แล้ว · ผู้ดูแล");
+    for (const id of [ME, "thanakorn", "siriporn"]) {
+      expect(within(dialog).queryByTestId(`add-member-row-${id}`)).toBeNull();
+    }
     expect(
       candidate(dialog, "pakorn").getByTestId("add-member-note"),
     ).toHaveTextContent("องค์กร · ผู้ตรวจสอบ");
@@ -793,7 +786,7 @@ describe("add member dialog", () => {
     expect(screen.queryByTestId("project-members-notice-saved")).toBeNull();
   });
 
-  it("drops a selected person whom a refreshed list shows as already in the project", async () => {
+  it("keeps selections when another administrator adds a selected person", async () => {
     const user = userEvent.setup();
     renderPage();
     const dialog = await openDialog(user);
@@ -805,22 +798,23 @@ describe("add member dialog", () => {
     expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
       "2",
     );
-    // Another administrator adds kitti while the dialog is open.
     roster = [...roster, member("kitti", "member")];
+    addMock.mockResolvedValue({ members: roster, addedUserIds: ["napa"] });
     await user.type(within(dialog).getByTestId("add-member-search"), "kitti");
     await waitFor(() => {
-      expect(
-        candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
-      ).toBeDisabled();
+      expect(within(dialog).getByTestId("add-member-no-match")).toBeVisible();
     });
     expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
-      "1",
+      "2",
     );
     await user.click(within(dialog).getByTestId("add-member-submit"));
-    await waitFor(() => {
-      expect(addMock).toHaveBeenCalled();
+    expect(
+      await screen.findByTestId("project-members-notice-saved"),
+    ).toHaveTextContent("1 คนอยู่ในโปรเจกต์อยู่แล้ว");
+    expect(addMock).toHaveBeenCalledWith(A, P, {
+      userIds: ["kitti", "napa"],
+      role: "member",
     });
-    expect(addMock.mock.calls[0]?.[2]).toMatchObject({ userIds: ["napa"] });
   });
 
   it("stops selecting at the API's limit of 100 people per request", async () => {

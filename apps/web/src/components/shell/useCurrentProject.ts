@@ -18,6 +18,8 @@ export type CurrentProject = {
   /** Every Project the user can read, in the list's order; undefined until loaded. */
   projects: ProjectSummary[] | undefined;
   status: "loading" | "error" | "ready";
+  rawProjectRoute: ReturnType<typeof getProjectRoute>;
+  validation: "pending" | "rejected" | "readable";
   /** The Project a Project route names, whether or not it is in the list. */
   routeProjectId: string | null;
   /** The Project in the URL, else the server's last or first readable one; null when there is none. */
@@ -34,7 +36,7 @@ export type CurrentProject = {
  */
 export function useCurrentProject(): CurrentProject {
   const { pathname } = useLocation();
-  const { activeOrg, me } = useTenant();
+  const { activeOrg, me, mePending, meError } = useTenant();
   // A bookmarked Project of another Organization the user belongs to is acted on in that Organization, as the
   // breadcrumb roots at the URL's. Outside Project routes, and for an Organization the user is not in, the active one.
   const projectRoute = getProjectRoute(pathname);
@@ -101,6 +103,17 @@ export function useCurrentProject(): CurrentProject {
     projects,
     routeProjectId,
     status: resolving,
+    rawProjectRoute: projectRoute,
+    validation:
+      mePending ||
+      (!denied && projects === undefined && (list.isPending || list.isFetching))
+        ? "pending"
+        : meError !== null ||
+            denied ||
+            projectRoute === null ||
+            project === null
+          ? "rejected"
+          : "readable",
     projectId,
     project,
     refetch: () => {
