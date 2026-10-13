@@ -115,7 +115,7 @@ test("an owner switches Project with the keyboard and the server remembers it", 
   await expect(page.getByTestId(`shell-project-option-${bravo}`)).toBeFocused();
   await page.keyboard.press("Enter");
 
-  await expect(page).toHaveURL(new RegExp(`${membersUrl(bravo)}$`));
+  await expect(page).toHaveURL(membersUrl(bravo));
   await expect(button).toContainText(`Bravo ${run}`);
   await expect(button).toBeFocused();
   await shot(page, "project-switcher-closed");
@@ -152,7 +152,7 @@ test("workspace and root open the remembered Project and its sidebar pages", asy
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     )
     .click();
-  await expect(page).toHaveURL(new RegExp(`${membersUrl(bravo)}$`));
+  await expect(page).toHaveURL(membersUrl(bravo));
 });
 
 test("the create link opens the create dialog on the projects page", async ({
@@ -163,7 +163,7 @@ test("the create link opens the create dialog on the projects page", async ({
   await page.getByTestId("shell-project-create").click();
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
   // The parameter is dropped once the dialog is open, so a reload does not reopen it.
-  await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+  await expect(page).toHaveURL(`/organizations/${org}/projects`);
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("project-create-dialog")).toHaveCount(0);

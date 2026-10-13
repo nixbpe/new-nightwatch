@@ -4,7 +4,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 
 ## Layout
 
-```
+```text
 ┌──────────┬──────────────────────────────────────────────┐
 │ Org      │ ⊟  Org › Project › Page  [ค้นหาทั้งหมด… ⌘K] 🔔 │  header
 │ switcher ├──────────────────────────────────────────────┤
