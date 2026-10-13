@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getBreadcrumbTrail } from "./breadcrumb";
 import {
   getNavDestinations,
+  getAllNavLeaves,
   getRouteOrganizationId,
   getProjectRoute,
   mostSpecificLeaf,
@@ -121,6 +122,17 @@ describe("projectSwitchDestination (AC-04)", () => {
 
 describe("Project scope in the navigation definition", () => {
   const context = { organizationId: ORG, role: "owner" } as const;
+
+  it("omits the workspace redirect from sidebar leaves and palette destinations", () => {
+    expect(getAllNavLeaves().some((leaf) => leaf.path === "/workspace")).toBe(
+      false,
+    );
+    expect(
+      getNavDestinations({ ...context, projectId: P1 }).some(
+        (leaf) => leaf.path === "/workspace",
+      ),
+    ).toBe(false);
+  });
 
   it("resolves Project pages in the Project's own Organization, other pages in the active one", () => {
     const other = "99999999-9999-4999-8999-999999999999";

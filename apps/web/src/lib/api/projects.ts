@@ -181,8 +181,10 @@ export function removeProjectMember(
 
 export function fetchLastProject(
   organizationId: string,
+  signal?: AbortSignal,
 ): Promise<LastProjectResponse> {
   return request("/api/me/last-project", lastProjectResponseSchema, {
+    signal,
     query: { organizationId },
   });
 }

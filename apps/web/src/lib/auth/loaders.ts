@@ -164,7 +164,14 @@ export async function workspaceLoader({
     (item) => item.id === context.lastActiveTenantId,
   );
   if (organization === undefined) return null;
-  const last = await fetchLastProject(organization.id).catch(() => undefined);
+  const last = await queryClient
+    .query({
+      queryKey: projectQueryKeys.last(organization.id),
+      queryFn: ({ signal }) => fetchLastProject(organization.id, signal),
+      staleTime: 0,
+      retry: false,
+    })
+    .catch(() => undefined);
   if (!isCurrent() || last === undefined) return null;
   const destination =
     last.projectId === null

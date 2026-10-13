@@ -1181,12 +1181,11 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/notification-settings",
       "shell-nav-/organizations/:organizationId/audit-log",
     ]);
-    // Only the overview stays top-level, above every group; the monitors belong to the Project.
     const topLevel = within(nav)
       .getAllByRole("link")
       .filter((link) => link.closest("[data-scope]") === null)
       .map((link) => link.getAttribute("data-testid"));
-    expect(topLevel).toEqual(["shell-nav-/workspace"]);
+    expect(topLevel).toEqual([]);
     expect(scoped("personal")).toEqual([
       "shell-nav-/notifications",
       "shell-nav-/settings",

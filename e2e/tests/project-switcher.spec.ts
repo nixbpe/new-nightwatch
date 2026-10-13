@@ -206,7 +206,7 @@ test("opening a Project page by its link saves it as the last Project", async ({
       return (resolved.body as { projectId: string }).projectId;
     })
     .toBe(alpha);
-  await page.getByTestId("shell-nav-/workspace").click();
+  await page.goto("/workspace");
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Alpha ${run}`,
   );

@@ -403,10 +403,7 @@ describe("AppShell", () => {
 
     // A labelled section, not an accordion: no expandable control.
     const nav = screen.getByTestId("shell-navigation");
-    expect(within(nav).getByTestId("shell-nav-/workspace")).toHaveAttribute(
-      "href",
-      "/workspace",
-    );
+    expect(within(nav).queryByTestId("shell-nav-/workspace")).toBeNull();
     expect(within(nav).getByTestId("shell-nav-/notifications")).toHaveAttribute(
       "href",
       "/notifications",
@@ -526,7 +523,7 @@ describe("AppShell", () => {
         return element;
       }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("shell-nav-/workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-nav-/notifications")).toBeInTheDocument();
     expect(screen.getByTestId("render-error-message")).toHaveTextContent(
       "boom",
     );
@@ -689,7 +686,7 @@ describe("AppShell", () => {
 
     await user.keyboard("{Enter}");
     dialog = screen.getByTestId("shell-mobile-menu");
-    await user.click(within(dialog).getByTestId("shell-nav-/workspace"));
+    await user.click(within(dialog).getByTestId("shell-nav-/notifications"));
     await expectFocusRestored();
   });
 
@@ -1064,9 +1061,11 @@ describe("AppShell", () => {
       "aria-current",
       "page",
     );
-    expect(within(nav).getByTestId("shell-nav-/workspace")).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(
+      within(nav).getByTestId(
+        "shell-nav-/organizations/:organizationId/projects",
+      ),
+    ).not.toHaveAttribute("aria-current");
   });
 
   it("⌘K includes every owner destination and navigates from a filtered result", async () => {
@@ -1085,9 +1084,11 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(13);
+    ).toHaveLength(12);
+    expect(
+      within(dialog).queryByTestId("shell-command-option-/workspace"),
+    ).toBeNull();
     for (const path of [
-      "/workspace",
       MONITORS_A,
       `/organizations/${ORG_A}/projects/${PROJECT}/members`,
       "/notifications",
@@ -1117,7 +1118,7 @@ describe("AppShell", () => {
     ))
       expect(option).toHaveAttribute("role", "option");
     const selected = within(dialog).getByTestId(
-      "shell-command-option-/workspace",
+      `shell-command-option-${MONITORS_A}`,
     );
     expect(selected).toHaveAttribute("aria-selected", "true");
     expect(input).toHaveAttribute("aria-activedescendant", selected.id);

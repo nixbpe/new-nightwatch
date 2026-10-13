@@ -544,6 +544,7 @@ describe("workspaceLoader", () => {
       expect(screen.queryByTestId("protected-area")).toBeNull();
       expect(fetchLastProjectMock).toHaveBeenCalledExactlyOnceWith(
         organizationId,
+        expect.any(AbortSignal),
       );
     },
   );
@@ -557,6 +558,30 @@ describe("workspaceLoader", () => {
     );
     expect(fetchProjectListMock).not.toHaveBeenCalled();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect to an older Project after a landing save cancels its read", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const pending = Promise.withResolvers<{ projectId: string }>();
+    fetchLastProjectMock.mockReturnValue(pending.promise);
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchLastProjectMock).toHaveBeenCalledTimes(1);
+    });
+    const key = projectQueryKeys.last(organizationId);
+    await client.cancelQueries({ queryKey: key });
+    client.setQueryData(key, { projectId: PROJECT_FIRST });
+    await client.invalidateQueries({ queryKey: key });
+    pending.resolve({ projectId: PROJECT_LAST });
+    expect(await loading).toBeNull();
+    expect(client.getQueryData(key)).toEqual({ projectId: PROJECT_FIRST });
   });
 
   it("keeps the workspace fallback when last-project fails", async () => {

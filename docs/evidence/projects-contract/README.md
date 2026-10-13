@@ -2,7 +2,7 @@
 
 The user selected an eligible-only candidate list. Existing Project members are excluded before the API limit and do not appear in the add dialog. A concurrent addition remains an idempotent success.
 
-The workspace entry requests a fresh server selection. The selected Project opens its first real navigation leaf, currently monitors. No readable Project opens the Organization's Projects page. Overview and AWS pages remain outside this change.
+The workspace entry requests a fresh server selection through the shared last-Project query key. A landing save cancels an older pending read, preventing its redirect. The workspace entry is excluded from sidebar and command-palette destinations. The selected Project opens its first real navigation leaf, currently monitors. No readable Project opens the Organization's Projects page. Overview and AWS pages remain outside this change.
 
 ## Regression results
 
@@ -11,6 +11,8 @@ The workspace entry requests a fresh server selection. The selected Project open
 | Existing members excluded from empty, name and email searches; exclusion before limit; idempotent retry | 5 failed | 5 passed |
 | Fresh server selection overrides cached hints for remembered, fallback and absent Projects | 3 failed | 3 passed |
 | Browser member management, Project entry and Organization membership | Not run as this combined scope | 21 passed |
+| Late last-Project response after save cancellation | 1 failed | 1 passed |
+| Workspace entry omitted from sidebar and command palette | 1 failed | 1 passed |
 
 The failing tests precede the fix in commit `216ecec`.
 
@@ -22,5 +24,5 @@ Screenshots use a 1440 × 900 viewport and synthetic local fixtures. Fixture ide
 
 | Theme | Before | After |
 | --- | --- | --- |
-| Light | [Existing-member row](before-light.png) | [Eligible-only rows](after-light.png) |
-| Dark | [Existing-member row](before-dark.png) | [Eligible-only rows](after-dark.png) |
+| Light | [Existing-member row and workspace leaf](before-light.png) | [Eligible-only rows and real destinations](after-light.png) |
+| Dark | [Existing-member row and workspace leaf](before-dark.png) | [Eligible-only rows and real destinations](after-dark.png) |

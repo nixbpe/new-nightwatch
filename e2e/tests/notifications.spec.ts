@@ -969,7 +969,9 @@ test("deferred notification responses cannot cross confirmed organization or ide
     await expect
       .poll(() => page.evaluate(() => document.body.textContent))
       .not.toContain(deferredPrimaryActor);
-    await page.getByTestId("shell-nav-/workspace").click();
+    await page
+      .getByTestId("shell-nav-/organizations/:organizationId/projects")
+      .click();
     await expect(page).toHaveURL(
       `/organizations/${alternateIdentity.organizationId}/projects`,
     );
