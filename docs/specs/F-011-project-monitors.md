@@ -104,7 +104,7 @@ Drizzle: `projectId`, `monitors_project_fkey` และ `monitors_project_idx` �
 
 - รายการ (`AC-04`): `summary { up, down, unknown, paused, total, limit: 20 }` ของ Project ใน URL แต่ละแถวมี `responseP95Ms24h` เป็น nearest-rank p95 ของจุด response-times 24 ชม. ของมอนิเตอร์เดียวกัน (`null` เมื่อไม่มีข้อมูล) การเรียง `response_time` ใช้ p95 · 24 ชม. ก่อนแบ่งหน้า
 - `recent-events` ของ Project ไม่มีมอนิเตอร์ของ Project อื่น
-- Rate limit ของ test (REQ-04): key `{ userId, organizationId }` ใช้ร่วมกันทุก Project ขององค์กร (follow-up)
+- Rate limit ของ test (REQ-04, `consumeMonitorTestRateLimit`): window 60 วินาที, 10 ครั้งต่อผู้ใช้ต่อองค์กร และ 30 ครั้งต่อองค์กร key ไม่มี Project จึงใช้ร่วมกันทุก Project ขององค์กร (follow-up)
 - Logging (หลัก "Logging, audit and health"): `logSafeOrganizationPath` ใน `apps/api/src/app.ts` รู้จัก segment `projects/{id}` และบันทึก `/api/organizations/:organizationId/projects/:projectId/monitors/:monitorId/...` path ระดับองค์กรเดิมไม่ถูกมองเป็น route มอนิเตอร์อีก
 
 ## Worker และการแจ้งเตือน (`TS-002-T03`, `AC-05`)
@@ -125,17 +125,17 @@ Drizzle: `projectId`, `monitors_project_fkey` และ `monitors_project_idx` �
 
 Routes ใน `apps/web/src/router.tsx` ใต้ `/organizations/:organizationId/projects/:projectId/monitors`: รายการ (`monitorsOverviewLoader`), `/new`, `/:monitorId/edit`, `/:monitorId`, `/:monitorId/checks` route ระดับองค์กรเดิมลบแล้ว
 
-- Query keys (WEB-03) ใน `apps/web/src/lib/api/monitors.ts`: `monitorQueryKeys.project(orgId, projectId) = ["tenant", "monitors", orgId, projectId]` และ `list`, `recentEvents`, `detail` ต่อท้าย `all(orgId)` ครอบทุก Project ใช้ตอน invalidate ทั้งองค์กร
-- Loaders (WEB-04) ใน `apps/web/src/lib/auth/loaders.ts`: `monitorsOverviewLoader`, `monitorDetailLoader`, `monitorCreateLoader`, `monitorEditLoader` รับ `projectId` และ prefetch ด้วย key ของ Project `workspaceLoader` prefetch key ของ Project และรายการมอนิเตอร์ และไม่ขอมอนิเตอร์เมื่อไม่มี Project
+- Query keys (WEB-03) ใน `apps/web/src/lib/api/monitors.ts`: `monitorQueryKeys.project(orgId, projectId) = ["tenant", "monitors", orgId, projectId]` และ `list`, `recentEvents`, `detail` ต่อท้าย หลัง mutation สำเร็จ `DetailPage.tsx` และ `MonitorForm.tsx` invalidate `monitorQueryKeys.project(orgId, projectId)` `all(orgId)` ครอบทุก Project ขององค์กรและยังไม่มีผู้เรียกนอก test
+- Loaders (WEB-04) ใน `apps/web/src/lib/auth/loaders.ts`: `monitorsOverviewLoader`, `monitorDetailLoader`, `monitorCreateLoader`, `monitorEditLoader` รับ `projectId` และ prefetch ด้วย key ของ Project `workspaceLoader` (หลัง #108) อ่าน Project ล่าสุดจาก server แล้ว `replace` ไป `projectSwitchDestination("/workspace", ...)` ซึ่งเป็น leaf แรกของกลุ่ม Project (วันนี้คือรายการมอนิเตอร์) หรือหน้าโปรเจกต์ทั้งหมดเมื่อไม่มี Project `WorkspacePage` เหลือเป็น fallback เมื่อยังไม่มีปลายทางที่ยืนยัน และแสดงมอนิเตอร์ของ Project ปัจจุบันตาม `useCurrentProject`
 - สิทธิ์ (`useMonitorAccess`): อ่าน `projectQueryKeys.detail` เพื่อได้ `myRole` `roleTag` เป็น `โปรเจกต์ · ผู้ดูแล` หรือ `โปรเจกต์ · สมาชิก` และ `องค์กร · <role>` สำหรับ Owner/Admin ที่ไม่ได้อยู่ใน Project `projectGone` เมื่อ `PROJECT_NOT_FOUND` `failed` (Project lookup ล้มที่ไม่ใช่ 404 สำหรับผู้ที่สิทธิ์เขียนขึ้นกับมัน) แสดงสถานะ error พร้อม `retry` ไม่แสดงเป็น read-only หรือไม่มีสิทธิ์ (CMP-01) Owner/Admin ไม่รอ Project lookup
 - Nav (`nav-config.ts`): leaf `ตรวจสถานะบริการ` ในกลุ่ม `โปรเจกต์` (scope `project`) `count: "monitors"` คือ `summary.total` ของ Project ปัจจุบัน การสลับ Project จากหน้ารายละเอียด แก้ไข หรือประวัติการตรวจพาไปหน้ารายการของ Project ใหม่ (`projectSwitchDestination`)
 - ลิงก์ใน inbox ใช้ `subject.projectId` ลิงก์ในหน้าบันทึกกิจกรรมใช้ `target.project.projectId`
 
 หน้ารายการ `apps/web/src/pages/monitors/OverviewPage.tsx` ตาม artboard (`AC-04`):
 
-- `PageHeader`: eyebrow `// MONITORS`, scope row ชื่อ Project พร้อม tag `roleTag`, title `ตรวจสถานะบริการ`, status line สรุปจำนวนจาก `summary`
+- `PageHeader`: eyebrow `// monitors`, scope row ชื่อ Project พร้อม tag `roleTag` (ซ่อนเมื่อ denied เพื่อไม่เปิดเผยชื่อ Project), title `ตรวจสถานะบริการ`, บรรทัดสรุปจาก `summary` (`<n> มอนิเตอร์ · ล่ม <d>`)
 - ปุ่ม `เพิ่มมอนิเตอร์` เฉพาะ `canWrite` เมื่อ `summary.total >= summary.limit` ปุ่มปิดพร้อมข้อความ `โปรเจกต์นี้มีมอนิเตอร์ครบ 20 ตัวแล้ว ลบมอนิเตอร์เดิมก่อนจึงจะเพิ่มได้` (`aria-describedby`) ผู้ที่เขียนไม่ได้เห็น `สิทธิ์ของคุณ: ดูอย่างเดียว`
-- ปุ่มกรองตามสถานะ `aria-pressed` พร้อมจำนวนจาก `summary` ชื่อที่ screen reader อ่านรวมจำนวน การ์ดสรุป 4 ใบเดิมถูกเอาออกเพราะปุ่มกรองแสดงจำนวนแล้ว ข้อมูล SSL ยังอยู่ในมุมมองการ์ด
+- ปุ่มกรองตามสถานะใน `role="group" aria-label="สถานะ"` แต่ละปุ่ม `aria-pressed` และมีจำนวนจาก `summary` อยู่ในปุ่ม ชื่อที่ screen reader อ่านจึงเป็น `ใช้งานได้ 10` การ์ดสรุป 4 ใบเดิมถูกเอาออกเพราะปุ่มกรองแสดงจำนวนแล้ว ข้อมูล SSL ยังอยู่ในมุมมองการ์ด (`SslLabel` ใน `list/MonitorCards.tsx`)
 - ตาราง 5 คอลัมน์: มอนิเตอร์ (ชื่อและ URL แบบ monospace), สถานะ, เวลาตอบสนอง · p95 · 24 ชม., ความพร้อมใช้งาน · 24 ชม., ตรวจล่าสุด ค่าที่ไม่รู้แสดงเป็นข้อความ (CMP-01)
 - ท้ายตาราง `แสดง <a>–<b> จาก <n> · เฉพาะมอนิเตอร์ของ <Project>`
 - ป้ายสถานะ `up` เป็น `ใช้งานได้` ทั้งแอปตาม artboard (เดิม `ปกติ`)
@@ -157,6 +157,12 @@ Routes ใน `apps/web/src/router.tsx` ใต้ `/organizations/:organizationI
 - ผู้ใช้ยืนยันเมื่อ 2026-10-14 ว่าไม่มี environment ที่มีข้อมูลมอนิเตอร์จริง (`R-01` ของ `E-003` ปิด) การล้างด้วย `0026` กู้คืนจาก migration ไม่ได้ ถ้ามี environment ที่มีข้อมูลเกิดขึ้นก่อน deploy ต้องยืนยันใหม่
 - Deploy API, Worker และ `0026` พร้อมกัน หรือหยุด API และ Worker รุ่นเก่าก่อน migrate เพราะรุ่นเก่า insert `monitors` (ไม่มี `project_id`) และ intent `MONITOR_*` (ไม่มี `subject_project_id`) ไม่ได้
 - `bun run db:partitions` หลัง migrate ตามเดิม
+
+## Dependency contract สำหรับ feature ถัดไป
+
+- `F-012` (ภาพรวมของ Project): ใช้ `GET .../monitors` (`summary` และรายการ) กับ `GET .../monitors/recent-events` ของ Project ไม่เพิ่ม endpoint `useMonitorAccess(organizationId, projectId).canWrite` ตัดสินปุ่ม `เพิ่มมอนิเตอร์` ในสถานะว่าง (`F-012` `AC-06`) และ `projectGone` กับ `isMonitorNotFound` ใช้สถานะ Project หายแบบเดียวกับหน้ารายการ cache ใช้ `monitorQueryKeys.project(orgId, projectId)` ต่อท้ายด้วย key ของตนเอง leaf `overview` ต้องอยู่ก่อน `ตรวจสถานะบริการ` ในกลุ่ม Project ของ `nav-config.ts` เพื่อให้ `/workspace` และการสลับ Project จากหน้านอก Project ไปที่ภาพรวม (`projectSwitchDestination` ใช้ leaf แรก)
+- `F-016` (ภาพรวมรวมทุก Project): ไม่มี endpoint มอนิเตอร์ระดับองค์กรเหลืออยู่ ต้องกำหนด endpoint ใหม่ที่สรุปต่อ Project ใน Technical Spec ของ `F-016` โดยใช้ `monitor.read` ของแต่ละ Project หรือสิทธิ์ Owner/Admin ตาม `F-016` `AC-01`
+- `TS-003` (การเชื่อมต่อ AWS ของ Project): ตารางที่เป็นของ Project ใช้ `foreign key (project_id, tenant_id) references projects (id, tenant_id) on delete cascade` และ unique key ที่รวม `project_id` แบบเดียวกับ `monitors` และตรวจสิทธิ์ผ่าน `withProjectAccess` ด้วย action ใหม่ใน `PROJECT_PERMISSIONS`
 
 ## Tasks (`TS-002` สถานะหลัง #107)
 
@@ -187,7 +193,7 @@ Routes ใน `apps/web/src/router.tsx` ใต้ `/organizations/:organizationI
 
 Test เพิ่มที่ไม่ผูกกับ AC แต่บังคับตาม `docs/architecture.md` และ `docs/design-system.md`:
 
-- RLS (DB-04): test เดิมของ `0016` ยังผ่านที่ path ใหม่ (`read-membership.db.test.ts`, `monitor.db.test.ts`) ไม่มี policy ใหม่
+- RLS (DB-04): policy และ grants ของตารางมอนิเตอร์ไม่เปลี่ยน test เดิมใน `packages/db/tests/monitor.db.test.ts` ยังผ่าน; การถอนสิทธิ์ระหว่าง pre-check กับ transaction อ่าน (`read-membership.db.test.ts`: สมาชิกถูกนำออก, Owner ถูกลด role, Admin ที่ไม่มีสมาชิกภาพ Project ถูกลด role)
 - Project หายหลังโหลดหน้า (CMP-01): web test ของฟอร์ม, ประวัติการตรวจ, รายละเอียด, รายการ และ `/workspace` ใน `OverviewPage.test.tsx` "A Project that is gone after the list loaded", `WorkspacePage.test.tsx`, `MonitorForm*.test.tsx`
 - Project lookup ล้มไม่ถูกแสดงเป็นไม่มีสิทธิ์: `OverviewPage.test.tsx` "A failed Project lookup", `loaders.test.tsx`
 - Log redaction: `path-logging.test.ts` path ของ route มอนิเตอร์ใต้ Project ถูกบันทึกเป็น template ตรงตัว
@@ -203,7 +209,7 @@ Test เพิ่มที่ไม่ผูกกับ AC แต่บัง�
 | API: สร้างมอนิเตอร์ lock แถว Project ก่อนนับ                 | `projects ... for share` แล้ว advisory lock `monitors:<projectId>`                                                                                | write ของ Project เดียวกันไม่ต่อคิวกัน การลบ Project (`for update`) ยังรอ write ที่ค้างอยู่                           |
 | API: log เก็บ id เป็น `:id`                                   | `:projectId` และ `:monitorId`                                                                                                                     | ตรงกับ template เดิมของ route มอนิเตอร์และ Project                                                                   |
 | Worker: ผู้รับใน `packages/db/src/notification.ts`            | เพิ่มการตรวจซ้ำตอน materialize และการกรองตอนอ่าน inbox (list, unread, mark-one, mark-all)                                                        | snapshot ตอนสร้าง intent ไม่พอเมื่อสมาชิกถูกนำออกก่อนส่งหรือก่อนอ่าน (Codex P1 ใน #107)                               |
-| Web: ลบ `WorkspacePage` และ `/workspace` redirect             | คงไว้ `/workspace` แสดงมอนิเตอร์ของ Project ปัจจุบันและ prefetch การ redirect ไป Project ล่าสุดทำใน #108 การลบหน้าเป็นของ `F-012`                | `TS-002-T05` ยังไม่เริ่ม                                                                                            |
+| Web: ลบ `WorkspacePage` และ `/workspace` redirect | คงไว้ `/workspace` redirect ไป leaf แรกของ Project ล่าสุดหรือหน้าโปรเจกต์ทั้งหมด (#108) `WorkspacePage` เป็น fallback ที่แสดงมอนิเตอร์ของ Project ปัจจุบัน การลบหน้าเป็นของ `F-012` | `TS-002-T05` ยังไม่เริ่ม |
 | Web: endpoint สรุปสำหรับ sidebar                              | ยืนยันใช้ `summary.total` ของ list endpoint ไม่เพิ่ม endpoint                                                                                     | ตามที่ `TS-002` เสนอ                                                                                                 |
 | ไม่ได้กล่าวถึง                                               | `monitor.readResponse` ให้ผู้ดูแล Project และ Owner/Admin ฝั่งเว็บ `canReadResponse = canWrite`                                                   | `AC-03` ผู้ใช้ยืนยัน 2026-10-14                                                                                           |
 | ไม่ได้กล่าวถึง                                               | `responseP95Ms24h` ใน list item และการเรียง `response_time` ด้วย p95 ก่อนแบ่งหน้า                                                                | `AC-04` ต้องการ p95 · 24 ชม. และ Codex P2 ใน #107                                                                   |
@@ -215,6 +221,6 @@ Test เพิ่มที่ไม่ผูกกับ AC แต่บัง�
 
 1. เวลาลบ Project ที่มีมอนิเตอร์ 20 ตัวพร้อมผลตรวจ 30 วันในธุรกรรมเดียว ยังไม่ได้วัด
 2. ชื่อผู้กระทำใน event feed ของมอนิเตอร์ยังใช้สิทธิ์ Owner/Admin องค์กร ผู้ดูแล Project ที่เป็น viewer องค์กรเห็น `member_hidden`
-3. rate limit ของการทดสอบใช้ key ต่อผู้ใช้และองค์กร จึงใช้ร่วมกันทุก Project
+3. rate limit ของการทดสอบ (10 ต่อผู้ใช้ต่อองค์กร, 30 ต่อองค์กร ต่อนาที) ใช้ร่วมกันทุก Project
 4. script `e2e/verification/*.ts` 5 ตัวแก้ให้ใช้ Project แล้วแต่ยังไม่ได้รัน
 5. notification ของ Project ที่ถูกลบยังอยู่ใน inbox ของ Owner/Admin จนหมดอายุ และลิงก์พาไปสถานะไม่พบ Project
