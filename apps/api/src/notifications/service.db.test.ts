@@ -21,6 +21,12 @@ const token = `lock-order-${run}`;
 const migrationsDir =
   process.env.MIGRATIONS_DIR ??
   fileURLToPath(new URL("../../../../packages/db/migrations", import.meta.url));
+// Inbox rows expire 30 days after occurred_at (notification_set_expiry in
+// 0002_notification_foundation.sql), so fixtures anchor to the test clock.
+const fixtureDay = Date.now() - 24 * 60 * 60 * 1000;
+function atHour(hour: number): string {
+  return new Date(fixtureDay + hour * 60 * 60 * 1000).toISOString();
+}
 
 async function seedItem(
   input: {
@@ -244,19 +250,19 @@ describe("notification active-scope lock order", () => {
     await seedItem({
       id: personalId,
       scope: "account",
-      occurredAt: "2026-09-25T03:00:00.000Z",
+      occurredAt: atHour(3),
     });
     await seedItem({
       id: orgAId,
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T02:00:00.000Z",
+      occurredAt: atHour(2),
     });
     await seedItem({
       id: orgBId,
       scope: "tenant",
       organizationId: orgB,
-      occurredAt: "2026-09-25T01:00:00.000Z",
+      occurredAt: atHour(1),
     });
 
     const switcher = new Client({ connectionString: ownerUrl });
@@ -350,13 +356,13 @@ describe("notification active-scope lock order", () => {
     await seedItem({
       id: personalId,
       scope: "account",
-      occurredAt: "2026-09-25T05:00:00.000Z",
+      occurredAt: atHour(5),
     });
     await seedItem({
       id: orgBId,
       scope: "tenant",
       organizationId: orgB,
-      occurredAt: "2026-09-25T04:00:00.000Z",
+      occurredAt: atHour(4),
     });
     await owner.query(
       'update "user" set last_active_tenant_id = null where id = $1',
@@ -442,19 +448,19 @@ describe("notification mark-all atomic scope", () => {
     await seedItem({
       id: baselinePersonalId,
       scope: "account",
-      occurredAt: "2026-09-25T07:00:00.000Z",
+      occurredAt: atHour(7),
     });
     await seedItem({
       id: baselineActiveId,
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T06:00:00.000Z",
+      occurredAt: atHour(6),
     });
     await seedItem({
       id: inactiveId,
       scope: "tenant",
       organizationId: orgB,
-      occurredAt: "2026-09-25T05:00:00.000Z",
+      occurredAt: atHour(5),
     });
 
     const locker = new Client({ connectionString: ownerUrl });
@@ -501,7 +507,7 @@ describe("notification mark-all atomic scope", () => {
         {
           id: latePersonalId,
           scope: "account",
-          occurredAt: "2026-09-25T04:00:00.000Z",
+          occurredAt: atHour(4),
         },
         latePersonal,
       );
@@ -525,7 +531,7 @@ describe("notification mark-all atomic scope", () => {
           id: lateActiveId,
           scope: "tenant",
           organizationId: orgA,
-          occurredAt: "2026-09-25T03:00:00.000Z",
+          occurredAt: atHour(3),
         },
         lateActive,
       );
@@ -606,19 +612,19 @@ describe("notification mark-all atomic scope", () => {
     await seedItem({
       id: personalId,
       scope: "account",
-      occurredAt: "2026-09-25T09:00:00.000Z",
+      occurredAt: atHour(9),
     });
     await seedItem({
       id: oldActiveId,
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T08:00:00.000Z",
+      occurredAt: atHour(8),
     });
     await seedItem({
       id: newActiveId,
       scope: "tenant",
       organizationId: orgB,
-      occurredAt: "2026-09-25T07:00:00.000Z",
+      occurredAt: atHour(7),
     });
     await owner.query(
       'update "user" set last_active_tenant_id = $1 where id = $2',
@@ -659,7 +665,7 @@ describe("notification pagination precision", () => {
       id: orgAId,
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T01:00:00.000Z",
+      occurredAt: atHour(1),
     });
     // Another session switched the account-global selection to orgB.
     await owner.query(
@@ -688,7 +694,7 @@ describe("notification pagination precision", () => {
       id: orgAId,
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T01:00:00.000Z",
+      occurredAt: atHour(1),
     });
     // Pause the list's first data query (after scope resolution) on a
     // dedicated pool so the wrapper never leaks into the shared one.

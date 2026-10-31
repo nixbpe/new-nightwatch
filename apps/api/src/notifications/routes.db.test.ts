@@ -25,6 +25,12 @@ const orgA = crypto.randomUUID();
 const orgB = crypto.randomUUID();
 const revokedOrg = crypto.randomUUID();
 const token = `notification-${run}`;
+// Inbox rows expire 30 days after occurred_at (notification_set_expiry in
+// 0002_notification_foundation.sql), so fixtures anchor to the test clock.
+const fixtureDay = Date.now() - 24 * 60 * 60 * 1000;
+function atHour(hour: number): string {
+  return new Date(fixtureDay + hour * 60 * 60 * 1000).toISOString();
+}
 const session: AuthSession = {
   user: {
     id: userId,
@@ -198,16 +204,16 @@ describe("notification inbox API", () => {
   it("paginates a scoped inbox and rejects tampered and switched-scope cursors", async () => {
     await seedItem({
       scope: "account",
-      occurredAt: "2026-09-25T03:00:00.000Z",
+      occurredAt: atHour(3),
     });
     await seedItem({
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T02:00:00.000Z",
+      occurredAt: atHour(2),
     });
     await seedItem({
       scope: "account",
-      occurredAt: "2026-09-25T01:00:00.000Z",
+      occurredAt: atHour(1),
     });
     const first = await request("/api/notifications?limit=2");
     expect(first.response.status).toBe(200);
@@ -238,21 +244,22 @@ describe("notification inbox API", () => {
   it("falls back to personal rows, isolates mark-all, and preserves read timestamps", async () => {
     const personal = await seedItem({
       scope: "account",
-      occurredAt: "2026-09-25T03:00:00.000Z",
+      occurredAt: atHour(3),
     });
     const organization = await seedItem({
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T02:00:00.000Z",
+      occurredAt: atHour(2),
     });
     const otherOrganization = await seedItem({
       scope: "tenant",
       organizationId: orgB,
-      occurredAt: "2026-09-25T01:00:00.000Z",
+      occurredAt: atHour(1),
     });
     const expired = await seedItem({
       scope: "account",
-      occurredAt: "2026-08-01T00:00:00.000Z",
+      // 31 days before the fixture day: one day past the 30-day expiry.
+      occurredAt: atHour(-31 * 24),
     });
     const markAll = await request("/api/notifications/read-all", "POST", {
       expectedOrganizationId: orgA,
@@ -355,12 +362,12 @@ describe("notification inbox API", () => {
   it("clears every stale session mirror when the user has no active organization", async () => {
     const personal = await seedItem({
       scope: "account",
-      occurredAt: "2026-09-25T03:00:00.000Z",
+      occurredAt: atHour(3),
     });
     const staleOrganization = await seedItem({
       scope: "tenant",
       organizationId: orgA,
-      occurredAt: "2026-09-25T02:00:00.000Z",
+      occurredAt: atHour(2),
     });
     const secondToken = `notification-second-${run}-${crypto.randomUUID()}`;
     await owner.sql.query(
@@ -437,24 +444,24 @@ describe("notification inbox API", () => {
     const incomplete = await Promise.all([
       seedItem({
         scope: "account",
-        occurredAt: "2026-09-25T04:00:00.000Z",
+        occurredAt: atHour(4),
         dispatchStatus: "pending",
       }),
       seedItem({
         scope: "tenant",
         organizationId: orgA,
-        occurredAt: "2026-09-25T03:00:00.000Z",
+        occurredAt: atHour(3),
         dispatchStatus: "claimed",
       }),
       seedItem({
         scope: "account",
-        occurredAt: "2026-09-25T02:00:00.000Z",
+        occurredAt: atHour(2),
         dispatchStatus: "enqueued",
       }),
       seedItem({
         scope: "tenant",
         organizationId: orgA,
-        occurredAt: "2026-09-25T01:00:00.000Z",
+        occurredAt: atHour(1),
         dispatchStatus: "failed",
       }),
     ]);
