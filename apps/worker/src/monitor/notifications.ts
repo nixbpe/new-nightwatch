@@ -34,6 +34,7 @@ export const writeMonitorNotification: MonitorEventHook = async (tx, event) => {
     projectId: event.projectId,
     monitorId: event.monitorId,
     monitorName: event.monitorName,
+    monitorHostname: event.monitorHostname,
     occurredAt: event.occurredAt,
     sslNotAfter: null,
   };

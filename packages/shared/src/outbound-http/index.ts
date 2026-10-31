@@ -16,6 +16,7 @@ export {
 } from "./send";
 export {
   maskUrl,
+  monitorHostname,
   validateOutboundUrl,
   type UrlCheck,
   type UrlRejection,

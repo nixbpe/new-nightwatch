@@ -1,5 +1,10 @@
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
-import { sslLevel, sslNotifyLevel, type CheckResult } from "@nightwatch/shared";
+import {
+  monitorHostname,
+  sslLevel,
+  sslNotifyLevel,
+  type CheckResult,
+} from "@nightwatch/shared";
 
 import { writeMonitorNotification } from "./notifications";
 
@@ -26,6 +31,7 @@ type EventContext = {
   projectId: string;
   monitorId: string;
   monitorName: string;
+  monitorHostname: string | null;
   occurredAt: Date;
   alertDownEnabled: boolean;
   alertSslEnabled: boolean;
@@ -69,6 +75,7 @@ export type RecordOptions = { onEvent?: MonitorEventHook };
 
 type LockedMonitor = {
   name: string;
+  url: string;
   project_id: string;
   consecutive_failures: number;
   last_passed_config_version: number | null;
@@ -131,7 +138,7 @@ function attempt(
       ]);
     }
     const monitorRows = await client.query<LockedMonitor>(
-      `select name, project_id, consecutive_failures, last_passed_config_version,
+      `select name, url, project_id, consecutive_failures, last_passed_config_version,
               ssl_host, ssl_issuer, ssl_not_after,
               ssl_notified_level, ssl_notified_not_after,
               alert_failure_threshold, alert_down_enabled,
@@ -181,6 +188,7 @@ function attempt(
       projectId: monitor.project_id,
       monitorId: input.monitorId,
       monitorName: monitor.name,
+      monitorHostname: monitorHostname(monitor.url),
       occurredAt: result.checkedAt,
       alertDownEnabled: monitor.alert_down_enabled,
       alertSslEnabled: monitor.alert_ssl_enabled,

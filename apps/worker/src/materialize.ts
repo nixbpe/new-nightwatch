@@ -115,14 +115,14 @@ export function createMaterializationDependencies(
           (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
            event_type, occurred_at, actor_user_id, actor_display_name,
            subject_project_id, subject_monitor_id, subject_monitor_name,
-           monitor_reason, ssl_not_after, subject_audit_export_id)
+           monitor_reason, ssl_not_after, subject_audit_export_id, subject_monitor_hostname)
          select gen_random_uuid()::text,
                 intent.id, intent.origin, recipient.recipient_user_id, intent.scope_kind,
                 intent.tenant_id, intent.event_type, intent.occurred_at,
                 intent.actor_user_id, intent.actor_display_name,
                 intent.subject_project_id, intent.subject_monitor_id,
                 intent.subject_monitor_name, intent.monitor_reason,
-                intent.ssl_not_after, intent.subject_audit_export_id
+                intent.ssl_not_after, intent.subject_audit_export_id, intent.subject_monitor_hostname
          from notification_intents as intent
          join notification_intent_recipients as recipient
            on recipient.intent_id = intent.id

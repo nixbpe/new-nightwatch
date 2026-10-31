@@ -1,13 +1,24 @@
+import assert from "node:assert/strict";
 import type {
   MarkAllReadResponse,
   NotificationListResponse,
 } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import {
+  createDatabase,
+  runMigrations,
+  withAccountContextRaw,
+  type Database,
+} from "@nightwatch/db";
 import { fileURLToPath } from "node:url";
 import { Client, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { listInbox, markAllInboxRead } from "./service";
+import {
+  countUnreadInbox,
+  listInbox,
+  markAllInboxRead,
+  notificationListStatement,
+} from "./service";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 
 const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
@@ -243,6 +254,201 @@ afterAll(async () => {
 });
 
 describe("notification active-scope lock order", () => {
+  it("filters unread rows before limit-one keyset pagination and binds filters", async () => {
+    const ids = ["new", "read", "old"].map((name) => `${name}-${run}`);
+    for (const [index, id] of ids.entries())
+      await seedItem({
+        id,
+        scope: index === 2 ? "tenant" : "account",
+        organizationId: orgA,
+        occurredAt: atHour(3 - index),
+      });
+    await owner.query(
+      "update notification_inbox_items set read_at = now() where id = $1",
+      [ids[1]],
+    );
+    const deps = { database, cursorSecret: "filters-secret" };
+    const input = {
+      userId,
+      sessionToken: token,
+      limit: 1,
+      status: "unread" as const,
+    };
+    const first = await listInbox(deps, input);
+    const cursor = first.nextCursor;
+    if (!cursor) throw new Error("expected a next cursor");
+    const second = await listInbox(deps, {
+      ...input,
+      cursor,
+    });
+    expect([...first.items, ...second.items].map((item) => item.id)).toEqual([
+      ids[0],
+      ids[2],
+    ]);
+    expect(second.nextCursor).toBeNull();
+    expect(first.counts).toMatchObject({ total: 3, unread: 2, recent: 3 });
+    expect(second.counts).toMatchObject({ total: 3, unread: 2, recent: 3 });
+    for (const update of [
+      { status: "all" as const },
+      { category: "security" as const },
+    ]) {
+      await expect(
+        listInbox(deps, { ...input, ...update, cursor }),
+      ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+    }
+    const security = await listInbox(deps, { ...input, category: "security" });
+    expect(security.counts).toMatchObject({ total: 2, unread: 1 });
+    expect(security.items.every((item) => item.scope === "account")).toBe(true);
+    expect(security.unreadCount).toBe(2);
+    expect((await countUnreadInbox(deps, input)).unreadCount).toBe(
+      first.counts.unread,
+    );
+    const organization = await listInbox(deps, {
+      ...input,
+      category: "organization",
+    });
+    expect(organization.counts).toMatchObject({ total: 1, unread: 1 });
+  });
+
+  it("counts the inclusive bounded server window and excludes expired and incomplete dispatches", async () => {
+    const times = [-7 * 24 - 1, -7 * 24 + 1, -1 / 60, 1, -31 * 24, -2];
+    for (const [index, hours] of times.entries())
+      await seedItem({
+        id: `window-${String(index)}-${run}`,
+        scope: "account",
+        occurredAt: new Date(Date.now() + hours * 3_600_000).toISOString(),
+      });
+    await owner.query(
+      "update notification_dispatch_ledger set status = 'pending' where intent_id = $1",
+      [`window-5-${run}`],
+    );
+    const response = await listInbox(
+      { database, cursorSecret: "window-secret" },
+      { userId, sessionToken: token, limit: 20 },
+    );
+    expect(response.counts).toMatchObject({ total: 4, unread: 4, recent: 2 });
+    expect(response.unreadCount).toBe(4);
+    expect(response.items).toHaveLength(4);
+    expect(
+      new Date(response.counts.window.until).getTime() -
+        new Date(response.counts.window.since).getTime(),
+    ).toBe(7 * 24 * 3_600_000);
+    expect(
+      response.items.some(
+        (item) => item.occurredAt > response.counts.window.until,
+      ),
+    ).toBe(true);
+  });
+
+  it("includes exact server-transaction window bounds and excludes timestamps just outside them", async () => {
+    await withAccountContextRaw(database, userId, async (client) => {
+      const window = (
+        await client.query<{ until: Date; since: Date }>(
+          "select now() as until, now() - interval '7 days' as since",
+        )
+      ).rows[0];
+      // pg's Date parser drops microseconds. Preserve server precision as text.
+      const bounds = (
+        await client.query<{ until: string; since: string }>(
+          "select now()::text as until, (now() - interval '7 days')::text as since",
+        )
+      ).rows[0];
+      assert(window && bounds);
+      for (const [index, timestamp] of [bounds.since, bounds.until].entries()) {
+        await seedItem({
+          id: `exact-${String(index)}-${run}`,
+          scope: "account",
+          occurredAt: timestamp,
+        });
+      }
+      await seedItem({
+        id: `outside-before-${run}`,
+        scope: "account",
+        occurredAt: new Date(window.since.getTime() - 1).toISOString(),
+      });
+      await seedItem({
+        id: `outside-after-${run}`,
+        scope: "account",
+        occurredAt: new Date(window.until.getTime() + 1).toISOString(),
+      });
+      const statement = notificationListStatement(
+        { userId, organizationId: null },
+        { status: "all", category: null },
+        21,
+      );
+      const snapshot = (
+        await client.query<{ total: string; recent: string }>(
+          statement.text,
+          statement.values,
+        )
+      ).rows[0];
+      assert(snapshot);
+      expect(Number(snapshot.total)).toBe(4);
+      expect(Number(snapshot.recent)).toBe(2);
+    });
+  });
+
+  it("an account dispatch completing immediately before the list statement appears in every count and items together", async () => {
+    const id = `concurrent-dispatch-${run}`;
+    await seedItem({ id, scope: "account", occurredAt: atHour(1) });
+    await owner.query(
+      "update notification_dispatch_ledger set status = 'enqueued', claim_token = $1 where intent_id = $1",
+      [id],
+    );
+    // The materialized row is committed but hidden until dispatch completion.
+    // A fresh insert here would wait on the scope's user FOR UPDATE FK lock.
+    const pool = createDatabase(runtimeUrl);
+    let listStatements = 0;
+    const wrapped: Database = {
+      ...pool,
+      sql: new Proxy(pool.sql, {
+        get(target, property, receiver) {
+          if (property !== "connect")
+            return Reflect.get(target, property, receiver) as unknown;
+          return async () => {
+            const client = await target.connect();
+            const query = client.query.bind(client);
+            Object.assign(client, {
+              query: async (text: string, values?: unknown[]) => {
+                if (text.startsWith("with w as")) {
+                  listStatements += 1;
+                  await withAccountContextRaw(
+                    database,
+                    userId,
+                    async (dispatch) => {
+                      expect(
+                        (
+                          await dispatch.query<{ completed: boolean }>(
+                            "select complete_notification_dispatch($1, $2) as completed",
+                            [`dispatch:${id}`, id],
+                          )
+                        ).rows[0]?.completed,
+                      ).toBe(true);
+                    },
+                  );
+                }
+                return query(text, values);
+              },
+            });
+            return client;
+          };
+        },
+      }),
+    };
+    try {
+      const response = await listInbox(
+        { database: wrapped, cursorSecret: "snapshot" },
+        { userId, sessionToken: token, limit: 20 },
+      );
+      expect(listStatements).toBe(1);
+      expect(response.items.map((item) => item.id)).toEqual([id]);
+      expect(response.counts).toMatchObject({ total: 1, unread: 1, recent: 1 });
+      expect(response.unreadCount).toBe(1);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("retries a blocked list and mark-all against the committed active organization", async () => {
     const personalId = `personal-${run}`;
     const orgAId = `org-a-${run}`;

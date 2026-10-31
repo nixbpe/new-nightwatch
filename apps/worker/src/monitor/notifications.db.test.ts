@@ -216,6 +216,76 @@ async function inboxByUser(
 }
 
 describe("incident notifications (AC-24, AC-51, AC-52)", () => {
+  it("snapshots the locked URL hostname and materializes it after a URL change", async () => {
+    const monitor = await seedMonitor(db, {
+      url: "https://CDN.Example.com.:8443/path?token=secret",
+    });
+    await seedMembers(monitor);
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set url = $2 where id = $1",
+      [monitor.monitorId, "https://changed.example.com/"],
+    );
+    await materializeAll();
+    for (const table of [
+      "notification_intents",
+      "notification_inbox_items",
+    ] as const) {
+      const result = await rows<{ hostname: string | null }>(
+        db,
+        monitor,
+        `select subject_monitor_hostname as hostname from ${table} where tenant_id = $1`,
+        [monitor.tenantId],
+      );
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.every((row) => row.hostname === "cdn.example.com")).toBe(
+        true,
+      );
+    }
+  });
+
+  it.each(["https://2130706433/", "https://[2001:db8::1]/"])(
+    "stores null hostname for IP target %s",
+    async (url) => {
+      const monitor = await seedMonitor(db, { url });
+      await seedMembers(monitor);
+      await record(monitor, httpResult("fail"));
+      await record(monitor, httpResult("fail"));
+      await materializeAll();
+      const result = await rows<{ hostname: string | null }>(
+        db,
+        monitor,
+        "select subject_monitor_hostname as hostname from notification_inbox_items where tenant_id = $1",
+        [monitor.tenantId],
+      );
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.every((row) => row.hostname === null)).toBe(true);
+    },
+  );
+
+  it("materializes a legacy null snapshot without looking up the current monitor URL", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await db.owner.sql.query(
+      "update notification_intents set subject_monitor_hostname = null where tenant_id = $1",
+      [monitor.tenantId],
+    );
+    await materializeAll();
+    const result = await rows<{ hostname: string | null }>(
+      db,
+      monitor,
+      "select subject_monitor_hostname as hostname from notification_inbox_items where tenant_id = $1",
+      [monitor.tenantId],
+    );
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.every((row) => row.hostname === null)).toBe(true);
+  });
+
   it("fail, fail, pass, fail, fail gives down, recovered, down to owner and admin only", async () => {
     const monitor = await seedMonitor(db);
     const members = await seedMembers(monitor);
@@ -467,6 +537,7 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
         projectId: monitor.projectId,
         monitorId: monitor.monitorId,
         monitorName: "Checked monitor",
+        monitorHostname: "checked.example.com",
         occurredAt: new Date(),
         alertDownEnabled: true,
         alertSslEnabled: true,

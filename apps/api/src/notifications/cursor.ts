@@ -1,4 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type {
+  NotificationStatusFilter,
+  NotificationCategoryFilter,
+} from "@nightwatch/api-contract";
 
 const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -6,6 +10,8 @@ type CursorScope = {
   userId: string;
   organizationId: string | null;
   limit: number;
+  status: NotificationStatusFilter;
+  category: NotificationCategoryFilter | null;
 };
 
 type CursorAnchor = { occurredAt: string; id: string };
@@ -42,6 +48,11 @@ function isCursorPayload(payload: unknown): payload is CursorPayload {
     (typeof value.organizationId === "string" ||
       value.organizationId === null) &&
     Number.isInteger(value.limit) &&
+    (value.status === "all" || value.status === "unread") &&
+    (value.category === null ||
+      value.category === "monitor" ||
+      value.category === "security" ||
+      value.category === "organization") &&
     typeof value.occurredAt === "string" &&
     typeof value.id === "string" &&
     Number.isFinite(value.issuedAt)
@@ -94,7 +105,9 @@ export function parseNotificationCursor({
     payload.issuedAt + CURSOR_TTL_MS <= now ||
     payload.userId !== scope.userId ||
     payload.organizationId !== scope.organizationId ||
-    payload.limit !== scope.limit
+    payload.limit !== scope.limit ||
+    payload.status !== scope.status ||
+    payload.category !== scope.category
   ) {
     invalidCursor();
   }

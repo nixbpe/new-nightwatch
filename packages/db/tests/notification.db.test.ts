@@ -740,7 +740,7 @@ describe("monitor notification schema", () => {
     ]);
   });
 
-  it("keeps one event_type CHECK, one scope CHECK and the monitor Project CHECK per table", async () => {
+  it("keeps the event, scope, monitor hostname and monitor Project CHECKs per table", async () => {
     for (const table of ["notification_intents", "notification_inbox_items"]) {
       const result = await owner.query<{ conname: string; def: string }>(
         `select conname, pg_get_constraintdef(oid) as def
@@ -750,13 +750,20 @@ describe("monitor notification schema", () => {
          order by conname`,
         [table],
       );
-      expect(result.rows.map((row) => row.conname)).toEqual([
-        `${table}_event_type_check`,
-        `${table}_monitor_project_check`,
-        `${table}_scope_check`,
-      ]);
+      expect(result.rows.map((row) => row.conname)).toEqual(
+        [
+          `${table}_event_type_check`,
+          table === "notification_intents"
+            ? "notification_intents_monitor_hostname_event"
+            : "notification_inbox_monitor_hostname_event",
+          `${table}_monitor_project_check`,
+          `${table}_scope_check`,
+        ].sort(),
+      );
       for (const row of result.rows.filter(
-        (r) => !r.conname.includes("project"),
+        (r) =>
+          r.conname === `${table}_event_type_check` ||
+          r.conname === `${table}_scope_check`,
       )) {
         for (const type of MONITOR_EVENT_TYPES) expect(row.def).toContain(type);
       }
@@ -821,6 +828,7 @@ describe("monitor notification schema", () => {
       projectId: projectM,
       monitorId,
       monitorName: "Checkout",
+      monitorHostname: "checkout.example.com",
       eventType: "MONITOR_DOWN" as const,
       origin,
       occurredAt: new Date(),
@@ -837,7 +845,7 @@ describe("monitor notification schema", () => {
 
     const rows = await owner.query(
       `select intent.subject_project_id, intent.subject_monitor_id,
-              intent.subject_monitor_name,
+              intent.subject_monitor_name, intent.subject_monitor_hostname,
               intent.monitor_reason, count(distinct ledger.id)::int as ledgers,
               array_agg(recipient.recipient_user_id order by recipient.recipient_user_id) as recipients
        from notification_intents intent
@@ -852,6 +860,7 @@ describe("monitor notification schema", () => {
         subject_project_id: projectM,
         subject_monitor_id: monitorId,
         subject_monitor_name: "Checkout",
+        subject_monitor_hostname: "checkout.example.com",
         monitor_reason: "http_status",
         ledgers: 1,
         // owner is both Organization owner and Project member: one recipient.

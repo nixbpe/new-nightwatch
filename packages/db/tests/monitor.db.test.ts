@@ -949,7 +949,10 @@ describe("0026 wipes monitor data and scopes monitors to a Project", () => {
     const names = (await readdir(source)).sort();
     const before = names.filter((name) => name < "0026_");
     const after = names.filter((name) => name >= "0026_");
-    expect(after).toEqual(["0026_project_monitors.sql"]);
+    expect(after).toEqual([
+      "0026_project_monitors.sql",
+      "0027_notification_monitor_hostname.sql",
+    ]);
     await runMigrations({
       url: wipeOwnerUrl.toString(),
       migrationsDir: await copyIdempotent(before),
