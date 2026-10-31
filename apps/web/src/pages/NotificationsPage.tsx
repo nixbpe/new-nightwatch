@@ -888,6 +888,7 @@ function NotificationsPageForOrganization({
             <Button
               key={category}
               variant="secondary"
+              className="aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
               data-testid={`notifications-filter-category-${category}`}
               aria-pressed={(filters.category ?? "all") === category}
               onClick={() => {
