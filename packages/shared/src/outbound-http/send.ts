@@ -50,7 +50,18 @@ export interface OutboundTls {
   notAfter: Date | null;
 }
 
+/** Facts of the last hop attempted; absent after a policy refusal or caller abort. */
+export interface OutboundDiagnostics {
+  redirects: number;
+  dnsMs: number | null;
+  connectMs: number | null;
+  tlsMs: number | null;
+  ttfbMs: number | null;
+}
+
 export interface OutboundResponse {
+  /** Selected validated peer, disclosed only with a completed response. */
+  remoteAddress: string;
   httpVersion: "HTTP/1.0" | "HTTP/1.1";
   status: number;
   reasonPhrase: string | null;
@@ -72,6 +83,7 @@ export interface OutboundFailure {
 
 export interface OutboundResult {
   ok: boolean;
+  diagnostics?: OutboundDiagnostics;
   response?: OutboundResponse;
   tls?: OutboundTls;
   failure?: OutboundFailure;
@@ -268,6 +280,7 @@ export async function resolveOutboundHost(
 }
 
 interface OpenedSocket {
+  address: string;
   socket: net.Socket;
   tls: OutboundTls | null;
 }
@@ -279,12 +292,15 @@ function connectOnce(
   signal: AbortSignal,
   attempt: { ms: number | null; deadline: number },
   track: (socket: net.Socket) => void,
+  mark: { tcp: (at: number) => void; secure: (tcpAt: number | null) => void },
 ): Promise<OpenedSocket> {
   const secure = url.protocol === "https:";
   const port = Number(url.port || (secure ? 443 : 80));
   return abortable(
     new Promise<OpenedSocket>((resolve, reject) => {
       let tcpConnected = false;
+      let tcpAt: number | null = null;
+      let latched = false;
       let socket: net.Socket;
       // The last address has no attempt timer: the global abort reports it as a timeout.
       const attemptTimer =
@@ -342,17 +358,23 @@ function connectOnce(
         socket = secureSocket;
         socket.once("connect", () => {
           tcpConnected = true;
-          remoteMatches();
+          if (remoteMatches() && !latched) {
+            tcpAt = performance.now();
+            mark.tcp(tcpAt);
+          }
         });
         socket.once("secureConnect", () => {
           // Checked again here so the guarantee does not rest on `connect` firing on a TLSSocket.
           if (!remoteMatches()) return;
+          latched = true;
+          mark.secure(tcpAt);
           // An empty object comes back when no certificate is available.
           const peer: Partial<tls.PeerCertificate> =
             secureSocket.getPeerCertificate();
           const issuer = peer.issuer?.O ?? peer.issuer?.CN;
           const notAfter = peer.valid_to ? new Date(peer.valid_to) : null;
           settle(resolve, {
+            address,
             socket,
             tls: {
               host: url.hostname,
@@ -367,7 +389,10 @@ function connectOnce(
         socket = net.connect({ host: address, port });
         socket.once("connect", () => {
           tcpConnected = true;
-          if (remoteMatches()) settle(resolve, { socket, tls: null });
+          if (remoteMatches()) {
+            mark.tcp(performance.now());
+            settle(resolve, { address, socket, tls: null });
+          }
         });
       }
       socket.once("error", onError);
@@ -384,7 +409,9 @@ async function openSocket(
   signal: AbortSignal,
   deadline: number,
   track: (socket: net.Socket) => void,
+  hop: OutboundDiagnostics,
 ): Promise<OpenedSocket> {
+  const connectStart = performance.now();
   let last: OutboundError = new OutboundError("connect_failed");
   for (const [index, address] of addresses.entries()) {
     // Each attempt gets an equal share of what is left, so a blackholed address cannot use it all.
@@ -394,6 +421,8 @@ async function openSocket(
       (deadline - Date.now()) / (addresses.length - index),
     );
     try {
+      hop.connectMs = null;
+      hop.tlsMs = null;
       const opened = await connectOnce(
         address,
         url,
@@ -401,6 +430,19 @@ async function openSocket(
         signal,
         { ms: isLast ? null : attemptMs, deadline },
         track,
+        {
+          tcp: (at) => {
+            hop.connectMs = Math.round(at - connectStart);
+          },
+          secure: (tcpAt) => {
+            if (tcpAt === null) {
+              hop.connectMs = null;
+              hop.tlsMs = null;
+            } else {
+              hop.tlsMs = Math.round(performance.now() - tcpAt);
+            }
+          },
+        },
       );
       // Only errors raised after this point belong to the request phase.
       opened.socket.removeAllListeners("error");
@@ -461,6 +503,7 @@ export async function sendOutboundRequest(
   request.signal?.addEventListener("abort", onCallerAbort, { once: true });
   const sockets = new Set<net.Socket>();
   let lastTls: OutboundTls | undefined;
+  let hop: OutboundDiagnostics | undefined;
   try {
     if (request.signal?.aborted) throw new OutboundError("executor_error");
     const method = request.method.toUpperCase();
@@ -490,6 +533,14 @@ export async function sendOutboundRequest(
 
     for (let redirects = 0; ; redirects++) {
       lastTls = undefined;
+      hop = {
+        redirects,
+        dnsMs: null,
+        connectMs: null,
+        tlsMs: null,
+        ttfbMs: null,
+      };
+      const dnsAt = performance.now();
       const hopBlocked =
         redirects === 0 ? "blocked_address" : "redirect_blocked";
       const resolved = await abortable(
@@ -500,6 +551,10 @@ export async function sendOutboundRequest(
         throw new OutboundError(
           resolved.reason === "blocked_address" ? hopBlocked : resolved.reason,
         );
+      }
+
+      if (literalHost(current) === null) {
+        hop.dnsMs = Math.round(performance.now() - dnsAt);
       }
 
       let opened: OpenedSocket;
@@ -513,6 +568,7 @@ export async function sendOutboundRequest(
           (socket) => {
             sockets.add(socket);
           },
+          hop,
         );
       } catch (error) {
         // The connection-time address check follows the same hop naming as the DNS check.
@@ -538,7 +594,9 @@ export async function sendOutboundRequest(
       // No request byte after an abort, even if it landed while the socket was opening.
       if (abort.signal.aborted) throw new OutboundError("timeout");
       let response: Http1Response;
+      const measuredHop = hop;
       try {
+        const requestAt = performance.now();
         response = await abortable(
           exchange(
             opened.socket,
@@ -551,6 +609,9 @@ export async function sendOutboundRequest(
             },
             {
               maxBodyBytes: request.maxBodyBytes,
+              onFirstByte: () => {
+                measuredHop.ttfbMs = Math.round(performance.now() - requestAt);
+              },
               skipBody: (status, responseHeaders) =>
                 REDIRECT_STATUSES.has(status) &&
                 responseHeaders["location"] !== undefined,
@@ -569,7 +630,9 @@ export async function sendOutboundRequest(
       if (!REDIRECT_STATUSES.has(response.status) || location === undefined) {
         return {
           ok: true,
+          diagnostics: hop,
           response: {
+            remoteAddress: opened.address,
             httpVersion: response.httpVersion,
             status: response.status,
             reasonPhrase: response.reasonPhrase,
@@ -624,6 +687,14 @@ export async function sendOutboundRequest(
     const tlsInfo = error.tls ?? (caller.aborted ? undefined : lastTls);
     return {
       ok: false,
+      ...(![
+        "blocked_address",
+        "redirect_blocked",
+        "invalid_request",
+        "executor_error",
+      ].includes(error.reason) && hop
+        ? { diagnostics: hop }
+        : {}),
       failure: {
         reason: error.reason,
         ...(error.tlsReason ? { tlsReason: error.tlsReason } : {}),

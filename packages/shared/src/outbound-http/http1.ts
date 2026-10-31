@@ -24,6 +24,7 @@ export class Http1Error extends Error {}
 
 interface ExchangeOptions {
   maxBodyBytes: number;
+  onFirstByte?: () => void;
   /** Return true to resolve right after the head without reading the body (redirects). */
   skipBody: (status: number, headers: Record<string, string>) => boolean;
 }
@@ -54,6 +55,7 @@ export function exchange(
     let collected = 0;
     let truncated = false;
     let settled = false;
+    let firstByte = false;
 
     const succeed = () => {
       if (settled) return;
@@ -238,6 +240,10 @@ export function exchange(
 
     socket.on("data", (data: Buffer) => {
       if (settled) return;
+      if (!firstByte && data.length > 0) {
+        firstByte = true;
+        options.onFirstByte?.();
+      }
       pending = pending.length === 0 ? data : Buffer.concat([pending, data]);
       advance();
     });

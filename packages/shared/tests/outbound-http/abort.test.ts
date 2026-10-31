@@ -163,6 +163,7 @@ describe("caller abort of sendOutboundRequest", { timeout: 30_000 }, () => {
         ),
     );
     expect(result.failure?.reason).toBe("executor_error");
+    expect(result.diagnostics).toBeUndefined();
     await vi.waitFor(() => {
       expect(server.open()).toBe(0);
     });
@@ -180,6 +181,7 @@ describe("caller abort of sendOutboundRequest", { timeout: 30_000 }, () => {
     );
     expect(result.failure?.reason).toBe("executor_error");
     expect(result.response).toBeUndefined();
+    expect(result.diagnostics).toBeUndefined();
     await vi.waitFor(() => {
       expect(server.open()).toBe(0);
     });

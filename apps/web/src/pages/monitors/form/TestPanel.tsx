@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card, CardHeader } from "../../../components/ui/card";
-import { MockupFrame } from "../../../components/ui/mockup-frame";
 import { ApiError } from "../../../lib/api/client";
 import {
   AssertionTable,
@@ -304,21 +303,71 @@ export function TestPanel({
       {state.kind === "result" ? (
         <ResultDetails result={state.result} sent={state.sent} stale={stale} />
       ) : null}
-      <MockupFrame
-        label="เวลาแยกตามขั้นตอนของการทดสอบ"
-        issue={61}
-        className="mt-2"
-      >
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-          <dt className="text-foreground-secondary">ค้นหาโดเมน (DNS)</dt>
-          <dd className="font-mono">— ms</dd>
-          <dt className="text-foreground-secondary">เชื่อมต่อ</dt>
-          <dd className="font-mono">— ms</dd>
-          <dt className="text-foreground-secondary">ตอบกลับครั้งแรก (TTFB)</dt>
-          <dd className="font-mono">— ms</dd>
-        </dl>
-      </MockupFrame>
     </Card>
+  );
+}
+
+function Diagnostics({ result }: { result: MonitorTestResult }) {
+  const facts = result.diagnostics;
+  const phases = [facts.dnsMs, facts.connectMs, facts.tlsMs, facts.ttfbMs];
+  if (
+    result.outcome === "check_error" ||
+    [...phases, facts.remoteAddress].every((value) => value === null)
+  )
+    return null;
+  const duration = (ms: number | null) =>
+    ms === null ? (
+      "ไม่ได้วัด"
+    ) : (
+      <span className="font-mono">{formatNumber(ms)} ms</span>
+    );
+  const tls =
+    facts.tlsMs !== null
+      ? duration(facts.tlsMs)
+      : facts.redirects === 0 && new URL(result.url).protocol === "http:"
+        ? "ไม่มี (http)"
+        : "ไม่ได้วัด";
+  return (
+    <div>
+      <dl
+        data-testid="monitor-test-diagnostics"
+        data-dns-ms={facts.dnsMs ?? undefined}
+        data-connect-ms={facts.connectMs ?? undefined}
+        data-tls-ms={facts.tlsMs ?? undefined}
+        data-ttfb-ms={facts.ttfbMs ?? undefined}
+        data-remote-address={facts.remoteAddress ?? undefined}
+        data-redirects={facts.redirects ?? undefined}
+        className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm"
+      >
+        <dt className="text-foreground-secondary">ค้นหาโดเมน (DNS)</dt>
+        <dd>{duration(facts.dnsMs)}</dd>
+        <dt className="text-foreground-secondary">เชื่อมต่อ (TCP)</dt>
+        <dd>{duration(facts.connectMs)}</dd>
+        <dt className="text-foreground-secondary">TLS</dt>
+        <dd>{tls}</dd>
+        <dt className="text-foreground-secondary">ตอบกลับไบต์แรก (TTFB)</dt>
+        <dd>{duration(facts.ttfbMs)}</dd>
+        <dt className="text-foreground-secondary">IP ที่เชื่อมต่อ</dt>
+        <dd>
+          {facts.remoteAddress === null ? (
+            "ไม่ได้วัด"
+          ) : (
+            <span className="font-mono">{facts.remoteAddress}</span>
+          )}
+        </dd>
+      </dl>
+      {facts.redirects !== null && facts.redirects > 0 ? (
+        <p className="text-xs text-foreground-secondary">
+          ค่าของปลายทางสุดท้ายหลัง redirect {facts.redirects} ครั้ง
+        </p>
+      ) : null}
+      {result.outcome === "fail" &&
+      [...phases, facts.remoteAddress].some((value) => value === null) ? (
+        <p className="text-xs text-foreground-secondary">
+          วัดได้เฉพาะขั้นตอนที่เสร็จก่อนเกิดข้อผิดพลาด
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -356,8 +405,12 @@ function ResultDetails({
           <span
             data-testid="monitor-test-http-status"
             data-http-status={result.httpStatus}
+            data-reason-phrase={result.diagnostics.reasonPhrase ?? undefined}
           >
             รหัสสถานะ {result.httpStatus}
+            {result.diagnostics.reasonPhrase === null
+              ? null
+              : ` ${result.diagnostics.reasonPhrase}`}
           </span>
         )}
         {result.responseTimeMs === null ? null : (
@@ -388,6 +441,7 @@ function ResultDetails({
           </span>
         )}
       </p>
+      <Diagnostics result={result} />
       <p
         data-testid="monitor-test-result-url"
         className="font-mono text-xs break-all text-foreground-secondary"

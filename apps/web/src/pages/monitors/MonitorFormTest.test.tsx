@@ -114,6 +114,26 @@ function result(overrides: Partial<MonitorTestResult> = {}): {
       outcome: "pass",
       httpStatus: 200,
       responseTimeMs: 182,
+      diagnostics:
+        overrides.httpStatus === null
+          ? {
+              redirects: null,
+              dnsMs: null,
+              connectMs: null,
+              tlsMs: null,
+              ttfbMs: null,
+              remoteAddress: null,
+              reasonPhrase: null,
+            }
+          : {
+              redirects: 0,
+              dnsMs: 2,
+              connectMs: 3,
+              tlsMs: 37,
+              ttfbMs: 140,
+              remoteAddress: "203.0.113.5",
+              reasonPhrase: "OK",
+            },
       failureReason: null,
       tlsReason: null,
       assertions: [],
@@ -197,8 +217,95 @@ describe("Test panel states", () => {
     await openCreate();
     expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
     expect(screen.getByTestId("monitor-test-idle")).not.toBeEmptyDOMElement();
+    expect(
+      screen.queryByRole("group", {
+        name: "ตัวอย่าง: เวลาแยกตามขั้นตอนของการทดสอบ",
+      }),
+    ).not.toBeInTheDocument();
     expect(draftMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      url: "http://api.acme.example/health",
+      redirects: 0,
+      tlsMs: null,
+      expected: "ไม่มี (http)",
+      outcome: "pass",
+    },
+    {
+      url: "http://api.acme.example/health",
+      redirects: 1,
+      tlsMs: 37,
+      expected: "37 ms",
+      outcome: "pass",
+    },
+    {
+      url: "http://api.acme.example/health",
+      redirects: 1,
+      tlsMs: null,
+      expected: "ไม่ได้วัด",
+      outcome: "pass",
+    },
+    {
+      url: "https://api.acme.example/health",
+      redirects: 0,
+      tlsMs: null,
+      expected: "ไม่ได้วัด",
+      outcome: "fail",
+    },
+  ] as const)(
+    "shows final-hop TLS for $url, redirects=$redirects, tlsMs=$tlsMs",
+    async ({ url, redirects, tlsMs, expected, outcome }) => {
+      const response = result({ url, outcome });
+      response.result.diagnostics = {
+        ...response.result.diagnostics,
+        redirects,
+        tlsMs,
+      };
+      draftMock.mockResolvedValue(response);
+      const user = await openCreate();
+      await user.click(testButton());
+      const details = await screen.findByTestId("monitor-test-diagnostics");
+      // Presentation-only TLS labels distinguish unmeasured data from direct HTTP.
+      const tlsLabel = within(details).getByText("TLS");
+      expect(tlsLabel.nextElementSibling).toHaveTextContent(expected);
+      if (redirects > 0)
+        expect(details.parentElement).toHaveTextContent(
+          "ค่าของปลายทางสุดท้ายหลัง redirect 1 ครั้ง",
+        );
+      if (outcome === "fail")
+        expect(details.parentElement).toHaveTextContent(
+          "วัดได้เฉพาะขั้นตอนที่เสร็จก่อนเกิดข้อผิดพลาด",
+        );
+    },
+  );
+
+  it.each(["check_error", "all-null"] as const)(
+    "hides diagnostics for %s",
+    async (kind) => {
+      const response = result(
+        kind === "check_error" ? { outcome: "check_error" } : {},
+      );
+      if (kind === "all-null")
+        response.result.diagnostics = {
+          redirects: null,
+          dnsMs: null,
+          connectMs: null,
+          tlsMs: null,
+          ttfbMs: null,
+          remoteAddress: null,
+          reasonPhrase: null,
+        };
+      draftMock.mockResolvedValue(response);
+      const user = await openCreate();
+      await user.click(testButton());
+      await screen.findByTestId("monitor-test-result");
+      expect(
+        screen.queryByTestId("monitor-test-diagnostics"),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("sends one request for a repeated press and keeps the focus on the button", async () => {
     const pending = deferred<ReturnType<typeof result>>();
@@ -259,6 +366,18 @@ describe("Test panel states", () => {
       "data-http-status",
       "200",
     );
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveAttribute(
+      "data-reason-phrase",
+      "OK",
+    );
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
+      "OK",
+    );
+    const diagnostics = screen.getByTestId("monitor-test-diagnostics");
+    expect(diagnostics).toHaveAttribute("data-dns-ms", "2");
+    expect(diagnostics).toHaveAttribute("data-connect-ms", "3");
+    expect(diagnostics).toHaveAttribute("data-ttfb-ms", "140");
+    expect(diagnostics).toHaveAttribute("data-remote-address", "203.0.113.5");
     expect(screen.getByTestId("monitor-test-response-time")).toHaveTextContent(
       "182",
     );
