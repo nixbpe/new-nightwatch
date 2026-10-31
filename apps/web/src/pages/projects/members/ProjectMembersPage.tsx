@@ -34,7 +34,7 @@ import { formatAuditDate, usePreferences } from "../../../lib/preferences";
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { useLeaveOnOrganizationSwitch } from "../../../lib/tenant/useLeaveOnOrganizationSwitch";
-import { isDenied } from "../../workspace/rows";
+import { isDenied } from "../../monitors/useMonitorAccess";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
 

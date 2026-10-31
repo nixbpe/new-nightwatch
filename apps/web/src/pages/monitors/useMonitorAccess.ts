@@ -7,6 +7,13 @@ import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { PROJECT_ROLE_LABELS } from "../projects/members/roles";
 
+export function isDenied(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "MEMBERSHIP_DENIED" || error.code === "PERMISSION_DENIED")
+  );
+}
+
 /** A missing monitor and a Project the caller cannot read answer alike (404). */
 export function isMonitorNotFound(error: unknown): boolean {
   return (

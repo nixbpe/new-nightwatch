@@ -432,6 +432,14 @@ test("Overview: summary line, status filter counts and the Project footer", asyn
 
 async function openWorkspaceCertificate(page: Page) {
   await page.goto("/workspace");
+  await expect(page).toHaveURL(
+    `/organizations/${orgId}/projects/${projectId}/overview`,
+  );
+  await page
+    .getByTestId(
+      "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
+    )
+    .click();
   await expect(page).toHaveURL(overview());
   await scrollListIntoView(page, "table");
   const zulu = page

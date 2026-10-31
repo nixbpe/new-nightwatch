@@ -41,7 +41,7 @@ import {
   subscribeToContextPublication,
 } from "../../lib/queryClient";
 import { NotificationsPage } from "../../pages/NotificationsPage";
-import { WorkspacePage } from "../../pages/WorkspacePage";
+import { WorkspaceEntryFallback } from "../../pages/WorkspaceEntryFallback";
 import {
   fetchOrganizationMembers,
   leaveOrganization,
@@ -734,7 +734,7 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_B),
     );
     const user = userEvent.setup();
-    renderShell(<WorkspacePage />);
+    renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
 
     fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
@@ -890,7 +890,7 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_B),
     );
     const user = userEvent.setup();
-    const { queryClient } = renderShell(<WorkspacePage />);
+    const { queryClient } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const stalePatchClaim = createContextPublicationClaim();
     expect(
@@ -927,7 +927,7 @@ describe("AppShell", () => {
       .mockResolvedValueOnce(meContext([downgradedOrg], ORG_A));
     fetchOrganizationMembersMock.mockImplementationOnce(() => denial.promise);
 
-    renderShell(<WorkspacePage />, `/organizations/${ORG_A}/members`);
+    renderShell(<WorkspaceEntryFallback />, `/organizations/${ORG_A}/members`);
 
     expect(
       await screen.findByTestId(
@@ -1084,11 +1084,12 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(12);
+    ).toHaveLength(13);
     expect(
       within(dialog).queryByTestId("shell-command-option-/workspace"),
     ).toBeNull();
     for (const path of [
+      `/organizations/${ORG_A}/projects/${PROJECT}/overview`,
       MONITORS_A,
       `/organizations/${ORG_A}/projects/${PROJECT}/members`,
       "/notifications",
@@ -1118,7 +1119,7 @@ describe("AppShell", () => {
     ))
       expect(option).toHaveAttribute("role", "option");
     const selected = within(dialog).getByTestId(
-      `shell-command-option-${MONITORS_A}`,
+      `shell-command-option-/organizations/${ORG_A}/projects/${PROJECT}/overview`,
     );
     expect(selected).toHaveAttribute("aria-selected", "true");
     expect(input).toHaveAttribute("aria-activedescendant", selected.id);
@@ -1416,7 +1417,7 @@ describe("AppShell", () => {
 
   it("with no membership the logo slot falls back to the product mark", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([]));
-    renderShell(<WorkspacePage />);
+    renderShell(<WorkspaceEntryFallback />);
 
     await screen.findByTestId("page-title");
     expect(screen.getByTestId("shell-product-brand")).toBeInTheDocument();
@@ -1458,7 +1459,7 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const query = Promise.withResolvers<{ unreadCount: number }>();
     fetchUnreadCountMock.mockReturnValueOnce(query.promise);
@@ -1507,7 +1508,7 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const late = Promise.withResolvers<never>();
     const request = queryClient
@@ -1543,7 +1544,7 @@ describe("AppShell", () => {
   });
   it("unknown open-notification errors recover conservatively without manufacturing repeated-current failure", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     openNotificationMock.mockRejectedValue(new InboxScopeChangedError());
     for (const id of ["first", "second"]) {
@@ -1569,7 +1570,7 @@ describe("AppShell", () => {
 
   it("unsupported query scope fails closed immediately without automatic resolver loop and explicit retry restores admission", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     await act(async () => {
       await queryClient
@@ -1594,7 +1595,7 @@ describe("AppShell", () => {
   });
   it("ignores cancelled refetch errors without relabeling the newer request", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const old = Promise.withResolvers<{ unreadCount: number }>(),
       fresh = Promise.withResolvers<{ unreadCount: number }>();
@@ -1642,7 +1643,7 @@ describe("AppShell", () => {
   });
   it("concurrent unattributed open mutations dedupe while required scope recovery is pending", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const first = Promise.withResolvers<never>(),
       second = Promise.withResolvers<never>(),
@@ -1692,7 +1693,7 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const patch = Promise.withResolvers<MeContextResponse>(),
       fresh = Promise.withResolvers<MeContextResponse>();
@@ -1734,7 +1735,7 @@ describe("AppShell", () => {
   });
   it("retired client rejects late mutation scope errors without reviving its publication", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    const { queryClient, router } = renderShell(<WorkspacePage />);
+    const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
     await findScope("Org A", "owner");
     const late = Promise.withResolvers<never>();
     markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
@@ -2095,7 +2096,7 @@ describe("AppShell", () => {
       if (operation === "open")
         openNotificationMock.mockReturnValueOnce(late.promise);
       else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
-      const { queryClient, router } = renderShell(<WorkspacePage />);
+      const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
       await findScope("Org A", "owner");
       const origin = getContextPublicationSnapshot(queryClient);
       await userEvent.click(screen.getByTestId("shell-notifications-open"));
@@ -2162,7 +2163,7 @@ describe("AppShell", () => {
       if (operation === "open")
         openNotificationMock.mockReturnValueOnce(late.promise);
       else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
-      const { queryClient, router } = renderShell(<WorkspacePage />);
+      const { queryClient, router } = renderShell(<WorkspaceEntryFallback />);
       await findScope("Org A", "owner");
       const origin = getContextPublicationSnapshot(queryClient);
       await userEvent.click(screen.getByTestId("shell-notifications-open"));
@@ -2371,7 +2372,7 @@ describe("AppShell", () => {
               path: "/organizations/:organizationId/members",
               element: <OrganizationMembersPage />,
             },
-            { path: "/workspace", element: <WorkspacePage /> },
+            { path: "/workspace", element: <WorkspaceEntryFallback /> },
           ],
         },
       ],
@@ -2499,7 +2500,7 @@ describe("AppShell", () => {
     });
     const user = userEvent.setup();
     const view = renderShell(
-      <WorkspacePage />,
+      <WorkspaceEntryFallback />,
       `/organizations/${ORG_A}/members`,
       strict,
       shellElement,

@@ -29,6 +29,7 @@ import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import {
   fetchMonitorDetail,
   fetchMonitorList,
+  fetchMonitorRecentEvents,
   monitorQueryKeys,
 } from "../api/monitors";
 import {
@@ -64,6 +65,7 @@ import {
   monitorDetailLoader,
   monitorEditLoader,
   monitorsOverviewLoader,
+  projectOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
@@ -129,6 +131,7 @@ vi.mock("../api/monitors", async (importOriginal) => {
   return {
     ...original,
     fetchMonitorList: vi.fn(),
+    fetchMonitorRecentEvents: vi.fn(),
     fetchMonitorDetail: vi.fn(),
   };
 });
@@ -506,14 +509,14 @@ describe("workspaceLoader", () => {
       cachedProjectId: PROJECT_FIRST,
       serverProjectId: PROJECT_LAST,
       destination:
-        "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/overview",
     },
     {
       selection: "first server fallback",
       cachedProjectId: PROJECT_LAST,
       serverProjectId: PROJECT_FIRST,
       destination:
-        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/overview",
     },
     {
       selection: "no readable Project",
@@ -555,7 +558,7 @@ describe("workspaceLoader", () => {
     fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
     renderAt([protectedWorkspace], "/workspace");
     expect((await screen.findByTestId("location")).textContent).toBe(
-      "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/overview",
     );
     expect(fetchProjectListMock).not.toHaveBeenCalled();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
@@ -582,7 +585,7 @@ describe("workspaceLoader", () => {
     save.resolve(undefined);
     const response = await loading;
     expect((response as Response).headers.get("Location")).toBe(
-      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/overview",
     );
   });
 
@@ -667,7 +670,7 @@ describe("workspaceLoader", () => {
     save.reject(new Error("save failed"));
     const response = await loading;
     expect((response as Response).headers.get("Location")).toBe(
-      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/overview",
     );
     expect(fetchLastProjectMock).toHaveBeenCalledTimes(2);
     older.resolve({ projectId: PROJECT_LAST });
@@ -706,7 +709,7 @@ describe("workspaceLoader", () => {
       landing.resolve(undefined);
       const response = await loading;
       expect((response as Response).headers.get("Location")).toBe(
-        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/overview",
       );
       expect(fetchLastProjectMock).toHaveBeenCalledTimes(2);
     },
@@ -1057,6 +1060,83 @@ describe("monitorsOverviewLoader", () => {
       `/organizations/${organizationId}/projects/${P}/monitors`,
     );
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("projectOverviewLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const route: RouteObject = {
+    path: "/organizations/:organizationId/projects/:projectId/overview",
+    loader: projectOverviewLoader,
+    element: (
+      <div data-testid="project-overview-area">project-overview-area</div>
+    ),
+  };
+  const emptyList: MonitorListResponse = {
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
+    monitors: [],
+    page: { limit: 25, offset: 0, total: 0 },
+    dataAsOf: "2026-09-30T07:32:05.000Z",
+  };
+
+  it("stages list and recent events for a member", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    fetchMonitorListMock.mockResolvedValue(emptyList);
+    vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/overview`,
+    );
+
+    expect(
+      await screen.findByTestId("project-overview-area"),
+    ).toBeInTheDocument();
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.list(organizationId, P, { limit: 25, offset: 0 }),
+      ),
+    ).toEqual(emptyList);
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.recentEvents(organizationId, P),
+      ),
+    ).toEqual({ events: [] });
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/overview`,
+    );
+
+    expect(
+      await screen.findByTestId("project-overview-area"),
+    ).toBeInTheDocument();
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
+    expect(fetchMonitorRecentEvents).not.toHaveBeenCalled();
+  });
+
+  it("sends an anonymous visitor to sign in with a return path", async () => {
+    sessionState.data = null;
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/overview`,
+    );
+
+    expect(await screen.findByTestId("from")).toHaveTextContent(
+      `/organizations/${organizationId}/projects/${P}/overview`,
+    );
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
+    expect(fetchMonitorRecentEvents).not.toHaveBeenCalled();
   });
 });
 

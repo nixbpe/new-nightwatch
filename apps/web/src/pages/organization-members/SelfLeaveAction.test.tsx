@@ -29,7 +29,7 @@ import {
 } from "../../lib/api/members";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
-import { WorkspacePage } from "../WorkspacePage";
+import { WorkspaceEntryFallback } from "../WorkspaceEntryFallback";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -155,7 +155,7 @@ function Harness() {
           path="/organizations/:organizationId/members"
           element={<OrganizationMembersPage />}
         />
-        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/workspace" element={<WorkspaceEntryFallback />} />
       </Routes>
     </>
   );

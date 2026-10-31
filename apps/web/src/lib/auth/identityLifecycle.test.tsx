@@ -18,7 +18,11 @@ import {
   resetQueryClientRegistry,
   peekActiveQueryClientIdentity,
 } from "../queryClient";
-import { requireAnonLoader, workspaceLoader } from "./loaders";
+import {
+  projectOverviewLoader,
+  requireAnonLoader,
+  workspaceLoader,
+} from "./loaders";
 
 type SessionUser = {
   id: string;
@@ -153,6 +157,11 @@ const lifecycleRoutes: RouteObject[] = [
         element: <ContextProbe />,
       },
       {
+        path: "/organizations/:organizationId/projects/:projectId/overview",
+        loader: projectOverviewLoader,
+        element: <ContextProbe />,
+      },
+      {
         path: "/login",
         loader: requireAnonLoader,
         element: <div data-testid="login-page">login-page</div>,
@@ -171,51 +180,54 @@ describe("per-identity cache lifecycle across logout → login", () => {
     resetQueryClientRegistry();
   });
 
-  it("isolates account caches and loader prefetches by identity", async () => {
-    // Logs which identity each fetch served; a cache leak would surface A's payload without a new fetch.
-    const fetchLog: string[] = [];
-    transport.mockImplementation(() => {
-      const user = sessionStore.get().data?.user;
-      fetchLog.push(user?.id ?? "anonymous");
-      if (user === undefined) {
-        // The logout epoch remount briefly mounts the probe under the anonymous client; that fetch
-        // fails and is cancelled. It never carries user data.
-        return Promise.reject(new Error("anonymous transport call"));
-      }
-      return Promise.resolve(meContextFor(user));
-    });
+  it.each(["/workspace", "/organizations/org/projects/project/overview"])(
+    "isolates account caches and loader prefetches by identity: %s",
+    async (entry) => {
+      // Logs which identity each fetch served; a cache leak would surface A's payload without a new fetch.
+      const fetchLog: string[] = [];
+      transport.mockImplementation(() => {
+        const user = sessionStore.get().data?.user;
+        fetchLog.push(user?.id ?? "anonymous");
+        if (user === undefined) {
+          // The logout epoch remount briefly mounts the probe under the anonymous client; that fetch
+          // fails and is cancelled. It never carries user data.
+          return Promise.reject(new Error("anonymous transport call"));
+        }
+        return Promise.resolve(meContextFor(user));
+      });
 
-    sessionStore.set({ user: USER_A });
-    const router = createMemoryRouter(lifecycleRoutes, {
-      initialEntries: ["/workspace"],
-    });
-    render(<RouterProvider router={router} />);
+      sessionStore.set({ user: USER_A });
+      const router = createMemoryRouter(lifecycleRoutes, {
+        initialEntries: [entry],
+      });
+      render(<RouterProvider router={router} />);
 
-    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
-    // The ONLY fetch so far is the loader's — the in-tree query hit cache.
-    expect(fetchLog).toEqual(["user-a"]);
-    // Logout without navigation: revalidation bounces to the login gate.
-    act(() => {
-      sessionStore.set(null);
-    });
+      expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+      // The ONLY fetch so far is the loader's — the in-tree query hit cache.
+      expect(fetchLog).toEqual(["user-a"]);
+      // Logout without navigation: revalidation bounces to the login gate.
+      act(() => {
+        sessionStore.set(null);
+      });
 
-    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
-    const commitsBeforeB = commitLog.length;
+      expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+      const commitsBeforeB = commitLog.length;
 
-    // Login as B without navigation: B's loader prefetch must land in the client B's tree consumes.
-    act(() => {
-      sessionStore.set({ user: USER_B });
-    });
+      // Login as B without navigation: B's loader prefetch must land in the client B's tree consumes.
+      act(() => {
+        sessionStore.set({ user: USER_B });
+      });
 
-    expect(await screen.findByTestId("view")).toHaveTextContent("User B");
-    // One fetch per identity: B's prefetch was consumed (no refetch) and no singleton served A's
-    // cache. Any "anonymous" entry is the bounce-window fetch above.
-    expect(fetchLog.filter((id) => id === "user-a")).toHaveLength(1);
-    expect(fetchLog.filter((id) => id === "user-b")).toHaveLength(1);
-    // No committed frame after the switch ever showed A's data.
-    expect(commitLog.slice(commitsBeforeB)).toContain("User B");
-    expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
-  });
+      expect(await screen.findByTestId("view")).toHaveTextContent("User B");
+      // One fetch per identity: B's prefetch was consumed (no refetch) and no singleton served A's
+      // cache. Any "anonymous" entry is the bounce-window fetch above.
+      expect(fetchLog.filter((id) => id === "user-a")).toHaveLength(1);
+      expect(fetchLog.filter((id) => id === "user-b")).toHaveLength(1);
+      // No committed frame after the switch ever showed A's data.
+      expect(commitLog.slice(commitsBeforeB)).toContain("User B");
+      expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
+    },
+  );
 
   it("reloads the document when a fresh loader identity differs from the committed provider", async () => {
     const fetchLog: string[] = [];

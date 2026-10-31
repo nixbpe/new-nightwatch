@@ -1,4 +1,4 @@
-import { isDenied } from "../workspace/rows";
+import { isDenied } from "./useMonitorAccess";
 import {
   MONITOR_LIST_SORTS,
   type MonitorHealthName,
