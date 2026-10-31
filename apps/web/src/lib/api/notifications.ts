@@ -4,6 +4,10 @@ import {
   notificationCountResponseSchema,
   notificationDetailSchema,
   notificationListResponseSchema,
+  notificationStatusFilterSchema,
+  notificationCategoryFilterSchema,
+  type NotificationStatusFilter,
+  type NotificationCategoryFilter,
   notificationSettingsUpdateSchema,
   organizationNotificationSettingsSchema,
   type NotificationListResponse,
@@ -15,13 +19,39 @@ import { ApiError, request } from "./client";
 export const NOTIFICATION_QUERY_PREFIX = ["tenant", "notifications"] as const;
 export const notificationQueryKey = (organizationId: string | null) =>
   [...NOTIFICATION_QUERY_PREFIX, organizationId] as const;
+export type NotificationFilters = {
+  status: NotificationStatusFilter;
+  category: NotificationCategoryFilter | null;
+};
+export function normalizeNotificationFilters(
+  input: { status?: unknown; category?: unknown } = {},
+): NotificationFilters {
+  const status = notificationStatusFilterSchema.safeParse(input.status);
+  const category = notificationCategoryFilterSchema.safeParse(input.category);
+  return {
+    status: status.success ? status.data : "all",
+    category: category.success ? category.data : null,
+  };
+}
+export function notificationFilteredQueryKey(
+  organizationId: string | null,
+  input: Partial<NotificationFilters> = {},
+) {
+  const filters = normalizeNotificationFilters(input);
+  return filters.status === "all" && filters.category === null
+    ? notificationQueryKey(organizationId)
+    : ([...notificationQueryKey(organizationId), filters] as const);
+}
+export const notificationPagesQueryKey = (
+  organizationId: string | null,
+  filters: NotificationFilters,
+) =>
+  [...notificationFilteredQueryKey(organizationId, filters), "pages"] as const;
 export const notificationPageQueryKey = (
   organizationId: string | null,
-  cursor?: string,
-) =>
-  cursor === undefined
-    ? notificationQueryKey(organizationId)
-    : ([...notificationQueryKey(organizationId), cursor] as const);
+  cursor: string,
+  filters: NotificationFilters,
+) => [...notificationPagesQueryKey(organizationId, filters), cursor] as const;
 export const organizationNotificationSettingsQueryKey = (
   organizationId: string,
 ) => ["tenant", "notification-settings", organizationId] as const;
@@ -56,10 +86,16 @@ function expectScope<T extends { organizationId: string | null }>(
 
 export function fetchNotifications(
   organizationId: string | null,
-  cursor?: string,
+  options: Partial<NotificationFilters> & { cursor?: string } = {},
 ): Promise<NotificationPage> {
+  const filters = normalizeNotificationFilters(options);
   return request("/api/notifications", notificationListResponseSchema, {
-    query: cursor === undefined ? { limit: 20 } : { limit: 20, cursor },
+    query: {
+      limit: 20,
+      status: filters.status,
+      ...(filters.category === null ? {} : { category: filters.category }),
+      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+    },
   }).then((result) =>
     expectScope(organizationId, notificationListResponseSchema.parse(result)),
   );

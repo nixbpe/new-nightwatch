@@ -30,6 +30,16 @@ describe("inbox scope checks", () => {
     stubFetch({
       items: [],
       nextCursor: null,
+      counts: {
+        total: 0,
+        unread: 0,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 0,
       organizationId: ORG_B,
     });
@@ -42,6 +52,16 @@ describe("inbox scope checks", () => {
     stubFetch({
       items: [],
       nextCursor: null,
+      counts: {
+        total: 0,
+        unread: 0,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 0,
       organizationId: ORG_A,
     });

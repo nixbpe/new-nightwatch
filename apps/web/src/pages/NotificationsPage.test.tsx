@@ -35,7 +35,12 @@ const monitorBase = {
   readAt: null,
   actor: null,
   category: "monitor" as const,
-  subject: { projectId: P, monitorId: MONITOR_ID, monitorName: "Checkout" },
+  subject: {
+    projectId: P,
+    monitorId: MONITOR_ID,
+    monitorName: "Checkout",
+    monitorHostname: null,
+  },
 };
 const monitorNotifications: NotificationItem[] = [
   {
@@ -101,7 +106,7 @@ let serverActiveOrgId: string | null = ORG_A;
 
 vi.mock("../lib/tenant/TenantProvider", () => ({
   useTenant: () => ({
-    me: { user: { id: userId } },
+    me: { user: { id: userId }, organizations: [{ id: ORG_A, name: "Acme" }] },
     serverActiveOrgId,
   }),
 }));
@@ -129,9 +134,9 @@ function page(queryClient: QueryClient) {
   );
 }
 
-function renderPage() {
+function renderPage(retry = false) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry } },
   });
   return { ...render(page(queryClient)), queryClient };
 }
@@ -145,11 +150,183 @@ afterEach(() => {
 });
 
 describe("NotificationsPage", () => {
+  const counts = {
+    total: 8,
+    unread: 3,
+    recent: 5,
+    window: {
+      days: 7 as const,
+      since: "2026-09-18T00:00:00.000Z",
+      until: "2026-09-25T00:00:00.000Z",
+    },
+  };
+  it("switches status and category through search params, supports tab keyboard focus and distinguishes no matches", async () => {
+    fetchNotificationsMock.mockImplementation((organizationId, filters) =>
+      Promise.resolve({
+        organizationId,
+        items: filters?.category ? [] : [notification],
+        nextCursor: null,
+        unreadCount: 6,
+        counts,
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    const unread = await screen.findByTestId(
+      "notifications-filter-status-unread",
+    );
+    expect(unread).toHaveTextContent("3");
+    screen.getByTestId("notifications-filter-status-all").focus();
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("notifications-filter-status-unread"),
+      ).toHaveFocus(),
+    );
+    expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+      status: "unread",
+      category: null,
+    });
+    await user.keyboard("{Home}");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("notifications-filter-status-all"),
+      ).toHaveFocus(),
+    );
+    await user.keyboard("{End}");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("notifications-filter-status-unread"),
+      ).toHaveFocus(),
+    );
+    await user.keyboard("{ArrowLeft}");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("notifications-filter-status-all"),
+      ).toHaveFocus(),
+    );
+    await user.click(
+      screen.getByTestId("notifications-filter-category-monitor"),
+    );
+    expect(
+      await screen.findByTestId("notifications-no-match"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("notifications-filter-category-monitor"),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("notifications-mark-all")).toBeEnabled();
+    expect(screen.getByTestId("notifications-count-recent")).toHaveTextContent(
+      "5 รายการใน 7 วัน",
+    );
+    expect(screen.queryByTestId("notifications-empty")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("notifications-no-match-clear"));
+    expect(
+      await screen.findByTestId(`notification-row-${notification.id}`),
+    ).toBeInTheDocument();
+    expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+      status: "all",
+      category: null,
+    });
+  });
+
+  it("renders organization name and event-time hostname while legacy rows retain organization name", () => {
+    const item = monitorNotifications[0];
+    if (!item) throw new Error("expected a monitor fixture");
+    if (item.category !== "monitor")
+      throw new Error("expected monitor fixture");
+    const legacy = { ...item, id: "legacy" };
+    const current = {
+      ...item,
+      subject: { ...item.subject, monitorHostname: "snapshot.example.com" },
+    };
+    render(
+      <MemoryRouter>
+        <NotificationRows items={[current, legacy]} onOpen={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText("Acme")).toHaveLength(2);
+    expect(screen.getAllByTestId("notification-monitor-hostname")).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByTestId("notification-monitor-hostname"),
+    ).toHaveTextContent("snapshot.example.com");
+  });
+
+  it.each([false, true])(
+    "recovers INVALID_CURSOR once and handles failed first-page refetch=%s",
+    async (failRefetch) => {
+      let firstRequests = 0;
+      fetchNotificationsMock.mockImplementation((organizationId, options) => {
+        if (options?.cursor)
+          throw new ApiError("INVALID_CURSOR", "expired", 400);
+        firstRequests += 1;
+        if (firstRequests > 1 && failRefetch)
+          throw new Error("refetch unavailable");
+        return Promise.resolve({
+          organizationId,
+          items: [
+            {
+              ...notification,
+              id: firstRequests === 1 ? "old-first" : "fresh-first",
+            },
+          ],
+          nextCursor: "expired",
+          unreadCount: 3,
+          counts,
+        });
+      });
+      const user = userEvent.setup();
+      const { queryClient } = renderPage(true);
+      await user.click(await screen.findByTestId("notifications-load-more"));
+      if (failRefetch) {
+        expect(
+          await screen.findByTestId("notifications-list-error"),
+        ).toBeInTheDocument();
+      } else {
+        expect(
+          await screen.findByTestId("notifications-pages-reset"),
+        ).toBeInTheDocument();
+        expect(
+          await screen.findByTestId("notification-row-fresh-first"),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByTestId("notification-row-old-first"),
+        ).not.toBeInTheDocument();
+        expect(
+          queryClient
+            .getQueryCache()
+            .findAll({ queryKey: ["tenant", "notifications", ORG_A, "pages"] }),
+        ).toHaveLength(0);
+        await user.click(screen.getByTestId("notifications-load-more"));
+        expect(
+          await screen.findByTestId("notifications-next-error"),
+        ).toBeInTheDocument();
+      }
+      expect(firstRequests).toBe(2);
+      expect(
+        fetchNotificationsMock.mock.calls.filter(
+          ([, options]) => options?.cursor,
+        ),
+      ).toHaveLength(failRefetch ? 1 : 2);
+    },
+  );
+
   it("shows title, icon, context and a monitor link for each monitor event type", async () => {
     fetchNotificationsMock.mockResolvedValue({
       organizationId: ORG_A,
       items: monitorNotifications,
       nextCursor: null,
+      counts: {
+        total: 5,
+        unread: 5,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 5,
     });
     renderPage();
@@ -198,6 +375,16 @@ describe("NotificationsPage", () => {
         },
       ],
       nextCursor: null,
+      counts: {
+        total: 1,
+        unread: 1,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 1,
     });
     renderPage();
@@ -215,6 +402,16 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: auditNotifications,
       nextCursor: null,
+      counts: {
+        total: 2,
+        unread: 2,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 2,
     });
     renderPage();
@@ -239,6 +436,16 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [ready],
       nextCursor: null,
+      counts: {
+        total: 1,
+        unread: 1,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 1,
     });
     openNotificationMock.mockResolvedValue({
@@ -267,6 +474,16 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [down],
       nextCursor: null,
+      counts: {
+        total: 1,
+        unread: 1,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 1,
     });
     openNotificationMock.mockResolvedValue({
@@ -305,6 +522,16 @@ describe("NotificationsPage", () => {
         organizationId,
         items: organizationId === ORG_A ? [notification] : [],
         nextCursor: null,
+        counts: {
+          total: organizationId === ORG_A ? 1 : 0,
+          unread: organizationId === ORG_A ? 1 : 0,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
         unreadCount: organizationId === ORG_A ? 1 : 0,
       }),
     );
@@ -344,6 +571,16 @@ describe("NotificationsPage", () => {
         organizationId,
         items: organizationId === ORG_A ? [notification] : [],
         nextCursor: null,
+        counts: {
+          total: organizationId === ORG_A ? 1 : 0,
+          unread: organizationId === ORG_A ? 1 : 0,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
         unreadCount: organizationId === ORG_A ? 1 : 0,
       }),
     );
@@ -371,6 +608,16 @@ describe("NotificationsPage", () => {
       organizationId: null,
       items: [],
       nextCursor: null,
+      counts: {
+        total: 0,
+        unread: 0,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 0,
     });
     openNotificationMock.mockRejectedValue(
@@ -423,11 +670,21 @@ describe("NotificationsPage", () => {
       readAt: "2026-09-25T03:01:00.000Z",
     }));
     fetchNotificationsMock.mockImplementation((organizationId, cursor) => {
-      if (cursor === "cursor-1") {
+      if (cursor?.cursor === "cursor-1") {
         return Promise.resolve({
           organizationId,
           items: [pageTwoUnread],
           nextCursor: null,
+          counts: {
+            total: 1,
+            unread: 1,
+            recent: 0,
+            window: {
+              days: 7,
+              since: "2026-09-18T00:00:00.000Z",
+              until: "2026-09-25T00:00:00.000Z",
+            },
+          },
           unreadCount: 1,
         });
       }
@@ -435,6 +692,16 @@ describe("NotificationsPage", () => {
         organizationId,
         items: firstPage,
         nextCursor: "cursor-1",
+        counts: {
+          total: 1,
+          unread: 1,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
         unreadCount: 1,
       });
     });
@@ -479,11 +746,21 @@ describe("NotificationsPage", () => {
     let firstPageVersion = 1;
     fetchNotificationsMock.mockImplementation((organizationId, cursor) =>
       Promise.resolve(
-        cursor === "cursor-1"
+        cursor?.cursor === "cursor-1"
           ? {
               organizationId,
               items: [pageTwo],
               nextCursor: null,
+              counts: {
+                total: 0,
+                unread: 0,
+                recent: 0,
+                window: {
+                  days: 7,
+                  since: "2026-09-18T00:00:00.000Z",
+                  until: "2026-09-25T00:00:00.000Z",
+                },
+              },
               unreadCount: 0,
             }
           : {
@@ -496,6 +773,16 @@ describe("NotificationsPage", () => {
                 },
               ],
               nextCursor: "cursor-1",
+              counts: {
+                total: 0,
+                unread: 0,
+                recent: 0,
+                window: {
+                  days: 7,
+                  since: "2026-09-18T00:00:00.000Z",
+                  until: "2026-09-25T00:00:00.000Z",
+                },
+              },
               unreadCount: 0,
             },
       ),
@@ -531,7 +818,7 @@ describe("NotificationsPage", () => {
     };
     let pageTwoAttempts = 0;
     fetchNotificationsMock.mockImplementation((organizationId, cursor) => {
-      if (cursor === "cursor-1") {
+      if (cursor?.cursor === "cursor-1") {
         pageTwoAttempts += 1;
         return pageTwoAttempts === 1
           ? Promise.reject(new Error("network down"))
@@ -539,6 +826,16 @@ describe("NotificationsPage", () => {
               organizationId,
               items: [pageTwo],
               nextCursor: null,
+              counts: {
+                total: 0,
+                unread: 0,
+                recent: 0,
+                window: {
+                  days: 7,
+                  since: "2026-09-18T00:00:00.000Z",
+                  until: "2026-09-25T00:00:00.000Z",
+                },
+              },
               unreadCount: 0,
             });
       }
@@ -546,6 +843,16 @@ describe("NotificationsPage", () => {
         organizationId,
         items: [notification],
         nextCursor: "cursor-1",
+        counts: {
+          total: 0,
+          unread: 0,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
         unreadCount: 0,
       });
     });
@@ -592,9 +899,19 @@ describe("NotificationsPage", () => {
     fetchNotificationsMock.mockImplementation((organizationId, cursor) =>
       Promise.resolve({
         organizationId,
-        items: cursor === "cursor-1" ? [pageTwo] : firstPage,
-        nextCursor: cursor === "cursor-1" ? null : "cursor-1",
+        items: cursor?.cursor === "cursor-1" ? [pageTwo] : firstPage,
+        nextCursor: cursor?.cursor === "cursor-1" ? null : "cursor-1",
         unreadCount,
+        counts: {
+          total: 21,
+          unread: unreadCount,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
       }),
     );
     markAllNotificationsReadMock.mockImplementation(() => {
@@ -642,6 +959,16 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [notification],
       nextCursor: null,
+      counts: {
+        total: 1,
+        unread: 1,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 1,
     });
     markAllNotificationsReadMock.mockRejectedValue(
@@ -663,6 +990,16 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [],
       nextCursor: null,
+      counts: {
+        total: 0,
+        unread: 0,
+        recent: 0,
+        window: {
+          days: 7,
+          since: "2026-09-18T00:00:00.000Z",
+          until: "2026-09-25T00:00:00.000Z",
+        },
+      },
       unreadCount: 0,
     });
     renderPage();
@@ -700,6 +1037,16 @@ describe("NotificationsPage", () => {
         organizationId: ORG_A,
         items,
         nextCursor: null,
+        counts: {
+          total: 1,
+          unread: 1,
+          recent: 0,
+          window: {
+            days: 7,
+            since: "2026-09-18T00:00:00.000Z",
+            until: "2026-09-25T00:00:00.000Z",
+          },
+        },
         unreadCount: 1,
       });
       renderPage();

@@ -3,7 +3,7 @@ import {
   type NotificationItem,
 } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../components/shell/EmptyState";
@@ -23,7 +23,6 @@ import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
-import { MockupFrame } from "../components/ui/mockup-frame";
 import { Notice } from "../components/ui/notice";
 import { SectionHeader } from "../components/ui/section-header";
 import { ApiError } from "../lib/api/client";
@@ -36,6 +35,9 @@ import {
   fetchNotifications,
   markAllNotificationsRead,
   notificationPageQueryKey,
+  notificationPagesQueryKey,
+  notificationFilteredQueryKey,
+  normalizeNotificationFilters,
   notificationQueryKey,
   openNotification,
   type NotificationPage,
@@ -86,11 +88,14 @@ function itemTitle(item: NotificationItem) {
   return "ปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
 }
 // Scope and category, rendered as two parts rather than one dotted string.
-function itemContext(item: NotificationItem): [string, string] {
+function itemContext(
+  item: NotificationItem,
+  organizationName = "องค์กร",
+): [string, string] {
   if (item.scope !== "organization") return ["บัญชีของคุณ", "ความปลอดภัย"];
-  if (item.category === "monitor") return ["องค์กร", "มอนิเตอร์"];
-  if (item.category === "audit-log") return ["องค์กร", "บันทึกกิจกรรม"];
-  return ["องค์กร", "การตั้งค่าการแจ้งเตือน"];
+  if (item.category === "monitor") return [organizationName, "มอนิเตอร์"];
+  if (item.category === "audit-log") return [organizationName, "บันทึกกิจกรรม"];
+  return [organizationName, "การตั้งค่าการแจ้งเตือน"];
 }
 function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
   if (item.scope === "organization") {
@@ -265,6 +270,7 @@ function NotificationList({
   popoverItems: boolean;
 }) {
   const { preferences } = usePreferences();
+  const { me } = useTenant();
   return (
     <ul className="divide-y divide-foreground/10">
       {items.map((item) => {
@@ -316,9 +322,23 @@ function NotificationList({
                   </span>
                 </span>
                 <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
-                  {itemContext(item).map((part) => (
+                  {itemContext(
+                    item,
+                    me?.organizations.find(
+                      (org) => org.id === item.organizationId,
+                    )?.name,
+                  ).map((part) => (
                     <span key={part}>{part}</span>
                   ))}
+                  {item.category === "monitor" &&
+                  item.subject.monitorHostname !== null ? (
+                    <span
+                      className="font-mono"
+                      data-testid="notification-monitor-hostname"
+                    >
+                      {item.subject.monitorHostname}
+                    </span>
+                  ) : null}
                   <time
                     dateTime={item.occurredAt}
                     title={itemTime(item.occurredAt, preferences)}
@@ -451,6 +471,23 @@ function NotificationsPageForOrganization({
   serverActiveOrgId: string | null;
 }) {
   const { preferences } = usePreferences();
+  const { me } = useTenant();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = normalizeNotificationFilters({
+    status: searchParams.get("status"),
+    category: searchParams.get("category"),
+  });
+  const location = useLocation();
+  const selectedTab = useRef<HTMLButtonElement>(null);
+  function changeFilters(update: Partial<typeof filters>, focusTab = false) {
+    const next = { ...filters, ...update };
+    const params = new URLSearchParams(searchParams);
+    if (next.status === "all") params.delete("status");
+    else params.set("status", next.status);
+    if (next.category === null) params.delete("category");
+    else params.set("category", next.category);
+    setSearchParams(params, { state: { notificationFilterFocus: focusTab } });
+  }
   const client = useQueryClient();
   const [detailId, setDetailId] = useState(initialDetailId);
   // Later pages are valid only for the first page whose cursor chain they continue; a refetched first page drops them.
@@ -461,10 +498,20 @@ function NotificationsPageForOrganization({
   const [loadingNextPage, setLoadingNextPage] = useState(false);
   const [nextPageError, setNextPageError] = useState<unknown>(null);
   const openedInitialDetail = useRef(false);
+  const recoveredCursor = useRef(false);
+  const [pagesReset, setPagesReset] = useState(false);
   const list = useQuery({
-    queryKey: notificationQueryKey(serverActiveOrgId),
-    queryFn: () => fetchNotifications(serverActiveOrgId),
+    queryKey: notificationFilteredQueryKey(serverActiveOrgId, filters),
+    queryFn: () => fetchNotifications(serverActiveOrgId, filters),
+    retry: false,
   });
+  useEffect(() => {
+    if (
+      (location.state as { notificationFilterFocus?: boolean } | null)
+        ?.notificationFilterFocus
+    )
+      selectedTab.current?.focus();
+  }, [location.state, list.isSuccess]);
   const open = useMutation({
     mutationFn: openNotification,
     onSuccess: async () => {
@@ -506,13 +553,37 @@ function NotificationsPageForOrganization({
     setNextPageError(null);
     try {
       const nextPage = await client.query({
-        queryKey: notificationPageQueryKey(serverActiveOrgId, nextCursor),
-        queryFn: () => fetchNotifications(serverActiveOrgId, nextCursor),
+        queryKey: notificationPageQueryKey(
+          serverActiveOrgId,
+          nextCursor,
+          filters,
+        ),
+        queryFn: () =>
+          fetchNotifications(serverActiveOrgId, {
+            ...filters,
+            cursor: nextCursor,
+          }),
         staleTime: Infinity,
+        // A rejected cursor must reach recovery without replaying its chain.
+        retry: false,
       });
       setRetained({ firstPage, pages: [...pages, nextPage] });
     } catch (error) {
-      setNextPageError(error);
+      if (
+        error instanceof ApiError &&
+        error.code === "INVALID_CURSOR" &&
+        !recoveredCursor.current
+      ) {
+        recoveredCursor.current = true;
+        setRetained(null);
+        client.removeQueries({
+          queryKey: notificationPagesQueryKey(serverActiveOrgId, filters),
+        });
+        setPagesReset(true);
+        await list.refetch();
+      } else {
+        setNextPageError(error);
+      }
     } finally {
       setLoadingNextPage(false);
     }
@@ -570,7 +641,14 @@ function NotificationsPageForOrganization({
       <Page>
         {backButton}
         <PageHeader
-          scope={{ label: itemContext(detail)[0], tag: itemContext(detail)[1] }}
+          scope={{
+            label: itemContext(
+              detail,
+              me?.organizations.find((org) => org.id === detail.organizationId)
+                ?.name,
+            )[0],
+            tag: itemContext(detail)[1],
+          }}
           title={itemTitle(detail)}
         />
         <Card
@@ -639,6 +717,14 @@ function NotificationsPageForOrganization({
                   >
                     ({detail.subject.monitorName})
                   </span>
+                  {detail.subject.monitorHostname !== null ? (
+                    <span
+                      className="ml-2 font-mono"
+                      data-testid="notification-monitor-hostname"
+                    >
+                      {detail.subject.monitorHostname}
+                    </span>
+                  ) : null}
                 </dd>
                 <dt className="text-foreground-secondary">รายละเอียด</dt>
                 <dd>
@@ -695,7 +781,7 @@ function NotificationsPageForOrganization({
         />
       </Page>
     );
-  const { unreadCount } = list.data;
+  const { unreadCount, counts } = list.data;
   return (
     <Page>
       <PageHeader
@@ -739,54 +825,113 @@ function NotificationsPageForOrganization({
           ทำเครื่องหมายว่าอ่านแล้วทั้งหมด
         </Notice>
       ) : null}
-      <MockupFrame label="ตัวกรองและสรุปการแจ้งเตือน" issue={62}>
-        <div className="flex flex-col gap-3 text-sm text-foreground-secondary">
-          <div
-            role="tablist"
-            aria-label="ตัวกรองการแจ้งเตือน"
-            className="flex items-center gap-4 border-b border-foreground/10"
-          >
-            <span
+      <div className="flex flex-col gap-3 text-sm text-foreground-secondary">
+        <div
+          role="tablist"
+          aria-label="ตัวกรองการแจ้งเตือน"
+          className="flex gap-4 border-b border-foreground/10"
+        >
+          {(["all", "unread"] as const).map((status) => (
+            <button
+              key={status}
+              type="button"
               role="tab"
-              aria-selected="true"
-              className="-mb-px inline-flex h-8 items-center gap-2 border-b-2 border-primary text-[13px] font-semibold text-foreground"
+              id={`notifications-tab-${status}`}
+              data-testid={`notifications-filter-status-${status}`}
+              aria-selected={filters.status === status}
+              aria-controls="notifications-items"
+              ref={filters.status === status ? selectedTab : undefined}
+              tabIndex={filters.status === status ? 0 : -1}
+              className={`inline-flex min-h-10 items-center gap-2 border-b-2 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${filters.status === status ? "border-primary text-heading" : "border-transparent"}`}
+              onClick={() => {
+                changeFilters({ status });
+              }}
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? "all"
+                    : event.key === "End"
+                      ? "unread"
+                      : status === "all"
+                        ? "unread"
+                        : "all";
+                changeFilters({ status: next }, true);
+              }}
             >
-              ทั้งหมด <span className="font-mono">00</span>
-            </span>
-            <span
-              role="tab"
-              aria-selected="false"
-              className="inline-flex h-8 items-center gap-2 text-[13px]"
-            >
-              ยังไม่อ่าน <span className="font-mono">00</span>
-            </span>
-          </div>
-          <p className="text-xs">
-            <span className="font-mono text-foreground">00</span> รายการใน{" "}
-            <span className="font-mono text-foreground">N</span> วัน
-          </p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {[
-              "ทั้งหมด",
-              "มอนิเตอร์",
-              "ความปลอดภัย",
-              "การตั้งค่าการแจ้งเตือน",
-            ].map((chip) => (
-              <span
-                key={chip}
-                className="inline-flex h-8 items-center rounded-md border border-foreground/20 px-3 text-[13px]"
-              >
-                {chip}
+              {status === "all" ? "ทั้งหมด" : "ยังไม่อ่าน"}{" "}
+              <span className="font-mono">
+                {status === "all" ? counts.total : counts.unread}
               </span>
-            ))}
-          </div>
-          <p className="text-xs">
-            องค์กรตัวอย่าง · <span className="font-mono">cdn.example.com</span>
-          </p>
+            </button>
+          ))}
         </div>
-      </MockupFrame>
-      <div>
-        {items.length === 0 ? (
+        <p data-testid="notifications-count-recent" className="text-xs">
+          <span className="font-mono">{counts.recent}</span> รายการใน 7 วัน (ถึง{" "}
+          {itemTime(counts.window.until, preferences)})
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["all", "ทั้งหมด"],
+              ["monitor", "มอนิเตอร์"],
+              ["security", "ความปลอดภัย"],
+              ["organization", "องค์กร"],
+            ] as const
+          ).map(([category, label]) => (
+            <Button
+              key={category}
+              variant="secondary"
+              data-testid={`notifications-filter-category-${category}`}
+              aria-pressed={(filters.category ?? "all") === category}
+              onClick={() => {
+                changeFilters({
+                  category:
+                    category === "all" || filters.category === category
+                      ? null
+                      : category,
+                });
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      {pagesReset ? (
+        <Notice data-testid="notifications-pages-reset" tone="pending">
+          โหลดรายการใหม่แล้ว เนื่องจากหน้าถัดไปหมดอายุ
+        </Notice>
+      ) : null}
+      <div
+        id="notifications-items"
+        role="tabpanel"
+        aria-labelledby={`notifications-tab-${filters.status}`}
+      >
+        {items.length === 0 &&
+        (filters.status !== "all" || filters.category !== null) ? (
+          <EmptyState
+            data-testid="notifications-no-match"
+            icon={<BellIcon size={20} />}
+            title="ไม่มีรายการที่ตรงกับตัวกรอง"
+            action={
+              <Button
+                data-testid="notifications-no-match-clear"
+                onClick={() => {
+                  changeFilters({ status: "all", category: null });
+                }}
+              >
+                ล้างตัวกรอง
+              </Button>
+            }
+          />
+        ) : items.length === 0 ? (
           <EmptyState
             data-testid="notifications-empty"
             icon={<BellIcon size={20} />}
