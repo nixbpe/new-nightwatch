@@ -828,6 +828,9 @@ describe("ResponseTimeChart x-axis ticks", () => {
     const labels = tickLabels();
     expect(labels.length).toBeGreaterThan(1);
     expect(new Set(labels).size).toBe(labels.length);
+    expect(labels.every((label) => /^\d{2}:\d{2}:\d{2}$/.test(label))).toBe(
+      true,
+    );
   });
 
   it("keeps distinct HH:mm labels across a full 24 h window", () => {
