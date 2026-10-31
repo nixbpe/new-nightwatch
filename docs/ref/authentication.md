@@ -5,7 +5,7 @@ This reference preserves the browser error and session decisions from issue #2 a
 ## Session policy
 
 - `/login` sends only `email` and `password` through `authClient.signIn.email`. It has no remember-device checkbox, mockup notice or issue #65 link.
-- Better Auth `1.6.23` uses its default 7-day session and default refresh behavior. The policy does not impose a fixed maximum age measured from login.
+- Better Auth `1.7.7` uses its default 7-day session and default refresh behavior. The policy does not impose a fixed maximum age measured from login.
 - Omitting `rememberMe` keeps the library default `true`. Closing the browser does not introduce a logout requirement.
 - The `trustDevice` checkbox on `/two-factor` is separate. TOTP, recovery codes and the default 30-day trusted-device lifetime remain unchanged.
 - The invitation guidance, password-reset link, validation, pending state and redirect behavior remain part of the login page.
