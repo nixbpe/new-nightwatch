@@ -2,7 +2,7 @@ import type { NotificationItem } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -124,11 +124,20 @@ const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const markAllNotificationsReadMock = vi.mocked(markAllNotificationsRead);
 const openNotificationMock = vi.mocked(openNotification);
 
+function LocationProbe() {
+  return (
+    <output data-testid="notification-filter-url">
+      {useLocation().search}
+    </output>
+  );
+}
+
 function page(queryClient: QueryClient) {
   return (
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
         <NotificationsPage />
+        <LocationProbe />
       </QueryClientProvider>
     </MemoryRouter>
   );
@@ -213,6 +222,9 @@ describe("NotificationsPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("notifications-filter-category-monitor"),
+    ).toHaveFocus();
+    expect(
+      screen.getByTestId("notifications-filter-category-monitor"),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("notifications-mark-all")).toBeEnabled();
     expect(screen.getByTestId("notifications-count-recent")).toHaveTextContent(
@@ -227,6 +239,116 @@ describe("NotificationsPage", () => {
       status: "all",
       category: null,
     });
+  });
+
+  it.each(["{Enter}", " "])(
+    "restores filter activation focus for %s after delayed responses and repeated toggles",
+    async (key) => {
+      type Page = Awaited<ReturnType<typeof fetchNotifications>>;
+      const response = {
+        organizationId: ORG_A,
+        items: [notification],
+        nextCursor: null,
+        unreadCount: 6,
+        counts,
+      };
+      fetchNotificationsMock.mockResolvedValue(response);
+      const user = userEvent.setup();
+      renderPage();
+      const chipId = "notifications-filter-category-monitor";
+      const chip = await screen.findByTestId(chipId);
+      chip.focus();
+      const pending = Promise.withResolvers<Page>();
+      fetchNotificationsMock.mockImplementationOnce(() => pending.promise);
+      await user.keyboard(key);
+      expect(screen.getByTestId("notification-filter-url")).toHaveTextContent(
+        "?category=monitor",
+      );
+      expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+        status: "all",
+        category: "monitor",
+      });
+      expect(screen.queryByTestId(chipId)).not.toBeInTheDocument();
+      await act(async () => {
+        pending.resolve(response);
+        await pending.promise;
+      });
+      await waitFor(() => expect(screen.getByTestId(chipId)).toHaveFocus());
+      await user.keyboard(key);
+      await waitFor(() =>
+        expect(screen.getByTestId("notification-filter-url")).toHaveTextContent(
+          /^$/,
+        ),
+      );
+      expect(screen.getByTestId(chipId)).toHaveFocus();
+      expect(screen.getByTestId(chipId)).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+        status: "all",
+        category: null,
+      });
+
+      const unreadId = "notifications-filter-status-unread";
+      screen.getByTestId(unreadId).focus();
+      const statusPending = Promise.withResolvers<Page>();
+      fetchNotificationsMock.mockImplementationOnce(
+        () => statusPending.promise,
+      );
+      await user.keyboard(key);
+      expect(screen.getByTestId("notification-filter-url")).toHaveTextContent(
+        "?status=unread",
+      );
+      expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+        status: "unread",
+        category: null,
+      });
+      await act(async () => {
+        statusPending.resolve(response);
+        await statusPending.promise;
+      });
+      await waitFor(() => expect(screen.getByTestId(unreadId)).toHaveFocus());
+      const allId = "notifications-filter-status-all";
+      screen.getByTestId(allId).focus();
+      await user.keyboard(key);
+      await waitFor(() => expect(screen.getByTestId(allId)).toHaveFocus());
+      expect(screen.getByTestId("notification-filter-url")).toHaveTextContent(
+        /^$/,
+      );
+      expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
+        status: "all",
+        category: null,
+      });
+    },
+  );
+
+  it("returns clear-filter focus to the selected default status tab", async () => {
+    fetchNotificationsMock.mockImplementation((organizationId, filters) =>
+      Promise.resolve({
+        organizationId,
+        items: filters?.category ? [] : [notification],
+        nextCursor: null,
+        unreadCount: 6,
+        counts,
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("notifications-filter-category-security"),
+    );
+    const clear = await screen.findByTestId("notifications-no-match-clear");
+    clear.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("notifications-filter-status-all"),
+      ).toHaveFocus(),
+    );
+    expect(screen.getByTestId("notification-filter-url")).toHaveTextContent(
+      /^$/,
+    );
   });
 
   it("renders organization name and event-time hostname while legacy rows retain organization name", () => {

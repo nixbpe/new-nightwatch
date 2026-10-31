@@ -478,15 +478,18 @@ function NotificationsPageForOrganization({
     category: searchParams.get("category"),
   });
   const location = useLocation();
-  const selectedTab = useRef<HTMLButtonElement>(null);
-  function changeFilters(update: Partial<typeof filters>, focusTab = false) {
+  const focusTarget = (
+    location.state as { notificationFilterFocus?: string } | null
+  )?.notificationFilterFocus;
+  const focusedFilter = useRef<HTMLButtonElement>(null);
+  function changeFilters(update: Partial<typeof filters>, target: string) {
     const next = { ...filters, ...update };
     const params = new URLSearchParams(searchParams);
     if (next.status === "all") params.delete("status");
     else params.set("status", next.status);
     if (next.category === null) params.delete("category");
     else params.set("category", next.category);
-    setSearchParams(params, { state: { notificationFilterFocus: focusTab } });
+    setSearchParams(params, { state: { notificationFilterFocus: target } });
   }
   const client = useQueryClient();
   const [detailId, setDetailId] = useState(initialDetailId);
@@ -506,12 +509,8 @@ function NotificationsPageForOrganization({
     retry: false,
   });
   useEffect(() => {
-    if (
-      (location.state as { notificationFilterFocus?: boolean } | null)
-        ?.notificationFilterFocus
-    )
-      selectedTab.current?.focus();
-  }, [location.state, list.isSuccess]);
+    focusedFilter.current?.focus();
+  }, [focusTarget, list.isSuccess]);
   const open = useMutation({
     mutationFn: openNotification,
     onSuccess: async () => {
@@ -840,11 +839,13 @@ function NotificationsPageForOrganization({
               data-testid={`notifications-filter-status-${status}`}
               aria-selected={filters.status === status}
               aria-controls="notifications-items"
-              ref={filters.status === status ? selectedTab : undefined}
+              ref={
+                focusTarget === `status-${status}` ? focusedFilter : undefined
+              }
               tabIndex={filters.status === status ? 0 : -1}
               className={`inline-flex min-h-10 items-center gap-2 border-b-2 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${filters.status === status ? "border-primary text-heading" : "border-transparent"}`}
               onClick={() => {
-                changeFilters({ status });
+                changeFilters({ status }, `status-${status}`);
               }}
               onKeyDown={(event) => {
                 if (
@@ -862,7 +863,7 @@ function NotificationsPageForOrganization({
                       : status === "all"
                         ? "unread"
                         : "all";
-                changeFilters({ status: next }, true);
+                changeFilters({ status: next }, `status-${next}`);
               }}
             >
               {status === "all" ? "ทั้งหมด" : "ยังไม่อ่าน"}{" "}
@@ -891,13 +892,21 @@ function NotificationsPageForOrganization({
               className="aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
               data-testid={`notifications-filter-category-${category}`}
               aria-pressed={(filters.category ?? "all") === category}
+              ref={
+                focusTarget === `category-${category}`
+                  ? focusedFilter
+                  : undefined
+              }
               onClick={() => {
-                changeFilters({
-                  category:
-                    category === "all" || filters.category === category
-                      ? null
-                      : category,
-                });
+                changeFilters(
+                  {
+                    category:
+                      category === "all" || filters.category === category
+                        ? null
+                        : category,
+                  },
+                  `category-${category}`,
+                );
               }}
             >
               {label}
@@ -925,7 +934,10 @@ function NotificationsPageForOrganization({
               <Button
                 data-testid="notifications-no-match-clear"
                 onClick={() => {
-                  changeFilters({ status: "all", category: null });
+                  changeFilters(
+                    { status: "all", category: null },
+                    "status-all",
+                  );
                 }}
               >
                 ล้างตัวกรอง
