@@ -47,6 +47,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      # Root validate runs workflow:test first. Its non-UTF-8 manifest case
+      # skips on macOS (APFS refuses the file name), so Linux CI executes it.
+      - run: bun run workflow:test
       - run: bun run lint
 
   typecheck:

@@ -234,8 +234,11 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
 - `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
   turbo-run tasks without putting key values in the cache hash.
 - Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
-  runs `bun run --cwd packages/shared test:bun` (`bun --bun vitest run`) so the
-  SSRF helper is exercised on the pinned Bun.
+  runs `test:bun` on the pinned Bun in three matrix groups: `packages/shared`
+  (`bun --bun vitest run`, the SSRF helper), `apps/worker`
+  (`checker.db.test.ts`, `checker-ssl.db.test.ts`) and `apps/api`
+  (`test-route.db.test.ts`, `secrets.db.test.ts` on a real `Bun.serve`
+  listener). See [Platform- and runtime-dependent skips](#platform--and-runtime-dependent-skips).
 - Runbook: [uptime monitor operations](../../docs/runbooks/uptime-monitor.md).
 
 ## OpenAPI client drift
@@ -368,3 +371,47 @@ in the resolved packages, and verify a fresh frozen install with verbose logs.
 Registry tarball `prepare` scripts do not execute for consumers. Any required
 exception needs a separately reviewed policy change naming the package, hook,
 reason and review date.
+
+## Platform- and runtime-dependent skips
+
+A skip is never a pass. A gate report names every skipped test, the condition,
+the reason and where the same behavior executes. Use three results: `passed`
+(observed in a log), `skipped` (reason plus the command or CI job that executes
+the test) and `not run` (the command or job did not execute; name the policy,
+environment or blocker).
+
+| Test or job                                                                                                                                                                                                                  | Skip condition                                                                   | Reason                                                                                      | Executes in                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fails closed on non-UTF-8 Git paths` in `scripts/quality/candidate-manifest.test.mjs`                                                                                                                                       | `process.platform === "darwin"`; the test name carries the reason when skipped   | APFS refuses a non-UTF-8 file name with `EILSEQ`, so the fixture cannot be created on macOS | CI job `lint` step `bun run workflow:test` on `ubuntu-24.04`. That glob has no other skip, so `0 skip` in the step log proves execution. Name-level proof: `bun test scripts/quality/candidate-manifest.test.mjs --reporter=junit --reporter-outfile=<file>`                                                                                                                            |
+| `on a real Bun listener` in `apps/api/src/monitors/test-route.db.test.ts`: `returns the timeout result of a Test that waits past Bun's 10 s default` and `aborts the outbound request when the client closes its connection` | `describe.runIf(typeof Bun !== "undefined")`; vitest on Node reports `2 skipped` | Bun's idle HTTP timeout is observable only on a real `Bun.serve` listener                   | CI job `unit tests + coverage (api)` step `Tests on Bun` (`bun run --cwd apps/api test:bun`). Locally through the wrapper below                                                                                                                                                                                                                                                         |
+| CI job `release-stage (e2e + container)`                                                                                                                                                                                     | `if: github.event_name == 'workflow_dispatch'`                                   | The e2e suite plus container build and trivy scan run only on manual dispatch               | On a pull request report the job as `skipped` (by policy) and each workload as `not run` until it executes. `bun run e2e` executes the browser suite locally; `bun run security:image` executes the container build and trivy scan locally (Docker and trivy required). A workload stays `not run` until that local command or the manual `full` job ran, then report its actual result |
+
+Keep two levels apart in a report: the CI job result as GitHub shows it
+(`skipped`) and the workload result (`not run`). Never replace one with the
+other.
+
+Local commands that touch the database or Redis run through this worktree's
+generated environment, never as a bare invocation. The trailing command is the
+one to execute:
+
+```sh
+(
+  set -e
+  bun run db:up
+  trap 'bun run db:down' EXIT
+  bun -e '
+    const { resolveDevEnv } = await import("./scripts/dev-env.mjs");
+    const { env } = resolveDevEnv();
+    const child = Bun.spawn(process.argv.slice(1), {
+      env,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    process.exit(await child.exited);
+  ' -- bun run --cwd apps/api test:bun
+)
+```
+
+To list the Node-side skips by name, replace the trailing command with
+`bun run --cwd apps/api test:integration src/monitors/test-route.db.test.ts --reporter=verbose`.
