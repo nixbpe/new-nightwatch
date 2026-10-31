@@ -217,7 +217,12 @@ export function TestPanel({
 
   if (!presented) return null;
   return (
-    <Card as="section" aria-labelledby="monitor-form-test-title" padding="md">
+    <Card
+      data-testid="monitor-form-test-panel"
+      as="section"
+      aria-labelledby="monitor-form-test-title"
+      padding="md"
+    >
       <CardHeader
         id="monitor-form-test-title"
         title="ทดสอบการตั้งค่า"
@@ -321,12 +326,21 @@ function Diagnostics({ result }: { result: MonitorTestResult }) {
     ) : (
       <span className="font-mono">{formatNumber(ms)} ms</span>
     );
-  const tls =
+  const tlsState =
     facts.tlsMs !== null
-      ? duration(facts.tlsMs)
+      ? "measured"
       : facts.redirects === 0 && new URL(result.url).protocol === "http:"
+        ? "not_applicable"
+        : "unmeasured";
+  const tls =
+    tlsState === "measured"
+      ? duration(facts.tlsMs)
+      : tlsState === "not_applicable"
         ? "ไม่มี (http)"
         : "ไม่ได้วัด";
+  const partial =
+    result.outcome === "fail" &&
+    [...phases, facts.remoteAddress].some((value) => value === null);
   return (
     <div>
       <dl
@@ -334,6 +348,8 @@ function Diagnostics({ result }: { result: MonitorTestResult }) {
         data-dns-ms={facts.dnsMs ?? undefined}
         data-connect-ms={facts.connectMs ?? undefined}
         data-tls-ms={facts.tlsMs ?? undefined}
+        data-tls-state={tlsState}
+        data-partial={partial}
         data-ttfb-ms={facts.ttfbMs ?? undefined}
         data-remote-address={facts.remoteAddress ?? undefined}
         data-redirects={facts.redirects ?? undefined}
@@ -361,8 +377,7 @@ function Diagnostics({ result }: { result: MonitorTestResult }) {
           ค่าของปลายทางสุดท้ายหลัง redirect {facts.redirects} ครั้ง
         </p>
       ) : null}
-      {result.outcome === "fail" &&
-      [...phases, facts.remoteAddress].some((value) => value === null) ? (
+      {partial ? (
         <p className="text-xs text-foreground-secondary">
           วัดได้เฉพาะขั้นตอนที่เสร็จก่อนเกิดข้อผิดพลาด
         </p>

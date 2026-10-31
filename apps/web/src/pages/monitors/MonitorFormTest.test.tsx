@@ -218,9 +218,12 @@ describe("Test panel states", () => {
     expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
     expect(screen.getByTestId("monitor-test-idle")).not.toBeEmptyDOMElement();
     expect(
-      screen.queryByRole("group", {
-        name: "ตัวอย่าง: เวลาแยกตามขั้นตอนของการทดสอบ",
-      }),
+      within(screen.getByTestId("monitor-form-test-panel")).queryByRole(
+        "group",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("monitor-test-diagnostics"),
     ).not.toBeInTheDocument();
     expect(draftMock).not.toHaveBeenCalled();
   });
@@ -230,33 +233,33 @@ describe("Test panel states", () => {
       url: "http://api.acme.example/health",
       redirects: 0,
       tlsMs: null,
-      expected: "ไม่มี (http)",
+      tlsState: "not_applicable",
       outcome: "pass",
     },
     {
       url: "http://api.acme.example/health",
       redirects: 1,
       tlsMs: 37,
-      expected: "37 ms",
+      tlsState: "measured",
       outcome: "pass",
     },
     {
       url: "http://api.acme.example/health",
       redirects: 1,
       tlsMs: null,
-      expected: "ไม่ได้วัด",
+      tlsState: "unmeasured",
       outcome: "pass",
     },
     {
       url: "https://api.acme.example/health",
       redirects: 0,
       tlsMs: null,
-      expected: "ไม่ได้วัด",
+      tlsState: "unmeasured",
       outcome: "fail",
     },
   ] as const)(
     "shows final-hop TLS for $url, redirects=$redirects, tlsMs=$tlsMs",
-    async ({ url, redirects, tlsMs, expected, outcome }) => {
+    async ({ url, redirects, tlsMs, tlsState, outcome }) => {
       const response = result({ url, outcome });
       response.result.diagnostics = {
         ...response.result.diagnostics,
@@ -267,17 +270,14 @@ describe("Test panel states", () => {
       const user = await openCreate();
       await user.click(testButton());
       const details = await screen.findByTestId("monitor-test-diagnostics");
-      // Presentation-only TLS labels distinguish unmeasured data from direct HTTP.
-      const tlsLabel = within(details).getByText("TLS");
-      expect(tlsLabel.nextElementSibling).toHaveTextContent(expected);
-      if (redirects > 0)
-        expect(details.parentElement).toHaveTextContent(
-          "ค่าของปลายทางสุดท้ายหลัง redirect 1 ครั้ง",
-        );
-      if (outcome === "fail")
-        expect(details.parentElement).toHaveTextContent(
-          "วัดได้เฉพาะขั้นตอนที่เสร็จก่อนเกิดข้อผิดพลาด",
-        );
+      expect(details).toHaveAttribute("data-tls-state", tlsState);
+      expect(details).toHaveAttribute("data-redirects", String(redirects));
+      expect(details).toHaveAttribute(
+        "data-partial",
+        String(outcome === "fail"),
+      );
+      if (tlsMs === null) expect(details).not.toHaveAttribute("data-tls-ms");
+      else expect(details).toHaveAttribute("data-tls-ms", String(tlsMs));
     },
   );
 
