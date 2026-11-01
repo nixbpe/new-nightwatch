@@ -37,6 +37,7 @@ import {
   projectDetail,
   must,
 } from "../../monitors/detail-test-support";
+import { formatDuration, incidentReasonLabel } from "../../monitors/format";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
 guardUnassignedNetwork();
@@ -325,7 +326,7 @@ describe("Project overview", () => {
           monitorId: "m1",
           monitorName: "Recovered API",
           at: DATA_AS_OF,
-          reason: "timeout",
+          reason: "recovered",
           durationSeconds: 120,
         },
         {
@@ -354,6 +355,49 @@ describe("Project overview", () => {
     expect(rows[1]).toHaveTextContent("2");
     expect(rows[2]).toHaveTextContent("2");
   });
+  it.each([
+    { reason: "recovered", outcome: "recovered" },
+    { reason: "paused_by_user", outcome: "paused" },
+    { reason: null, outcome: "closed" },
+    { reason: "future_closure_reason", outcome: "closed" },
+    { reason: "timeout", outcome: "closed" },
+  ])(
+    "shows the actual closure outcome for $reason (AC-03)",
+    async ({ reason, outcome }) => {
+      const monitor = item();
+      vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({
+        events: [
+          {
+            kind: "incident_closed",
+            monitorId: monitor.id,
+            monitorName: monitor.name,
+            at: DATA_AS_OF,
+            reason,
+            durationSeconds: 120,
+          },
+        ],
+      });
+      renderPage();
+      const row = await screen.findByTestId("project-overview-event");
+      const result = within(row).getByTestId(
+        `project-overview-event-${outcome}`,
+      );
+      expect(result).toBeVisible();
+      if (reason === "recovered" || reason === "paused_by_user")
+        expect(result).toHaveTextContent(incidentReasonLabel(reason));
+      if (outcome !== "recovered")
+        expect(
+          within(row).queryByTestId("project-overview-event-recovered"),
+        ).toBeNull();
+      expect(row).toHaveTextContent(formatDuration(120));
+      expect(within(row).getByRole("link")).toHaveAttribute(
+        "href",
+        `/organizations/${A}/projects/${P}/monitors/${monitor.id}`,
+      );
+      expect(row.querySelector("time")).toHaveAttribute("datetime", DATA_AS_OF);
+      expect(fetchMonitorRecentEvents).toHaveBeenCalledWith(A, P);
+    },
+  );
   it("shows an in-section empty and error state for events", async () => {
     const { client } = renderPage();
     await screen.findByTestId("project-overview-events-empty");

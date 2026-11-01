@@ -13,6 +13,7 @@ import {
 import {
   formatDuration,
   formatTime,
+  incidentReasonLabel,
   Time,
   TIME_ZONE,
 } from "../../monitors/format";
@@ -30,7 +31,19 @@ function EventText({ event }: { event: MonitorRecentEvent }) {
   if (event.kind === "incident_closed")
     return (
       <>
-        กลับมาใช้งานได้
+        {event.reason === "recovered" ? (
+          <span data-testid="project-overview-event-recovered">
+            {incidentReasonLabel(event.reason)}
+          </span>
+        ) : event.reason === "paused_by_user" ? (
+          <span data-testid="project-overview-event-paused">
+            {incidentReasonLabel(event.reason)}
+          </span>
+        ) : (
+          <span data-testid="project-overview-event-closed">
+            สิ้นสุดเหตุการณ์
+          </span>
+        )}
         {event.durationSeconds === undefined
           ? null
           : ` · ล่ม ${formatDuration(event.durationSeconds)}`}
@@ -96,7 +109,7 @@ export function EventsSection({
                 <span className="flex items-baseline gap-2">
                   <span
                     aria-hidden="true"
-                    className={`size-[7px] shrink-0 rounded-full ${event.kind === "incident_closed" ? "bg-primary" : event.kind === "ssl_level" && event.sslLevel === "caution" ? "bg-caution" : "bg-danger"}`}
+                    className={`size-[7px] shrink-0 rounded-full ${event.kind === "incident_closed" ? (event.reason === "recovered" ? "bg-primary" : "bg-foreground-secondary") : event.kind === "ssl_level" && event.sslLevel === "caution" ? "bg-caution" : "bg-danger"}`}
                   />
                   <span className="min-w-0">
                     <Link
