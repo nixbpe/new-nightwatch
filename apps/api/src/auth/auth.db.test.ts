@@ -2448,10 +2448,20 @@ describe("locked invitation acceptance at the member cap", () => {
       await database.sql.query("delete from organization where id = $1", [
         organizationId,
       ]);
-      await database.sql.query(
-        'delete from "user" where email = any($1::text[]) or email like $2',
-        [[firstEmail, secondEmail], `${prefix}%@example.test`],
-      );
+      const fixtureEmails = [
+        firstEmail,
+        secondEmail,
+        ...Array.from(
+          { length: 999 },
+          (_, index) => `${prefix}${String(index + 1)}@example.test`,
+        ),
+      ];
+      for (let offset = 0; offset < fixtureEmails.length; offset += 100) {
+        await database.sql.query(
+          'delete from "user" where email = any($1::text[])',
+          [fixtureEmails.slice(offset, offset + 100)],
+        );
+      }
     }
   }, 120_000);
   it("keeps acceptance denials identical across invitation states in response and logs", async () => {
