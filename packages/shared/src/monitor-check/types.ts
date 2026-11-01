@@ -1,4 +1,8 @@
-import type { OutboundDeps, TlsReason } from "../outbound-http";
+import type {
+  OutboundDeps,
+  OutboundDiagnostics,
+  TlsReason,
+} from "../outbound-http";
 
 export type MonitorMethod =
   "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
@@ -149,6 +153,11 @@ export interface ResponseSnapshot {
   body: SnapshotBody | null;
 }
 
+export interface CheckDiagnostics extends OutboundDiagnostics {
+  remoteAddress: string | null;
+  reasonPhrase: string | null;
+}
+
 /** Check result view without `scheduledFor` and `configVersion`, which the caller adds. */
 export interface CheckResult {
   outcome: CheckOutcome;
@@ -165,6 +174,8 @@ export interface CheckResult {
   tls: { host: string; issuer: string | null; notAfter: Date | null } | null;
   /** Set by `runCheck`; Test (`POST /monitors/test`) never reads it. */
   responseSnapshot?: ResponseSnapshot;
+  /** Transient Test facts; the Worker never reads, logs or stores them. */
+  diagnostics?: CheckDiagnostics;
 }
 
 const CHECK_ERROR_REASONS: ReadonlySet<CheckFailureReason> = new Set([

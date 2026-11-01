@@ -198,6 +198,15 @@ export async function runCheck(
       {
         tlsReason: failure?.tlsReason ?? sent.tls?.reason ?? null,
         tls,
+        ...(sent.diagnostics
+          ? {
+              diagnostics: {
+                ...sent.diagnostics,
+                remoteAddress: null,
+                reasonPhrase: null,
+              },
+            }
+          : {}),
       },
     );
   }
@@ -222,6 +231,13 @@ export async function runCheck(
     : results.some((assertion) => assertion.status === "fail")
       ? "assertion_failed"
       : null;
+  const snapshot = buildResponseSnapshot({
+    url,
+    response,
+    secretValues: built.secretValues,
+    secretHeaderNames: built.secretHeaderNames,
+    requestValues,
+  });
   return {
     outcome: reason === null ? "pass" : "fail",
     checkedAt: clock(),
@@ -233,12 +249,15 @@ export async function runCheck(
     url,
     evaluatedFromPrefix,
     tls,
-    responseSnapshot: buildResponseSnapshot({
-      url,
-      response,
-      secretValues: built.secretValues,
-      secretHeaderNames: built.secretHeaderNames,
-      requestValues,
-    }),
+    responseSnapshot: snapshot,
+    ...(sent.diagnostics
+      ? {
+          diagnostics: {
+            ...sent.diagnostics,
+            remoteAddress: response.remoteAddress,
+            reasonPhrase: snapshot.statusLine?.reasonPhrase ?? null,
+          },
+        }
+      : {}),
   };
 }

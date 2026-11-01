@@ -149,6 +149,12 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   await expect(page.getByTestId("monitor-test-http-status")).toContainText(
     /\b200\b/,
   );
+  const diagnostics = page.getByTestId("monitor-test-diagnostics");
+  for (const field of ["dns", "connect", "ttfb"]) {
+    await expect(diagnostics).toHaveAttribute(`data-${field}-ms`, /^\d+$/);
+  }
+  await expect(diagnostics).toHaveAttribute("data-remote-address", "127.0.0.1");
+  await expect(diagnostics).not.toHaveAttribute("data-tls-ms");
   expect(probeHits()).toBe(hitsBefore + 1);
 
   target.setMode("down");
