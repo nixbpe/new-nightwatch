@@ -281,6 +281,53 @@ describe("Test panel states", () => {
     },
   );
 
+  it.each(
+    [
+      { url: "http://api.acme.example/health", dnsMs: 2, tlsMs: null },
+      { url: "https://203.0.113.5/health", dnsMs: null, tlsMs: 37 },
+    ].flatMap((target) =>
+      (["http_status", "assertion_failed"] as const).map((failureReason) => ({
+        ...target,
+        failureReason,
+      })),
+    ),
+  )(
+    "does not mark a completed $failureReason exchange to $url as partial",
+    async ({ url, dnsMs, tlsMs, failureReason }) => {
+      const response = result({
+        url,
+        outcome: "fail",
+        failureReason,
+        httpStatus: failureReason === "http_status" ? 503 : 200,
+        assertions:
+          failureReason === "assertion_failed"
+            ? [
+                {
+                  kind: "bodyContains",
+                  expected: "ready",
+                  actual: null,
+                  actualType: null,
+                  actualTruncated: false,
+                  status: "fail",
+                  reason: "text_not_found",
+                },
+              ]
+            : [],
+      });
+      response.result.diagnostics = {
+        ...response.result.diagnostics,
+        dnsMs,
+        tlsMs,
+      };
+      draftMock.mockResolvedValue(response);
+      const user = await openCreate();
+      await user.click(testButton());
+      expect(
+        await screen.findByTestId("monitor-test-diagnostics"),
+      ).toHaveAttribute("data-partial", "false");
+    },
+  );
+
   it.each(["check_error", "all-null"] as const)(
     "hides diagnostics for %s",
     async (kind) => {

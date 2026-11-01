@@ -340,6 +340,8 @@ function Diagnostics({ result }: { result: MonitorTestResult }) {
         : "ไม่ได้วัด";
   const partial =
     result.outcome === "fail" &&
+    result.failureReason !== "http_status" &&
+    result.failureReason !== "assertion_failed" &&
     [...phases, facts.remoteAddress].some((value) => value === null);
   return (
     <div>
