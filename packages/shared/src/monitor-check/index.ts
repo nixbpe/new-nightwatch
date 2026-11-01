@@ -15,6 +15,7 @@ export {
   type AssertionReason,
   type AssertionResult,
   type CheckDeps,
+  type CheckDiagnostics,
   type CheckFailureReason,
   type CheckOutcome,
   type CheckResult,

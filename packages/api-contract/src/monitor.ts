@@ -904,9 +904,23 @@ export type CheckResultView = z.infer<typeof checkResultSchema>;
  * version. `ssl` carries the certificate facts of this one check (AC-08): the
  * level comes from the server clock, `no_data` means no TLS attempt happened.
  */
+export const monitorTestDiagnosticsSchema = z.object({
+  redirects: z.number().int().min(0).max(5).nullable(),
+  dnsMs: z.number().int().min(0).nullable(),
+  connectMs: z.number().int().min(0).nullable(),
+  tlsMs: z.number().int().min(0).nullable(),
+  ttfbMs: z.number().int().min(0).nullable(),
+  remoteAddress: z.string().min(1).max(45).nullable(),
+  reasonPhrase: z.string().min(1).max(128).nullable(),
+});
+export type MonitorTestDiagnostics = z.infer<
+  typeof monitorTestDiagnosticsSchema
+>;
+
 export const monitorTestResultSchema = checkResultSchema
   .omit({ scheduledFor: true, configVersion: true })
   .extend({
+    diagnostics: monitorTestDiagnosticsSchema,
     ssl: z.object({
       level: z.enum(SSL_LEVELS),
       daysRemaining: z.number().int().nullable(),

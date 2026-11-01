@@ -409,11 +409,36 @@ function config(
 const errorCode = (reply: Reply) =>
   (reply.json as { error?: { code?: string } } | null)?.error?.code;
 
+const NULL_DIAGNOSTICS = {
+  redirects: null,
+  dnsMs: null,
+  connectMs: null,
+  tlsMs: null,
+  ttfbMs: null,
+  remoteAddress: null,
+  reasonPhrase: null,
+};
+
+/** Only the selected validated peer of a completed response may disclose an address. */
+function expectPeerDisclosure(reply: Reply, result: MonitorTestResult) {
+  if (result.httpStatus !== null && result.outcome !== "check_error") {
+    expect(result.diagnostics.remoteAddress).toBe(LOOPBACK);
+    const remaining = structuredClone(reply.json) as {
+      result: MonitorTestResult;
+    };
+    remaining.result.diagnostics.remoteAddress = null;
+    expect(JSON.stringify(remaining)).not.toContain(LOOPBACK);
+  } else {
+    expect(result.diagnostics.remoteAddress).toBeNull();
+    expect(JSON.stringify(reply.json)).not.toContain(LOOPBACK);
+  }
+}
+
 function resultOf(reply: Reply): MonitorTestResult {
   expect(reply.status).toBe(200);
   const body = (reply.json ?? {}) as { result?: unknown };
   expect(Object.keys(body)).toEqual(["result"]);
-  // Strict: an extra field (tls facts, an address) fails the parse.
+  // Strict: fields outside the Test contract fail the parse.
   return monitorTestResultSchema.strict().parse(body.result);
 }
 
@@ -955,7 +980,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       config(overrides.url, { assertions, ...overrides }),
     );
     const result = resultOf(reply);
-    expect(JSON.stringify(reply.json)).not.toContain(LOOPBACK);
+    expectPeerDisclosure(reply, result);
     return result;
   }
 
@@ -986,6 +1011,20 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       "pass",
       "pass",
     ]);
+    expect(result.diagnostics).toMatchObject({
+      redirects: 0,
+      remoteAddress: LOOPBACK,
+      reasonPhrase: "OK",
+      tlsMs: null,
+    });
+    for (const ms of [
+      result.diagnostics.dnsMs,
+      result.diagnostics.connectMs,
+      result.diagnostics.ttfbMs,
+    ]) {
+      expect(Number.isInteger(ms)).toBe(true);
+      expect(ms).toBeGreaterThanOrEqual(0);
+    }
     expect(http1.requests()).toBe(1);
   });
 
@@ -993,6 +1032,8 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
     const result = await outcome({ url: target(https1, "/ok", "https") });
     expect(result).toMatchObject({ outcome: "pass", tlsReason: null });
     expect(result.ssl).toMatchObject({ level: "ok", host: TARGET_HOST });
+    expect(Number.isInteger(result.diagnostics.tlsMs)).toBe(true);
+    expect(result.diagnostics.tlsMs).toBeGreaterThanOrEqual(0);
     expect(result.ssl.daysRemaining).toBeGreaterThanOrEqual(89);
     expect(result.ssl.issuer).toContain(TARGET_HOST);
     expect(new Date(result.ssl.notAfter as string).getTime()).toBeGreaterThan(
@@ -1023,6 +1064,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       httpStatus: 503,
       failureReason: "http_status",
     });
+    expect(result.diagnostics.reasonPhrase).toBe("Service Unavailable");
   });
 
   it.each([1, 10])(
@@ -1040,6 +1082,13 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
         failureReason: "timeout",
       });
       expectNoResponse(result);
+      expect(result.diagnostics).toMatchObject({
+        ttfbMs: null,
+        remoteAddress: null,
+        reasonPhrase: null,
+      });
+      expect(result.diagnostics.dnsMs).toBeGreaterThanOrEqual(0);
+      expect(result.diagnostics.connectMs).toBeGreaterThanOrEqual(0);
       expect(elapsed).toBeGreaterThanOrEqual(seconds * 1000 - 100);
       expect(elapsed).toBeLessThan(seconds * 1000 + 3000);
     },
@@ -1102,6 +1151,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       failureReason: "redirect_blocked",
     });
     expectNoResponse(result);
+    expect(result.diagnostics).toEqual(NULL_DIAGNOSTICS);
     expect(https1.requests()).toBe(1);
     expect(http1.requests()).toBe(0);
   });
@@ -1114,6 +1164,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       failureReason: "redirect_blocked",
     });
     expectNoResponse(result);
+    expect(result.diagnostics).toEqual(NULL_DIAGNOSTICS);
     expect(http1.requests()).toBe(1);
   });
 
@@ -1132,6 +1183,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       failureReason: "blocked_address",
     });
     expectNoResponse(result);
+    expect(result.diagnostics).toEqual(NULL_DIAGNOSTICS);
     expect(http1.connections()).toBe(0);
   });
 
@@ -1150,7 +1202,19 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
     expect(result.url).toContain("•••");
     const text = JSON.stringify(reply.json) + logLines.slice(start).join("\n");
     expect(text).not.toContain("s3cr3t");
-    expect(text).not.toContain(LOOPBACK);
+    expect(result.diagnostics.reasonPhrase).toBeNull();
+    expectPeerDisclosure(reply, result);
+    expect(logLines.slice(start).join("\n")).not.toContain(LOOPBACK);
+  });
+
+  it("writes no address or phase value to the log", async () => {
+    const start = logLines.length;
+    const result = await outcome({ url: target(http1, "/ok") });
+    expect(result.diagnostics.remoteAddress).toBe(LOOPBACK);
+    const lines = logLines.slice(start).join("\n");
+    expect(lines).not.toContain("remoteAddress");
+    expect(lines).not.toContain("dnsMs");
+    expect(lines).not.toContain(LOOPBACK);
   });
 
   it("uses the request-level auth of the body: bearer without a stored secret is a check error", async () => {
@@ -1162,6 +1226,7 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       outcome: "check_error",
       failureReason: "executor_error",
     });
+    expect(result.diagnostics).toEqual(NULL_DIAGNOSTICS);
   });
 });
 
@@ -1188,6 +1253,7 @@ describe("saved monitor whose host now resolves to a forbidden address (AC-62)",
       });
       expect(JSON.stringify(reply.json)).not.toContain(LOOPBACK);
       expect(JSON.stringify(reply.json)).not.toContain(PUBLIC_ADDRESS);
+      expect(result.diagnostics).toEqual(NULL_DIAGNOSTICS);
       expect(http1.connections()).toBe(0);
       expect(resolverCalls).toContain(PUBLIC_HOST);
     } finally {
