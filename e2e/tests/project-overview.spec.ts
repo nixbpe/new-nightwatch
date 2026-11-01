@@ -44,9 +44,16 @@ async function captureThemes(page: Page, state: string) {
     await expect(link).toBeFocused();
   }
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((value) => {
-      document.documentElement.classList.toggle("dark", value === "dark");
-    }, theme);
+    await page.getByTestId("shell-account-open").click();
+    await page.getByTestId(`shell-theme-${theme}`).click();
+    await expect(page.getByTestId(`shell-theme-${theme}`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("shell-account-menu")).toBeHidden();
+    // Document preference proof: the app applies the user's explicit theme.
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await shot(page, `project-overview-${state}-${theme}`);
   }
 }
@@ -126,16 +133,15 @@ test("a target that goes down shows in the banner", async ({ page }) => {
     `/organizations/${organizationId}/projects/${projectId}/monitors/${monitorId}`,
   );
   await expect(row.locator("time")).toHaveAttribute("datetime", /.+/);
-  // Browser-only motion proof: this alert has no animated or transitioning entry.
+  // Document preference and browser-native motion proof, independent of CSS values.
   expect(
-    await banner.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        animation: style.animationName,
-        transition: style.transitionDuration,
-      };
-    }),
-  ).toEqual({ animation: "none", transition: "0s" });
+    await page.evaluate(
+      () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    ),
+  ).toBe(true);
+  expect(
+    await banner.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
   await captureThemes(page, "down");
   await row.getByRole("link").focus();
   await expect(row.getByRole("link")).toBeFocused();
