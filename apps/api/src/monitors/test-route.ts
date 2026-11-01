@@ -19,6 +19,7 @@ import {
   type MonitorConfig,
   type MonitorSecretEditEntry,
   type MonitorTestResult,
+  type MonitorTestDiagnostics,
 } from "@nightwatch/api-contract";
 import type { Database } from "@nightwatch/db";
 import {
@@ -349,6 +350,20 @@ function decryptKept(
  * certificate). An expired certificate fails the handshake before its dates can
  * be read, so it has a level but no days or notAfter.
  */
+export function diagnosticsOf(checked: CheckResult): MonitorTestDiagnostics {
+  const facts =
+    checked.outcome === "check_error" ? undefined : checked.diagnostics;
+  return {
+    redirects: facts?.redirects ?? null,
+    dnsMs: facts?.dnsMs ?? null,
+    connectMs: facts?.connectMs ?? null,
+    tlsMs: facts?.tlsMs ?? null,
+    ttfbMs: facts?.ttfbMs ?? null,
+    remoteAddress: facts?.remoteAddress ?? null,
+    reasonPhrase: facts?.reasonPhrase ?? null,
+  };
+}
+
 export function sslOfCheck(checked: CheckResult): MonitorTestResult["ssl"] {
   const none = {
     daysRemaining: null,
@@ -504,6 +519,7 @@ async function runTest(
       url: checked.url,
       evaluatedFromPrefix: checked.evaluatedFromPrefix,
       ssl: sslOfCheck(checked),
+      diagnostics: diagnosticsOf(checked),
     },
   };
 }
