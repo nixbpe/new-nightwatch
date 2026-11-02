@@ -21,7 +21,11 @@ function run(command, cwd) {
   return Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
 }
 
-const testNonUtf8Path = process.platform === "darwin" ? test.skip : test;
+const nonUtf8PathSkip =
+  process.platform === "darwin"
+    ? "APFS refuses non-UTF-8 file names (EILSEQ)"
+    : null;
+const testNonUtf8Path = nonUtf8PathSkip ? test.skip : test;
 
 async function repository() {
   const root = await mkdtemp(path.join(tmpdir(), "candidate-manifest-"));
@@ -222,15 +226,18 @@ describe("candidate manifest", () => {
     }
   });
 
-  testNonUtf8Path("fails closed on non-UTF-8 Git paths", async () => {
-    const root = await repository();
-    const invalidPath = Buffer.concat([
-      Buffer.from(`${root}${path.sep}`),
-      Buffer.from([0xff]),
-    ]);
-    await writeFile(invalidPath, "invalid utf-8 path\n");
-    const result = manifest(root);
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout.toString()).toBe("");
-  });
+  testNonUtf8Path(
+    `fails closed on non-UTF-8 Git paths${nonUtf8PathSkip ? ` (skipped: ${nonUtf8PathSkip})` : ""}`,
+    async () => {
+      const root = await repository();
+      const invalidPath = Buffer.concat([
+        Buffer.from(`${root}${path.sep}`),
+        Buffer.from([0xff]),
+      ]);
+      await writeFile(invalidPath, "invalid utf-8 path\n");
+      const result = manifest(root);
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout.toString()).toBe("");
+    },
+  );
 });
