@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
@@ -71,7 +71,6 @@ const passwordOriginFixtureEmails: string[] = [];
 const mfaReenrollmentFixtureEmails: string[] = [];
 const memberGuardFixtureEmails: string[] = [];
 const memberGuardOrganizationIds: string[] = [];
-const MFA_REENROLL_TRIGGER = `fail_two_factor_insert_${RUN}`;
 function userEmail(local: string): string {
   return `${local}-${RUN}@example.test`;
 }
@@ -299,6 +298,69 @@ async function passwordOriginSnapshot(
   const snapshot = result.rows[0];
   if (!snapshot) throw new Error(`missing password origin state for ${userId}`);
   return snapshot;
+}
+
+type MfaCredentialSnapshot = {
+  twoFactorRows: Array<{
+    id: string;
+    userId: string;
+    secretDigest: string;
+    backupCodesDigest: string;
+    verified: boolean;
+    failedVerificationCount: number;
+    lockedUntil: string | null;
+  }>;
+  twoFactorEnabled: boolean | null;
+  projection: boolean | null;
+  intentEvents: string[];
+};
+
+// Digests keep the encrypted TOTP secret and recovery codes out of assertion
+// output while still proving neither was rewritten.
+async function mfaCredentialSnapshot(
+  userId: string,
+): Promise<MfaCredentialSnapshot> {
+  const rows = await ownerDatabase.sql.query<{
+    id: string;
+    user_id: string;
+    secret: string;
+    backup_codes: string;
+    verified: boolean;
+    failed_verification_count: number;
+    locked_until: Date | null;
+  }>(
+    `select id, user_id, secret, backup_codes, verified,
+            failed_verification_count, locked_until
+     from "twoFactor"
+     where user_id = $1
+     order by id`,
+    [userId],
+  );
+  const flag = await ownerDatabase.sql.query<{
+    two_factor_enabled: boolean | null;
+  }>('select two_factor_enabled from "user" where id = $1', [userId]);
+  const intents = await ownerDatabase.sql.query<{ event_type: string }>(
+    `select event_type from notification_intents
+     where user_id = $1 and event_type in ('MFA_ENABLED', 'MFA_DISABLED')
+     order by occurred_at, id`,
+    [userId],
+  );
+  return {
+    twoFactorRows: rows.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      secretDigest: createHash("sha256").update(row.secret).digest("hex"),
+      backupCodesDigest: createHash("sha256")
+        .update(row.backup_codes)
+        .digest("hex"),
+      verified: row.verified,
+      failedVerificationCount: row.failed_verification_count,
+      lockedUntil: row.locked_until?.toISOString() ?? null,
+    })),
+    twoFactorEnabled: flag.rows[0]?.two_factor_enabled ?? null,
+    projection: await mfaProjectionEnabled(userId),
+    intentEvents: intents.rows.map((row) => row.event_type),
+  };
 }
 
 function sessionHeaders(request: ApiRequest): Headers {
@@ -1680,8 +1742,8 @@ describe("MFA notification intent rollback", () => {
   });
 });
 
-describe("MFA re-enrollment atomicity", () => {
-  it("preserves verified MFA when its replacement insert fails and keeps verified re-enrollment origin-free", async () => {
+describe("MFA re-enrollment guard", () => {
+  it("refuses re-enrollment while TOTP is verified and keeps the credential, projection and intents unchanged", async () => {
     const email = userEmail("mfa-reenrollment");
     mfaReenrollmentFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
@@ -1708,80 +1770,50 @@ describe("MFA re-enrollment atomicity", () => {
     expect(initialVerify.status).toBe(200);
 
     const userId = await sqlUserId(email);
-    const before = await ownerDatabase.sql.query<{
-      id: string;
-      two_factor_enabled: boolean | null;
-      verified: boolean;
-    }>(
-      `select tf.id, u.two_factor_enabled, tf.verified
-       from "user" as u
-       join "twoFactor" as tf on tf.user_id = u.id
-       where u.id = $1`,
-      [userId],
-    );
-    const oldRow = before.rows[0];
-    if (!oldRow) throw new Error("verified MFA fixture missing");
-    const intentCount = await mfaIntentCount(userId);
-    expect(oldRow).toMatchObject({
-      two_factor_enabled: true,
-      verified: true,
+    const before = await mfaCredentialSnapshot(userId);
+    expect(before.twoFactorRows).toHaveLength(1);
+    expect(before.twoFactorRows[0]).toMatchObject({ userId, verified: true });
+    expect(before).toMatchObject({
+      twoFactorEnabled: true,
+      projection: true,
+      intentEvents: ["MFA_ENABLED"],
     });
-    expect(await mfaProjectionEnabled(userId)).toBe(true);
+    const intentCount = await mfaIntentCount(userId);
     expect(intentCount).toBe(1);
 
-    let triggerCreated = false;
-    try {
-      await ownerDatabase.sql.query(
-        `create function ${MFA_REENROLL_TRIGGER}() returns trigger
-         language plpgsql as $$
-         begin
-           if new.user_id = '${userId}' then
-             raise exception 'fixture rejects replacement two-factor row';
-           end if;
-           return new;
-         end;
-         $$`,
-      );
-      await ownerDatabase.sql.query(
-        `create trigger ${MFA_REENROLL_TRIGGER}
-         before insert on "twoFactor"
-         for each row execute function ${MFA_REENROLL_TRIGGER}()`,
-      );
-      triggerCreated = true;
+    // Better Auth 1.7 refuses to replace a verified authenticator (upstream
+    // #11037): credential rows, native flag, projection and intents all stay.
+    const refused = await member.request(
+      "POST",
+      "/api/auth/two-factor/enable",
+      { password: PASSWORD },
+    );
+    expect(refused.status).toBe(400);
+    expect((refused.json as { code?: string }).code).toBe(
+      "TOTP_ALREADY_ENABLED",
+    );
+    expect(await mfaCredentialSnapshot(userId)).toEqual(before);
 
-      const failed = await member.request(
-        "POST",
-        "/api/auth/two-factor/enable",
-        { password: PASSWORD },
-      );
-      expect(failed.status).toBe(500);
-      const afterFailed = await ownerDatabase.sql.query<{
-        id: string;
-        two_factor_enabled: boolean | null;
-        verified: boolean;
-      }>(
-        `select tf.id, u.two_factor_enabled, tf.verified
-         from "user" as u
-         join "twoFactor" as tf on tf.user_id = u.id
-         where u.id = $1`,
-        [userId],
-      );
-      expect(afterFailed.rows[0]).toEqual(oldRow);
-      expect(await mfaProjectionEnabled(userId)).toBe(true);
-      expect(await mfaIntentCount(userId)).toBe(intentCount);
-    } finally {
-      if (triggerCreated) {
-        await ownerDatabase.sql.query(
-          `drop trigger ${MFA_REENROLL_TRIGGER} on "twoFactor"`,
-        );
-      }
-      await ownerDatabase.sql.query(
-        `drop function if exists ${MFA_REENROLL_TRIGGER}()`,
-      );
-    }
+    // The original authenticator still answers a real sign-in challenge.
+    const challenger = client();
+    const challenge = await challenger("POST", "/api/auth/sign-in/email", {
+      email,
+      password: PASSWORD,
+    });
+    expect(challenge.status).toBe(200);
+    expect(
+      (challenge.json as { twoFactorRedirect?: boolean }).twoFactorRedirect,
+    ).toBe(true);
+    const answered = await challenger(
+      "POST",
+      "/api/auth/two-factor/verify-totp",
+      { code: totpCode(initialSecret) },
+    );
+    expect(answered.status).toBe(200);
+    expect(await mfaCredentialSnapshot(userId)).toEqual(before);
 
-    // A missing projection models a legacy verified credential; re-enrollment
-    // must not invent MFA_ENABLED.
+    // A missing projection models a legacy verified credential; the refusal
+    // must not invent MFA_ENABLED or a projection.
     await ownerDatabase.sql.query(
       "delete from notification_account_mfa_state where user_id = $1",
       [userId],
@@ -1794,33 +1826,21 @@ describe("MFA re-enrollment atomicity", () => {
       database,
       mailer,
     });
-    await directAuth.api.enableTwoFactor({
-      body: { password: PASSWORD },
-      headers: sessionHeaders(member.request),
+    await expect(
+      directAuth.api.enableTwoFactor({
+        body: { password: PASSWORD },
+        headers: sessionHeaders(member.request),
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      body: { code: "TOTP_ALREADY_ENABLED" },
     });
-    const afterReenrollment = await database.sql.query<{
-      id: string;
-      two_factor_enabled: boolean | null;
-      verified: boolean;
-    }>(
-      `select tf.id, u.two_factor_enabled, tf.verified
-       from "user" as u
-       join "twoFactor" as tf on tf.user_id = u.id
-       where u.id = $1`,
-      [userId],
-    );
-    expect(afterReenrollment.rows[0]).toMatchObject({
-      two_factor_enabled: true,
-      verified: true,
+    expect(await mfaCredentialSnapshot(userId)).toEqual({
+      ...before,
+      projection: null,
     });
-    expect(afterReenrollment.rows[0]?.id).not.toBe(oldRow.id);
-    expect(await mfaProjectionEnabled(userId)).toBe(true);
     expect(await mfaIntentCount(userId)).toBe(intentCount);
 
-    await ownerDatabase.sql.query(
-      "delete from notification_account_mfa_state where user_id = $1",
-      [userId],
-    );
     const legacyDisable = await member.request(
       "POST",
       "/api/auth/two-factor/disable",
@@ -1871,6 +1891,82 @@ describe("MFA re-enrollment atomicity", () => {
     expect(
       (challenged.json as { twoFactorRedirect?: boolean }).twoFactorRedirect,
     ).not.toBe(true);
+  });
+
+  it("restarts a pending enrollment in place without touching projection or intents", async () => {
+    const email = userEmail("mfa-restart");
+    mfaReenrollmentFixtureEmails.push(email);
+    const invitationId = await createInvitation(email);
+    const member = await admitUser("mfa-restart", invitationId);
+    const accepted = await member.request(
+      "POST",
+      `/api/onboarding/invitations/${invitationId}/accept`,
+    );
+    expect(accepted.status).toBe(200);
+    const first = await member.request("POST", "/api/auth/two-factor/enable", {
+      password: PASSWORD,
+    });
+    expect(first.status).toBe(200);
+    const firstSecret = totpSecretFromUri(
+      (first.json as { totpURI: string }).totpURI,
+    );
+    const userId = await sqlUserId(email);
+    const pending = await mfaCredentialSnapshot(userId);
+    expect(pending.twoFactorRows).toHaveLength(1);
+    expect(pending.twoFactorRows[0]).toMatchObject({ userId, verified: false });
+    expect(pending.twoFactorEnabled).not.toBe(true);
+    expect(pending).toMatchObject({ projection: false, intentEvents: [] });
+
+    // An unverified enrollment restarts in place: same row, new secret and
+    // recovery codes, still pending, no intent.
+    const restarted = await member.request(
+      "POST",
+      "/api/auth/two-factor/enable",
+      { password: PASSWORD },
+    );
+    expect(restarted.status).toBe(200);
+    const restartedSecret = totpSecretFromUri(
+      (restarted.json as { totpURI: string }).totpURI,
+    );
+    expect(restartedSecret).not.toBe(firstSecret);
+    const afterRestart = await mfaCredentialSnapshot(userId);
+    expect(afterRestart.twoFactorRows).toHaveLength(1);
+    expect(afterRestart.twoFactorRows[0]).toMatchObject({
+      id: pending.twoFactorRows[0]?.id,
+      userId,
+      verified: false,
+    });
+    expect(afterRestart.twoFactorRows[0]?.secretDigest).not.toBe(
+      pending.twoFactorRows[0]?.secretDigest,
+    );
+    expect(afterRestart.twoFactorRows[0]?.backupCodesDigest).not.toBe(
+      pending.twoFactorRows[0]?.backupCodesDigest,
+    );
+    expect(afterRestart).toMatchObject({
+      twoFactorEnabled: pending.twoFactorEnabled,
+      projection: false,
+      intentEvents: [],
+    });
+
+    const verified = await member.request(
+      "POST",
+      "/api/auth/two-factor/verify-totp",
+      { code: totpCode(restartedSecret) },
+    );
+    expect(verified.status).toBe(200);
+    const enabled = await mfaCredentialSnapshot(userId);
+    expect(enabled.twoFactorRows).toEqual([
+      expect.objectContaining({
+        id: pending.twoFactorRows[0]?.id,
+        userId,
+        verified: true,
+      }),
+    ]);
+    expect(enabled).toMatchObject({
+      twoFactorEnabled: true,
+      projection: true,
+      intentEvents: ["MFA_ENABLED"],
+    });
   });
 });
 

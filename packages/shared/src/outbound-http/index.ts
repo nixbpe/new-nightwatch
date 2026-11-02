@@ -4,6 +4,7 @@ export {
   resolveOutboundHost,
   sendOutboundRequest,
   type OutboundDeps,
+  type OutboundDiagnostics,
   type OutboundFailure,
   type OutboundFailureReason,
   type OutboundRequest,

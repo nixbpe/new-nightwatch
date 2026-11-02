@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { formatTime } from "../../pages/monitors/format";
 import { ResponseTimeChart } from "./response-time-chart";
 import {
+  axisTicks,
   buildSeries,
   chartWindow,
   describeEntry,
@@ -806,6 +807,51 @@ describe("ResponseTimeChart vertical axis (AC-78)", () => {
   });
 });
 
+describe("clock-axis locale literals", () => {
+  it("keeps numeric minute and second parts without a Thai suffix", () => {
+    const at = new Date(T("07:05"));
+    const originalFormat = Object.getOwnPropertyDescriptor(
+      Intl.DateTimeFormat.prototype,
+      "format",
+    ) as PropertyDescriptor;
+    Object.defineProperty(Intl.DateTimeFormat.prototype, "format", {
+      configurable: true,
+      get: () => () => "14:05 น.",
+    });
+    const parts = vi
+      .spyOn(Intl.DateTimeFormat.prototype, "formatToParts")
+      .mockReturnValue([
+        { type: "hour", value: "14" },
+        { type: "literal", value: ":" },
+        { type: "minute", value: "05" },
+        { type: "literal", value: " น." },
+      ]);
+    try {
+      expect(axisTicks([at], 86_400_000, true)).toEqual([
+        { at, label: "14:05" },
+      ]);
+      parts.mockReturnValue([
+        { type: "hour", value: "14" },
+        { type: "literal", value: ":" },
+        { type: "minute", value: "05" },
+        { type: "literal", value: ":" },
+        { type: "second", value: "09" },
+        { type: "literal", value: " น." },
+      ]);
+      expect(axisTicks([at], 40_000, true)).toEqual([
+        { at, label: "14:05:09" },
+      ]);
+    } finally {
+      parts.mockRestore();
+      Object.defineProperty(
+        Intl.DateTimeFormat.prototype,
+        "format",
+        originalFormat,
+      );
+    }
+  });
+});
+
 describe("ResponseTimeChart x-axis ticks", () => {
   const tickLabels = () =>
     plotScope()
@@ -828,6 +874,9 @@ describe("ResponseTimeChart x-axis ticks", () => {
     const labels = tickLabels();
     expect(labels.length).toBeGreaterThan(1);
     expect(new Set(labels).size).toBe(labels.length);
+    expect(labels.every((label) => /^\d{2}:\d{2}:\d{2}$/.test(label))).toBe(
+      true,
+    );
   });
 
   it("keeps distinct HH:mm labels across a full 24 h window", () => {

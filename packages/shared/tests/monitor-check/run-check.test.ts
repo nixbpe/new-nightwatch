@@ -53,6 +53,75 @@ const threeAssertions: NormalizedMonitorConfig["assertions"] = [
   { kind: "responseTimeBelow", ms: 1000 },
 ];
 
+describe("Test diagnostics", () => {
+  it.each(["plain", "no phrase", "URL query", "queryParams", "sent body"])(
+    "maps diagnostics using the snapshot reason phrase: %s",
+    async (kind) => {
+      const server = await serve(() => ({
+        status: kind === "no phrase" ? "200" : "200 OK",
+      }));
+      const config = configFor("http", server.port);
+      if (kind === "URL query") config.url += "?x=1";
+      if (kind === "queryParams")
+        config.queryParams = [{ name: "x", value: "1" }];
+      if (kind === "sent body") {
+        config.method = "POST";
+        config.body = { type: "text", content: "payload" };
+      }
+      const result = await runCheck(config, {}, deps());
+      expect(result.outcome).toBe("pass");
+      expect(result.diagnostics).toMatchObject({
+        redirects: 0,
+        remoteAddress: "127.0.0.1",
+        tlsMs: null,
+        reasonPhrase: kind === "plain" ? "OK" : null,
+      });
+      expect(result.diagnostics?.reasonPhrase).toBe(
+        result.responseSnapshot?.statusLine?.reasonPhrase,
+      );
+      for (const ms of [
+        result.diagnostics?.dnsMs,
+        result.diagnostics?.connectMs,
+        result.diagnostics?.ttfbMs,
+      ]) {
+        expect(Number.isInteger(ms)).toBe(true);
+        expect(ms).toBeGreaterThanOrEqual(0);
+      }
+    },
+  );
+
+  it("reports partial diagnostics without address or phrase on failure", async () => {
+    const silent = await startRawServer({ tls: pki.leaf.good });
+    servers.push(silent);
+    const result = await runCheck(
+      configFor("https", silent.port, { timeoutSeconds: 0.15 }),
+      {},
+      deps({ ca: pki.ca }),
+    );
+    expect(result.failureReason).toBe("timeout");
+    expect(result.diagnostics).toMatchObject({
+      remoteAddress: null,
+      reasonPhrase: null,
+      ttfbMs: null,
+    });
+    for (const ms of [
+      result.diagnostics?.dnsMs,
+      result.diagnostics?.connectMs,
+      result.diagnostics?.tlsMs,
+    ]) {
+      expect(Number.isInteger(ms)).toBe(true);
+      expect(ms).toBeGreaterThanOrEqual(0);
+    }
+    const blocked = await runCheck(
+      configFor("http", 80, { url: "http://10.9.8.7/" }),
+      {},
+      deps(),
+    );
+    expect(blocked.failureReason).toBe("blocked_address");
+    expect(blocked.diagnostics).toBeUndefined();
+  });
+});
+
 describe("expected status and outcome", () => {
   it("passes when status is in a range and every assertion passes", async () => {
     const server = await serve(() => ({ body: "ok" }));

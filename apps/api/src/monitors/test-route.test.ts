@@ -1,7 +1,7 @@
 import type { CheckResult } from "@nightwatch/shared";
 import { describe, expect, it } from "vitest";
 
-import { sslOfCheck } from "./test-route";
+import { diagnosticsOf, sslOfCheck } from "./test-route";
 
 const DAY = 86_400_000;
 const NOW = new Date("2026-01-01T00:00:00Z");
@@ -31,6 +31,44 @@ const withExpiry = (msFromNow: number, overrides: Partial<CheckResult> = {}) =>
     },
     ...overrides,
   });
+
+describe("diagnosticsOf", () => {
+  const empty = {
+    redirects: null,
+    dnsMs: null,
+    connectMs: null,
+    tlsMs: null,
+    ttfbMs: null,
+    remoteAddress: null,
+    reasonPhrase: null,
+  };
+  const facts = {
+    redirects: 1,
+    dnsMs: 2,
+    connectMs: 3,
+    tlsMs: 4,
+    ttfbMs: 5,
+    remoteAddress: "203.0.113.5",
+    reasonPhrase: "OK",
+  };
+  it("returns null fields without facts and for every check error", () => {
+    expect(diagnosticsOf(check({}))).toEqual(empty);
+    expect(
+      diagnosticsOf(check({ outcome: "check_error", diagnostics: facts })),
+    ).toEqual(empty);
+  });
+  it.each(["pass", "fail"] as const)(
+    "copies only known fields for %s",
+    (outcome) => {
+      const diagnostics = {
+        ...facts,
+        body: "never expose",
+        selectedPeer: "never expose",
+      };
+      expect(diagnosticsOf(check({ outcome, diagnostics }))).toEqual(facts);
+    },
+  );
+});
 
 describe("sslOfCheck", () => {
   it.each([

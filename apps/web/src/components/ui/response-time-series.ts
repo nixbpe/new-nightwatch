@@ -145,7 +145,14 @@ export function axisTicks(
   const seen = new Set<string>();
   const result: { at: Date; label: string }[] = [];
   for (const at of ticks) {
-    const label = format.format(at);
+    // Keep compact clock labels when ICU adds locale-specific suffixes.
+    const label = clock
+      ? format
+          .formatToParts(at)
+          .filter(({ type }) => ["hour", "minute", "second"].includes(type))
+          .map(({ value }) => value)
+          .join(":")
+      : format.format(at);
     if (seen.has(label)) continue;
     seen.add(label);
     result.push({ at, label });

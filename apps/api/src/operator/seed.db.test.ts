@@ -442,27 +442,99 @@ describe("local demo seed against PostgreSQL", () => {
   it("refuses stale migration state before any seed mutation", async () => {
     await seedLocalDemo(ownerUrl, runtimeUrl);
     const before = await canonicalGraph();
-    const latest = await owner.sql.query<{ name: string; sha256: string }>(
-      "select name, sha256 from __nightwatch_migrations order by name desc limit 1",
-    );
-    const removed = latest.rows[0];
-    if (!removed) throw new Error("expected applied migration state");
-    await owner.sql.query(
-      "delete from __nightwatch_migrations where name = $1",
-      [removed.name],
-    );
+    const client = await owner.sql.connect();
+    // Match the single-bigint session key in packages/db/src/migrator.ts.
+    const migrationLock = 0x4e_57_4d_49_47;
+    let runner:
+      | Promise<PromiseSettledResult<Awaited<ReturnType<typeof runMigrations>>>>
+      | undefined;
+    const runnerState = { settled: false };
+    let removedName: string | undefined;
     try {
-      await expect(seedLocalDemo(ownerUrl, runtimeUrl)).rejects.toThrow(
-        "database migrations are not current",
+      await client.query("select pg_advisory_lock($1)", [migrationLock]);
+      const latest = await client.query<{
+        name: string;
+        sha256: string;
+        applied_at: string;
+      }>(
+        "select name, sha256, applied_at::text as applied_at from __nightwatch_migrations order by name desc limit 1",
       );
-      await expect(canonicalGraph()).resolves.toEqual(before);
+      const removed = latest.rows[0];
+      if (!removed) throw new Error("expected applied migration state");
+      removedName = removed.name;
+      await client.query(
+        "delete from __nightwatch_migrations where name = $1",
+        [removed.name],
+      );
+      try {
+        const applicationName = `seed-migration-race:${crypto.randomUUID()}`;
+        const runnerUrl = new URL(ownerUrl);
+        runnerUrl.searchParams.set("application_name", applicationName);
+        runner = runMigrations({ url: runnerUrl.href, migrationsDir }).then(
+          (value) => {
+            runnerState.settled = true;
+            return { status: "fulfilled" as const, value };
+          },
+          (reason: unknown) => {
+            runnerState.settled = true;
+            return { status: "rejected" as const, reason };
+          },
+        );
+        let waiting = false;
+        const deadline = Date.now() + 1_000;
+        while (!waiting && Date.now() < deadline) {
+          if (runnerState.settled)
+            throw new Error("migration runner bypassed ledger guard");
+          const result = await client.query<{ waiting: boolean }>(
+            `select exists (
+               select 1 from pg_locks held
+               join pg_locks pending on pending.locktype = held.locktype
+                 and pending.database = held.database
+                 and pending.classid = held.classid and pending.objid = held.objid
+                 and pending.objsubid = held.objsubid
+               join pg_stat_activity activity on activity.pid = pending.pid
+               where held.pid = pg_backend_pid() and held.locktype = 'advisory'
+                 and held.granted and held.objsubid = 1 and not pending.granted
+                 and activity.datname = current_database()
+                 and activity.application_name = $1
+                 and activity.wait_event_type = 'Lock' and activity.wait_event = 'advisory'
+             ) as waiting`,
+            [applicationName],
+          );
+          waiting = result.rows[0]?.waiting === true;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        await expect(seedLocalDemo(ownerUrl, runtimeUrl)).rejects.toThrow(
+          "database migrations are not current",
+        );
+        await expect(canonicalGraph()).resolves.toEqual(before);
+      } finally {
+        // Restore the exact tracking row before any waiting runner can read it.
+        await client.query(
+          "insert into __nightwatch_migrations (name, sha256, applied_at) values ($1, $2, $3)",
+          [removed.name, removed.sha256, removed.applied_at],
+        );
+      }
     } finally {
-      // Re-insert the tracking row instead of replaying the migration: the
-      // latest migration need not be replayable (create table, create role).
-      await owner.sql.query(
-        "insert into __nightwatch_migrations (name, sha256) values ($1, $2)",
-        [removed.name, removed.sha256],
-      );
+      try {
+        await client
+          .query("select pg_advisory_unlock($1)", [migrationLock])
+          .catch((error: unknown) => {
+            client.release(true);
+            throw error;
+          });
+        client.release();
+      } finally {
+        // Observe every started runner after unlocking, including on assertion failure.
+        await runner;
+      }
+    }
+    const outcome = await runner;
+    expect(outcome.status).toBe("fulfilled");
+    if (outcome.status === "fulfilled") {
+      expect(outcome.value.applied).toEqual([]);
+      expect(outcome.value.alreadyApplied).toContain(removedName);
     }
   });
   it("refuses every lower-email ownership collision before identity mutation", async () => {

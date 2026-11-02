@@ -346,3 +346,25 @@ suite. It then runs the same root `e2e` command.
   `--severity HIGH,CRITICAL --exit-code 1`. Fail-fast: an API image failure
   stops before the Worker image. Scanner execution errors must fail, never
   swallow a scanner non-zero exit as a pass.
+
+## Dependency lifecycle scripts
+
+Root and `e2e/bunfig.toml` set `install.ignoreScripts = true` for local,
+CI and container installs. Both Dockerfiles copy the root policy beside the
+lockfile. No dependency lifecycle hook is authorized.
+
+Inventory (2026-10-31): `msgpackr-extract@3.0.4`, reached through
+`bullmq > msgpackr`, declares the only install-time hook:
+`install: node-gyp-build-optional-packages`. Its platform package supplies the
+prebuilt native binary; `msgpackr` also supports a JavaScript fallback.
+The hook is blocked. Changed dependency tarballs declare no install-time hooks.
+
+Bun 1.4.3's implicit trusted list allows this hook. An explicit
+`trustedDependencies: []` also executed it with this workspace lock during
+verification, so installs use the fail-closed Bun configuration instead.
+
+After lockfile changes, inventory `preinstall`, `install` and `postinstall`
+in the resolved packages, and verify a fresh frozen install with verbose logs.
+Registry tarball `prepare` scripts do not execute for consumers. Any required
+exception needs a separately reviewed policy change naming the package, hook,
+reason and review date.

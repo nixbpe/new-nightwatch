@@ -90,6 +90,287 @@ const at = (
   host = TARGET_HOST,
 ) => `${scheme}://${host}:${String(server.port)}${path}`;
 
+describe("diagnostics of the last hop", () => {
+  const integerMs = (value: unknown) => {
+    expect(Number.isInteger(value)).toBe(true);
+    expect(value).toBeGreaterThanOrEqual(0);
+  };
+
+  it("reports dns, connect and ttfb of an http hop and no tls", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        setTimeout(() => {
+          okBody(socket);
+        }, 150);
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(server)), deps());
+    expect(result.ok).toBe(true);
+    integerMs(result.diagnostics?.dnsMs);
+    integerMs(result.diagnostics?.connectMs);
+    integerMs(result.diagnostics?.ttfbMs);
+    expect(result.diagnostics?.ttfbMs).toBeGreaterThanOrEqual(100);
+    expect(result.diagnostics?.tlsMs).toBeNull();
+    expect(result.diagnostics?.redirects).toBe(0);
+    expect(result.response?.remoteAddress).toBe(LOOPBACK);
+  });
+
+  it("reports tls of an https hop apart from connect", async () => {
+    const server = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https")),
+      deps(),
+    );
+    expect(result.ok).toBe(true);
+    integerMs(result.diagnostics?.connectMs);
+    integerMs(result.diagnostics?.tlsMs);
+  });
+
+  it("reports the final hop after a redirect", async () => {
+    const second = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const first = await serve({
+      onRequest: ({ socket }) => {
+        setTimeout(() => {
+          respond(socket, "302 Found", {
+            Location: at(second, "/", "http", OTHER_HOST),
+            "Content-Length": "0",
+          });
+        }, 300);
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(first)), deps());
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics?.redirects).toBe(1);
+    expect(result.diagnostics?.ttfbMs).toBeLessThan(250);
+    expect(result.response?.elapsedMs).toBeGreaterThanOrEqual(300);
+    expect(result.response?.remoteAddress).toBe(LOOPBACK);
+  });
+
+  it("reports tls after an http to https redirect", async () => {
+    const second = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const first = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(second, "/", "https"),
+          "Content-Length": "0",
+        });
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(first)), deps());
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics?.redirects).toBe(1);
+    integerMs(result.diagnostics?.tlsMs);
+  });
+
+  it("keeps the phases that completed before a target-side failure", async () => {
+    const closed = await startRawServer({});
+    await closed.close();
+    const refused = await sendOutboundRequest(baseRequest(at(closed)), deps());
+    expect(refused.failure?.reason).toBe("connect_refused");
+    integerMs(refused.diagnostics?.dnsMs);
+    expect(refused.diagnostics).toMatchObject({
+      connectMs: null,
+      tlsMs: null,
+      ttfbMs: null,
+    });
+    const expired = await serve({ tls: pki.leaf.expired });
+    const invalid = await sendOutboundRequest(
+      baseRequest(at(expired, "/", "https")),
+      deps(),
+    );
+    expect(invalid.failure?.reason).toBe("tls_invalid");
+    integerMs(invalid.diagnostics?.dnsMs);
+    integerMs(invalid.diagnostics?.connectMs);
+    expect(invalid.diagnostics).toMatchObject({ tlsMs: null, ttfbMs: null });
+    const silent = await serve({});
+    const timeout = await sendOutboundRequest(
+      baseRequest(at(silent), { timeoutMs: 150 }),
+      deps(),
+    );
+    expect(timeout.failure?.reason).toBe("timeout");
+    integerMs(timeout.diagnostics?.dnsMs);
+    integerMs(timeout.diagnostics?.connectMs);
+    expect(timeout.diagnostics?.ttfbMs).toBeNull();
+    const broken = await serve({
+      onRequest: ({ socket }) =>
+        socket.end("HTTP/1.1 200 OK\r\nContent-Length: 99\r\n\r\nx"),
+    });
+    const incomplete = await sendOutboundRequest(
+      baseRequest(at(broken)),
+      deps(),
+    );
+    expect(incomplete.failure?.reason).toBe("body_read_failed");
+    integerMs(incomplete.diagnostics?.ttfbMs);
+    for (const result of [refused, invalid, timeout, incomplete]) {
+      expect(result.response).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(LOOPBACK);
+    }
+  });
+
+  it("has no diagnostics after a policy refusal or a caller abort", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: "http://10.9.8.7/",
+          "Content-Length": "0",
+        });
+      },
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const cases = [
+      await sendOutboundRequest(
+        baseRequest(at(server)),
+        deps({ resolver: () => Promise.resolve([LOOPBACK, "10.9.8.7"]) }),
+      ),
+      await sendOutboundRequest(baseRequest("http://10.9.8.7/"), deps()),
+      await sendOutboundRequest(baseRequest(at(server)), deps()),
+      await sendOutboundRequest(
+        baseRequest(at(server), { headers: { Host: "evil.example" } }),
+        deps(),
+      ),
+      await sendOutboundRequest(
+        baseRequest(at(server), { signal: controller.signal }),
+        deps(),
+      ),
+    ];
+    for (const result of cases) {
+      expect(result.ok).toBe(false);
+      expect(result.diagnostics).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(LOOPBACK);
+      expect(JSON.stringify(result)).not.toContain("10.9.8.7");
+    }
+  });
+
+  it("measures connect across a blackholed first address and reports only the selected address", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const realConnect = net.connect;
+    let calls = 0;
+    vi.spyOn(netModule, "connect").mockImplementation(
+      (options: net.TcpNetConnectOpts) =>
+        ++calls === 1 ? new net.Socket() : realConnect(options),
+    );
+    const result = await sendOutboundRequest(
+      baseRequest(at(server), { timeoutMs: 2000 }),
+      deps({ resolver: () => Promise.resolve(["192.0.2.1", LOOPBACK]) }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics?.connectMs).toBeGreaterThanOrEqual(900);
+    integerMs(result.diagnostics?.dnsMs);
+    expect(result.response?.remoteAddress).toBe(LOOPBACK);
+    expect(JSON.stringify(result)).not.toContain("192.0.2.1");
+  }, 15_000);
+
+  it.each([false, true])(
+    "keeps connect and tls null with missing or late TCP (late=%s)",
+    async (late) => {
+      const server = await serve({
+        tls: pki.leaf.good,
+        onRequest: ({ socket }) => {
+          okBody(socket);
+        },
+      });
+      const realConnect = tls.connect;
+      vi.spyOn(tlsModule, "connect").mockImplementation(
+        (options: tls.ConnectionOptions) => {
+          const socket = realConnect(options);
+          const once = socket.once.bind(socket);
+          socket.once = ((
+            event: string,
+            listener: (...args: unknown[]) => void,
+          ) => {
+            if (event === "connect") {
+              socket.once = once;
+              if (late) once("secureConnect", () => setImmediate(listener));
+              return socket;
+            }
+            return once(event, listener);
+          }) as typeof socket.once;
+          return socket;
+        },
+      );
+      const result = await sendOutboundRequest(
+        baseRequest(at(server, "/", "https")),
+        deps(),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.diagnostics).toMatchObject({
+        connectMs: null,
+        tlsMs: null,
+      });
+      integerMs(result.diagnostics?.ttfbMs);
+      expect(result.response?.remoteAddress).toBe(LOOPBACK);
+    },
+  );
+
+  it("does not reuse the TCP mark of a timed-out earlier attempt", async () => {
+    const stalled = await serve({});
+    const server = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const realConnect = tls.connect;
+    let calls = 0;
+    vi.spyOn(tlsModule, "connect").mockImplementation(
+      (options: tls.ConnectionOptions) => {
+        if (++calls === 1) {
+          const socket = realConnect({
+            ...options,
+            host: LOOPBACK,
+            port: stalled.port,
+          });
+          Object.defineProperty(socket, "remoteAddress", {
+            get: () => "192.0.2.1",
+          });
+          return socket;
+        }
+        const socket = realConnect(options);
+        const once = socket.once.bind(socket);
+        socket.once = ((
+          event: string,
+          listener: (...args: unknown[]) => void,
+        ) => {
+          if (event === "connect") {
+            socket.once = once;
+            return socket;
+          }
+          return once(event, listener);
+        }) as typeof socket.once;
+        return socket;
+      },
+    );
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https"), { timeoutMs: 2000 }),
+      deps({ resolver: () => Promise.resolve(["192.0.2.1", LOOPBACK]) }),
+    );
+    expect(result.ok).toBe(true);
+    expect(calls).toBe(2);
+    expect(result.diagnostics).toMatchObject({ connectMs: null, tlsMs: null });
+    integerMs(result.diagnostics?.dnsMs);
+    expect(result.response?.remoteAddress).toBe(LOOPBACK);
+  }, 15_000);
+});
+
 describe("HTTP/1.1 framing over node:net", () => {
   it("reads a Content-Length body and sends the fixed request headers", async () => {
     const server = await serve({
@@ -1089,6 +1370,7 @@ describe("redirect limits and header carry-over", () => {
       deps(),
     );
     expect(result.failure?.reason).toBe("redirect_limit");
+    expect(result.diagnostics?.redirects).toBe(5);
   });
 
   it("sends the secret header on a same-origin redirect", async () => {

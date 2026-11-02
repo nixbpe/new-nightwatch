@@ -97,7 +97,11 @@ function mfaCard() {
 async function enroll() {
   const user = userEvent.setup();
   twoFactorMock.enable.mockResolvedValue({
-    data: { totpURI: TOTP_URI, backupCodes: ["code-1", "code-2"] },
+    data: {
+      method: "totp",
+      totpURI: TOTP_URI,
+      backupCodes: ["code-1", "code-2"],
+    },
     error: null,
   });
   renderPage();

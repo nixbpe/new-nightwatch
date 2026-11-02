@@ -177,6 +177,11 @@ export function MfaCard({
           );
           return;
         }
+        // Better Auth 1.7 discriminates the response; this request enrolls TOTP.
+        if (data.method !== "totp") {
+          setEnableError("เปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ");
+          return;
+        }
         setDraft({ totpURI: data.totpURI, backupCodes: data.backupCodes });
         setAcknowledged(false);
         setStage("scan");

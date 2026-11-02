@@ -32,7 +32,11 @@ const SECRET_GROUPED = "JBSW Y3DP EHPK 3PXP";
 async function reachScanStep(refreshStatus = vi.fn()) {
   const user = userEvent.setup();
   twoFactorMock.enable.mockResolvedValue({
-    data: { totpURI: TOTP_URI, backupCodes: ["code-1", "code-2"] },
+    data: {
+      method: "totp",
+      totpURI: TOTP_URI,
+      backupCodes: ["code-1", "code-2"],
+    },
     error: null,
   });
   render(<MfaCard enabled={false} refreshStatus={refreshStatus} />);
@@ -139,6 +143,34 @@ describe("MfaCard enrolment steps", () => {
       "step",
     );
     expect(screen.queryByTestId("mfa-secret")).toBeNull();
+  });
+
+  it("a non-TOTP enable response is an enable error and never reaches the scan step", async () => {
+    const user = userEvent.setup();
+    twoFactorMock.enable.mockResolvedValue({
+      data: { method: "otp" },
+      error: null,
+    });
+    render(<MfaCard enabled={false} refreshStatus={vi.fn()} />);
+    await user.click(screen.getByTestId("mfa-enable-open"));
+    await user.type(
+      screen.getByTestId("mfa-enable-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-enable-submit"));
+
+    expect(
+      await screen.findByTestId("mfa-enable-password-error"),
+    ).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("mfa-step-password")).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(screen.queryByTestId("mfa-secret")).toBeNull();
+    expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
+    expect(twoFactorMock.enable).toHaveBeenCalledWith({
+      password: "CurrentPassw0rd!",
+    });
   });
 
   it("links a wrong TOTP code to its exact server validation alert", async () => {

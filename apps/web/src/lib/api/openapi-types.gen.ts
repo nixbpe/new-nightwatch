@@ -1967,6 +1967,15 @@ export interface paths {
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
+                                diagnostics: {
+                                    redirects: number | null;
+                                    dnsMs: number | null;
+                                    connectMs: number | null;
+                                    tlsMs: number | null;
+                                    ttfbMs: number | null;
+                                    remoteAddress: string | null;
+                                    reasonPhrase: string | null;
+                                };
                                 ssl: {
                                     /** @enum {string} */
                                     level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
@@ -2283,6 +2292,15 @@ export interface paths {
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
+                                diagnostics: {
+                                    redirects: number | null;
+                                    dnsMs: number | null;
+                                    connectMs: number | null;
+                                    tlsMs: number | null;
+                                    ttfbMs: number | null;
+                                    remoteAddress: string | null;
+                                    reasonPhrase: string | null;
+                                };
                                 ssl: {
                                     /** @enum {string} */
                                     level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
