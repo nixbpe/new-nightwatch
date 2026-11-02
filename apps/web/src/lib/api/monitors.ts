@@ -1,6 +1,5 @@
 import {
   MONITOR_HISTORY_DEFAULT_LIMIT,
-  MONITOR_LIMIT_PER_PROJECT,
   MONITOR_LIST_DEFAULT_LIMIT,
   MONITOR_RECENT_EVENTS_DEFAULT,
   monitorChecksResponseSchema,
@@ -49,12 +48,6 @@ export type MonitorRecentEventsResponse = z.infer<
 
 export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
 
-// Overview list: one request returns every monitor of the Project (the per-Project cap fits one page).
-// The Workspace shares it with the list so both use the same query key.
-export const OVERVIEW_LIST_PARAMS = {
-  limit: MONITOR_LIMIT_PER_PROJECT,
-  offset: 0,
-};
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
 // Rows per "load more" on the checks history page: the contract maximum of `limit`.
 export const MONITOR_CHECKS_CHUNK_SIZE = 50;

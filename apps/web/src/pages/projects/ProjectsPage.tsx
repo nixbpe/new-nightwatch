@@ -32,7 +32,7 @@ import { formatAuditDate, formatAuditTime } from "../../lib/preferences";
 import { usePreferences } from "../../lib/preferences";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
-import { isDenied } from "../workspace/rows";
+import { isDenied } from "../monitors/useMonitorAccess";
 import {
   LIMIT_REACHED_MESSAGE,
   ProjectFormDialog,

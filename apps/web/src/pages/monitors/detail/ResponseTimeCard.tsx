@@ -28,7 +28,7 @@ import {
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
-import { isDenied } from "../../workspace/rows";
+import { isDenied } from "../useMonitorAccess";
 import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
 
 // d3 loads only when the Detail page shows a chart.

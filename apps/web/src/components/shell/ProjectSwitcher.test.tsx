@@ -195,6 +195,12 @@ function renderShell({
             element: <Probe />,
           },
           {
+            path: "/organizations/:organizationId/projects/:projectId/overview",
+            loader: () =>
+              membersRedirect === null ? null : redirect(membersRedirect),
+            element: <Probe />,
+          },
+          {
             path: "/organizations/:organizationId/projects/:projectId/monitors",
             loader: () =>
               membersRedirect === null ? null : redirect(membersRedirect),
@@ -228,6 +234,8 @@ const membersPath = (projectId: string) =>
   `/organizations/${ORG_A}/projects/${projectId}/members`;
 const monitorsPath = (projectId: string) =>
   `/organizations/${ORG_A}/projects/${projectId}/monitors`;
+const overviewPath = (projectId: string) =>
+  `/organizations/${ORG_A}/projects/${projectId}/overview`;
 
 async function openMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByTestId("shell-project-switch"));
@@ -387,14 +395,14 @@ describe("ProjectSwitcher", () => {
     expect(screen.getByTestId("shell-project-switch")).toHaveFocus();
   });
 
-  it("AC-04: switching from a page outside any Project lands on the new Project's monitors, its first page", async () => {
+  it("AC-04: switching from a page outside any Project lands on the new Project's overview, its first page", async () => {
     const user = userEvent.setup();
     renderShell({ path: "/workspace" });
     await openMenu(user);
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     await waitFor(() => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
-        monitorsPath(P_ALPHA),
+        overviewPath(P_ALPHA),
       );
     });
   });
@@ -936,7 +944,7 @@ describe("ProjectSwitcher", () => {
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     await waitFor(() => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
-        monitorsPath(P_ALPHA),
+        overviewPath(P_ALPHA),
       );
       expect(rememberLastProjectMock).toHaveBeenCalledWith(
         ORG_A,
@@ -1313,6 +1321,7 @@ describe("ProjectSwitcher", () => {
         .filter((link) => link.closest(`[data-scope="${scope}"]`) !== null)
         .map((link) => link.getAttribute("data-testid"));
     expect(scoped("project")).toEqual([
+      "shell-nav-/organizations/:organizationId/projects/:projectId/overview",
       "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);

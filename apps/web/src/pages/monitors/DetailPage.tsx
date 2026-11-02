@@ -1,4 +1,4 @@
-import { isDenied } from "../workspace/rows";
+import { isDenied } from "./useMonitorAccess";
 import type { Monitor, MonitorListResponse } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";

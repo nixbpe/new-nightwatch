@@ -22,6 +22,7 @@ import {
   monitorDetailLoader,
   monitorEditLoader,
   monitorsOverviewLoader,
+  projectOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
@@ -60,7 +61,8 @@ import { SessionsPage } from "./pages/settings/SessionsPage";
 import { SettingsLayout } from "./pages/settings/SettingsLayout";
 import { TwoFactorPage } from "./pages/TwoFactorPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
-import { WorkspacePage } from "./pages/WorkspacePage";
+import { WorkspaceEntryFallback } from "./pages/WorkspaceEntryFallback";
+import { ProjectOverviewPage } from "./pages/projects/overview/ProjectOverviewPage";
 
 // Lives outside the per-identity query boundary so auth transitions keep navigation state.
 // An in-page sign-in/sign-out changes identity without navigating, so loaders must be re-run.
@@ -168,7 +170,12 @@ export const routes: RouteObject[] = [
           {
             path: "/workspace",
             loader: workspaceLoader,
-            element: <WorkspacePage />,
+            element: <WorkspaceEntryFallback />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/overview",
+            loader: projectOverviewLoader,
+            element: <ProjectOverviewPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/monitors",

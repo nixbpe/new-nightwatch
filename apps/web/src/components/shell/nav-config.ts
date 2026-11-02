@@ -39,6 +39,11 @@ export const NAV_ITEMS: NavItem[] = [
     scope: "project",
     children: [
       {
+        label: "ภาพรวม",
+        icon: "activity",
+        path: "/organizations/:organizationId/projects/:projectId/overview",
+      },
+      {
         label: "ตรวจสถานะบริการ",
         icon: "activity",
         path: "/organizations/:organizationId/projects/:projectId/monitors",

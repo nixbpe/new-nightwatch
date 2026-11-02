@@ -88,7 +88,7 @@ test("an owner switches Project with the keyboard and the server remembers it", 
 }) => {
   await signIn(page, people.owner);
   await expect(page).toHaveURL(
-    `/organizations/${org}/projects/${alpha}/monitors`,
+    `/organizations/${org}/projects/${alpha}/overview`,
   );
   await page.goto(membersUrl(alpha));
   const button = page.getByTestId("shell-project-switch");
@@ -138,11 +138,11 @@ test("workspace and root open the remembered Project and its sidebar pages", asy
 }) => {
   await signIn(page, people.owner);
   await expect(page).toHaveURL(
-    `/organizations/${org}/projects/${bravo}/monitors`,
+    `/organizations/${org}/projects/${bravo}/overview`,
   );
   await page.goto("/");
   await expect(page).toHaveURL(
-    `/organizations/${org}/projects/${bravo}/monitors`,
+    `/organizations/${org}/projects/${bravo}/overview`,
   );
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Bravo ${run}`,

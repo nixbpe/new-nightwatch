@@ -81,8 +81,8 @@ describe("projectSwitchDestination (AC-04)", () => {
     ).toBe(`/organizations/${ORG}/projects/${P2}/members`);
   });
 
-  it("lands on the monitors, the first Project page, from anywhere else", () => {
-    const landing = `/organizations/${ORG}/projects/${P2}/monitors`;
+  it("lands on the overview, the first Project page, from anywhere else", () => {
+    const landing = `/organizations/${ORG}/projects/${P2}/overview`;
     expect(projectSwitchDestination("/workspace", ORG, P2)).toBe(landing);
     expect(
       projectSwitchDestination(`/organizations/${ORG}/projects`, ORG, P2),
@@ -146,6 +146,7 @@ describe("Project scope in the navigation definition", () => {
         .filter((destination) => destination.group === "โปรเจกต์")
         .map((destination) => destination.path),
     ).toEqual([
+      `/organizations/${other}/projects/${P1}/overview`,
       `/organizations/${other}/projects/${P1}/monitors`,
       `/organizations/${other}/projects/${P1}/members`,
     ]);
@@ -160,6 +161,12 @@ describe("Project scope in the navigation definition", () => {
         (destination) => destination.group === "โปรเจกต์",
       ),
     ).toEqual([
+      {
+        label: "ภาพรวม",
+        icon: "activity",
+        path: `/organizations/${ORG}/projects/${P1}/overview`,
+        group: "โปรเจกต์",
+      },
       {
         label: "ตรวจสถานะบริการ",
         icon: "activity",

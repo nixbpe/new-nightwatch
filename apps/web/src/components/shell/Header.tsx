@@ -42,14 +42,14 @@ export function Header({
           // Link only for the active org; /workspace would otherwise open another tenant's page.
           ...(routeOrgId === activeOrg?.id ? { path: "/workspace" } : {}),
         };
-  // A Project route reads Organization › Project › page. The Project has no page of its own yet, so its crumb is
-  // not a link; the name is known only while the Project is in the active organization's list.
-  const routeProjectId = getProjectRoute(pathname)?.projectId ?? null;
+  const routeProject = getProjectRoute(pathname);
   const projectCrumb: BreadcrumbCrumb | null =
-    routeProjectId === null
+    routeProject === null
       ? null
       : {
-          label: project?.id === routeProjectId ? project.name : "โปรเจกต์",
+          label:
+            project?.id === routeProject.projectId ? project.name : "โปรเจกต์",
+          path: `/organizations/${routeProject.organizationId}/projects/${routeProject.projectId}/overview`,
         };
   const trail = [
     ...(rootCrumb === null ? [] : [rootCrumb]),

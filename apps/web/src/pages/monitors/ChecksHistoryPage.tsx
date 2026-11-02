@@ -37,7 +37,7 @@ import {
 import { assertionSummary, failureText, OUTCOME_LABELS } from "./detail/labels";
 import { formatDateTime, formatNumber, Time, TIME_ZONE } from "./format";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
-import { isDenied } from "../workspace/rows";
+import { isDenied } from "./useMonitorAccess";
 
 type Check = MonitorChecksResponse["checks"][number];
 type UrlChange = MonitorChecksResponse["urlChanges"][number];
