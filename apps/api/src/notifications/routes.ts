@@ -29,13 +29,15 @@ export function registerNotificationInboxRoutes(
         deps.auth,
         c.req.raw.headers,
       );
-      const { limit, cursor } = c.req.valid("query");
+      const { limit, cursor, status, category } = c.req.valid("query");
       return c.json(
         await listInbox(serviceDeps, {
           userId: session.user.id,
           sessionToken: session.session.token,
           limit,
           cursor,
+          status,
+          category,
         }),
         200,
       );

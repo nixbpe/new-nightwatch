@@ -5,6 +5,7 @@ import {
   runMigrations,
   withTenantContextRaw,
   type MonitorNotificationEventType,
+  type Database,
 } from "@nightwatch/db";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
@@ -67,12 +68,12 @@ async function materialize(tenantId: string): Promise<void> {
     `insert into notification_inbox_items
        (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
         event_type, occurred_at, subject_project_id, subject_monitor_id,
-        subject_monitor_name, monitor_reason, ssl_not_after)
+        subject_monitor_name, monitor_reason, ssl_not_after, subject_monitor_hostname)
      select gen_random_uuid()::text, intent.id, intent.origin,
             recipient.recipient_user_id, 'tenant', intent.tenant_id,
             intent.event_type, intent.occurred_at, intent.subject_project_id,
             intent.subject_monitor_id,
-            intent.subject_monitor_name, intent.monitor_reason, intent.ssl_not_after
+            intent.subject_monitor_name, intent.monitor_reason, intent.ssl_not_after, intent.subject_monitor_hostname
      from notification_intents intent
      join notification_intent_recipients recipient on recipient.intent_id = intent.id
      where intent.tenant_id = $1`,
@@ -135,6 +136,7 @@ beforeAll(async () => {
         projectId,
         monitorId,
         monitorName: "Checkout",
+        monitorHostname: "checkout.example.com",
         origin: `monitor:${monitorId}:${event.eventType}:${run}`,
         occurredAt: new Date(Date.now() - 60_000 + offset * 1_000),
         ...event,
@@ -147,6 +149,7 @@ beforeAll(async () => {
       projectId: otherProjectId,
       monitorId: otherMonitorId,
       monitorName: "Other org monitor",
+      monitorHostname: null,
       eventType: "MONITOR_DOWN",
       origin: `monitor:${otherMonitorId}:down:${run}`,
       occurredAt: new Date(),
@@ -198,7 +201,12 @@ describe("monitor notification inbox items", () => {
         organizationId: orgA,
         category: "monitor",
         actor: null,
-        subject: { projectId, monitorId, monitorName: "Checkout" },
+        subject: {
+          projectId,
+          monitorId,
+          monitorName: "Checkout",
+          monitorHostname: "checkout.example.com",
+        },
       });
     }
   });
@@ -296,6 +304,7 @@ describe("monitor items follow Project access", () => {
         projectId: project,
         monitorId: monitor,
         monitorName: "Guarded",
+        monitorHostname: null,
         eventType: "MONITOR_DOWN",
         origin: `monitor:${monitor}:down:${run}`,
         occurredAt: new Date(),
@@ -361,6 +370,10 @@ describe("monitor items follow Project access", () => {
   it("a member removed from the Project loses the item in the list, the unread count, mark-one and mark-all, and keeps other items", async () => {
     const item = await itemOf(users.member);
     await removeFromProject();
+    expect(await read(users.member)).toMatchObject({
+      counts: { total: 1, unread: 1, recent: 1 },
+      unreadCount: 1,
+    });
     expect(await names(users.member)).toEqual([
       "ORG-NOTIFICATION-SETTINGS-CHANGED",
     ]);
@@ -381,6 +394,53 @@ describe("monitor items follow Project access", () => {
     expect((await itemOf(users.member))?.read_at).toBeNull();
   });
 
+  it("a Project removal committing before the single statement removes rows and every count together", async () => {
+    await addToProject();
+    const pool = createDatabase(runtimeUrl);
+    let intercepted = 0;
+    const wrapped: Database = {
+      ...pool,
+      sql: new Proxy(pool.sql, {
+        get(target, property, receiver) {
+          if (property !== "connect")
+            return Reflect.get(target, property, receiver) as unknown;
+          return async () => {
+            const client = await target.connect();
+            const query = client.query.bind(client);
+            Object.assign(client, {
+              query: async (text: string, values?: unknown[]) => {
+                if (text.startsWith("with w as")) {
+                  intercepted += 1;
+                  await removeFromProject();
+                }
+                return query(text, values);
+              },
+            });
+            return client;
+          };
+        },
+      }),
+    };
+    try {
+      const response = await listInbox(
+        { ...deps, database: wrapped },
+        {
+          userId: users.member,
+          sessionToken: "unused",
+          limit: 20,
+          category: "monitor",
+        },
+      );
+      expect(intercepted).toBe(1);
+      expect(response.items).toEqual([]);
+      expect(response.counts).toMatchObject({ total: 0, unread: 0, recent: 0 });
+      // The settings item was marked read by the earlier mark-all test.
+      expect(response.unreadCount).toBe(0);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("a member added back regains the item, still unread", async () => {
     await addToProject();
     expect(await names(users.member)).toContain("MONITOR_DOWN");
@@ -393,6 +453,10 @@ describe("monitor items follow Project access", () => {
       [org, users.admin],
     );
     expect(await names(users.admin)).toEqual([]);
+    expect(await read(users.admin)).toMatchObject({
+      counts: { total: 0, unread: 0, recent: 0 },
+      unreadCount: 0,
+    });
     expect(await unread(users.admin)).toBe(0);
     await owner.query(
       "update member set role = 'admin' where organization_id = $1 and user_id = $2",
@@ -407,6 +471,14 @@ describe("monitor items follow Project access", () => {
       "ORG-NOTIFICATION-SETTINGS-CHANGED",
     ]);
     expect(await names(users.admin)).toEqual(["MONITOR_DOWN"]);
+    expect(await read(users.member)).toMatchObject({
+      counts: { total: 1, unread: 0, recent: 1 },
+      unreadCount: 0,
+    });
+    expect(await read(users.admin)).toMatchObject({
+      counts: { total: 1, unread: 1, recent: 1 },
+      unreadCount: 1,
+    });
   });
 });
 

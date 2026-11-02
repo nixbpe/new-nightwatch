@@ -52,6 +52,8 @@ const monitorSubjectSchema = z.object({
   projectId: z.uuid(),
   monitorId: z.uuid(),
   monitorName: z.string().min(1),
+  /** Event-time DNS hostname; null for legacy notifications and IP targets. */
+  monitorHostname: z.string().min(1).max(253).nullable(),
 });
 
 const monitorItemBase = {
@@ -117,9 +119,21 @@ export type NotificationDetail = z.infer<typeof notificationDetailSchema>;
  * for personal-only). Organization selection is account-global, so a client
  * must discard a response whose scope differs from the one it expected.
  */
+export const notificationCountsSchema = z.object({
+  total: z.number().int().min(0),
+  unread: z.number().int().min(0),
+  recent: z.number().int().min(0),
+  window: z.object({
+    days: z.literal(7),
+    since: isoDateTimeSchema,
+    until: isoDateTimeSchema,
+  }),
+});
+
 export const notificationListResponseSchema = z.object({
   items: z.array(notificationItemSchema),
   nextCursor: z.string().min(1).nullable(),
+  counts: notificationCountsSchema,
   unreadCount: z.number().int().min(0),
   organizationId: organizationIdSchema.nullable(),
 });
@@ -194,7 +208,22 @@ export const notificationSettingsParamsSchema = z.object({
   organizationId: organizationIdSchema,
 });
 
+export const notificationStatusFilterSchema = z.enum(["all", "unread"]);
+export const notificationCategoryFilterSchema = z.enum([
+  "monitor",
+  "security",
+  "organization",
+]);
+export type NotificationStatusFilter = z.infer<
+  typeof notificationStatusFilterSchema
+>;
+export type NotificationCategoryFilter = z.infer<
+  typeof notificationCategoryFilterSchema
+>;
+
 export const notificationListQuerySchema = z.object({
+  status: notificationStatusFilterSchema.default("all"),
+  category: notificationCategoryFilterSchema.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   cursor: z.string().min(1).max(2048).optional(),
 });

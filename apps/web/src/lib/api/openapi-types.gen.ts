@@ -447,6 +447,8 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    status?: "all" | "unread";
+                    category?: "monitor" | "security" | "organization";
                     limit?: number;
                     cursor?: string;
                 };
@@ -531,6 +533,7 @@ export interface paths {
                                     /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
+                                    monitorHostname: string | null;
                                 };
                                 /** @enum {string} */
                                 eventType: "MONITOR_DOWN";
@@ -556,6 +559,7 @@ export interface paths {
                                     /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
+                                    monitorHostname: string | null;
                                 };
                                 /** @enum {string} */
                                 eventType: "MONITOR_RECOVERED";
@@ -581,6 +585,7 @@ export interface paths {
                                     /** Format: uuid */
                                     monitorId: string;
                                     monitorName: string;
+                                    monitorHostname: string | null;
                                 };
                                 /** @enum {string} */
                                 eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";
@@ -589,6 +594,19 @@ export interface paths {
                                 sslNotAfter: string;
                             }))[];
                             nextCursor: string | null;
+                            counts: {
+                                total: number;
+                                unread: number;
+                                recent: number;
+                                window: {
+                                    /** @enum {number} */
+                                    days: 7;
+                                    /** Format: date-time */
+                                    since: string;
+                                    /** Format: date-time */
+                                    until: string;
+                                };
+                            };
                             unreadCount: number;
                             /** Format: uuid */
                             organizationId: string | null;
@@ -827,6 +845,7 @@ export interface paths {
                                 /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
+                                monitorHostname: string | null;
                             };
                             /** @enum {string} */
                             eventType: "MONITOR_DOWN";
@@ -852,6 +871,7 @@ export interface paths {
                                 /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
+                                monitorHostname: string | null;
                             };
                             /** @enum {string} */
                             eventType: "MONITOR_RECOVERED";
@@ -877,6 +897,7 @@ export interface paths {
                                 /** Format: uuid */
                                 monitorId: string;
                                 monitorName: string;
+                                monitorHostname: string | null;
                             };
                             /** @enum {string} */
                             eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";

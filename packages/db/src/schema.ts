@@ -255,6 +255,7 @@ export const notificationIntents = pgTable(
     // No FK: the export row is deleted after 7 days, the notification after 30.
     subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
+    subjectMonitorHostname: text("subject_monitor_hostname"),
     monitorReason: text("monitor_reason"),
     sslNotAfter: timestamp("ssl_not_after", {
       mode: "date",
@@ -340,6 +341,7 @@ export const notificationInboxItems = pgTable(
     // No FK: the export row is deleted after 7 days, the notification after 30.
     subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
+    subjectMonitorHostname: text("subject_monitor_hostname"),
     monitorReason: text("monitor_reason"),
     sslNotAfter: timestamp("ssl_not_after", {
       mode: "date",

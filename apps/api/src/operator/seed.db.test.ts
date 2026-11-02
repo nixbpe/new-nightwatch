@@ -68,6 +68,9 @@ describe("local demo seed against PostgreSQL", () => {
       inbox: number;
       read: number;
       unread: number;
+      recent: number;
+      since: Date;
+      until: Date;
       ledgers: number;
       latest: Date;
     }>(
@@ -77,6 +80,9 @@ describe("local demo seed against PostgreSQL", () => {
          (select count(*)::int from notification_inbox_items where intent_id like $1) as inbox,
          (select count(*)::int from notification_inbox_items where intent_id like $1 and read_at is not null) as read,
          (select count(*)::int from notification_inbox_items where intent_id like $1 and read_at is null) as unread,
+         (select count(*)::int from notification_inbox_items where intent_id like $1 and occurred_at >= now() - interval '7 days' and occurred_at <= now()) as recent,
+         now() - interval '7 days' as since,
+         now() as until,
          (select count(*)::int from notification_dispatch_ledger where intent_id like $1) as ledgers,
          (select max(occurred_at) from notification_intents where id like $1) as latest`,
       [`${origin}%`],
@@ -145,6 +151,16 @@ describe("local demo seed against PostgreSQL", () => {
         ),
         nextCursor: null,
         unreadCount: firstRow.unread,
+        counts: {
+          total: firstRow.inbox,
+          unread: firstRow.unread,
+          recent: firstRow.recent,
+          window: {
+            days: 7,
+            since: firstRow.since.toISOString(),
+            until: firstRow.until.toISOString(),
+          },
+        },
         organizationId: "7b0a2d01-60c2-4b32-9b17-1e9e87000001",
       }),
     ).not.toThrow();

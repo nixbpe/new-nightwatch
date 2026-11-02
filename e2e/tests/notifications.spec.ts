@@ -537,12 +537,30 @@ test("password-change notification is materialized, scope switches across organi
     "organization-notifications-settings-changed",
   );
   await expect(secondarySetting).toBeChecked();
+  async function saveSecondarySetting(expected: boolean) {
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        new URL(response.url()).pathname ===
+          `/api/organizations/${secondaryOrganization.id}/notification-settings`,
+    );
+    await page.getByTestId("organization-notifications-save").click();
+    const response = await saved;
+    expect(response.ok()).toBe(true);
+    expect(response.request().postDataJSON()).toMatchObject({
+      settingsChangedEnabled: expected,
+    });
+    expect(await response.json()).toMatchObject({
+      organizationId: secondaryOrganization.id,
+      settingsChangedEnabled: expected,
+    });
+  }
   await secondarySetting.uncheck();
-  await page.getByTestId("organization-notifications-save").click();
+  await saveSecondarySetting(false);
   await page.reload();
   await expect(secondarySetting).not.toBeChecked();
   await secondarySetting.check();
-  await page.getByTestId("organization-notifications-save").click();
+  await saveSecondarySetting(true);
   await page.reload();
   await expect(secondarySetting).toBeChecked();
   await page.goto("/workspace");
@@ -994,6 +1012,135 @@ test("deferred notification responses cannot cross confirmed organization or ide
     await database.sql.query(
       "delete from notification_intents where id = any($1::text[])",
       [[deferredPrimaryItem, deferredSecondaryItem]],
+    );
+  }
+});
+
+test("server inbox filters paginate unread monitor snapshots and recover a real INVALID_CURSOR", async ({
+  page,
+}, testInfo) => {
+  const ids = Array.from({ length: 44 }, () => randomUUID());
+  try {
+    const client = await database.sql.connect();
+    try {
+      for (const [index, id] of ids.entries()) {
+        await seedItem(client, {
+          id,
+          scope: "tenant",
+          organizationId: identity.organizationId,
+          occurredAt: new Date(Date.now() - index * 1000).toISOString(),
+          readAt: index === 43 ? new Date().toISOString() : undefined,
+        });
+        for (const table of [
+          "notification_intents",
+          "notification_inbox_items",
+        ] as const) {
+          await client.query(
+            `update ${table} set event_type = 'MONITOR_DOWN', subject_project_id = $2,
+            subject_monitor_id = $3, subject_monitor_name = 'Snapshot monitor', monitor_reason = 'timeout',
+            subject_monitor_hostname = $4 where id = $1`,
+            [
+              id,
+              randomUUID(),
+              randomUUID(),
+              index === 0 ? null : "snapshot.example.com",
+            ],
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+    await signIn(page, currentPrimaryPassword);
+    await page.goto("/notifications?status=unread&category=monitor");
+    const rows = page.locator('[data-testid^="notification-row-"]');
+    await expect(rows).toHaveCount(20);
+    await expect(
+      page.getByTestId("notifications-filter-status-unread"),
+    ).toHaveText(/43/);
+    await expect(
+      page.getByTestId("notifications-filter-status-all"),
+    ).toHaveText(/44/);
+    await expect(
+      page.getByTestId("notifications-filter-category-monitor"),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page
+        .getByTestId(`notification-row-${ids[0]}`)
+        .getByTestId("notification-monitor-hostname"),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId(`notification-row-${ids[1]}`)
+        .getByTestId("notification-monitor-hostname"),
+    ).toHaveText("snapshot.example.com");
+    await expect(page.getByTestId("notifications-count-recent")).toHaveText(
+      /44 รายการใน 7 วัน/,
+    );
+    await page.getByTestId("notifications-load-more").click();
+    await expect(rows).toHaveCount(40);
+    let firstPageRefetches = 0;
+    const observe = (request: Request) => {
+      const url = new URL(request.url());
+      if (
+        url.pathname === "/api/notifications" &&
+        url.searchParams.get("category") === "monitor" &&
+        !url.searchParams.has("cursor")
+      )
+        firstPageRefetches += 1;
+    };
+    page.on("request", observe);
+    await page.route(
+      "**/api/notifications?*",
+      async (route) => {
+        const url = new URL(route.request().url());
+        if (url.searchParams.has("cursor"))
+          url.searchParams.set("cursor", "invalid-signature");
+        await route.continue({ url: url.toString() });
+      },
+      { times: 1 },
+    );
+    const rejected = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/notifications?") &&
+        response.status() === 400,
+    );
+    await page.getByTestId("notifications-load-more").click();
+    expect(await (await rejected).json()).toMatchObject({
+      error: { code: "INVALID_CURSOR" },
+    });
+    await expect(page.getByTestId("notifications-pages-reset")).toBeVisible();
+    await expect(rows).toHaveCount(20);
+    expect(firstPageRefetches).toBe(1);
+    page.off("request", observe);
+    await page.getByTestId("notifications-load-more").click();
+    await expect(rows).toHaveCount(40);
+    await page.getByTestId("notifications-load-more").click();
+    await expect(rows).toHaveCount(43);
+    await expect(page.getByTestId("notifications-load-more")).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid^="notification-row-"][data-read-at=""]'),
+    ).toHaveCount(43);
+    await page.getByTestId("notifications-filter-category-monitor").click();
+    await expect(page).toHaveURL(/status=unread$/);
+    await page
+      .getByTestId("notifications-filter-category-organization")
+      .click();
+    await expect(page).toHaveURL(/category=organization/);
+    for (const theme of ["light", "dark"] as const) {
+      await selectTheme(page, theme);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("/notifications?status=unread&category=monitor");
+      await expect(rows).toHaveCount(20);
+      await testInfo.attach(`notification-filters-${theme}-1440x900`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
+  } finally {
+    await database.sql.query(
+      "delete from notification_intents where id = any($1::text[])",
+      [ids],
     );
   }
 });

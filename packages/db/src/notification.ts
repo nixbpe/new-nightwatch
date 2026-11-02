@@ -240,6 +240,7 @@ export type MonitorNotificationInput = {
   projectId: string;
   monitorId: string;
   monitorName: string;
+  monitorHostname: string | null;
   eventType: MonitorNotificationEventType;
   /** Stable business identity; a replay with the same origin is a no-op. */
   origin: string;
@@ -267,8 +268,8 @@ export async function insertMonitorNotificationIntent(
     `insert into notification_intents
        (id, scope_kind, tenant_id, origin, event_type, occurred_at,
         subject_project_id, subject_monitor_id, subject_monitor_name,
-        monitor_reason, ssl_not_after)
-     values ($1, 'tenant', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        monitor_reason, ssl_not_after, subject_monitor_hostname)
+     values ($1, 'tenant', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      on conflict (origin) do nothing
      returning id`,
     [
@@ -282,6 +283,7 @@ export async function insertMonitorNotificationIntent(
       input.monitorName,
       input.reason,
       input.sslNotAfter,
+      input.monitorHostname,
     ],
   );
   if (inserted.rowCount === 0) return false;

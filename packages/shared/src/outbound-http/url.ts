@@ -26,6 +26,19 @@ export function literalHost(url: URL): string | null {
   return parseIp(bare) ? bare : null;
 }
 
+/** DNS-only event snapshot; never persists URL credentials, path, query or IPs. */
+export function monitorHostname(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (literalHost(url) !== null) return null;
+  const hostname = url.hostname.toLowerCase().replace(/\.+$/, "");
+  return hostname.length > 0 && hostname.length <= 253 ? hostname : null;
+}
+
 export function isLocalhostName(hostname: string): boolean {
   const name = hostname.toLowerCase().replace(/\.+$/, "");
   return name === "localhost" || name.endsWith(".localhost");

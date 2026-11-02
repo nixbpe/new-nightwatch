@@ -201,6 +201,137 @@ afterAll(async () => {
 });
 
 describe("notification inbox API", () => {
+  it("filters unread across both scopes, keeps category counts independent and binds cursor filters", async () => {
+    await seedItem({ scope: "account", occurredAt: atHour(3) });
+    await seedItem({
+      scope: "tenant",
+      organizationId: orgA,
+      occurredAt: atHour(2),
+    });
+    await seedItem({
+      scope: "account",
+      occurredAt: atHour(1),
+      readAt: atHour(2),
+    });
+    const first = notificationListResponseSchema.parse(
+      (await request("/api/notifications?status=unread&limit=1")).body,
+    );
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.readAt).toBeNull();
+    expect(first.counts).toMatchObject({ total: 3, unread: 2, recent: 3 });
+    const cursor = first.nextCursor;
+    if (!cursor) throw new Error("expected a next cursor");
+    const second = notificationListResponseSchema.parse(
+      (
+        await request(
+          `/api/notifications?status=unread&limit=1&cursor=${cursor}`,
+        )
+      ).body,
+    );
+    expect(second.items[0]?.scope).toBe("organization");
+    expect(second.nextCursor).toBeNull();
+    for (const filters of ["status=all", "status=unread&category=security"]) {
+      const invalid = await request(
+        `/api/notifications?limit=1&${filters}&cursor=${cursor}`,
+      );
+      expect(invalid.response.status).toBe(400);
+      expect(invalid.body).toMatchObject({ error: { code: "INVALID_CURSOR" } });
+    }
+    const security = notificationListResponseSchema.parse(
+      (await request("/api/notifications?category=security&status=unread"))
+        .body,
+    );
+    expect(security.items).toHaveLength(1);
+    expect(security.items[0]).toMatchObject({
+      scope: "account",
+      category: null,
+    });
+    expect(security.counts).toMatchObject({ total: 2, unread: 1 });
+    expect(security.unreadCount).toBe(2);
+    expect(
+      (await request("/api/notifications/unread-count")).body,
+    ).toMatchObject({ unreadCount: first.counts.unread });
+  });
+
+  it("organization includes settings and both audit export outcomes while monitor includes all five event types", async () => {
+    await owner.sql.query(
+      "update member set role = 'admin' where user_id = $1",
+      [userId],
+    );
+    const types = [
+      "ORG-NOTIFICATION-SETTINGS-CHANGED",
+      "AUDIT_EXPORT_READY",
+      "AUDIT_EXPORT_FAILED",
+      "MONITOR_DOWN",
+      "MONITOR_RECOVERED",
+      "MONITOR_SSL_CAUTION",
+      "MONITOR_SSL_DANGER",
+      "MONITOR_SSL_EXPIRED",
+    ];
+    for (const type of types) {
+      const id = await seedItem({
+        scope: "tenant",
+        organizationId: orgA,
+        occurredAt: atHour(1),
+      });
+      for (const table of [
+        "notification_intents",
+        "notification_inbox_items",
+      ] as const) {
+        await owner.sql.query(
+          `update ${table} set event_type = $1, subject_project_id = $2, subject_monitor_id = $3, subject_monitor_name = 'Snapshot', monitor_reason = 'timeout', ssl_not_after = now() where id = $4`,
+          [type, crypto.randomUUID(), crypto.randomUUID(), id],
+        );
+      }
+    }
+    const organization = notificationListResponseSchema.parse(
+      (await request("/api/notifications?category=organization")).body,
+    );
+    expect(organization.items.map((item) => item.eventType).sort()).toEqual(
+      types.slice(0, 3).sort(),
+    );
+    expect(organization.counts.total).toBe(3);
+    const monitors = notificationListResponseSchema.parse(
+      (await request("/api/notifications?category=monitor")).body,
+    );
+    expect(monitors.items.map((item) => item.eventType).sort()).toEqual(
+      types.slice(3).sort(),
+    );
+    expect(monitors.counts.total).toBe(5);
+    expect(monitors.unreadCount).toBe(8);
+    expect(
+      monitors.items.every(
+        (item) =>
+          item.category === "monitor" && item.subject.monitorHostname === null,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects invalid filters through the generic input envelope and excludes expired/incomplete items from every count", async () => {
+    for (const query of ["status=secret", "category=secret"]) {
+      const invalid = await request(`/api/notifications?${query}`);
+      expect(invalid.response.status).toBe(400);
+      expect(invalid.body).toMatchObject({ error: { code: "INVALID_INPUT" } });
+      expect(JSON.stringify(invalid.body)).not.toContain("secret");
+    }
+    await seedItem({
+      scope: "account",
+      occurredAt: new Date(Date.now() - 31 * 86400000).toISOString(),
+    });
+    await seedItem({
+      scope: "tenant",
+      organizationId: orgA,
+      occurredAt: atHour(1),
+      dispatchStatus: "enqueued",
+    });
+    const response = notificationListResponseSchema.parse(
+      (await request("/api/notifications")).body,
+    );
+    expect(response.items).toEqual([]);
+    expect(response.counts).toMatchObject({ total: 0, unread: 0, recent: 0 });
+    expect(response.unreadCount).toBe(0);
+  });
+
   it("paginates a scoped inbox and rejects tampered and switched-scope cursors", async () => {
     await seedItem({
       scope: "account",

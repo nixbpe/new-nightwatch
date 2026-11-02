@@ -5,6 +5,8 @@ import type {
   NotificationItem,
   NotificationCountResponse,
   NotificationListResponse,
+  NotificationStatusFilter,
+  NotificationCategoryFilter,
 } from "@nightwatch/api-contract";
 import type { Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
@@ -25,6 +27,7 @@ type InboxRow = {
   subjectProjectId: string | null;
   subjectMonitorId: string | null;
   subjectMonitorName: string | null;
+  subjectMonitorHostname: string | null;
   monitorReason: string | null;
   sslNotAfter: Date | string | null;
 };
@@ -102,6 +105,7 @@ function toItem(row: InboxRow): NotificationItem {
       projectId: row.subjectProjectId,
       monitorId: row.subjectMonitorId,
       monitorName: row.subjectMonitorName,
+      monitorHostname: row.subjectMonitorHostname,
     },
   };
   if (row.eventType === "MONITOR_DOWN") {
@@ -255,6 +259,7 @@ const itemFields = `
   read_at as "readAt", actor_display_name as "actorDisplayName",
   subject_project_id as "subjectProjectId",
   subject_monitor_id as "subjectMonitorId", subject_monitor_name as "subjectMonitorName",
+  subject_monitor_hostname as "subjectMonitorHostname",
   monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter"`;
 
 // A monitor item is served only while the reader can still see its Project:
@@ -289,56 +294,73 @@ const completedDispatch = `
       and d.status = 'completed'
   )`;
 
-async function accountRows(
-  client: PoolClient,
-  userId: string,
-  anchor: { occurredAt: string; id: string } | undefined,
-  limit: number,
-): Promise<InboxRow[]> {
-  const values = anchor
-    ? [userId, anchor.occurredAt, anchor.id, limit]
-    : [userId, limit];
-  const keyset = anchor ? "and (occurred_at, id) < ($2, $3)" : "";
-  const limitParameter = anchor ? "$4" : "$2";
-  const result = await client.query<InboxRow>(
-    `select ${itemFields} from notification_inbox_items
-     where scope_kind = 'account' and recipient_user_id = $1
-       and expires_at > now() ${completedDispatch} ${keyset}
-     order by occurred_at desc, id desc limit ${limitParameter}`,
-    values,
-  );
-  return result.rows;
-}
+const categoryPredicates = {
+  monitor: "event_type like 'MONITOR\\_%'",
+  security: "scope_kind = 'account'",
+  organization:
+    "event_type in ('ORG-NOTIFICATION-SETTINGS-CHANGED', 'AUDIT_EXPORT_READY', 'AUDIT_EXPORT_FAILED')",
+} as const;
 
-async function tenantRows(
-  client: PoolClient,
+type ListFilters = {
+  status: NotificationStatusFilter;
+  category: NotificationCategoryFilter | null;
+};
+type ListSnapshot = {
+  items: InboxRow[];
+  total: string;
+  unread: string;
+  recent: string;
+  unreadCount: string;
+  since: Date;
+  until: Date;
+};
+
+// Shared with the runtime-role EXPLAIN harness, so it measures the served query.
+export function notificationListStatement(
   scope: ActiveScope,
-  anchor: { occurredAt: string; id: string } | undefined,
+  filters: ListFilters,
   limit: number,
-): Promise<InboxRow[]> {
-  if (!scope.organizationId) return [];
-  const values = anchor
-    ? [scope.organizationId, scope.userId, anchor.occurredAt, anchor.id, limit]
-    : [scope.organizationId, scope.userId, limit];
-  const keyset = anchor ? "and (occurred_at, id) < ($3, $4)" : "";
-  const limitParameter = anchor ? "$5" : "$3";
-  const result = await client.query<InboxRow>(
-    `select ${itemFields} from notification_inbox_items
-     where scope_kind = 'tenant' and tenant_id = $1 and recipient_user_id = $2
-       and exists (select 1 from member where organization_id = $1 and user_id = $2)
-       ${monitorProjectAccess("$1", "$2")}
-       and expires_at > now() ${completedDispatch} ${keyset}
-     order by occurred_at desc, id desc limit ${limitParameter}`,
-    values,
-  );
-  return result.rows;
-}
-
-function compareRows(left: InboxRow, right: InboxRow): number {
-  return (
-    right.cursorOccurredAt.localeCompare(left.cursorOccurredAt) ||
-    right.id.localeCompare(left.id)
-  );
+  anchor?: { occurredAt: string; id: string },
+): { text: string; values: unknown[] } {
+  const category = filters.category
+    ? categoryPredicates[filters.category]
+    : "true";
+  const status = filters.status === "unread" ? "read_at is null" : "true";
+  return {
+    text: `with w as (
+      select now() as until, now() - interval '7 days' as since
+    ), base as (
+      select * from notification_inbox_items
+      where recipient_user_id = $1 and expires_at > now() ${completedDispatch}
+        and (
+          (scope_kind = 'account' and user_id = $1)
+          or (
+            $2::uuid is not null and scope_kind = 'tenant' and tenant_id = $2
+            and exists (select 1 from member where organization_id = $2 and user_id = $1)
+            ${monitorProjectAccess("$2", "$1")}
+          )
+        )
+    ), page as (
+      select ${itemFields} from base
+      where ${category} and ${status}
+        ${anchor ? "and (occurred_at, id) < ($4::timestamptz, $5::text)" : ""}
+      order by occurred_at desc, id desc limit $3
+    ), counts as (
+      select count(*) filter (where ${category})::text as total,
+        count(*) filter (where ${category} and read_at is null)::text as unread,
+        count(*) filter (where ${category} and occurred_at >= w.since and occurred_at <= w.until)::text as recent,
+        count(*) filter (where read_at is null)::text as "unreadCount"
+      from base cross join w
+    )
+    select coalesce((select json_agg(p order by p."occurredAt" desc, p.id desc) from page as p), '[]'::json) as items,
+      counts.*, w.since, w.until from counts cross join w`,
+    values: [
+      scope.userId,
+      scope.organizationId,
+      limit,
+      ...(anchor ? [anchor.occurredAt, anchor.id] : []),
+    ],
+  };
 }
 
 export async function listInbox(
@@ -348,10 +370,15 @@ export async function listInbox(
     sessionToken: string;
     limit: number;
     cursor?: string;
+    status?: NotificationStatusFilter;
+    category?: NotificationCategoryFilter;
   },
 ): Promise<NotificationListResponse> {
-  // Only the queries hold the scope locks; the rest runs after commit.
-  const { scope, account, tenant, unreadCount } = await withResolvedScope(
+  const filters: ListFilters = {
+    status: input.status ?? "all",
+    category: input.category ?? null,
+  };
+  const { scope, snapshot } = await withResolvedScope(
     deps.database,
     input.userId,
     async (client, scope) => {
@@ -360,7 +387,7 @@ export async function listInbox(
         try {
           anchor = parseNotificationCursor({
             secret: deps.cursorSecret,
-            scope: { ...scope, limit: input.limit },
+            scope: { ...scope, ...filters, limit: input.limit },
             cursor: input.cursor,
           });
         } catch {
@@ -371,35 +398,42 @@ export async function listInbox(
           );
         }
       }
-      return {
+      const statement = notificationListStatement(
         scope,
-        account: await accountRows(
-          client,
-          scope.userId,
-          anchor,
-          input.limit + 1,
-        ),
-        tenant: await tenantRows(client, scope, anchor, input.limit + 1),
-        unreadCount: await countUnreadInScope(client, scope),
-      };
+        filters,
+        input.limit + 1,
+        anchor,
+      );
+      const result = await client.query<ListSnapshot>(
+        statement.text,
+        statement.values,
+      );
+      return { scope, snapshot: result.rows[0] as ListSnapshot };
     },
   );
-  const visible = [...account, ...tenant]
-    .sort(compareRows)
-    .slice(0, input.limit + 1);
-  const page = visible.slice(0, input.limit);
+  const page = snapshot.items.slice(0, input.limit);
   const last = page.at(-1);
   return {
     items: page.map(toItem),
     nextCursor:
-      visible.length > input.limit && last
+      snapshot.items.length > input.limit && last
         ? createNotificationCursor({
             secret: deps.cursorSecret,
-            scope: { ...scope, limit: input.limit },
+            scope: { ...scope, ...filters, limit: input.limit },
             anchor: { occurredAt: last.cursorOccurredAt, id: last.id },
           })
         : null,
-    unreadCount,
+    unreadCount: Number(snapshot.unreadCount),
+    counts: {
+      total: Number(snapshot.total),
+      unread: Number(snapshot.unread),
+      recent: Number(snapshot.recent),
+      window: {
+        days: 7,
+        since: toIsoDate(snapshot.since),
+        until: toIsoDate(snapshot.until),
+      },
+    },
     organizationId: scope.organizationId,
   };
 }
