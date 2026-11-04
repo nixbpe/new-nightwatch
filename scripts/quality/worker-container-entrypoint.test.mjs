@@ -67,14 +67,6 @@ test.each([
   },
 );
 
-test("worker-entrypoint reads the live environment on each launch", async () => {
-  expect((await launch("production")).code).toBe(0);
-  const result = await launch("test");
-  expect(result.code).toBe(78);
-  expect(result.stdout).toBe("");
-  expect(result.stderr).toBe(refusedMessage);
-});
-
 test("worker-entrypoint ignores command arguments instead of dispatching them", async () => {
   const result = await launch("production", ["-e", "process.exit(99)"]);
   expect(result.code).toBe(0);

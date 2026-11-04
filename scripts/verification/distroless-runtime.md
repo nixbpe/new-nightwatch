@@ -27,9 +27,9 @@ Temporary environment files use mode `0600` inside a private temporary directory
 ## Covered behavior
 
 - Bun `1.4.3`, numeric UID/GID `1001:1001`, and absent shell/package-manager/download tools in all three images.
-- Production and development build markers, with denied writes to the marker and launcher paths.
-- Production rejection of empty, development, and test environments, including a runtime development-flavor spoof.
-- Development rejection of empty and test environments, and successful development startup without production encryption keys.
+- Production and development build markers, with denied writes to the Worker marker and launcher paths.
+- Launcher unit cases reject unset, empty, development, and test environments before importing the app; they also check PID preservation, ignored arguments, and runtime development-flavor spoofing.
+- The production image rejects development despite runtime flavor spoofing. The marked development image rejects test and starts development without production encryption keys.
 - Application startup after the production guard, and refusal of missing production encryption keys.
 - API command override and real migration replay against a fresh PostgreSQL cluster.
 - API healthcheck success, HTTP `503` failure, and connection-error failure without a shell.
@@ -49,7 +49,7 @@ The first container verification exposed a Worker startup `EACCES` error. Runnin
 
 ## Observed local evidence
 
-The local Linux/arm64 images built successfully for API, production Worker, and development Worker. The runtime suite passed 14 tests, including actual migration, health, TLS, startup-policy, and SIGTERM probes. The launcher unit suite passed 8 tests. Raw local logs are under `/tmp/nightwatch-distroless` on the author machine.
+The local Linux/arm64 images built successfully for API, production Worker, and development Worker. After removing duplicate checks, the runtime suite passed 10 tests, including actual migration, health, TLS, startup-policy, and SIGTERM probes. The launcher unit suite passed 7 tests. Workflow tests passed 69 tests with 1 documented APFS skip. Raw local logs are under `/tmp/nightwatch-distroless` on the author machine, with the reduced-suite results in `pruned-runtime-tests.log` and `pruned-workflow-tests.log`.
 
 Trivy scans of both final production images reported no HIGH or CRITICAL vulnerability or secret findings at verification time. These scans do not establish the absence of vulnerabilities in bundled application dependencies. The package-manager audit remains a separate release gate.
 
