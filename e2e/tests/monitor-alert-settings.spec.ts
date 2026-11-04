@@ -6,6 +6,7 @@ import {
   monitorWriteResponseSchema,
 } from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
+import { driveMonitorChecks } from "../support/monitor-checks";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
@@ -179,6 +180,18 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(edited.version).toBe(2);
 
   targetToggle.setMode("down");
+  await Promise.all([
+    driveMonitorChecks(
+      { tenantId: org, projectId: project, monitorId: m1 },
+      ({ incidentOpen }) => incidentOpen,
+      3,
+    ),
+    driveMonitorChecks(
+      { tenantId: org, projectId: project, monitorId: m2 },
+      ({ incidentOpen }) => incidentOpen,
+      2,
+    ),
+  ]);
 
   await waitFor(
     async () => (await openIncident(m1)) !== null,

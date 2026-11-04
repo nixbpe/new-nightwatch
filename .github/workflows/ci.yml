@@ -304,7 +304,7 @@ jobs:
       - name: Install e2e dependencies
         run: cd e2e && bun install --frozen-lockfile
       - name: Install Playwright browsers
-        run: cd e2e && bun x playwright install --with-deps chromium
+        run: cd e2e && bun x playwright install --with-deps --only-shell chromium
       - name: e2e tests
         run: bun run e2e
       - name: Install trivy

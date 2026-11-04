@@ -108,6 +108,7 @@ for (const action of ["revoke", "leave"] as const) {
         page.getByTestId(`project-member-row-${f.target.userId}`),
       ).toBeVisible();
     } finally {
+      await page.close();
       await cleanUp(pool, [f.owner.userId, f.target.userId], [f.org]);
     }
   });
@@ -172,6 +173,7 @@ test("organization removal cascades every Project membership and withdraws the v
     }
   } finally {
     await targetContext.close();
+    await page.close();
     await cleanUp(pool, [f.owner.userId, f.target.userId], [f.org]);
   }
 });

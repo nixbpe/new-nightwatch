@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { monitorWriteResponseSchema } from "../../packages/api-contract/src/index.ts";
+import { driveMonitorChecks } from "../support/monitor-checks";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
@@ -121,6 +122,11 @@ test("overview shows current summary, member counts and honest empty state in bo
 test("a target that goes down shows in the banner", async ({ page }) => {
   test.setTimeout(5 * 60_000);
   target.setMode("down");
+  await driveMonitorChecks(
+    { tenantId: organizationId, projectId, monitorId },
+    ({ incidentOpen }) => incidentOpen,
+    2,
+  );
   await signIn(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(path());

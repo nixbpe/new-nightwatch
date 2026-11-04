@@ -159,6 +159,13 @@ wins):
 )
 ```
 
+The API, Worker, and database package `test:integration` commands cap Vitest at
+2 workers per package. Unit and coverage commands retain their existing settings.
+Root `test:integration` uses Turbo `--continue=always` so a package failure does
+not terminate sibling suites before their fixture teardown. The command still
+fails if any package fails. Performance comparisons pass `--force` to prevent
+cached results from replacing database execution.
+
 CI needs no extra wiring: the `test` job already exports both database URLs
 from its disposable PostgreSQL service and runs `bun run db:migrate` before
 `bun run test:coverage`, so the gate measures real factory/adapter paths.
@@ -326,6 +333,23 @@ the password. `--list` and `--help` bypass database bootstrap and provisioning.
 
 The Worker must log `in-app materialize worker ready` after its Redis consumer
 is ready. Playwright waits for that signal before browser tests begin.
+
+`e2e/support/monitor-checks.ts` shortens fixture eligibility waits for transition,
+response, and notification assertions. It uses the runtime role and explicit
+tenant, Project, and monitor scope. It advances only an idle schedule's
+`next_check_at`, then waits for the real scheduler, queue, checker, and persisted
+receipt. It never changes production intervals, claims, results, or events.
+Notification dispatch retains the normal Worker cadence. The monitor inbox
+lifecycle and `notifications.spec.ts` use no dispatch trigger.
+Natural first-result, cadence, and Resume pending-window tests remain separate.
+Do not use accelerated monitors for uptime, chart, or elapsed-duration assertions.
+Acceleration requires a verified local run namespace or the dedicated GitHub CI
+service configuration. Other caller-owned external-service runs retain natural
+scheduling without opening a helper connection.
+
+CI installs Chromium headless shell with `--only-shell`. Local `e2e:setup` keeps
+the full browser available for headed debugging. Measurement commands and their
+resource scope are in [Test performance measurement](../verification/test-performance.md).
 
 The suite covers observable browser/API contracts. These include public auth
 entry and client-side validation without an invalid boundary request. They also

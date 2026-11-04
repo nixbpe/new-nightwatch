@@ -8,6 +8,7 @@ import {
 } from "../../packages/api-contract/src/index.ts";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
+import { driveMonitorChecks } from "../support/monitor-checks";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
@@ -468,13 +469,28 @@ test("a target that goes down and comes back reaches the inbox once each", async
     [owner.userId, orgA],
   );
   await signIn(page, owner);
+  const owned = { tenantId: orgA, projectId: projA, monitorId: flapId };
+  const checkpoint = await driveMonitorChecks(
+    owned,
+    ({ incidentOpen }) => incidentOpen,
+    2,
+  );
+  if (checkpoint !== null) {
+    flapTarget.setMode("up");
+    await driveMonitorChecks(
+      owned,
+      ({ incidentOpen, receipts }) =>
+        !incidentOpen && receipts.at(-1)?.outcome === "pass",
+      1,
+    );
+  }
   const downId = await waitForInboxItem(page, "MONITOR_DOWN", 5 * 60_000);
   const downTitle = await page
     .getByTestId(`notification-row-${downId}`)
     .getByTestId("notification-title")
     .innerText();
 
-  flapTarget.setMode("up");
+  if (checkpoint === null) flapTarget.setMode("up");
   const recoveredId = await waitForInboxItem(
     page,
     "MONITOR_RECOVERED",
@@ -543,6 +559,30 @@ test("a notification of a deleted monitor stays and its link reads as not found"
   );
   await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible();
   await expect(page.getByTestId("monitor-detail-not-found")).toHaveText(/\S/);
+});
+
+test("an unaccelerated monitor keeps its natural 60 second cadence", async () => {
+  test.setTimeout(120_000);
+  const slots = async () =>
+    (
+      await pool.query<{ scheduled_for: Date }>(
+        `select r.scheduled_for from monitor_check_results r
+         join monitors m on m.id = r.monitor_id and m.tenant_id = r.tenant_id
+        where m.tenant_id = $1 and m.project_id = $2 and m.id = $3
+        order by r.scheduled_for limit 2`,
+        [orgB, projB, otherId],
+      )
+    ).rows;
+  await expect
+    .poll(async () => (await slots()).length, {
+      timeout: 100_000,
+      intervals: [2_000],
+    })
+    .toBe(2);
+  const results = await slots();
+  expect(
+    results[1]!.scheduled_for.getTime() - results[0]!.scheduled_for.getTime(),
+  ).toBeGreaterThanOrEqual(60_000);
 });
 
 test("Resume shows unknown until a new result arrives", async ({ page }) => {

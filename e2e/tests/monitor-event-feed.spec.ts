@@ -9,6 +9,7 @@ import {
   monitorRecentEventsResponseSchema,
 } from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
+import { driveMonitorChecks } from "../support/monitor-checks";
 import { startResponseTarget } from "../support/response-target.mjs";
 import {
   addMember,
@@ -27,9 +28,6 @@ import {
   type Person,
 } from "../support/monitor-fixtures";
 
-// Integrated verification of issue #58 (NODE-58-06): event feed, recent events
-// and last response through the real Worker, API and Web. Every monitor checks
-// every 60 s, all are created up front so the schedule waits overlap.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -206,6 +204,23 @@ test("every monitor has a first last response within a schedule round", async ()
       { timeout: 2 * ROUND_MS, intervals: [2_000] },
     )
     .toBe(Object.keys(names).length);
+  const expected = ["pass", "fail", "fail", "pass"];
+  const feed = await driveMonitorChecks(
+    { tenantId: orgId, projectId, monitorId: monitorIds.feed },
+    ({ receipts }) => {
+      expect(receipts.slice(0, 4).map((receipt) => receipt.outcome)).toEqual(
+        expected.slice(0, receipts.length),
+      );
+      expect(
+        receipts.slice(4).every((receipt) => receipt.outcome === "pass"),
+      ).toBe(true);
+      return receipts.length >= 4;
+    },
+    4,
+  );
+  if (feed !== null) {
+    expect(targetOf.feed.hitsFor("/probe").length).toBe(feed.receipts.length);
+  }
 });
 
 test("P58-04: GET without query shows status line, masked URL, headers and body, and a viewer sees only the role note", async ({
@@ -508,6 +523,11 @@ test("P58-04: a target that stops answering shows no response and the cause", as
   page,
 }) => {
   test.setTimeout(3 * ROUND_MS);
+  await driveMonitorChecks(
+    { tenantId: orgId, projectId, monitorId: monitorIds.panel },
+    ({ receipts }) => receipts.at(-1)?.failure_reason === "timeout",
+    1,
+  );
   await signIn(page, owner);
   await expect
     .poll(
