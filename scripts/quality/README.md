@@ -374,6 +374,15 @@ suite. It then runs the same root `e2e` command.
   stops before the Worker image. Scanner execution errors must fail, never
   swallow a scanner non-zero exit as a pass.
 
+## Container runtime verification
+
+For runtime base-image or entrypoint changes, run the real-image checks in
+[Distroless runtime verification](../verification/distroless-runtime.md).
+The manual suite uses its own PostgreSQL, Redis, SMTP, and TLS fixtures, checks
+both Worker build flavors, and removes only its own resources. It does not build
+or pull images and is separate from the Trivy image scan. Launcher subprocess
+regressions run automatically through `workflow:test`.
+
 ## Dependency lifecycle scripts
 
 Root and `e2e/bunfig.toml` set `install.ignoreScripts = true` for local,

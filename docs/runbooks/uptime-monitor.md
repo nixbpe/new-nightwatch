@@ -64,9 +64,11 @@ readable with the old key until it is removed from the map.
 `apps/worker/Dockerfile` builds `nightwatch-worker` from the repo root:
 `docker build -f apps/worker/Dockerfile -t nightwatch-worker .`
 
-- Runtime is `oven/bun:1.4.3-alpine` (same digest as the API image), user
-  `nightwatch` (uid 1001). The SSRF helper was validated on Bun 1.4.3; do not
-  run the bundle on Node.
+- API and Worker use the digest-pinned `oven/bun:1.4.3-slim` builder and
+  `oven/bun:1.4.3-distroless` runtime (Debian/glibc), with numeric runtime user
+  `1001:1001` (uid/gid). The runtime has no shell, `id`, `wget` or package
+  manager. The SSRF helper was validated on Bun 1.4.3; do not run the bundle
+  on Node.
 - The image sets `NODE_ENV=production` and its entrypoint exits 78 with a message
   unless `NODE_ENV` is exactly `production`, so unset, empty, `development` and
   `test` are refused. It carries no keys, no secrets and no
@@ -74,9 +76,14 @@ readable with the old key until it is removed from the map.
   `--build-arg WORKER_ALLOW_DEVELOPMENT=1` (local compose, tag
   `nightwatch-worker:dev`) also accepts `development`; that choice is a marker
   file written at build time and cannot be set through run-time env.
+  The root-owned, read-only Bun launcher checks the live environment before
+  importing the bundle in the same process; it does not spawn a child.
+  Default API/Worker startup and the API healthcheck use `--no-install` so Bun
+  cannot fetch missing runtime packages. Required dependencies remain bundled.
 - The entrypoint ignores its arguments: `docker run nightwatch-worker id -u`
   starts the Worker. Run other commands with `--entrypoint`, for example
-  `docker run --rm --entrypoint id nightwatch-worker -u` (prints 1001).
+  `docker run --rm --entrypoint /usr/local/bin/bun nightwatch-worker -e 'console.log(process.getuid())'`
+  (prints 1001).
 - No `HEALTHCHECK`: the Worker exposes no endpoint. Liveness is the process and
   the `monitor worker ready` log line.
 - Set at run time: `WORKER_ROLES`, `DATABASE_URL`, `REDIS_URL`,

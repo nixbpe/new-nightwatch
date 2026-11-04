@@ -5,7 +5,7 @@
 #   docker build -f apps/worker/Dockerfile -t nightwatch-worker .
 
 # Copy manifests and lockfile only so source changes preserve the dependency cache.
-FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS deps
+FROM oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288 AS deps
 WORKDIR /app
 COPY package.json bun.lock bunfig.toml ./
 COPY apps/api/package.json apps/api/
@@ -26,6 +26,14 @@ COPY apps/worker apps/worker
 WORKDIR /app/apps/worker
 ENV NODE_ENV=production
 RUN bun run build && test -f dist/index.js
+# Keep the container flavor separate from the bundled application environment.
+ARG WORKER_ALLOW_DEVELOPMENT=0
+RUN mkdir -p /worker-flavor \
+  && case "$WORKER_ALLOW_DEVELOPMENT" in \
+      0) ;; \
+      1) touch /worker-flavor/nightwatch-worker-dev-build ;; \
+      *) echo "WORKER_ALLOW_DEVELOPMENT must be 0 or 1" >&2; exit 1 ;; \
+    esac
 
 # The runtime is Bun 1.4.3, the version the SSRF helper (node:tls path) was
 # validated on; never run this bundle on Node. No .env or secrets enter any
@@ -45,16 +53,8 @@ RUN bun run build && test -f dist/index.js
 # and is never set here.
 #
 # The Worker exposes no HTTP endpoint, so the image has no HEALTHCHECK.
-FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS runtime
+FROM oven/bun:1.4.3-distroless@sha256:1aaa515018b0b37d95dbdebd55d1b7f37ad258a6289ba63e4bc3b9c9e3038697 AS runtime
 WORKDIR /app
-# The base digest freezes Bun and the initial filesystem. Security fixes are
-# explicit reviewed package pins: no rolling `apk update`/`apk upgrade`.
-RUN apk add --no-cache \
-      'libcrypto3=3.5.9-r0' \
-      'libssl3=3.5.9-r0' \
-      'zlib=1.3.2-r1' \
-  && addgroup -S nightwatch -g 1001 \
-  && adduser -S nightwatch -u 1001 -G nightwatch
 COPY --from=build --chown=1001:1001 /app/apps/worker/dist ./dist
 # A missing NODE_ENV makes the Worker treat the container as development: it
 # would accept the public development credential key and
@@ -64,28 +64,10 @@ COPY --from=build --chown=1001:1001 /app/apps/worker/dist ./dist
 # a marker file written at build time, so no runtime env value can flip it.
 # Arguments to `docker run` after the image name are ignored by the entrypoint;
 # use --entrypoint to run another command.
-ARG WORKER_ALLOW_DEVELOPMENT=0
-RUN case "$WORKER_ALLOW_DEVELOPMENT" in \
-      0) ;; \
-      1) touch /etc/nightwatch-worker-dev-build ;; \
-      *) echo "WORKER_ALLOW_DEVELOPMENT must be 0 or 1" >&2; exit 1 ;; \
-    esac
-COPY --chmod=0555 <<'SH' /usr/local/bin/worker-entrypoint.sh
-#!/bin/sh
-set -eu
-if [ -z "${NODE_ENV:-}" ]; then
-  echo "nightwatch-worker: NODE_ENV is unset; refusing to start. Set NODE_ENV=production." >&2
-  exit 78
-fi
-if [ "$NODE_ENV" != production ] && \
-  { [ "$NODE_ENV" != development ] || [ ! -e /etc/nightwatch-worker-dev-build ]; }; then
-  echo "nightwatch-worker: NODE_ENV must be production; refusing to start." >&2
-  exit 78
-fi
-exec bun dist/index.js
-SH
-USER 1001
+COPY --from=build /worker-flavor/ /etc/
+COPY --from=build --chmod=0444 /app/apps/worker/docker/worker-entrypoint.mjs ./worker-entrypoint.mjs
+USER 1001:1001
 ENV NODE_ENV=production \
     LOG_LEVEL=info
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/local/bin/worker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/bun", "--no-install", "/app/worker-entrypoint.mjs"]
