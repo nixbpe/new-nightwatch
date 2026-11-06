@@ -226,6 +226,3 @@ export const notificationRouteDeclarations = {
     },
   }),
 } as const;
-
-export type NotificationRouteDeclarations =
-  typeof notificationRouteDeclarations;

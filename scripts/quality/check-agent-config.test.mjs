@@ -63,6 +63,106 @@ describe("agent config checker", () => {
     );
   });
 
+  test("ignores invalid references in local state outside owned markdown roots", async () => {
+    const root = await fixture();
+    for (const area of [
+      "worktrees/old/.claude/agents",
+      "vendor/copied",
+      "local-state",
+    ]) {
+      const dir = path.join(root, ".claude", area);
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, "stale.md"), "file:`missing.md`\n");
+    }
+    const result = check(root);
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+  });
+
+  test("checks new markdown inputs in every owned root without a Git inventory", async () => {
+    for (const [relative, source] of [
+      [
+        "agents/new-worker.md",
+        "---\nname: new-worker\n---\nfile:`missing.md`\n",
+      ],
+      ["skills/known/new-guide.md", "file:`missing.md`\n"],
+      ["references/new-guide.md", "file:`missing.md`\n"],
+    ]) {
+      const root = await fixture();
+      const file = path.join(root, ".claude", relative);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, source);
+      const result = check(root);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).toContain(
+        `.claude/${relative}: missing file missing.md`,
+      );
+    }
+  });
+
+  test("accepts the registered reviewer's read-only capabilities", async () => {
+    for (const tools of ["Read, Grep, Glob, Skill", "Read"]) {
+      const root = await fixture();
+      await writeFile(
+        path.join(root, ".claude/agents/code-reviewer.md"),
+        `---\nname: code-reviewer\ntools: ${tools}\n---\n`,
+      );
+      const result = check(root);
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+    }
+  });
+
+  test("rejects mutating reviewer capabilities by registered file identity", async () => {
+    for (const tool of ["Bash", "Write", "Edit", "Agent(worker)"]) {
+      for (const name of ["code-reviewer", "renamed-reviewer"]) {
+        const root = await fixture();
+        await writeFile(
+          path.join(root, ".claude/agents/code-reviewer.md"),
+          `---\nname: ${name}\ntools: Read, Grep, Glob, Skill, ${tool}\n---\n`,
+        );
+        const result = check(root);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr.toString()).toContain(
+          "code-reviewer tools must be limited to Read, Grep, Glob, Skill",
+        );
+      }
+    }
+  });
+
+  test("rejects a reviewer without an explicit nonempty read-only toolset", async () => {
+    for (const toolsYaml of ["", 'tools: ""', 'tools: "  "']) {
+      const root = await fixture();
+      await writeFile(
+        path.join(root, ".claude/agents/code-reviewer.md"),
+        `---\nname: code-reviewer\n${toolsYaml}\n---\n`,
+      );
+      const result = check(root);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).toContain(
+        "code-reviewer tools must be limited to Read, Grep, Glob, Skill",
+      );
+    }
+  });
+
+  test("rejects reviewer hooks even with read-only tools and a renamed identity", async () => {
+    for (const name of ["code-reviewer", "renamed-reviewer"]) {
+      for (const hooksYaml of [
+        "hooks: {}",
+        "hooks:\n  PreToolUse:\n    - matcher: Read\n      hooks:\n        - type: command\n          command: echo reviewer-hook",
+      ]) {
+        const root = await fixture();
+        await writeFile(
+          path.join(root, ".claude/agents/code-reviewer.md"),
+          `---\nname: ${name}\ntools: Read, Grep, Glob, Skill\n${hooksYaml}\n---\n`,
+        );
+        const result = check(root);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr.toString()).toContain(
+          "code-reviewer must not declare hooks",
+        );
+      }
+    }
+  });
+
   test("accepts a full claude model id and no model", async () => {
     const full = check(await fixture({ modelYaml: "model: claude-opus-5-5" }));
     expect(full.exitCode, full.stderr.toString()).toBe(0);
@@ -208,6 +308,33 @@ describe("agent config checker", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(
       ".claude/agents: markdown directory escapes repository",
+    );
+  });
+
+  test("rejects a canonical skill symlink that escapes the repository", async () => {
+    const root = await fixture();
+    const outside = await mkdtemp(path.join(tmpdir(), "agent-config-skill-"));
+    roots.push(outside);
+    const target = path.join(outside, "SKILL.md");
+    await writeFile(target, "# External\n");
+    const skill = path.join(root, ".claude/skills/known/SKILL.md");
+    await rm(skill);
+    await symlink(target, skill);
+    const result = check(root);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("missing skill known");
+  });
+
+  test("rejects a symlinked owned references directory", async () => {
+    const root = await fixture();
+    const outside = await mkdtemp(path.join(tmpdir(), "agent-config-refs-"));
+    roots.push(outside);
+    await writeFile(path.join(outside, "guide.md"), "# External\n");
+    await symlink(outside, path.join(root, ".claude/references"));
+    const result = check(root);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      ".claude/references: markdown directory escapes repository",
     );
   });
 

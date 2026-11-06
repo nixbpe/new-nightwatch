@@ -84,8 +84,19 @@ function stripFencedCode(source) {
 }
 
 const counts = { agents: 0, models: 0, skills: 0, commands: 0, files: 0 };
-const agentDir = path.join(claude, "agents");
-const agentFiles = await markdownFiles(agentDir);
+const ownedMarkdownRoots = {
+  agents: path.join(claude, "agents"),
+  skills: path.join(claude, "skills"),
+  references: path.join(claude, "references"),
+};
+const ownedMarkdownFiles = (
+  await Promise.all(Object.values(ownedMarkdownRoots).map(markdownFiles))
+).flat();
+const agentDir = ownedMarkdownRoots.agents;
+const agentFiles = ownedMarkdownFiles.filter((file) =>
+  isContained(agentDir, file),
+);
+const reviewerTools = new Set(["Read", "Grep", "Glob", "Skill"]);
 const agentNames = new Set(
   agentFiles.map((file) => path.basename(file, ".md")),
 );
@@ -120,12 +131,28 @@ for (const file of agentFiles) {
       errors.push(`${path.relative(root, file)}: unsupported key ${key}`);
     }
   }
+  if (
+    file === path.join(agentDir, "code-reviewer.md") &&
+    "hooks" in frontmatter
+  ) {
+    errors.push(
+      `${path.relative(root, file)}: code-reviewer must not declare hooks`,
+    );
+  }
   const tools = frontmatter.tools ?? "";
   if (typeof tools !== "string") {
     errors.push(
       `${path.relative(root, file)}: tools must be a comma-separated string`,
     );
   } else {
+    if (
+      file === path.join(agentDir, "code-reviewer.md") &&
+      tools.split(",").some((tool) => !reviewerTools.has(tool.trim()))
+    ) {
+      errors.push(
+        `${path.relative(root, file)}: code-reviewer tools must be limited to Read, Grep, Glob, Skill`,
+      );
+    }
     for (const allowlist of tools.matchAll(/Agent\(([^)]*)\)/g)) {
       for (const spawn of allowlist[1].split(",").map((name) => name.trim())) {
         counts.agents += 1;
@@ -207,7 +234,7 @@ for (const declaration of preloadDeclarations) {
     }
   }
 }
-for (const file of await markdownFiles(claude)) {
+for (const file of ownedMarkdownFiles) {
   const source = stripFencedCode(await readFile(file, "utf8"));
   const [area, owner] = path.relative(claude, file).split(path.sep);
   const worker = area === "agents" && owner !== "tech-lead.md";
