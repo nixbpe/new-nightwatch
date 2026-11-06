@@ -281,6 +281,32 @@ describe("locked organization self-leave", () => {
     }
   }, 120_000);
 
+  it("preserves the leaver's other-organization user mirror", async () => {
+    await reset();
+    await owner.query(
+      'update "user" set last_active_tenant_id = $2 where id = $1',
+      [users.viewer, otherOrganizationId],
+    );
+    const before = await snapshot();
+    await leave(users.viewer);
+    expect(await snapshot()).toEqual({
+      ...afterLeave(before, users.viewer),
+      lastActive: before.lastActive,
+    });
+  });
+
+  it("rolls deletion and mirror clearing back when the leaver role is unknown", async () => {
+    await reset();
+    await owner.query("update member set role = 'homeowner' where id = $1", [
+      members.viewer,
+    ]);
+    const before = await snapshot();
+    await expect(leave(users.viewer)).rejects.toThrow(
+      "member has no recognized role",
+    );
+    expect(await snapshot()).toEqual(before);
+  });
+
   it("rejects the sole owner leaving and leaves every row untouched", async () => {
     await reset(false);
     const before = await snapshot();

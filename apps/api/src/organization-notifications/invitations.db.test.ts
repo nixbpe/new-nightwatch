@@ -173,6 +173,10 @@ describe("first-party invitation create", () => {
             error: {
               code:
                 actor === "other" ? "MEMBERSHIP_DENIED" : "PERMISSION_DENIED",
+              message:
+                actor === "other"
+                  ? "คุณไม่ใช่สมาชิกขององค์กรนี้"
+                  : "คุณไม่มีสิทธิ์เชิญสมาชิก",
             },
           });
         expect((await rows()).some((row) => row.email === email)).toBe(

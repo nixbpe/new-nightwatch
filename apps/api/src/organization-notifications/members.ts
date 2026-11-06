@@ -366,6 +366,30 @@ export async function updateOrganizationMemberRole(
   );
 }
 
+async function deleteMembershipAndClearActiveOrganization(
+  client: PoolClient,
+  member: MemberRow,
+): Promise<MemberRow> {
+  const removed = await client.query<MemberRow>(
+    `delete from member where organization_id = $1 and id = $2
+       returning id, user_id as "userId", organization_id as "organizationId", role`,
+    [member.organizationId, member.id],
+  );
+  await client.query(
+    `update "user" set last_active_tenant_id = null, updated_at = now()
+       where id = $1 and last_active_tenant_id = $2`,
+    [member.userId, member.organizationId],
+  );
+  await client.query(
+    `update session set active_organization_id = null
+       where user_id = $1 and active_organization_id = $2`,
+    [member.userId, member.organizationId],
+  );
+  const removedMember = removed.rows[0];
+  if (!removedMember) memberNotFound();
+  return removedMember;
+}
+
 export async function revokeOrganizationMember(
   database: Database,
   input: {
@@ -406,23 +430,10 @@ export async function revokeOrganizationMember(
         target.userId,
         "revoke",
       );
-      const removed = await client.query<MemberRow>(
-        `delete from member where organization_id = $1 and id = $2
-       returning id, user_id as "userId", organization_id as "organizationId", role`,
-        [input.organizationId, input.memberId],
+      const member = await deleteMembershipAndClearActiveOrganization(
+        client,
+        target,
       );
-      await client.query(
-        `update "user" set last_active_tenant_id = null, updated_at = now()
-       where id = $1 and last_active_tenant_id = $2`,
-        [target.userId, input.organizationId],
-      );
-      await client.query(
-        `update session set active_organization_id = null
-       where user_id = $1 and active_organization_id = $2`,
-        [target.userId, input.organizationId],
-      );
-      const member = removed.rows[0];
-      if (!member) memberNotFound();
       const response = toMemberResponse(member);
       await recordAuditEvent(client, {
         organizationId: input.organizationId,
@@ -466,23 +477,10 @@ export async function leaveOrganization(
         member.userId,
         "leave",
       );
-      const removed = await client.query<MemberRow>(
-        `delete from member where organization_id = $1 and id = $2
-       returning id, user_id as "userId", organization_id as "organizationId", role`,
-        [input.organizationId, member.id],
+      const removedMember = await deleteMembershipAndClearActiveOrganization(
+        client,
+        member,
       );
-      await client.query(
-        `update "user" set last_active_tenant_id = null, updated_at = now()
-       where id = $1 and last_active_tenant_id = $2`,
-        [member.userId, input.organizationId],
-      );
-      await client.query(
-        `update session set active_organization_id = null
-       where user_id = $1 and active_organization_id = $2`,
-        [member.userId, input.organizationId],
-      );
-      const removedMember = removed.rows[0];
-      if (!removedMember) memberNotFound();
       const response = toMemberResponse(removedMember);
       await recordAuditEvent(client, {
         organizationId: input.organizationId,

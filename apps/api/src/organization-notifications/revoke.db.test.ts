@@ -291,6 +291,40 @@ describe("locked organization member revoke", () => {
     }
   }, 120_000);
 
+  it("preserves the revoked user's other-organization user mirror", async () => {
+    await reset();
+    await owner.query(
+      'update "user" set last_active_tenant_id = $2 where id = $1',
+      [users.viewer, otherOrganizationId],
+    );
+    const before = await snapshot();
+    await revokeOrganizationMember(database, {
+      organizationId,
+      actorUserId: users.owner,
+      memberId: members.viewer,
+    });
+    expect(await snapshot()).toEqual({
+      ...afterRevoke(before, users.viewer),
+      lastActive: before.lastActive,
+    });
+  });
+
+  it("rolls deletion and mirror clearing back when the target role is unknown", async () => {
+    await reset();
+    await owner.query("update member set role = 'homeowner' where id = $1", [
+      members.viewer,
+    ]);
+    const before = await snapshot();
+    await expect(
+      revokeOrganizationMember(database, {
+        organizationId,
+        actorUserId: users.owner,
+        memberId: members.viewer,
+      }),
+    ).rejects.toThrow("member has no recognized role");
+    expect(await snapshot()).toEqual(before);
+  });
+
   it("rejects the last owner revoking itself and leaves every row untouched", async () => {
     await reset(false);
     const before = await snapshot();

@@ -30,39 +30,12 @@ export async function createOrganizationInvitation(
     database,
     input.organizationId,
     async (client) => {
-      const organization = await client.query<{ name: string }>(
-        "select name from organization where id = $1 for update",
-        [input.organizationId],
-      );
-      const name = organization.rows[0]?.name;
-      if (name === undefined) {
-        throw new AppError(
-          403,
-          "MEMBERSHIP_DENIED",
-          "คุณไม่ใช่สมาชิกขององค์กรนี้",
-        );
-      }
-      await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
-        `notification-membership:${input.organizationId}`,
-      ]);
-      const actor = await client.query<{ role: string }>(
-        "select role from member where organization_id = $1 and user_id = $2 for update",
-        [input.organizationId, input.actorUserId],
-      );
-      const storedRole = actor.rows[0]?.role;
-      if (storedRole === undefined) {
-        throw new AppError(
-          403,
-          "MEMBERSHIP_DENIED",
-          "คุณไม่ใช่สมาชิกขององค์กรนี้",
-        );
-      }
-      const role = normalizeOrganizationRole(storedRole);
-      if (role === null) throw new Error("member has no recognized role");
-      if (
-        (role !== "owner" && role !== "admin") ||
-        (role === "admin" && input.role === "owner")
-      )
+      const { organizationName, actorRole } =
+        await lockOrganizationAsInvitationManager(client, {
+          ...input,
+          deniedMessage: "คุณไม่มีสิทธิ์เชิญสมาชิก",
+        });
+      if (actorRole === "admin" && input.role === "owner")
         throw new AppError(
           403,
           "PERMISSION_DENIED",
@@ -132,7 +105,7 @@ export async function createOrganizationInvitation(
       await recordAuditEvent(client, {
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
-        actorRole: role,
+        actorRole,
         action: "organization.invitation.create",
         target: {
           type: "invitation",
@@ -142,14 +115,14 @@ export async function createOrganizationInvitation(
         changes: [roleChange(null, input.role)],
         requestId: input.requestId,
       });
-      return { id, email: input.email, organizationName: name };
+      return { id, email: input.email, organizationName };
     },
   );
 }
 
 type TenantClient = Parameters<Parameters<typeof withTenantContextRaw>[2]>[0];
 
-// Lock prefix shared by cancel and resend: organization row, membership
+// Lock prefix shared by create, cancel and resend: organization row, membership
 // advisory lock, then the actor's member row. Viewer and auditor are rejected
 // before any invitation lookup so they cannot probe which publicId exists.
 async function lockOrganizationAsInvitationManager(

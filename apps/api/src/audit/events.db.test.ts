@@ -202,7 +202,7 @@ describe("member events", () => {
   });
 
   it("revoke writes one event that outlives the removed member", async () => {
-    const target = await addMember("revoked", "auditor");
+    const target = await addMember("revoked", "legacy,auditor");
     const [event, ...rest] = await written(() =>
       revokeOrganizationMember(database, {
         organizationId,
@@ -222,7 +222,7 @@ describe("member events", () => {
   });
 
   it("leave writes one event where actor and target are the same user", async () => {
-    const leaver = await addMember("leaver", "viewer");
+    const leaver = await addMember("leaver", "viewer,auditor");
     const [event, ...rest] = await written(() =>
       leaveOrganization(database, {
         organizationId,
@@ -269,6 +269,90 @@ describe("member events", () => {
 });
 
 describe("invitation events", () => {
+  it.each([
+    { storedRole: "viewer, owner", actorRole: "owner" },
+    { storedRole: "auditor, admin", actorRole: "admin" },
+  ])(
+    "normalizes $storedRole for create, resend and cancel audit actors",
+    async ({ storedRole, actorRole }) => {
+      const actor = await addMember("invitation-composite", storedRole);
+      const email = `${actor.userId}@invitee.test`;
+      const observed = await written(async () => {
+        await createOrganizationInvitation(database, {
+          organizationId,
+          actorUserId: actor.userId,
+          email,
+          role: "viewer",
+        });
+        const invitation = await owner.query<{ public_id: string }>(
+          "update invitation set sent_at = now() - interval '10 minutes' where organization_id = $1 and email = $2 returning public_id",
+          [organizationId, email],
+        );
+        const publicId = invitation.rows[0]?.public_id;
+        if (!publicId) throw new Error("invitation missing");
+        await resendPendingInvitation(database, {
+          organizationId,
+          actorUserId: actor.userId,
+          publicId,
+        });
+        await cancelPendingInvitation(database, {
+          organizationId,
+          actorUserId: actor.userId,
+          publicId,
+        });
+      });
+      expect(observed.map((event) => [event.action, event.actor_role])).toEqual(
+        [
+          ["organization.invitation.create", actorRole],
+          ["organization.invitation.resend", actorRole],
+          ["organization.invitation.cancel", actorRole],
+        ],
+      );
+      if (actorRole === "admin") {
+        await expect(
+          createOrganizationInvitation(database, {
+            organizationId,
+            actorUserId: actor.userId,
+            email: `owner-${email}`,
+            role: "owner",
+          }),
+        ).rejects.toMatchObject({
+          statusCode: 403,
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์เชิญสมาชิก",
+        });
+      }
+    },
+  );
+
+  it("rejects an unknown actor role before create, resend or cancel writes", async () => {
+    const actor = await addMember("invitation-unknown", "homeowner");
+    const before = await eventCount();
+    await expect(
+      createOrganizationInvitation(database, {
+        organizationId,
+        actorUserId: actor.userId,
+        email: `${actor.userId}@invitee.test`,
+        role: "viewer",
+      }),
+    ).rejects.toThrow("member has no recognized role");
+    for (const action of [resendPendingInvitation, cancelPendingInvitation]) {
+      await expect(
+        action(database, {
+          organizationId,
+          actorUserId: actor.userId,
+          publicId: crypto.randomUUID(),
+        }),
+      ).rejects.toThrow("member has no recognized role");
+    }
+    expect(await eventCount()).toBe(before);
+    const invitations = await owner.query(
+      "select 1 from invitation where organization_id = $1 and inviter_id = $2",
+      [organizationId, actor.userId],
+    );
+    expect(invitations.rows).toEqual([]);
+  });
+
   it("create, resend and cancel write one event each, keyed by public id with no email or bearer id", async () => {
     const email = `invitee-${run}@example.test`;
     const [created, ...createdRest] = await written(async () => {
@@ -493,6 +577,27 @@ describe("a failed event insert rolls the mutation back", () => {
     const roleTarget = await addMember("rb-role", "viewer");
     const revokeTarget = await addMember("rb-revoke", "viewer");
     const leaver = await addMember("rb-leave", "viewer");
+    const removedUsers = [revokeTarget.userId, leaver.userId];
+    const projectId = crypto.randomUUID();
+    await owner.query(
+      "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'Rollback project', $3)",
+      [projectId, organizationId, `rollback-${run}`],
+    );
+    for (const userId of removedUsers) {
+      await owner.query(
+        'update "user" set last_active_tenant_id = $2 where id = $1',
+        [userId, organizationId],
+      );
+      await owner.query(
+        `insert into session (id, expires_at, token, user_id, active_organization_id)
+         values ($1, now() + interval '1 day', $2, $3, $4)`,
+        [`${userId}-session`, `${userId}-token`, userId, organizationId],
+      );
+      await owner.query(
+        "insert into project_members (project_id, tenant_id, user_id, role) values ($1, $2, $3, 'member')",
+        [projectId, organizationId, userId],
+      );
+    }
     const pending = `rb-pending-${run}@example.test`;
     await createOrganizationInvitation(database, {
       organizationId,
@@ -611,6 +716,27 @@ describe("a failed event insert rolls the mutation back", () => {
     expect(await memberRole(roleTarget.memberId)).toBe("viewer");
     expect(await memberRole(revokeTarget.memberId)).toBe("viewer");
     expect(await memberRole(leaver.memberId)).toBe("viewer");
+    for (const userId of removedUsers) {
+      const user = await owner.query(
+        'select last_active_tenant_id from "user" where id = $1',
+        [userId],
+      );
+      expect(user.rows).toEqual([{ last_active_tenant_id: organizationId }]);
+      const session = await owner.query(
+        "select active_organization_id from session where user_id = $1",
+        [userId],
+      );
+      expect(session.rows).toEqual([
+        { active_organization_id: organizationId },
+      ]);
+      const projectMember = await owner.query(
+        "select project_id, role from project_members where tenant_id = $1 and user_id = $2",
+        [organizationId, userId],
+      );
+      expect(projectMember.rows).toEqual([
+        { project_id: projectId, role: "member" },
+      ]);
+    }
     const invitations = await owner.query<{
       email: string;
       status: string;
