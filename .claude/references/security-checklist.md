@@ -60,7 +60,7 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 - [ ] Sensitive fields excluded from API responses (password hashes, reset tokens)
 - [ ] Passwords, tokens and personal data never logged
 - [ ] Personal data and credentials encrypted at rest where required
-- [ ] HTTPS for all external communication; backups encrypted
+- [ ] External HTTP integrations use HTTPS; supported HTTP(S) monitor targets follow OUT-01, with TLS verification and redirect restrictions preserved; backups encrypted
 
 ## Dependency Security
 
@@ -81,18 +81,3 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 - [ ] Model output is treated as untrusted (no eval, SQL, innerHTML or shell)
 - [ ] Secrets and other users' data are kept out of prompts
 - [ ] Tool and agent permissions are scoped; destructive actions require confirmation
-
-## OWASP Top 10 Quick Reference
-
-| # | Vulnerability | Prevention |
-|---|---|---|
-| 1 | Broken Access Control | Auth checks on every endpoint, ownership verification |
-| 2 | Cryptographic Failures | HTTPS, strong hashing, no secrets in code |
-| 3 | Injection | Parameterized queries, input validation |
-| 4 | Insecure Design | Threat modeling, a technical spec before building |
-| 5 | Security Misconfiguration | Security headers, minimal permissions, audit deps |
-| 6 | Vulnerable Components | Dependency audit, keep deps updated, minimal deps |
-| 7 | Auth Failures | Rate limiting, session management |
-| 8 | Data Integrity Failures | Verify updates/dependencies, signed artifacts |
-| 9 | Logging Failures | Log security events, don't log secrets |
-| 10 | SSRF | Validate/allowlist URLs, restrict outbound requests |

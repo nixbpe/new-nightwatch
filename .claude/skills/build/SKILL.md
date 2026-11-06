@@ -44,7 +44,7 @@ Follow these implementation rules:
 - Prefer deletion and direct code over speculative interfaces or configuration.
 - Preserve boundary validation, data-loss prevention, security, and accessibility.
 - Note unrelated findings without fixing them.
-- Default unfinished user-visible features off and new options conservatively. Prefer additive changes; do not delete and replace in one slice.
+- Default unfinished user-visible features off and new options conservatively.
 
 ## Default: one task
 

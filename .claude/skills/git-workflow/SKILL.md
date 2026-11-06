@@ -39,7 +39,7 @@ Target ~100 lines per commit or PR. Split changes over ~1000 into independently 
 
 Use one feature per branch from `main`, following repository naming. Existing prefixes include `feature/<desc>`, `fix/<desc>`, `chore/<desc>`, and `refactor/<desc>`. Delete branches after merge.
 
-For parallel worktrees, read file:`WORKTREES.md`. Isolate writers instead of switching a shared directory between branches.
+Isolate parallel writers in separate worktrees instead of switching a shared directory between branches.
 
 ## Safe Checkpoint and Recovery
 

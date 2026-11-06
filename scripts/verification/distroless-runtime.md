@@ -49,14 +49,10 @@ Builder stages use `oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc
 
 The API clears the upstream entrypoint to preserve command overrides such as `bun dist-migrate/migrate.js`. Its default command and healthcheck disable Bun auto-install. The Worker runs a separate root-owned `0444` launcher with `--no-install`, validates the live environment, and imports the bundle in the same process. The development marker is created only by the validated build argument and remains root-owned.
 
-The first container verification exposed a Worker startup `EACCES` error. Running the same launcher with `--no-install` reached the expected missing-configuration error instead. Runtime package fetching is now disabled rather than granting writable application directories. The initial verification also recorded an API exec exit `137`; its cause was not independently established. Subsequent complete verification passed after the startup flags changed.
+## Verification limits
 
-## Observed local evidence
+Image scans do not establish the absence of vulnerabilities in bundled application dependencies. The package-manager audit remains a separate release gate.
 
-The local Linux/arm64 images built successfully for API, production Worker, and development Worker. The historical runtime suite passed 10 tests, including actual migration, health, TLS, startup-policy, and SIGTERM probes. The launcher unit suite passed 7 tests. Workflow tests passed 69 tests with 1 documented APFS skip. Raw local logs are under `/tmp/nightwatch-distroless` on the author machine, with the reduced-suite results in `pruned-runtime-tests.log` and `pruned-workflow-tests.log`. These passes establish execution, not preserved fault detection after pruning.
-
-Trivy scans of both final production images reported no HIGH or CRITICAL vulnerability or secret findings at verification time. These scans do not establish the absence of vulnerabilities in bundled application dependencies. The package-manager audit remains a separate release gate.
-
-Baseline images were rebuilt from the pre-change Dockerfiles at `4a26c3b` with the same workspace source and lockfile. Local logical image sizes increased by about 15 MB per image after switching from Alpine/musl to distroless/glibc. Distroless removes runtime tools here; it does not establish a smaller image, lower RAM, or faster execution. Compressed pull size and runtime resource performance were not measured.
+Distroless removes runtime tools here; it does not establish a smaller image, lower RAM, or faster execution. These checks do not measure compressed pull size or runtime resource performance.
 
 Native Linux/amd64 execution and GitHub CI were not run locally. The pinned official image manifests advertise both amd64 and arm64. This verification does not run the complete application integration/browser suites and does not authorize publishing or deploying images. The development image must never be deployed.

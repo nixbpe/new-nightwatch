@@ -7,7 +7,7 @@ description: Threat-model and harden untrusted input, authentication, authorizat
 
 ## Overview
 
-Follow accepted scope, repository security contracts, and role permissions. Read file:`../../../docs/architecture.md` for the named request, authentication, isolation, and outbound rules below. Use file:`../../references/security-checklist.md` for detailed checks and OWASP 2021 ordering.
+Follow accepted scope, repository security contracts, and role permissions. Read file:`../../../docs/architecture.md` for the named request, authentication, isolation, and outbound rules below. Use file:`../../references/security-checklist.md` for detailed checks.
 
 ## Process: Threat Model First
 
@@ -27,7 +27,7 @@ Missing trust boundaries leave the design unready for hardening, as OWASP A04: I
 Apply these controls to every relevant boundary:
 
 - Validate external input, parameterize database queries, and encode output with framework escaping.
-- Use HTTPS for external communication and the existing authentication library for passwords.
+- Use HTTPS for external HTTP integrations. Supported HTTP(S) monitor targets follow OUT-01; preserve TLS verification and redirect restrictions. Use the existing authentication library for passwords.
 - Set CSP, HSTS, X-Frame-Options, and X-Content-Type-Options. Use httpOnly, secure, sameSite session cookies.
 - Run the detected package manager's native audit against the committed lockfile before every release.
 
