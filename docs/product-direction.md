@@ -7,7 +7,7 @@
 | outcome_status  | Not measured                                             |
 | Owner           | Product Owner role; accountable person not yet confirmed |
 
-Product intent only; it lists neither implemented capabilities nor validated demand. Each section gives its principle, then only the numbered items that decisions or studies cite. Items are numbered in order within each section; after adding or removing one, renumber and update every reference.
+Product intent only; it lists neither implemented capabilities nor validated demand. Each section gives its principle, then only the numbered items that decisions or studies cite. Item IDs are stable: a new item takes the next unused number in its section; a retired item keeps its ID marked retired. Never renumber existing items.
 
 ## Positioning
 
