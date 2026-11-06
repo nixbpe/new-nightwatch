@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { NodePgTransaction } from "drizzle-orm/node-postgres";
 import type { PoolClient } from "pg";
 import type { Database } from "./client";
+import { withRawTransaction } from "./raw-transaction";
 import type { schema } from "./schema";
 
 export type NotificationTransaction = NodePgTransaction<
@@ -80,19 +81,10 @@ export async function withAccountContextRaw<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   assertNonEmpty(userId, "userId");
-  const client = await database.sql.connect();
-  try {
-    await client.query("begin");
+  return withRawTransaction(database, async (client) => {
     await client.query("select set_config('app.user_id', $1, true)", [userId]);
-    const result = await fn(client);
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
+    return fn(client);
+  });
 }
 
 /** Creates an idempotent ledger row on the caller's existing scoped transaction. */

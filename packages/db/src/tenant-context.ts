@@ -4,6 +4,7 @@ import type { NodePgTransaction } from "drizzle-orm/node-postgres";
 import type { PoolClient } from "pg";
 
 import type { Database } from "./client";
+import { withRawTransaction } from "./raw-transaction";
 import type { schema } from "./schema";
 
 /** Transaction handle passed to tenant-scoped work: the full schema plus
@@ -57,21 +58,12 @@ export async function withTenantContextRaw<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   assertTenantId(tenantId);
-  const client = await database.sql.connect();
-  try {
-    await client.query("begin");
+  return withRawTransaction(database, async (client) => {
     await client.query("select set_config('app.tenant_id', $1, true)", [
       tenantId,
     ]);
-    const result = await fn(client);
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
+    return fn(client);
+  });
 }
 
 /**
@@ -86,22 +78,13 @@ export async function withTenantUserContextRaw<T>(
 ): Promise<T> {
   assertTenantId(tenantId);
   if (userId === "") throw new Error("userId must not be empty");
-  const client = await database.sql.connect();
-  try {
-    await client.query("begin");
+  return withRawTransaction(database, async (client) => {
     await client.query("select set_config('app.tenant_id', $1, true)", [
       tenantId,
     ]);
     await client.query("select set_config('app.user_id', $1, true)", [userId]);
-    const result = await fn(client);
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
+    return fn(client);
+  });
 }
 
 function assertTenantId(tenantId: string): void {
