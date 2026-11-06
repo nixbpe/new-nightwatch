@@ -34,6 +34,7 @@ import {
   P,
   DATA_AS_OF,
   context,
+  createMonitorListFixtures,
   projectDetail,
   must,
 } from "../../monitors/detail-test-support";
@@ -57,82 +58,7 @@ vi.mock("../../../lib/api/monitors", async (original) => ({
   fetchMonitorRecentEvents: vi.fn(),
 }));
 
-type Item = MonitorListResponse["monitors"][number];
-
-// 24 hourly points ending at the current UTC hour of DATA_AS_OF; null marks an hour without data.
-function sparkline(values: (number | null)[] = []): Item["responseSparkline"] {
-  const end = Date.UTC(2026, 8, 30, 7);
-  return Array.from({ length: 24 }, (_, index) => ({
-    hourStart: new Date(end - (23 - index) * 3_600_000).toISOString(),
-    avgMs: values[index] ?? null,
-  }));
-}
-
-let nextId = 0;
-function item(overrides: Partial<Item> = {}): Item {
-  nextId += 1;
-  return {
-    id: `00000000-0000-4000-8000-${String(nextId).padStart(12, "0")}`,
-    name: `Monitor ${String(nextId)}`,
-    url: `https://m${String(nextId)}.example.test/health`,
-    method: "GET",
-    intervalSeconds: 300,
-    status: "active",
-    health: "up",
-    healthReason: null,
-    lastKnownDown: false,
-    consecutiveFailures: 0,
-    lastCheckAt: "2026-09-30T07:30:00.000Z",
-    openIncident: null,
-    lastResponseTimeMs: 182,
-    responseP95Ms24h: 182,
-    responseSparkline: sparkline(),
-    ssl: {
-      level: "ok",
-      daysRemaining: 128,
-      host: "m.example.test",
-      issuer: null,
-      notAfter: null,
-    },
-    uptime: {
-      h24: { percent: 100, checks: 288, coveragePercent: 100 },
-      d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
-    },
-    ...overrides,
-  };
-}
-
-function list(
-  monitors: Item[],
-  options: {
-    total?: number;
-    pageTotal?: number;
-    summary?: Partial<MonitorListResponse["summary"]>;
-    offset?: number;
-  } = {},
-): MonitorListResponse {
-  const total = options.total ?? monitors.length;
-  const count = (health: Item["health"]) =>
-    monitors.filter((monitor) => monitor.health === health).length;
-  return {
-    summary: {
-      up: count("up"),
-      down: count("down"),
-      unknown: count("unknown"),
-      paused: count("paused"),
-      total,
-      limit: 20,
-      ...options.summary,
-    },
-    monitors,
-    page: {
-      limit: 25,
-      offset: options.offset ?? 0,
-      total: options.pageTotal ?? monitors.length,
-    },
-    dataAsOf: DATA_AS_OF,
-  };
-}
+const { item, list } = createMonitorListFixtures();
 
 const clients: QueryClient[] = [];
 const routers: ReturnType<typeof createMemoryRouter>[] = [];

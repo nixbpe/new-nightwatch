@@ -1,7 +1,6 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
-  MeContextResponse,
   MonitorListResponse,
   MonitorRecentEvent,
 } from "@nightwatch/api-contract";
@@ -35,7 +34,16 @@ import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
-import { PROJECT_NAME, projectDetail } from "./detail-test-support";
+import {
+  A,
+  B,
+  P,
+  DATA_AS_OF,
+  PROJECT_NAME,
+  context,
+  createMonitorListFixtures,
+  projectDetail,
+} from "./detail-test-support";
 
 guardUnassignedNetwork();
 
@@ -59,107 +67,17 @@ const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 const fetchListMock = vi.mocked(fetchMonitorList);
 const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
 
-const A = "11111111-1111-4111-8111-111111111111";
-const P = "33333333-3333-4333-8333-333333333333";
-const B = "22222222-2222-4222-8222-222222222222";
-const DATA_AS_OF = "2026-09-30T07:32:05.000Z";
-
-function context(
-  role: "owner" | "admin" | "viewer" | "auditor" = "owner",
-  organizations: MeContextResponse["organizations"] = [
-    { id: A, name: "Acme", slug: "acme", role },
-    { id: B, name: "Beta", slug: "beta", role: "owner" },
-  ],
-): MeContextResponse {
-  return {
-    user: {
-      id: "user-1",
-      name: "Tester",
-      email: "tester@example.test",
-      emailVerified: true,
-      twoFactorEnabled: false,
-    },
-    organizations,
-    lastActiveTenantId: A,
-  };
-}
-
 type Item = MonitorListResponse["monitors"][number];
 
-// 24 hourly points ending at the current UTC hour of DATA_AS_OF; null marks an hour without data.
-function sparkline(values: (number | null)[] = []): Item["responseSparkline"] {
-  const end = Date.UTC(2026, 8, 30, 7);
-  return Array.from({ length: 24 }, (_, index) => ({
-    hourStart: new Date(end - (23 - index) * 3_600_000).toISOString(),
-    avgMs: values[index] ?? null,
-  }));
-}
+const { sparkline, item, list } = createMonitorListFixtures();
 
-let nextId = 0;
-function item(overrides: Partial<Item> = {}): Item {
-  nextId += 1;
-  return {
-    id: `00000000-0000-4000-8000-${String(nextId).padStart(12, "0")}`,
-    name: `Monitor ${String(nextId)}`,
-    url: `https://m${String(nextId)}.example.test/health`,
-    method: "GET",
-    intervalSeconds: 300,
-    status: "active",
-    health: "up",
-    healthReason: null,
-    lastKnownDown: false,
-    consecutiveFailures: 0,
-    lastCheckAt: "2026-09-30T07:30:00.000Z",
-    openIncident: null,
-    lastResponseTimeMs: 182,
-    responseP95Ms24h: 182,
-    responseSparkline: sparkline(),
-    ssl: {
-      level: "ok",
-      daysRemaining: 128,
-      host: "m.example.test",
-      issuer: null,
-      notAfter: null,
-    },
-    uptime: {
-      h24: { percent: 100, checks: 288, coveragePercent: 100 },
-      d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
-    },
-    ...overrides,
-  };
-}
-
-function list(
-  monitors: Item[],
-  options: {
-    total?: number;
-    pageTotal?: number;
-    summary?: Partial<MonitorListResponse["summary"]>;
-    offset?: number;
-  } = {},
-): MonitorListResponse {
-  const total = options.total ?? monitors.length;
-  const count = (health: Item["health"]) =>
-    monitors.filter((monitor) => monitor.health === health).length;
-  return {
-    summary: {
-      up: count("up"),
-      down: count("down"),
-      unknown: count("unknown"),
-      paused: count("paused"),
-      total,
-      limit: 20,
-      ...options.summary,
-    },
-    monitors,
-    page: {
-      limit: 25,
-      offset: options.offset ?? 0,
-      total: options.pageTotal ?? monitors.length,
-    },
-    dataAsOf: DATA_AS_OF,
-  };
-}
+it("keeps monitor-list fixture counters independent", () => {
+  const first = createMonitorListFixtures();
+  const second = createMonitorListFixtures();
+  expect(first.item().id).toBe("00000000-0000-4000-8000-000000000001");
+  expect(first.item().id).toBe("00000000-0000-4000-8000-000000000002");
+  expect(second.item().id).toBe("00000000-0000-4000-8000-000000000001");
+});
 
 const noEvents = { events: [] as MonitorRecentEvent[] };
 
