@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { useDialogFocusReturn } from "../../components/ui/useDialogFocusReturn";
 import { ApiError } from "../../lib/api/client";
 import { createProject, updateProject } from "../../lib/api/projects";
 import { cn } from "../../lib/utils";
@@ -99,24 +100,7 @@ export function ProjectFormDialog({
   const [submitting, setSubmitting] = useState(false);
   const [slugFocusToken, setSlugFocusToken] = useState(0);
 
-  useEffect(() => {
-    nameInput.current?.focus();
-    const fallback = fallbackFocus.current;
-    const keepFocusInside = (event: FocusEvent) => {
-      if (
-        event.target instanceof Node &&
-        dialog.current?.contains(event.target) === false
-      ) {
-        nameInput.current?.focus();
-      }
-    };
-    document.addEventListener("focusin", keepFocusInside);
-    return () => {
-      document.removeEventListener("focusin", keepFocusInside);
-      if (opener?.isConnected === true) opener.focus();
-      else fallback?.focus();
-    };
-  }, [opener, fallbackFocus]);
+  useDialogFocusReturn(dialog, nameInput, opener, fallbackFocus);
 
   useEffect(() => {
     if (slugFocusToken > 0) slugInput.current?.focus();

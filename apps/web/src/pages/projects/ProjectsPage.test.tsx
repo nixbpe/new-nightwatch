@@ -654,6 +654,20 @@ describe("create dialog", () => {
 });
 
 describe("dialog focus (CMP-03)", () => {
+  it("contains escaped focus without resetting focus when a field changes", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage();
+    const dialog = await openCreate(user);
+    screen.getByTestId("projects-create").focus();
+    expect(within(dialog).getByTestId("project-form-name")).toHaveFocus();
+
+    const slug = within(dialog).getByTestId("project-form-slug");
+    await user.type(slug, "new-project");
+    expect(slug).toHaveValue("new-project");
+    expect(slug).toHaveFocus();
+  });
+
   it("starts on the first field, traps Tab, closes on Escape and returns focus to the opener", async () => {
     const user = userEvent.setup();
     fetchListMock.mockResolvedValue({ projects: [project()] });

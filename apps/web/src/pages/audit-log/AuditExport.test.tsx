@@ -280,6 +280,21 @@ describe("export dialog", () => {
     expect(body).toHaveFocus();
   });
 
+  it("contains escaped focus without resetting focus when the format changes", async () => {
+    const user = userEvent.setup();
+    open();
+    const dialog = await openDialog(user);
+    (await exportButton()).focus();
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-format-csv"),
+    ).toHaveFocus();
+
+    const json = within(dialog).getByTestId("audit-export-dialog-format-json");
+    await user.click(json);
+    expect(json).toBeChecked();
+    expect(json).toHaveFocus();
+  });
+
   it("traps Tab inside and returns focus to the button on cancel", async () => {
     const user = userEvent.setup();
     open();

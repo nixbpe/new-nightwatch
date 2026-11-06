@@ -1,6 +1,5 @@
 import { AUDIT_EXPORT_MAX_EVENTS } from "@nightwatch/api-contract";
 import {
-  useEffect,
   useId,
   useRef,
   useState,
@@ -10,6 +9,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { Button } from "../../components/ui/button";
+import { useDialogFocusReturn } from "../../components/ui/useDialogFocusReturn";
 import {
   EMPTY_REASON,
   REQUEST_FAILED_IN_DIALOG,
@@ -67,24 +67,7 @@ export function ExportDialog({
   const inFlight = useRef(false);
   const tooLarge = total > AUDIT_EXPORT_MAX_EVENTS;
 
-  useEffect(() => {
-    firstFormat.current?.focus();
-    const fallback = fallbackFocus.current;
-    const keepFocusInside = (event: FocusEvent) => {
-      if (
-        event.target instanceof Node &&
-        dialog.current?.contains(event.target) === false
-      ) {
-        firstFormat.current?.focus();
-      }
-    };
-    document.addEventListener("focusin", keepFocusInside);
-    return () => {
-      document.removeEventListener("focusin", keepFocusInside);
-      if (opener?.isConnected === true) opener.focus();
-      else fallback?.focus();
-    };
-  }, [opener, fallbackFocus]);
+  useDialogFocusReturn(dialog, firstFormat, opener, fallbackFocus);
 
   const cancel = () => {
     if (!inFlight.current) onCancel();

@@ -23,6 +23,7 @@ import { Alert, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
+import { useDialogFocusReturn } from "../../../components/ui/useDialogFocusReturn";
 import { ApiError } from "../../../lib/api/client";
 import {
   addProjectMembers,
@@ -106,24 +107,7 @@ export function AddMemberDialog({
     placeholderData: keepPreviousData,
   });
 
-  useEffect(() => {
-    searchInput.current?.focus();
-    const fallback = fallbackFocus.current;
-    const keepFocusInside = (event: FocusEvent) => {
-      if (
-        event.target instanceof Node &&
-        dialog.current?.contains(event.target) === false
-      ) {
-        searchInput.current?.focus();
-      }
-    };
-    document.addEventListener("focusin", keepFocusInside);
-    return () => {
-      document.removeEventListener("focusin", keepFocusInside);
-      if (opener?.isConnected === true) opener.focus();
-      else fallback?.focus();
-    };
-  }, [opener, fallbackFocus]);
+  useDialogFocusReturn(dialog, searchInput, opener, fallbackFocus);
 
   useEffect(() => {
     if (searchText.trim() === q) return;

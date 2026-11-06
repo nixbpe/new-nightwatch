@@ -932,6 +932,20 @@ describe("add member dialog", () => {
     });
   });
 
+  it("contains escaped focus without resetting focus when the role changes", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await openDialog(user);
+    screen.getByTestId("project-members-add").focus();
+    expect(within(dialog).getByTestId("add-member-search")).toHaveFocus();
+
+    within(dialog).getByTestId("add-member-role-member").focus();
+    await user.keyboard("{ArrowRight}");
+    const admin = within(dialog).getByTestId("add-member-role-admin");
+    expect(admin).toBeChecked();
+    expect(admin).toHaveFocus();
+  });
+
   it("traps Tab, closes on Escape and returns focus to the opener", async () => {
     const user = userEvent.setup();
     renderPage();
