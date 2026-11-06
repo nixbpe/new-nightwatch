@@ -12,7 +12,7 @@ bun run agent:check
 bun run candidate:manifest -- --base HEAD
 ```
 
-- `workflow:test` exercises the agent-reference, candidate-binding, and E2E runner scripts. Root `validate` runs it before other gates.
+- `workflow:test` runs the existing `scripts/quality/*.test.mjs` unit suites for agent references, candidate binding, E2E runners, and the Worker launcher. Root `validate` runs it before other gates; CI `lint` uses the same command without changed-path selection.
 - `agent:check` validates agent model ids, tool allowlists, skill preloads and explicit references under `.claude`. Reference metadata uses `agent:<name>`, `skill:<name>`, `command:/<name>` and `file:<path>` with the value enclosed in backticks after the prefix. Fenced examples are ignored; referenced files and canonical `SKILL.md` files must resolve inside the repository.
 - `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
 - Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
@@ -382,6 +382,29 @@ The manual suite uses its own PostgreSQL, Redis, SMTP, and TLS fixtures, checks
 both Worker build flavors, and removes only its own resources. It does not build
 or pull images and is separate from the Trivy image scan. Launcher subprocess
 regressions run automatically through `workflow:test`.
+
+## Test changes and execution stages
+
+For each added or deleted test, answer these questions in the PR Evidence section:
+
+1. Which requirement does the test assert, and what independently chosen result proves it?
+2. Which distinct boundary or scenario does it cover beyond retained tests?
+3. Which meaningful fault makes it fail, or what before/after evidence supports deleting it?
+
+There is no test-count target or repository-wide automatic test generation.
+Existing coverage thresholds remain unchanged. These rules follow the narrow
+research findings about [generated regression oracles](https://arxiv.org/abs/2610.11835),
+[reference passes versus fault discrimination](https://arxiv.org/abs/2610.13065),
+and [reduction with retained fault identities](https://arxiv.org/abs/2610.14808).
+[Reviewed agent test PRs](https://www.atlassian.com/blog/development/using-agentic-pipelines-to-turn-test-coverage-into-daily-habit)
+do not establish defect reduction from coverage gains alone.
+
+| Stage       | Execution                                                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | Local `bun run test` runs app/package unit suites. Local `workflow:test`, root `validate`, and CI `lint` run the quality-script unit suites, including launcher tests. CI `test` runs app/package coverage. |
+| Integration | Local `test:integration` needs explicit isolated service URLs. CI `test` runs database-backed projects through `test:coverage` with disposable services.                                                    |
+| Real image  | The manual distroless command runs the separate 10-case image proof after images exist. Dispatch-only CI `full` runs browser E2E and `security:image` build/Trivy checks, not that runtime proof.           |
+| Nightly     | No scheduled nightly workflow exists. This change adds none. Manual runtime proof and dispatch-only workloads remain `not run` until executed.                                                              |
 
 ## Dependency lifecycle scripts
 

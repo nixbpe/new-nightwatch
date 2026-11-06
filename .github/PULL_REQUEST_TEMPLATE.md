@@ -70,6 +70,7 @@ Head SHA:
 
 - [ ] Only owned, in-scope files changed
 - [ ] Tests and docs updated for every changed contract
+- [ ] Added/deleted tests have requirement, distinct-boundary, and failure or pruning evidence under Evidence
 - [ ] Every gate ran on the head SHA; database-touching gates through `scripts/dev-env.mjs`, never an ambient database
 - [ ] UI change: desktop (1440×900) screenshots in both themes attached
 - [ ] No secrets, generated noise or build output committed

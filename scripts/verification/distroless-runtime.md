@@ -39,6 +39,10 @@ Temporary environment files use mode `0600` inside a private temporary directory
 
 Worker shutdown is checked with idle queues. These checks do not prove drain behavior for every in-flight job. The application shutdown implementation and its existing tests are unchanged.
 
+The host launcher unit suite does not verify image markers, permissions, TLS,
+real startup, or shutdown, which the separate 10-case manual real-image suite checks.
+CI's dispatch-only image build/Trivy job does not execute this manual runtime proof.
+
 ## Image policy
 
 Builder stages use `oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288`. Runtime stages use `oven/bun:1.4.3-distroless@sha256:1aaa515018b0b37d95dbdebd55d1b7f37ad258a6289ba63e4bc3b9c9e3038697`. Both use Debian/glibc. Bun, application dependencies, lockfiles, and install-script policy remain unchanged.
@@ -49,10 +53,25 @@ The first container verification exposed a Worker startup `EACCES` error. Runnin
 
 ## Observed local evidence
 
-The local Linux/arm64 images built successfully for API, production Worker, and development Worker. After removing duplicate checks, the runtime suite passed 10 tests, including actual migration, health, TLS, startup-policy, and SIGTERM probes. The launcher unit suite passed 7 tests. Workflow tests passed 69 tests with 1 documented APFS skip. Raw local logs are under `/tmp/nightwatch-distroless` on the author machine, with the reduced-suite results in `pruned-runtime-tests.log` and `pruned-workflow-tests.log`.
+The local Linux/arm64 images built successfully for API, production Worker, and development Worker. The historical runtime suite passed 10 tests, including actual migration, health, TLS, startup-policy, and SIGTERM probes. The launcher unit suite passed 7 tests. Workflow tests passed 69 tests with 1 documented APFS skip. Raw local logs are under `/tmp/nightwatch-distroless` on the author machine, with the reduced-suite results in `pruned-runtime-tests.log` and `pruned-workflow-tests.log`. These passes establish execution, not preserved fault detection after pruning.
 
 Trivy scans of both final production images reported no HIGH or CRITICAL vulnerability or secret findings at verification time. These scans do not establish the absence of vulnerabilities in bundled application dependencies. The package-manager audit remains a separate release gate.
 
 Baseline images were rebuilt from the pre-change Dockerfiles at `4a26c3b` with the same workspace source and lockfile. Local logical image sizes increased by about 15 MB per image after switching from Alpine/musl to distroless/glibc. Distroless removes runtime tools here; it does not establish a smaller image, lower RAM, or faster execution. Compressed pull size and runtime resource performance were not measured.
 
 Native Linux/amd64 execution and GitHub CI were not run locally. The pinned official image manifests advertise both amd64 and arm64. This verification does not run the complete application integration/browser suites and does not authorize publishing or deploying images. The development image must never be deployed.
+
+### Pruning evidence
+
+A historical one-off pruning experiment compared the eight-case launcher suite
+at `35f51cd` with the seven-case suite at `d77ce29`. Both passed their unmodified
+baselines and killed `guard-bypass`, `runtime-spoof`, `argv-dispatch`, and
+`child-pid`. Source, catalog, runner, and Bun `1.4.3` bindings matched. Suite hashes
+differed, and all five controls classified correctly. Reports remain at
+`/tmp/nightwatch-test-quality/before-report.json`,
+`/tmp/nightwatch-test-quality/after-report.json`, and
+`/tmp/nightwatch-test-quality/pruning-comparison.json`.
+
+The experimental runner is retired. This experiment is not a current CI gate
+and does not prove exhaustive fault detection, branch-coverage equivalence, or
+real-image equivalence.
