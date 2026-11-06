@@ -30,6 +30,24 @@ export function localRedisPort(slot) {
 export const LOCAL_ENV_PATH = resolve(repoRoot, ".env.compose.local");
 
 /**
+ * Expected local targets use generated secrets and resolved ports only, never
+ * overridable database or Redis URLs from the caller's environment.
+ * @param {Record<string, string | undefined>} generatedSecrets
+ * @param {Pick<ReturnType<typeof resolvePorts>, "slot" | "dbPort">} resolvedPorts
+ */
+export function buildLocalComposeUrls(generatedSecrets, resolvedPorts) {
+  return {
+    ownerUrl: generatedSecrets.NW_OWNER_PASSWORD
+      ? `postgres://nightwatch_owner:${generatedSecrets.NW_OWNER_PASSWORD}@127.0.0.1:${resolvedPorts.dbPort}/nightwatch`
+      : undefined,
+    runtimeUrl: generatedSecrets.NW_DB_PASSWORD
+      ? `postgres://nightwatch:${generatedSecrets.NW_DB_PASSWORD}@127.0.0.1:${resolvedPorts.dbPort}/nightwatch`
+      : undefined,
+    redisUrl: `redis://127.0.0.1:${localRedisPort(resolvedPorts.slot)}`,
+  };
+}
+
+/**
  * @param {NodeJS.ProcessEnv} [sourceEnv]
  * @returns {{ env: NodeJS.ProcessEnv, ports: ReturnType<typeof resolvePorts>, redisPort: number, hasLocalEnv: boolean }}
  */
@@ -38,24 +56,21 @@ export function resolveDevEnv(sourceEnv = process.env) {
   const redisPort = localRedisPort(ports.slot);
   const hasLocalEnv = existsSync(LOCAL_ENV_PATH);
   const localEnv = hasLocalEnv ? readEnvFile(LOCAL_ENV_PATH) : {};
+  const localUrls = buildLocalComposeUrls(localEnv, ports);
 
   /** @type {Record<string, string | undefined>} */
   const defaults = {
     APP_URL: `http://localhost:${ports.webPort}`,
     BETTER_AUTH_URL: `http://localhost:${ports.apiPort}`,
     CORS_ORIGIN: `http://localhost:${ports.webPort}`,
-    DATABASE_URL: localEnv.NW_DB_PASSWORD
-      ? `postgres://nightwatch:${localEnv.NW_DB_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`
-      : undefined,
-    DATABASE_OWNER_URL: localEnv.NW_OWNER_PASSWORD
-      ? `postgres://nightwatch_owner:${localEnv.NW_OWNER_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`
-      : undefined,
+    DATABASE_URL: localUrls.runtimeUrl,
+    DATABASE_OWNER_URL: localUrls.ownerUrl,
     BETTER_AUTH_SECRET: localEnv.BETTER_AUTH_SECRET,
     SMTP_HOST: "127.0.0.1",
     SMTP_PORT: String(ports.mailSmtpPort),
     SMTP_SECURE: "false",
     SMTP_FROM: "NightWatch Dev <noreply@nightwatch.local>",
-    REDIS_URL: `redis://127.0.0.1:${redisPort}`,
+    REDIS_URL: localUrls.redisUrl,
     // Monitor credential keys: dev uses the built-in development key of
     // loadMonitorEnv() (refused when NODE_ENV=production), so nothing is
     // fabricated here. Canary and OUTBOUND_TEST_ALLOWED_HOSTS stay unset in

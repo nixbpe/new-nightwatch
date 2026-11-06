@@ -2,7 +2,12 @@ import { spawn } from "node:child_process";
 
 import { createDatabase, listMigrations } from "../packages/db/src/index.ts";
 import { createRedisClient } from "../apps/api/src/rate-limit/redis.ts";
-import { LOCAL_ENV_PATH, localRedisPort, resolveDevEnv } from "./dev-env.mjs";
+import {
+  buildLocalComposeUrls,
+  LOCAL_ENV_PATH,
+  localRedisPort,
+  resolveDevEnv,
+} from "./dev-env.mjs";
 import { readEnvFile } from "./env-file.mjs";
 import { repoRoot } from "./ports.mjs";
 
@@ -20,12 +25,14 @@ if (!hasLocalEnv)
   throw new Error("Run bun run db:up and bun run db:migrate first");
 const local = readEnvFile(LOCAL_ENV_PATH);
 const redisPort = localRedisPort(ports.slot);
-const ownerUrl = `postgres://nightwatch_owner:${local.NW_OWNER_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`;
-const runtimeUrl = `postgres://nightwatch:${local.NW_DB_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`;
+const { ownerUrl, runtimeUrl, redisUrl } = buildLocalComposeUrls(local, ports);
+if (!ownerUrl || !runtimeUrl) {
+  throw new Error("E2E bootstrap requires generated local Compose passwords");
+}
 if (
   env.DATABASE_OWNER_URL !== ownerUrl ||
   env.DATABASE_URL !== runtimeUrl ||
-  env.REDIS_URL !== `redis://127.0.0.1:${redisPort}`
+  env.REDIS_URL !== redisUrl
 ) {
   throw new Error(
     "E2E bootstrap requires this worktree's local Compose database and Redis URLs",

@@ -4,7 +4,11 @@ import {
   seedLocalDemo,
 } from "../apps/api/src/operator/seed.ts";
 import { readEnvFile } from "./env-file.mjs";
-import { LOCAL_ENV_PATH, resolveDevEnv } from "./dev-env.mjs";
+import {
+  buildLocalComposeUrls,
+  LOCAL_ENV_PATH,
+  resolveDevEnv,
+} from "./dev-env.mjs";
 
 const { env, ports, hasLocalEnv } = resolveDevEnv();
 if (!hasLocalEnv) {
@@ -15,12 +19,8 @@ if (!hasLocalEnv) {
 }
 const localEnv = readEnvFile(LOCAL_ENV_PATH);
 
-const expectedOwnerUrl = localEnv.NW_OWNER_PASSWORD
-  ? `postgres://nightwatch_owner:${localEnv.NW_OWNER_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`
-  : undefined;
-const expectedRuntimeUrl = localEnv.NW_DB_PASSWORD
-  ? `postgres://nightwatch:${localEnv.NW_DB_PASSWORD}@127.0.0.1:${ports.dbPort}/nightwatch`
-  : undefined;
+const { ownerUrl: expectedOwnerUrl, runtimeUrl: expectedRuntimeUrl } =
+  buildLocalComposeUrls(localEnv, ports);
 if (
   !expectedOwnerUrl ||
   !expectedRuntimeUrl ||
