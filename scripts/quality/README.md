@@ -348,8 +348,8 @@ service configuration. Other caller-owned external-service runs retain natural
 scheduling without opening a helper connection.
 
 CI installs Chromium headless shell with `--only-shell`. Local `e2e:setup` keeps
-the full browser available for headed debugging. Measurement commands and their
-resource scope are in [Test performance measurement](../verification/test-performance.md).
+the full browser available for headed debugging. Historical measurements and
+metric limits are in [Test performance measurement](../verification/test-performance.md).
 
 The suite covers observable browser/API contracts. These include public auth
 entry and client-side validation without an invalid boundary request. They also

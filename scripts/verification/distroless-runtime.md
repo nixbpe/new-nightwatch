@@ -60,18 +60,3 @@ Trivy scans of both final production images reported no HIGH or CRITICAL vulnera
 Baseline images were rebuilt from the pre-change Dockerfiles at `4a26c3b` with the same workspace source and lockfile. Local logical image sizes increased by about 15 MB per image after switching from Alpine/musl to distroless/glibc. Distroless removes runtime tools here; it does not establish a smaller image, lower RAM, or faster execution. Compressed pull size and runtime resource performance were not measured.
 
 Native Linux/amd64 execution and GitHub CI were not run locally. The pinned official image manifests advertise both amd64 and arm64. This verification does not run the complete application integration/browser suites and does not authorize publishing or deploying images. The development image must never be deployed.
-
-### Pruning evidence
-
-A historical one-off pruning experiment compared the eight-case launcher suite
-at `35f51cd` with the seven-case suite at `d77ce29`. Both passed their unmodified
-baselines and killed `guard-bypass`, `runtime-spoof`, `argv-dispatch`, and
-`child-pid`. Source, catalog, runner, and Bun `1.4.3` bindings matched. Suite hashes
-differed, and all five controls classified correctly. Reports remain at
-`/tmp/nightwatch-test-quality/before-report.json`,
-`/tmp/nightwatch-test-quality/after-report.json`, and
-`/tmp/nightwatch-test-quality/pruning-comparison.json`.
-
-The experimental runner is retired. This experiment is not a current CI gate
-and does not prove exhaustive fault detection, branch-coverage equivalence, or
-real-image equivalence.
