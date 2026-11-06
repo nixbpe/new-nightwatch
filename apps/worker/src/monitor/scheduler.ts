@@ -7,6 +7,7 @@ import {
 } from "@nightwatch/db";
 import type { Logger } from "@nightwatch/shared";
 
+import { missingPartitionNames } from "../partition-horizon";
 import {
   MONITOR_CHECK_JOB_OPTIONS,
   monitorCheckJobId,
@@ -177,22 +178,13 @@ export class MonitorScheduler {
     ) {
       return;
     }
-    const result = await this.database.sql.query<{ relname: string }>(
-      `select c.relname
-       from pg_inherits as i
-       join pg_class as c on c.oid = i.inhrelid
-       join pg_class as parent on parent.oid = i.inhparent
-       where parent.relnamespace = 'public'::regnamespace
-         and parent.relname = any($1::text[])`,
-      [PARTITIONED_TABLES],
+    const missing = await missingPartitionNames(
+      this.database,
+      PARTITIONED_TABLES,
+      now,
+      MONITOR_PARTITION_MONTHS_AHEAD_MIN,
     );
     this.#lastPartitionCheck = now.getTime();
-    const present = new Set(result.rows.map((row) => row.relname));
-    const missing = PARTITIONED_TABLES.flatMap((table) =>
-      aheadSuffixes(now).flatMap((suffix) =>
-        present.has(`${table}_p${suffix}`) ? [] : [`${table}_p${suffix}`],
-      ),
-    );
     if (missing.length > 0) {
       this.logger.warn(
         { missing, monthsAheadRequired: MONITOR_PARTITION_MONTHS_AHEAD_MIN },
@@ -200,20 +192,6 @@ export class MonitorScheduler {
       );
     }
   }
-}
-
-/** `YYYYMM` of the next MIN months after the current UTC month. */
-export function aheadSuffixes(now: Date): string[] {
-  const suffixes: string[] = [];
-  for (let offset = 1; offset <= MONITOR_PARTITION_MONTHS_AHEAD_MIN; offset++) {
-    const month = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1),
-    );
-    suffixes.push(
-      `${String(month.getUTCFullYear())}${String(month.getUTCMonth() + 1).padStart(2, "0")}`,
-    );
-  }
-  return suffixes;
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {

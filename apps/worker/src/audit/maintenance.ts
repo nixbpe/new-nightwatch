@@ -5,28 +5,13 @@ import {
 } from "@nightwatch/db";
 import type { Logger } from "@nightwatch/shared";
 
+import { missingPartitionNames } from "../partition-horizon";
+
 export const AUDIT_MAINTENANCE_INTERVAL_MS = 60 * 60_000;
 export const AUDIT_EVENT_PURGE_LIMIT = 5000;
 export const AUDIT_EXPORT_PURGE_LIMIT = 500;
 /** The log warns when fewer months than this are ready after the current one. */
 export const AUDIT_PARTITION_MONTHS_AHEAD_MIN = 2;
-
-/** `YYYYMM` of the next `count` months after the current UTC month. */
-export function auditPartitionSuffixesAhead(
-  now: Date,
-  count = AUDIT_PARTITION_MONTHS_AHEAD_MIN,
-): string[] {
-  const suffixes: string[] = [];
-  for (let offset = 1; offset <= count; offset += 1) {
-    const month = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1),
-    );
-    suffixes.push(
-      `${String(month.getUTCFullYear())}${String(month.getUTCMonth() + 1).padStart(2, "0")}`,
-    );
-  }
-  return suffixes;
-}
 
 /** Batches one run may drain before it stops and leaves the rest to the next hour. */
 export const AUDIT_PURGE_MAX_BATCHES_PER_RUN = 100;
@@ -64,18 +49,12 @@ export async function runAuditMaintenance(
     logger.error({}, "audit retention purge failed");
   }
   try {
-    const present = await database.sql.query<{ relname: string }>(
-      `select c.relname
-       from pg_inherits as i
-       join pg_class as c on c.oid = i.inhrelid
-       join pg_class as parent on parent.oid = i.inhparent
-       where parent.relnamespace = 'public'::regnamespace
-         and parent.relname = 'audit_events'`,
+    const missing = await missingPartitionNames(
+      database,
+      ["audit_events"],
+      now,
+      AUDIT_PARTITION_MONTHS_AHEAD_MIN,
     );
-    const names = new Set(present.rows.map((row) => row.relname));
-    const missing = auditPartitionSuffixesAhead(now)
-      .map((suffix) => `audit_events_p${suffix}`)
-      .filter((name) => !names.has(name));
     if (missing.length > 0) {
       logger.warn(
         { missing, monthsAheadRequired: AUDIT_PARTITION_MONTHS_AHEAD_MIN },

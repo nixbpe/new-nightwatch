@@ -1,16 +1,12 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Database } from "@nightwatch/db";
 
 import { monitorCheckJobId } from "./queue";
-import {
-  aheadSuffixes,
-  MonitorScheduler,
-  startMonitorSchedule,
-} from "./scheduler";
+import { MonitorScheduler, startMonitorSchedule } from "./scheduler";
 
 const logger = { error: () => undefined, warn: () => undefined } as never;
 
@@ -106,13 +102,154 @@ describe("WORKER_ROLES parsing", () => {
   });
 });
 
-describe("aheadSuffixes", () => {
-  it.each([
-    ["2026-09-30T00:00:00Z", ["202610", "202611"]],
-    ["2026-11-15T00:00:00Z", ["202612", "202701"]],
-    ["2026-12-31T23:59:59Z", ["202701", "202702"]],
-  ])("lists the next two UTC months after %s", (now, expected) => {
-    expect(aheadSuffixes(new Date(now))).toEqual(expected);
+describe("MonitorScheduler partition horizon", () => {
+  function setup() {
+    let now = new Date("2026-12-31T23:59:59Z");
+    const catalog = vi.fn(() =>
+      Promise.resolve({
+        rows: [
+          { relname: "monitor_check_results_p202701" },
+          { relname: "monitor_check_hourly_p202702" },
+          { relname: "audit_events_p202702" },
+        ],
+      }),
+    );
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("pg_inherits")) return catalog();
+      return { rows: [] };
+    });
+    const database = { sql: { query } } as unknown as Database;
+    const log = { error: vi.fn(), warn: vi.fn() };
+    const scheduler = new MonitorScheduler(
+      database,
+      {} as never,
+      log as never,
+      {
+        now: () => now,
+      },
+    );
+    return {
+      catalog,
+      query,
+      log,
+      scheduler,
+      setNow: (date: string) => {
+        now = new Date(date);
+      },
+    };
+  }
+
+  it("warns with the two-month default horizon and rechecks exactly hourly from the successful query's start", async () => {
+    const f = setup();
+    const catalogGate = Promise.withResolvers<undefined>();
+    const catalogStarted = Promise.withResolvers<undefined>();
+    f.catalog.mockImplementationOnce(async () => {
+      catalogStarted.resolve(undefined);
+      await catalogGate.promise;
+      return { rows: [] };
+    });
+    const round = f.scheduler.round();
+    await catalogStarted.promise;
+    f.setNow("2027-01-01T00:29:59Z");
+    catalogGate.resolve(undefined);
+    await round;
+    expect(f.log.warn).toHaveBeenCalledWith(
+      {
+        missing: [
+          "monitor_check_results_p202701",
+          "monitor_check_results_p202702",
+          "monitor_check_hourly_p202701",
+          "monitor_check_hourly_p202702",
+        ],
+        monthsAheadRequired: 2,
+      },
+      "monitor partitions ahead are below the required horizon; run db:partitions",
+    );
+    f.setNow("2027-01-01T00:59:58.999Z");
+    await f.scheduler.round();
+    expect(f.catalog).toHaveBeenCalledOnce();
+    expect(f.log.warn).toHaveBeenCalledOnce();
+    f.setNow("2027-01-01T00:59:59Z");
+    await f.scheduler.round();
+    expect(f.catalog).toHaveBeenCalledTimes(2);
+    expect(f.log.warn).toHaveBeenLastCalledWith(
+      {
+        missing: [
+          "monitor_check_results_p202702",
+          "monitor_check_results_p202703",
+          "monitor_check_hourly_p202703",
+        ],
+        monthsAheadRequired: 2,
+      },
+      "monitor partitions ahead are below the required horizon; run db:partitions",
+    );
+    expect(
+      f.query.mock.calls.map(([text]) =>
+        text.includes("pg_inherits") ? "catalog" : text,
+      ),
+    ).toEqual([
+      "catalog",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+      "catalog",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+    ]);
+  });
+
+  it("retries a failed catalog query next round while claims and purge continue", async () => {
+    const f = setup();
+    f.catalog.mockRejectedValueOnce(new TypeError("secret connection string"));
+    await f.scheduler.round();
+    expect(f.log.warn).not.toHaveBeenCalled();
+    expect(f.log.error).toHaveBeenCalledWith(
+      { errorName: "TypeError" },
+      "partition check failed",
+    );
+    await f.scheduler.round();
+    await f.scheduler.round();
+    expect(f.catalog).toHaveBeenCalledTimes(2);
+    expect(f.log.warn).toHaveBeenCalledOnce();
+    expect(f.log.warn).toHaveBeenCalledWith(
+      {
+        missing: [
+          "monitor_check_results_p202702",
+          "monitor_check_hourly_p202701",
+        ],
+        monthsAheadRequired: 2,
+      },
+      "monitor partitions ahead are below the required horizon; run db:partitions",
+    );
+    expect(
+      f.query.mock.calls.map(([text]) =>
+        text.includes("pg_inherits") ? "catalog" : text,
+      ),
+    ).toEqual([
+      "catalog",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+      "catalog",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+      "select * from claim_due_monitor_checks($1)",
+      "select purge_expired_monitor_data($1) as deleted",
+    ]);
+  });
+
+  it("keeps the successful query timestamp even if warning emission fails", async () => {
+    const f = setup();
+    f.log.warn.mockImplementationOnce(() => {
+      throw new Error("logger unavailable");
+    });
+    await f.scheduler.round();
+    await f.scheduler.round();
+    expect(f.catalog).toHaveBeenCalledOnce();
+    expect(f.log.error).toHaveBeenCalledWith(
+      { errorName: "Error" },
+      "partition check failed",
+    );
   });
 });
 
