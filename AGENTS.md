@@ -2,22 +2,19 @@
 
 NightWatch is a multi-tenant, AWS-first cloud security platform.
 
-
-
 ## Read before changing
 
 Follow the applicable reference, including its verification requirements. Keep domain-specific rules in these documents, not duplicated here.
 
-
-| Work                                            | Reference                                    |
-| ----------------------------------------------- | -------------------------------------------- |
-| API, authorization, DB/RLS, queues and dataflow | [Architecture](docs/architecture.md)         |
-| UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md)       |
-| Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md) |
-| Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                 |
-| Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md) |
-| App shell layout, navigation and overlays       | [App shell](docs/ref/shell-structure.md)     |
-| Finding contract sources and code entry points  | [Context index](docs/README.md)              |
+| Work                                            | Reference                                                  |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| API, authorization, DB/RLS, queues and dataflow | [Architecture](docs/architecture.md)                       |
+| UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md)                     |
+| Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md#check-routing) |
+| Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                               |
+| Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md)            |
+| App shell layout, navigation and overlays       | [App shell](docs/ref/shell-structure.md)                   |
+| Finding contract sources and code entry points  | [Code index](docs/features.md)                             |
 
 Search the owning module first, then expand to relevant consumers and shared contracts. Include generated output, lockfiles and historical logs when the question needs them; keep them available for drift, dependency and evidence checks. Do not add blanket ignore rules to reduce context.
 
@@ -37,22 +34,9 @@ Search the owning module first, then expand to relevant consumers and shared con
 
 ## Writing Style
 
-Applies to prose in docs, agent and skill files, handoffs, reviews, commit messages and replies. State the fact, number or decision directly so the reader can act on it.
+Applies to docs, agent and skill files, handoffs, reviews, commit messages and replies. State facts and decisions directly. Preserve cited headings, rule and trace IDs, numbers, dates, code, paths, handoff labels and status words exactly. Do not invent missing facts or add filler, decorative emphasis or closing restatements.
 
-Keep as is, never reword for readability: headings that other files cite, rule and trace IDs (`SYS-`, `DB-`, `AC-`, candidate IDs), numbers and dates, inline code, code blocks, file paths, handoff field labels (`OWNER`, `PROOF`, `BLOCKER`) and status words (`Implemented`, `Deferred`, `source-complete`, `author-verified`, `observed pass`).
-
-| Avoid                                                                                 | Write instead                                                 |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| "Not X, but Y" contrasts                                                              | The actual impact or fact                                     |
-| Filler openers (นอกจากนี้, อย่างไรก็ตาม, Additionally, Moreover)                          | Start with the subject or the fact                            |
-| Inflated words (ยกระดับ, ครอบคลุมอย่างครบถ้วน, robust, comprehensive, seamless, leverage) | Name what is covered or why it matters, with the number or ID |
-| Stacked qualifiers ("อาจจะมีแนวโน้มที่อาจ")                                               | One qualifier, only where the uncertainty is real             |
-| A closing sentence that restates the paragraph                                        | End on the last concrete fact                                 |
-| Dashes inside sentences                                                               | Comma, colon or parentheses                                   |
-| Decorative bold or emoji                                                              | Bold only field labels and totals                             |
-| Chat residue ("หวังว่าจะเป็นประโยชน์", "Let me know")                                     | Remove it                                                     |
-
-Do not add facts, sources, owners or dates while tightening prose. If a sentence needs a missing detail, ask or report it as open.
+[Writing style](docs/ref/writing-style.md) preserves the detailed rules and examples. Read it when editing prose documents or when a wording decision needs those examples.
 
 ## Sub-agent Worker Contract
 
@@ -62,4 +46,3 @@ When your changes create orphans:
 
 - Remove imports/variables/functions that YOUR changes made unused.
 - Don't remove pre-existing dead code unless asked.
-

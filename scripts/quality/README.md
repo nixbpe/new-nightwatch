@@ -4,6 +4,18 @@ Root-level notes for the platform quality scripts. Scripts themselves live in
 the root `package.json`; this file records where policies live and how the
 scripts are meant to evolve.
 
+## Check routing
+
+Use these links to find the relevant sections before reading command recipes. This routing does not reduce required gates, coverage thresholds or evidence obligations. Combine rows when a change crosses boundaries; follow linked prerequisites before execution.
+
+- Verification reports and agent files: [Agent workflow integrity](#agent-workflow-integrity), [Test changes and execution stages](#test-changes-and-execution-stages), and [Platform- and runtime-dependent skips](#platform--and-runtime-dependent-skips).
+- Tests: [Coverage policy](#coverage-policy) and [Test changes and execution stages](#test-changes-and-execution-stages); for Web assertions also read [UI logic tests](#ui-logic-tests).
+- Database, RLS or queued work: [Local development dependencies](#local-development-dependencies-postgresql--mailpit--redis), [Integration tests](#integration-tests-real-database), and [CI database-backed checks](#ci-database-backed-checks). For monitor configuration or partition maintenance, add [Monitor environment and partitions](#monitor-environment-and-partitions).
+- API routes, schemas or Web operation types: [OpenAPI client drift](#openapi-client-drift).
+- Browser flows and E2E isolation: [Playwright E2E](#playwright-e2e) and [Local development dependencies](#local-development-dependencies-postgresql--mailpit--redis).
+- Runtime images or entrypoints: [Container runtime verification](#container-runtime-verification).
+- Dependency or lockfile changes: [Dependency lifecycle scripts](#dependency-lifecycle-scripts).
+
 ## Agent workflow integrity
 
 ```sh

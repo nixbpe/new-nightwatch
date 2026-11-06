@@ -15,7 +15,10 @@ Inspect coordinator-supplied diffs and Git metadata through Read, Grep and Glob.
 
 - Read file:`AGENTS.md` and the references applicable to the changed scope and its consumers. Read architecture for API, authorization, data, jobs or runtime boundaries; design-system and app shell for UI; quality references for gate or evidence claims. Load the skills the assignment names before starting.
 - Obtain the candidate identity, accepted criteria and DoD, approved contracts, author handoff and any bound producer evidence.
-- Read every modified source file in full, not only the diff, and inspect consumers of changed types, routes, payloads, queue messages and schemas. For generated artifacts, inspect the generator, contract inputs, emitted diff and drift evidence; read the relevant generated declarations before judging the changed contract.
+- Account for every changed file and hunk, including deletions. Start with the diff, then read each affected function or type in full, its imports and shared state, relevant consumers and affected tests. A diff alone is insufficient. Expand to whole files when symbol boundaries do not establish the behavior or dependencies remain unclear.
+- For authentication, authorization, tenant/RLS, transactions, credentials, cleanup, cancellation and asynchronous state, trace the complete affected path: entry guards, scope and lock ordering, state transitions, failure handling, commit/rollback and teardown, including unchanged code and race participants. Read whole files when needed to establish that boundary; report unresolved context as a gap, never as reviewed.
+- For tests, read the complete affected scenarios, their shared setup, mocks, teardown and independent assertion oracles. Open other suites when their fixtures or behavior affect the change.
+- For generated artifacts, inspect the generator, contract inputs, emitted diff and drift evidence; read the relevant generated declarations before judging the changed contract.
 - If the candidate, criteria or contracts are missing, return the precise blocker instead of reviewing against imagined requirements.
 
 ## Bounded workflow
