@@ -17,7 +17,10 @@ import { createPortal } from "react-dom";
 
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { useDialogFocusReturn } from "../../components/ui/useDialogFocusReturn";
+import {
+  trapDialogTab,
+  useDialogFocusReturn,
+} from "../../components/ui/useDialogFocusReturn";
 import { ApiError } from "../../lib/api/client";
 import { createProject, updateProject } from "../../lib/api/projects";
 import { cn } from "../../lib/utils";
@@ -178,24 +181,7 @@ export function ProjectFormDialog({
       cancel();
       return;
     }
-    if (event.key !== "Tab") return;
-    const controls = Array.from(
-      dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
-    );
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    if (first === undefined || last === undefined) return;
-    const outside = dialog.current?.contains(document.activeElement) !== true;
-    if (event.shiftKey && (document.activeElement === first || outside)) {
-      event.preventDefault();
-      last.focus();
-    } else if (
-      !event.shiftKey &&
-      (document.activeElement === last || outside)
-    ) {
-      event.preventDefault();
-      first.focus();
-    }
+    trapDialogTab(event, dialog.current, FOCUSABLE);
   };
 
   return createPortal(

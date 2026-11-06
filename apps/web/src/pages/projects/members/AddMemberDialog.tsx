@@ -23,7 +23,10 @@ import { Alert, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
-import { useDialogFocusReturn } from "../../../components/ui/useDialogFocusReturn";
+import {
+  trapDialogTab,
+  useDialogFocusReturn,
+} from "../../../components/ui/useDialogFocusReturn";
 import { ApiError } from "../../../lib/api/client";
 import {
   addProjectMembers,
@@ -186,24 +189,7 @@ export function AddMemberDialog({
       cancel();
       return;
     }
-    if (event.key !== "Tab") return;
-    const controls = Array.from(
-      dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
-    );
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    if (first === undefined || last === undefined) return;
-    const outside = dialog.current?.contains(document.activeElement) !== true;
-    if (event.shiftKey && (document.activeElement === first || outside)) {
-      event.preventDefault();
-      last.focus();
-    } else if (
-      !event.shiftKey &&
-      (document.activeElement === last || outside)
-    ) {
-      event.preventDefault();
-      first.focus();
-    }
+    trapDialogTab(event, dialog.current, FOCUSABLE);
   };
 
   const rows = candidates.data?.candidates;
