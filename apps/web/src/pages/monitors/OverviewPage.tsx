@@ -22,7 +22,6 @@ import { SegmentedControl } from "../../components/ui/segmented-control";
 import {
   fetchMonitorList,
   MONITOR_LIST_PAGE_SIZE,
-  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { cn } from "../../lib/utils";
@@ -30,7 +29,11 @@ import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganiz
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { IntervalText } from "./detail/IntervalText";
 import { PROJECT_GONE_NOTICE } from "../projects/members/ProjectMembersPage";
-import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
+import {
+  isMonitorNotFound,
+  monitorReadPollInterval,
+  useMonitorAccess,
+} from "./useMonitorAccess";
 import { useFlashNotice } from "./flash";
 import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
@@ -148,10 +151,7 @@ function OverviewForProject({
     queryKey: monitorQueryKeys.list(organizationId, projectId, listParams),
     queryFn: () => fetchMonitorList(organizationId, projectId, listParams),
     enabled: isMember && !switchedOrganization,
-    refetchInterval: (query) =>
-      isMonitorNotFound(query.state.error) || isDenied(query.state.error)
-        ? false
-        : MONITOR_REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => monitorReadPollInterval(query.state.error),
     // Safe across filters because the component is keyed by Project.
     placeholderData: keepPreviousData,
   });

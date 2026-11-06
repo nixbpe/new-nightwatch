@@ -347,18 +347,21 @@ describe("TenantProvider", () => {
     );
   });
 
-  it("keeps the inbox scope personal-only when the server has no active organization", async () => {
-    fetchMeContextMock.mockResolvedValue({ ...me, lastActiveTenantId: null });
-    renderProvider();
+  it.each([null, "revoked-org"])(
+    "keeps the inbox scope personal-only for unconfirmed active organization %s",
+    async (lastActiveTenantId) => {
+      fetchMeContextMock.mockResolvedValue({ ...me, lastActiveTenantId });
+      renderProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
-    );
-    expect(screen.getByTestId("active")).toHaveTextContent("none");
-    expect(screen.getByTestId("server-active")).toHaveTextContent(
-      "server:none",
-    );
-  });
+      await waitFor(() =>
+        expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+      );
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+      expect(screen.getByTestId("server-active")).toHaveTextContent(
+        "server:none",
+      );
+    },
+  );
 
   it("allows an explicit membership switch without a usable fallback", async () => {
     const personalOnly = { ...me, lastActiveTenantId: null };

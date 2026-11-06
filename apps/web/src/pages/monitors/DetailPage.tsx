@@ -17,7 +17,6 @@ import { ApiError } from "../../lib/api/client";
 import {
   deleteMonitor,
   fetchMonitorDetail,
-  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
   type MonitorRecentEventsResponse,
   pauseMonitor,
@@ -44,7 +43,11 @@ import {
 } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useDataFresh } from "./useDataFresh";
-import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
+import {
+  isMonitorNotFound,
+  monitorReadPollInterval,
+  useMonitorAccess,
+} from "./useMonitorAccess";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
@@ -171,10 +174,7 @@ function DetailForMonitor({
     queryKey: monitorQueryKeys.detail(organizationId, projectId, monitorId),
     queryFn: () => fetchMonitorDetail(organizationId, projectId, monitorId),
     enabled: isMember && !switchedOrganization,
-    refetchInterval: (query) =>
-      isMonitorNotFound(query.state.error) || isDenied(query.state.error)
-        ? false
-        : MONITOR_REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => monitorReadPollInterval(query.state.error),
   });
 
   const fresh = useDataFresh(detail);

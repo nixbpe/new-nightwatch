@@ -1,5 +1,3 @@
-import type { MeContextResponse } from "@nightwatch/api-contract";
-
 export type SelfLeaveAttempt =
   "responded" | "last-owner" | "last-project-admin" | "other-failure";
 export type SelfLeaveOrigin = Readonly<{
@@ -22,13 +20,3 @@ export type SelfLeaveView =
       notice: "last-owner" | "last-project-admin" | "other";
       message?: string;
     };
-
-export function selfLeaveDestination(
-  context: MeContextResponse,
-): string | null {
-  return context.organizations.some(
-    (organization) => organization.id === context.lastActiveTenantId,
-  )
-    ? context.lastActiveTenantId
-    : null;
-}

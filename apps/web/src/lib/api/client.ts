@@ -24,6 +24,19 @@ export class ApiError extends Error {
   }
 }
 
+function errorEnvelopeToApiError(error: unknown, status: number): ApiError {
+  const parsed = errorResponseSchema.safeParse(error ?? null);
+  if (parsed.success) {
+    const { code, message, details } = parsed.data.error;
+    return new ApiError(code, message, status, details);
+  }
+  return new ApiError(
+    `HTTP_${status.toString()}`,
+    `Request failed with status ${status.toString()}`,
+    status,
+  );
+}
+
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 // Undeclared verbs appear as `?: never`, hence the undefined check.
@@ -187,16 +200,7 @@ export async function request<
   }
 
   if (!response.ok) {
-    const parsed = errorResponseSchema.safeParse(error ?? null);
-    if (parsed.success) {
-      const { code, message, details } = parsed.data.error;
-      throw new ApiError(code, message, response.status, details);
-    }
-    throw new ApiError(
-      `HTTP_${response.status.toString()}`,
-      `Request failed with status ${response.status.toString()}`,
-      response.status,
-    );
+    throw errorEnvelopeToApiError(error, response.status);
   }
 
   if (schema === undefined) {
@@ -280,16 +284,7 @@ export async function requestFile<P extends FilePaths>(
   }
   const { data, error, response } = outcome;
   if (!response.ok) {
-    const parsed = errorResponseSchema.safeParse(error ?? null);
-    if (parsed.success) {
-      const { code, message, details } = parsed.data.error;
-      throw new ApiError(code, message, response.status, details);
-    }
-    throw new ApiError(
-      `HTTP_${response.status.toString()}`,
-      `Request failed with status ${response.status.toString()}`,
-      response.status,
-    );
+    throw errorEnvelopeToApiError(error, response.status);
   }
   // The Blob goes through untouched: reading the body as text would drop a UTF-8 BOM, and
   // Excel needs it to open the CSV as UTF-8.

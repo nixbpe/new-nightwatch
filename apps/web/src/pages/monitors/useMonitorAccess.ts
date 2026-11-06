@@ -2,6 +2,7 @@ import type { ProjectDetail } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "../../lib/api/client";
+import { MONITOR_REFETCH_INTERVAL_MS } from "../../lib/api/monitors";
 import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
@@ -20,6 +21,12 @@ export function isMonitorNotFound(error: unknown): boolean {
     error instanceof ApiError &&
     (error.code === "MONITOR_NOT_FOUND" || error.code === "PROJECT_NOT_FOUND")
   );
+}
+
+export function monitorReadPollInterval(error: unknown): number | false {
+  return isDenied(error) || isMonitorNotFound(error)
+    ? false
+    : MONITOR_REFETCH_INTERVAL_MS;
 }
 
 export type MonitorAccess = {

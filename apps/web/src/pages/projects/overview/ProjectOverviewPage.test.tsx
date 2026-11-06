@@ -194,6 +194,7 @@ afterEach(async () => {
     await client.cancelQueries();
     client.clear();
   }
+  vi.useRealTimers();
   vi.resetAllMocks();
 });
 const ready = () => screen.findByTestId("project-overview-summary");
@@ -206,6 +207,47 @@ const refreshList = (client: QueryClient) =>
       }),
     }),
   );
+
+describe.each(["list", "recent-events"] as const)(
+  "Project overview %s polling",
+  (consumer) => {
+    it.each([
+      ["MEMBERSHIP_DENIED", 403, 0],
+      ["PERMISSION_DENIED", 403, 0],
+      ["MONITOR_NOT_FOUND", 404, 0],
+      ["PROJECT_NOT_FOUND", 404, 0],
+      ["NETWORK_ERROR", 0, 2],
+      ["HTTP_404", 404, 2],
+    ])(
+      "polls after %s only when recoverable",
+      async (code, status, additionalCalls) => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const failure = new ApiError(code, "read failed", status);
+        const fetchMock =
+          consumer === "list"
+            ? vi.mocked(fetchMonitorList)
+            : vi.mocked(fetchMonitorRecentEvents);
+        fetchMock.mockRejectedValue(failure);
+        const { client } = renderPage();
+        const key =
+          consumer === "list"
+            ? monitorQueryKeys.list(A, P, { limit: 25, offset: 0 })
+            : monitorQueryKeys.recentEvents(A, P);
+        await waitFor(() => {
+          expect(client.getQueryState(key)?.error).toBe(failure);
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        const before = fetchMock.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000);
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(before + additionalCalls);
+      },
+    );
+  },
+);
 
 describe("Project overview", () => {
   it("shows the down banner with reason and start time and hides it at zero (AC-01)", async () => {

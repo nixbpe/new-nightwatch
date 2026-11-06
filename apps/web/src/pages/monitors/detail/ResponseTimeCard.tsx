@@ -22,10 +22,12 @@ import {
 } from "../../../components/ui/response-time-series";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
-import { isMonitorNotFound } from "../useMonitorAccess";
+import {
+  isMonitorNotFound,
+  monitorReadPollInterval,
+} from "../useMonitorAccess";
 import {
   fetchMonitorResponseTimes,
-  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
 import { isDenied } from "../useMonitorAccess";
@@ -137,10 +139,7 @@ export function ResponseTimeCard({
     ),
     queryFn: () =>
       fetchMonitorResponseTimes(organizationId, projectId, monitorId, range),
-    refetchInterval: (query) =>
-      isDenied(query.state.error) || isMonitorNotFound(query.state.error)
-        ? false
-        : MONITOR_REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => monitorReadPollInterval(query.state.error),
   });
   const denied = isDenied(query.error);
   const notFound = isMonitorNotFound(query.error);

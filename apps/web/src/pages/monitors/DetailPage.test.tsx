@@ -124,6 +124,50 @@ function showDetail(monitor: Monitor) {
 
 const notFound = () => new ApiError("MONITOR_NOT_FOUND", "not found", 404);
 
+describe.each(["detail", "response-times"] as const)(
+  "%s read polling",
+  (consumer) => {
+    it.each([
+      ["MEMBERSHIP_DENIED", 403, 0],
+      ["PERMISSION_DENIED", 403, 0],
+      ["MONITOR_NOT_FOUND", 404, 0],
+      ["PROJECT_NOT_FOUND", 404, 0],
+      ["NETWORK_ERROR", 0, 2],
+      ["HTTP_404", 404, 2],
+    ])(
+      "polls after %s only when recoverable",
+      async (code, status, additionalCalls) => {
+        vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+        const failure = new ApiError(code, "read failed", status);
+        const fetchMock =
+          consumer === "detail" ? fetchDetailMock : fetchResponseTimesMock;
+        fetchMock.mockRejectedValue(failure);
+        const client =
+          consumer === "detail"
+            ? renderDetail().queryClient
+            : renderResponseCard().client;
+        const key =
+          consumer === "detail"
+            ? monitorQueryKeys.detail(A, P, MONITOR_ID)
+            : monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h");
+        await waitFor(() => {
+          expect(client.getQueryState(key)?.error).toBe(failure);
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        const before = fetchMock.mock.calls.length;
+        // This suite fixes the polling interval at 60 ms; two ticks must reach each real query.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(120);
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(before + additionalCalls);
+        if (consumer === "response-times") client.clear();
+      },
+    );
+  },
+);
+
 describe("Detail health and special states", () => {
   async function expectHealth(health: string, reason?: string) {
     await waitFor(() => {

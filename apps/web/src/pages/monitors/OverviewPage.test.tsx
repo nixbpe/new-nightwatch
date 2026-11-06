@@ -2010,6 +2010,35 @@ describe("Overview recent events", () => {
 });
 
 describe("Overview refetch and announcements", () => {
+  it.each([
+    ["MEMBERSHIP_DENIED", 403, 0],
+    ["PERMISSION_DENIED", 403, 0],
+    ["MONITOR_NOT_FOUND", 404, 0],
+    ["PROJECT_NOT_FOUND", 404, 0],
+    ["NETWORK_ERROR", 0, 2],
+    ["HTTP_404", 404, 2],
+  ])(
+    "polls the list after %s only when recoverable",
+    async (code, status, additionalCalls) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+      const failure = new ApiError(code, "read failed", status);
+      fetchListMock.mockRejectedValue(failure);
+      const { queryClient } = renderPage();
+      const key = monitorQueryKeys.list(A, P, { limit: 25, offset: 0 });
+      await waitFor(() => {
+        expect(queryClient.getQueryState(key)?.error).toBe(failure);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      const before = fetchListMock.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetchListMock).toHaveBeenCalledTimes(before + additionalCalls);
+    },
+  );
+
   it("announces a filter result once and leaves the live region alone through two 30 s refetches", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
     const user = userEvent.setup({

@@ -45,11 +45,11 @@ import {
   type InboxScopeRequest,
 } from "./bootstrap";
 
-import {
-  selfLeaveDestination,
-  type SelfLeaveInput,
-  type SelfLeaveOrigin,
-  type SelfLeaveView,
+import { selectActiveOrganization } from "./activeOrganization";
+import type {
+  SelfLeaveInput,
+  SelfLeaveOrigin,
+  SelfLeaveView,
 } from "./selfLeave";
 
 type ConfirmationBinding = Readonly<{
@@ -288,10 +288,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const admission = publication.admission;
   const me = admission.kind === "confirmed" ? admission.context : undefined;
   const memberships = me?.organizations;
-  const lastActiveTenantId = me?.lastActiveTenantId ?? null;
-
-  const activeOrg: Membership | null =
-    memberships?.find((org) => org.id === lastActiveTenantId) ?? null;
+  const activeOrg: Membership | null = selectActiveOrganization(me);
   const serverActiveOrgId = activeOrg?.id ?? null;
 
   const confirmMembership = useCallback(
@@ -418,7 +415,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         kind: "ready",
         source,
         binding: outcome.binding,
-        destination: selfLeaveDestination(outcome.context),
+        destination: selectActiveOrganization(outcome.context)?.id ?? null,
       });
     }
   };

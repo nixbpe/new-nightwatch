@@ -21,6 +21,7 @@ import {
 } from "../api/audit-log";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import { selectActiveOrganization } from "../tenant/activeOrganization";
 import {
   assertContextIdentity,
   contextQueryOptions,
@@ -217,11 +218,7 @@ export async function notificationsLoader({
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
   if (context === undefined) return null;
-  const activeOrganizationId = context.organizations.some(
-    (organization) => organization.id === context.lastActiveTenantId,
-  )
-    ? context.lastActiveTenantId
-    : null;
+  const activeOrganizationId = selectActiveOrganization(context)?.id ?? null;
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
       queryKey: notificationQueryKey(activeOrganizationId),

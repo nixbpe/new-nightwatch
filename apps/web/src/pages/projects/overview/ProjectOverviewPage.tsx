@@ -13,7 +13,6 @@ import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
   MONITOR_LIST_PAGE_SIZE,
-  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
 import {
@@ -31,6 +30,7 @@ import {
 import {
   isDenied,
   isMonitorNotFound,
+  monitorReadPollInterval,
   useMonitorAccess,
 } from "../../monitors/useMonitorAccess";
 import { PROJECT_GONE_NOTICE } from "../members/ProjectMembersPage";
@@ -69,19 +69,13 @@ function OverviewForProject({
     queryKey: monitorQueryKeys.list(organizationId, projectId, listParams),
     queryFn: () => fetchMonitorList(organizationId, projectId, listParams),
     enabled,
-    refetchInterval: (query) =>
-      isDenied(query.state.error) || isMonitorNotFound(query.state.error)
-        ? false
-        : MONITOR_REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => monitorReadPollInterval(query.state.error),
   });
   const events = useQuery({
     queryKey: monitorQueryKeys.recentEvents(organizationId, projectId),
     queryFn: () => fetchMonitorRecentEvents(organizationId, projectId),
     enabled,
-    refetchInterval: (query) =>
-      isDenied(query.state.error) || isMonitorNotFound(query.state.error)
-        ? false
-        : MONITOR_REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => monitorReadPollInterval(query.state.error),
   });
   const errors = [list.error, events.error, project.error];
   const denied = errors.some(isDenied);

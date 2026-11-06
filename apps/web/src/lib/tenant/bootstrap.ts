@@ -1,6 +1,7 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import type { QueryClient } from "@tanstack/react-query";
 
+import { selectActiveOrganization } from "./activeOrganization";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import {
   claimContextPublication,
@@ -130,11 +131,7 @@ export async function recoverInboxScope(
   )
     return;
   const admission = publication.admission;
-  const currentScope = admission.context.organizations.some(
-    (org) => org.id === admission.context.lastActiveTenantId,
-  )
-    ? admission.context.lastActiveTenantId
-    : null;
+  const currentScope = selectActiveOrganization(admission.context)?.id ?? null;
   if (
     request.scopeHint.kind === "known" &&
     request.scopeHint.scope !== currentScope

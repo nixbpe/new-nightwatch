@@ -58,36 +58,25 @@ export function FieldValidationError({
   errors: readonly unknown[];
 }) {
   const first = errors[0];
-  if (typeof first === "string") {
-    return (
-      <span
-        data-testid={testId}
-        id={id}
-        role="alert"
-        className="mt-1 block text-sm text-danger"
-      >
-        {first}
-      </span>
-    );
-  }
-  if (
-    first != null &&
-    typeof first === "object" &&
-    "message" in first &&
-    typeof first.message === "string"
-  ) {
-    return (
-      <span
-        data-testid={testId}
-        id={id}
-        role="alert"
-        className="mt-1 block text-sm text-danger"
-      >
-        {first.message}
-      </span>
-    );
-  }
-  return null;
+  const message =
+    typeof first === "string"
+      ? first
+      : first != null &&
+          typeof first === "object" &&
+          "message" in first &&
+          typeof first.message === "string"
+        ? first.message
+        : null;
+  return message === null ? null : (
+    <span
+      data-testid={testId}
+      id={id}
+      role="alert"
+      className="mt-1 block text-sm text-danger"
+    >
+      {message}
+    </span>
+  );
 }
 
 export function SubmitButton({

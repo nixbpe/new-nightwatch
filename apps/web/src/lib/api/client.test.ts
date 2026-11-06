@@ -99,6 +99,18 @@ describe("api request helper", () => {
     );
   });
 
+  it("rejects 204 when a success contract is expected", async () => {
+    stubFetch(new Response(null, { status: 204 }));
+    await expect(
+      request("/api/me/context", meContextResponseSchema),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      code: "CONTRACT_MISMATCH",
+      message: "API response did not match the contract",
+      status: 204,
+    });
+  });
+
   it("resolves 204 No Content when no schema is expected", async () => {
     stubFetch(new Response(null, { status: 204 }));
     await expect(
@@ -154,6 +166,86 @@ describe("api request helper", () => {
       code: "NETWORK_ERROR",
       status: 0,
     });
+  });
+});
+
+describe.each([
+  [
+    "request",
+    (signal?: AbortSignal) =>
+      request("/api/me/context", meContextResponseSchema, { signal }),
+  ],
+  [
+    "requestFile",
+    (signal?: AbortSignal) =>
+      requestFile(
+        "/api/organizations/{organizationId}/audit-log/exports/{exportId}/download",
+        { params: { organizationId: "org-1", exportId: "exp-1" }, signal },
+      ),
+  ],
+] as const)("%s error boundary", (_name, call) => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("preserves ApiError identity, server message and nested details", async () => {
+    stubFetch(
+      jsonResponse(422, {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "invalid fields",
+          details: { fields: [{ path: "email", message: "invalid email" }] },
+        },
+      }),
+    );
+    const failure: unknown = await call().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({
+      name: "ApiError",
+      code: "VALIDATION_ERROR",
+      message: "invalid fields",
+      status: 422,
+      details: { fields: [{ path: "email", message: "invalid email" }] },
+    });
+  });
+
+  it.each([
+    null,
+    { error: { code: "BAD" } },
+    { error: { code: 12, message: "bad" } },
+  ])("uses the HTTP fallback for invalid envelope %j", async (body) => {
+    stubFetch(jsonResponse(503, body));
+    const failure: unknown = await call().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({
+      code: "HTTP_503",
+      message: "Request failed with status 503",
+      status: 503,
+      details: undefined,
+    });
+  });
+
+  it("uses the HTTP fallback for a non-JSON response", async () => {
+    stubFetch(new Response("<html>unavailable</html>", { status: 502 }));
+    await expect(call()).rejects.toMatchObject({
+      code: "HTTP_502",
+      message: "Request failed with status 502",
+      status: 502,
+    });
+  });
+
+  it("forwards abort and maps it to NETWORK_ERROR", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new DOMException("aborted", "AbortError"));
+    vi.stubGlobal("fetch", fetchMock);
+    controller.abort();
+    await expect(call(controller.signal)).rejects.toMatchObject({
+      name: "ApiError",
+      code: "NETWORK_ERROR",
+      message: "Could not reach the API",
+      status: 0,
+    });
+    expect(issuedRequest(fetchMock).signal.aborted).toBe(true);
   });
 });
 
