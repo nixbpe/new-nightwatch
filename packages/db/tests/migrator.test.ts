@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { listMigrations, sha256 } from "../src/migrator";
+import { listMigrations } from "../src/migrator";
 
 let dir: string;
 
@@ -24,10 +24,19 @@ describe("listMigrations", () => {
     await writeFile(join(dir, "wrong_name.sql"), "select 0;");
 
     const migrations = await listMigrations(dir);
-    expect(migrations.map((migration) => migration.name)).toEqual([
-      "0001_init.sql",
-      "0002_add_widgets.sql",
+    expect(migrations).toEqual([
+      {
+        name: "0001_init.sql",
+        sql: "select 1;",
+        sha256:
+          "354b7196c9ba5fb4b21cf615bb6ec4cd5c07503c34229feef033fc081a8c03f4",
+      },
+      {
+        name: "0002_add_widgets.sql",
+        sql: "select 2;",
+        sha256:
+          "b1bd6d0bfa373a448021e0b2e8311b967e0e7ff45431b7105668662498cc2067",
+      },
     ]);
-    expect(migrations[0]?.sha256).toBe(sha256("select 1;"));
   });
 });

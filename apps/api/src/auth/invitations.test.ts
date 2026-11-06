@@ -52,34 +52,17 @@ describe("assertInvitationAdmitsSignup", () => {
     await expect(failure).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  it("refuses a replayed, cancelled or unknown invitation identically", async () => {
-    for (const scenario of [
-      { invitationId: "inv_unknown", rows: [] },
-      { invitationId: "inv_cancelled", rows: [] },
-      { invitationId: "inv_expired", rows: [] },
-    ]) {
-      const { database } = stubDatabase(scenario.rows);
-      const failure = assertInvitationAdmitsSignup(database, {
-        invitationId: scenario.invitationId,
-        email: "user@example.com",
-      });
-      await expect(failure).rejects.toMatchObject({
-        statusCode: 403,
-        code: "INVITATION_REQUIRED",
-      });
-    }
-  });
-
-  it("refuses an invitation that belongs to a different email", async () => {
-    // The lookup joins on lower(email): a row only comes back when the
-    // invitation matches the signup email.
+  it("refuses signup when the invitation lookup returns no row", async () => {
     const { database } = stubDatabase([]);
     await expect(
       assertInvitationAdmitsSignup(database, {
-        invitationId: "inv_1",
-        email: "attacker@example.com",
+        invitationId: "inv_unknown",
+        email: "user@example.com",
       }),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "INVITATION_REQUIRED",
+    });
   });
 });
 

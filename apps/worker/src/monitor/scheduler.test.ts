@@ -44,14 +44,29 @@ describe("startMonitorSchedule", () => {
       stop: () => undefined,
     };
     const handle = startMonitorSchedule(scheduler, logger, 5);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const stopping = handle.stop();
-    gate.resolve(undefined);
-    await stopping;
-    const startedAtStop = started;
-    expect(finished).toBe(started);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(started).toBe(startedAtStop);
+    try {
+      expect(started).toBe(1);
+      expect(finished).toBe(0);
+      const stopping = handle.stop();
+      await expect(
+        Promise.race([
+          stopping.then(() => "stopped"),
+          new Promise((resolve) =>
+            setTimeout(() => {
+              resolve("pending");
+            }, 0),
+          ),
+        ]),
+      ).resolves.toBe("pending");
+      gate.resolve(undefined);
+      await stopping;
+      expect(finished).toBe(1);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(started).toBe(1);
+    } finally {
+      gate.resolve(undefined);
+      await handle.stop();
+    }
   });
 });
 

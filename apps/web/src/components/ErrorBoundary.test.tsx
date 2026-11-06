@@ -62,15 +62,23 @@ describe("ErrorBoundary", () => {
   });
 
   it("retries rendering children when reset", async () => {
+    let recovered = false;
+    function RecoverableChild() {
+      if (!recovered) throw new Error("kaboom");
+      return <p data-testid="boundary-child">recovered</p>;
+    }
+
     render(
       <ErrorBoundary>
-        <Bomb />
+        <RecoverableChild />
       </ErrorBoundary>,
     );
-    await userEvent.click(screen.getByTestId("render-error-retry"));
-    // Bomb throws again, so the fallback returns — proving the reset ran.
     expect(screen.getByTestId("render-error-message")).toHaveTextContent(
       "kaboom",
     );
+    recovered = true;
+    await userEvent.click(screen.getByTestId("render-error-retry"));
+    expect(screen.getByTestId("boundary-child")).toHaveTextContent("recovered");
+    expect(screen.queryByTestId("render-error")).not.toBeInTheDocument();
   });
 });

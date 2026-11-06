@@ -158,7 +158,14 @@ describe("createLogger", () => {
       },
       "env",
     );
-    expect(read()).not.toContain("top-key-sentinel");
-    expect(read()).not.toContain("nested-key-sentinel");
+    const output = read();
+    const line = JSON.parse(output.trim()) as Record<string, unknown>;
+    expect(line["msg"]).toBe("env");
+    expect(line["CREDENTIAL_ENCRYPTION_KEYS"]).toBe("[REDACTED]");
+    expect(line["env"]).toEqual({
+      CREDENTIAL_ENCRYPTION_KEYS: "[REDACTED]",
+    });
+    expect(output).not.toContain("top-key-sentinel");
+    expect(output).not.toContain("nested-key-sentinel");
   });
 });

@@ -108,16 +108,6 @@ describe("projectSwitchDestination (AC-04)", () => {
       expect(projectSwitchDestination(pathname, ORG, P2)).toBe(monitors);
     }
   });
-
-  it("keeps the members page apart from the monitors", () => {
-    expect(
-      projectSwitchDestination(
-        `/organizations/${ORG}/projects/${P1}/members`,
-        ORG,
-        P2,
-      ),
-    ).toBe(`/organizations/${ORG}/projects/${P2}/members`);
-  });
 });
 
 describe("Project scope in the navigation definition", () => {

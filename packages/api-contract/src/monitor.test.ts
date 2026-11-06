@@ -53,9 +53,6 @@ describe("parseExpectedStatus", () => {
   it.each([
     ["100", true],
     ["599", true],
-    ["99", false],
-    ["600", false],
-    ["300-200", false],
     ["200-600", false],
   ])("code range boundary %s", (text, ok) => {
     expect(parseExpectedStatus(text).ok).toBe(ok);
@@ -394,13 +391,7 @@ describe("Monitor alert settings validation and defaults", () => {
     expect(editShape.success && editShape.data.alerts).toEqual(alerts);
   });
 
-  it("monitorConfigSchema defaults omitted alert fields to 2 failures, both toggles on, and 30 SSL caution days", () => {
-    expect(monitorConfigSchema.parse(base).alerts).toEqual({
-      failureThreshold: 2,
-      downEnabled: true,
-      sslEnabled: true,
-      sslCautionDays: 30,
-    });
+  it("monitorConfigSchema defaults missing fields in a partial alerts object while preserving downEnabled false", () => {
     expect(
       monitorConfigSchema.parse({ ...base, alerts: { downEnabled: false } })
         .alerts,

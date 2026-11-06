@@ -241,6 +241,5 @@ describe("requestFile", () => {
       code: "NETWORK_ERROR",
       status: 0,
     });
-    expect(ApiError).toBeDefined();
   });
 });
