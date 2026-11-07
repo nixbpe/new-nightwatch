@@ -9,7 +9,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   claimDueMonitorChecks,
   createDatabase,
-  ensureMonitorPartitions,
   purgeExpiredMonitorData,
   runMigrations,
   withTenantContextRaw,
@@ -1264,7 +1263,7 @@ describe("ensure_monitor_partitions", () => {
   });
 
   it("creates previous, current and 3 following months with forced RLS", async () => {
-    await ensureMonitorPartitions(ownerDatabase, { monthsAhead: 3 });
+    await ownerDatabase.sql.query("select ensure_monitor_partitions($1)", [3]);
     for (const parent of parents) {
       const names = await partitionNames(parent);
       for (const offset of [-1, 0, 1, 2, 3]) {
@@ -1297,7 +1296,10 @@ describe("ensure_monitor_partitions", () => {
          for values from ('2035-01-01Z') to ('2035-02-01Z')`,
     );
     try {
-      await ensureMonitorPartitions(ownerDatabase, { monthsAhead: 3 });
+      await ownerDatabase.sql.query(
+        "select ensure_monitor_partitions($1)",
+        [3],
+      );
       const names = await partitionNames("monitor_check_results");
       expect(names).not.toContain(old);
       expect(names).toContain(far);

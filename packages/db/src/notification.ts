@@ -50,7 +50,7 @@ export type NotificationDispatchFailureReason =
 
 /** Sets account RLS scope on an existing transaction; it never opens a pool
  * transaction and must receive the transaction that owns the auth mutation. */
-export async function setAccountContext(
+async function setAccountContext(
   tx: NotificationTransaction,
   userId: string,
 ): Promise<void> {
@@ -88,7 +88,7 @@ export async function withAccountContextRaw<T>(
 }
 
 /** Creates an idempotent ledger row on the caller's existing scoped transaction. */
-export async function createNotificationDispatch(
+async function createNotificationDispatch(
   tx: NotificationTransaction,
   input: { id: string; intentId: string },
 ): Promise<void> {
@@ -408,11 +408,12 @@ export async function markNotificationDispatchEnqueued(
   database: Database,
   input: { id: string; claimToken: string },
 ): Promise<boolean> {
-  return updateDispatchStatus(
-    database,
-    "mark_notification_dispatch_enqueued",
-    input,
+  assertDispatchToken(input);
+  const result = await database.sql.query<{ updated: boolean }>(
+    "select mark_notification_dispatch_enqueued($1, $2) as updated",
+    [input.id, input.claimToken],
   );
+  return result.rows[0]?.updated === true;
 }
 
 export async function failNotificationDispatch(
@@ -455,17 +456,6 @@ export async function resolveNotificationDispatchClaim(
   };
 }
 
-export async function completeNotificationDispatch(
-  database: Database,
-  input: { id: string; claimToken: string },
-): Promise<boolean> {
-  return updateDispatchStatus(
-    database,
-    "complete_notification_dispatch",
-    input,
-  );
-}
-
 /** Deletes only already-expired inbox rows in a bounded worker batch. */
 export async function purgeExpiredNotificationInboxItems(
   database: Database,
@@ -477,22 +467,6 @@ export async function purgeExpiredNotificationInboxItems(
     [input.limit],
   );
   return result.rows.map((row) => row.id);
-}
-
-async function updateDispatchStatus(
-  database: Database,
-  functionName:
-    | "mark_notification_dispatch_enqueued"
-    | "fail_notification_dispatch"
-    | "complete_notification_dispatch",
-  input: { id: string; claimToken: string },
-): Promise<boolean> {
-  assertDispatchToken(input);
-  const result = await database.sql.query<{ updated: boolean }>(
-    `select ${functionName}($1, $2) as updated`,
-    [input.id, input.claimToken],
-  );
-  return result.rows[0]?.updated === true;
 }
 
 function assertClaimLimit(limit: number): void {

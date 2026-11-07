@@ -43,17 +43,6 @@ export async function purgeExpiredMonitorData(
   return result.rows[0]?.deleted ?? 0;
 }
 
-/** Owner-role only (DB-09): the runtime role has no EXECUTE on this function. */
-export async function ensureMonitorPartitions(
-  ownerDatabase: Database,
-  input: { monthsAhead: number },
-): Promise<void> {
-  assertBoundedInteger(input.monthsAhead, 0, 12, "monthsAhead");
-  await ownerDatabase.sql.query("select ensure_monitor_partitions($1)", [
-    input.monthsAhead,
-  ]);
-}
-
 function assertBoundedInteger(
   value: number,
   min: number,

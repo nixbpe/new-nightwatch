@@ -1,8 +1,4 @@
-import {
-  ensureAuditEventPartitions,
-  withTenantContextRaw,
-  type Database,
-} from "@nightwatch/db";
+import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import type { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -192,8 +188,14 @@ describe("migration 0020 on a database that already holds F-004 to F-006 data", 
 
   it("db:partitions logic is repeatable and has no default partition", async () => {
     const before = await partitionNames();
-    await ensureAuditEventPartitions(ownerDatabase, { monthsAhead: 3 });
-    await ensureAuditEventPartitions(ownerDatabase, { monthsAhead: 3 });
+    await ownerDatabase.sql.query(
+      "select ensure_audit_event_partitions($1)",
+      [3],
+    );
+    await ownerDatabase.sql.query(
+      "select ensure_audit_event_partitions($1)",
+      [3],
+    );
     expect(await partitionNames()).toEqual(before);
     expect(before.some((name) => name.includes("default"))).toBe(false);
     // Four months past the horizon has no partition, so the insert fails loudly.
@@ -212,7 +214,10 @@ describe("partition retention", () => {
     await ensurePartitionFor(stillNeeded);
     expect(await partitionNames()).toContain(monthName(tooOld));
 
-    await ensureAuditEventPartitions(ownerDatabase, { monthsAhead: 3 });
+    await ownerDatabase.sql.query(
+      "select ensure_audit_event_partitions($1)",
+      [3],
+    );
 
     const names = await partitionNames();
     expect(names).not.toContain(monthName(tooOld));

@@ -1,22 +1,15 @@
 export {
   createDatabase,
   DB_READINESS_TIMEOUT_MS,
-  DB_POOL_CONNECTION_TIMEOUT_MS,
-  DB_POOL_MAX,
-  DB_QUERY_TIMEOUT_MS,
   type Database,
 } from "./client";
-export { schema } from "./schema";
 export {
-  withTenantContext,
   withTenantContextRaw,
   withTenantUserContextRaw,
 } from "./tenant-context";
 export {
   claimNotificationDispatches,
-  completeNotificationDispatch,
   failNotificationDispatch,
-  createNotificationDispatch,
   initializeAccountMfaState,
   insertAccountNotificationIntent,
   insertAuditExportNotificationIntent,
@@ -26,10 +19,8 @@ export {
   requeueStaleNotificationDispatches,
   resolveNotificationDispatchClaim,
   purgeExpiredNotificationInboxItems,
-  setAccountContext,
   withAccountContext,
   withAccountContextRaw,
-  type AccountNotificationEventType,
   type MonitorNotificationEventType,
   type MonitorNotificationInput,
   type NotificationDispatchClaim,
@@ -42,13 +33,10 @@ export {
   auditEventFilterParams,
   auditEventFilterWhere,
   readAuditEventBatch,
-  type AuditEventBatchCursor,
   type AuditEventBatchRow,
-  type AuditEventFilter,
 } from "./audit-events";
 export {
   claimAuditExport,
-  ensureAuditEventPartitions,
   failStaleAuditExports,
   findStaleAuditExports,
   purgeAuditExports,
@@ -57,15 +45,7 @@ export {
 } from "./audit";
 export {
   claimDueMonitorChecks,
-  ensureMonitorPartitions,
   purgeExpiredMonitorData,
   type MonitorCheckClaim,
 } from "./monitor";
-export {
-  listMigrations,
-  runMigrations,
-  sha256,
-  MIGRATIONS_TRACKING_TABLE,
-  type Migration,
-  type MigrationResult,
-} from "./migrator";
+export { listMigrations, runMigrations, sha256 } from "./migrator";

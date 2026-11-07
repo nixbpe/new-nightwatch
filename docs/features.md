@@ -62,7 +62,7 @@
 
 ## ฐานข้อมูลและ migrations
 
-[Database package](../packages/db/), [SQL migrations](../packages/db/migrations/).
+[Database package](../packages/db/), [Auth models](../packages/db/src/schema.ts), [raw SQL contexts](../packages/db/src/tenant-context.ts), [SQL migrations](../packages/db/migrations/).
 
 ## Toolchain และ CI
 

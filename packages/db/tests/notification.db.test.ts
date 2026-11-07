@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   claimNotificationDispatches,
-  completeNotificationDispatch,
   createDatabase,
   failNotificationDispatch,
   insertAccountNotificationIntent,
@@ -18,7 +17,6 @@ import {
   runMigrations,
   withAccountContext,
   withAccountContextRaw,
-  withTenantContext,
   withTenantContextRaw,
 } from "../src";
 
@@ -152,8 +150,11 @@ describe("notification database scopes", () => {
       userId: accountA,
     });
     await expect(
-      completeNotificationDispatch(database, { id: dispatchId, claimToken }),
-    ).resolves.toBe(true);
+      database.sql.query(
+        "select complete_notification_dispatch($1, $2) as updated",
+        [dispatchId, claimToken],
+      ),
+    ).resolves.toMatchObject({ rows: [{ updated: true }] });
 
     await withAccountContextRaw(database, accountA, async (client) => {
       const result = await client.query<{ user_id: string }>(
@@ -173,19 +174,24 @@ describe("notification database scopes", () => {
   });
 
   it("forces tenant context and rolls back account intent with its transaction", async () => {
-    await withTenantContext(database, tenantA, async (tx) => {
-      await tx.execute(
-        sql`insert into notification_org_settings (tenant_id) values (${tenantA})`,
-      );
-    });
-    const crossTenant = await withTenantContext(database, tenantB, async (tx) =>
-      tx.execute(sql`select tenant_id from notification_org_settings`),
+    await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        "insert into notification_org_settings (tenant_id) values ($1)",
+        [tenantA],
+      ),
+    );
+    const crossTenant = await withTenantContextRaw(
+      database,
+      tenantB,
+      (client) =>
+        client.query("select tenant_id from notification_org_settings"),
     );
     expect(crossTenant.rows).toEqual([]);
     await expect(
-      withTenantContext(database, tenantB, async (tx) =>
-        tx.execute(
-          sql`insert into notification_org_settings (tenant_id) values (${tenantA})`,
+      withTenantContextRaw(database, tenantB, (client) =>
+        client.query(
+          "insert into notification_org_settings (tenant_id) values ($1)",
+          [tenantA],
         ),
       ),
     ).rejects.toThrow();
@@ -353,11 +359,11 @@ describe("notification database scopes", () => {
       }),
     ).resolves.toBe(true);
     await expect(
-      completeNotificationDispatch(database, {
-        id: dispatchId,
-        claimToken: recoveredToken,
-      }),
-    ).resolves.toBe(true);
+      database.sql.query(
+        "select complete_notification_dispatch($1, $2) as updated",
+        [dispatchId, recoveredToken],
+      ),
+    ).resolves.toMatchObject({ rows: [{ updated: true }] });
     await expect(
       owner.query(
         `select status, failure_reason, failure_summary
@@ -640,11 +646,11 @@ describe("notification database scopes", () => {
     });
 
     await expect(
-      completeNotificationDispatch(database, {
-        id: accountDispatchId,
-        claimToken,
-      }),
-    ).resolves.toBe(true);
+      database.sql.query(
+        "select complete_notification_dispatch($1, $2) as updated",
+        [accountDispatchId, claimToken],
+      ),
+    ).resolves.toMatchObject({ rows: [{ updated: true }] });
 
     await withAccountContextRaw(database, accountA, async (client) => {
       const visible = await client.query<{ intent_id: string; status: string }>(
