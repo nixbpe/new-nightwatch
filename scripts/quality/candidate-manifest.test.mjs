@@ -107,6 +107,9 @@ describe("candidate manifest", () => {
     const root = await repository();
     const first = parse(manifest(root));
     const firstEntry = first.files.find((file) => file.path === "tracked.txt");
+    expect(firstEntry.sha256).toBe(
+      "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919",
+    );
     await chmod(path.join(root, "tracked.txt"), 0o755);
     const second = parse(manifest(root));
     const secondEntry = second.files.find(
@@ -131,7 +134,12 @@ describe("candidate manifest", () => {
     const firstEntry = first.files.find(
       (file) => file.path === "dangling-link",
     );
-    expect(firstEntry).toMatchObject({ state: "untracked", kind: "symlink" });
+    expect(firstEntry).toMatchObject({
+      state: "untracked",
+      kind: "symlink",
+      sha256:
+        "d6c70e7c9bb795bf2eb94896ee5063f74b208590c401adafac14735debb5468e",
+    });
 
     await unlink(link);
     await symlink("missing-target-b", link);
@@ -149,6 +157,9 @@ describe("candidate manifest", () => {
     await symlink(Buffer.from([0xff]), link);
     const first = parse(manifest(root));
     const firstEntry = first.files.find((file) => file.path === "byte-link");
+    expect(firstEntry.sha256).toBe(
+      "a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89",
+    );
 
     await unlink(link);
     await symlink(Buffer.from([0xfe]), link);
