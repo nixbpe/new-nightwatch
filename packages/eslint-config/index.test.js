@@ -2,150 +2,179 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
+import tseslint from "typescript-eslint";
 
 import { createConfig } from "./index.js";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-async function lintImport(
-  kind,
-  specifier,
-  filePath = "packages/eslint-config/src/boundary.js",
-) {
+async function lint(kind, code, filePath = "src/boundary.js") {
+  const workspace = ["web", "api", "worker"].includes(kind)
+    ? `apps/${kind}`
+    : `packages/${kind === "config" ? "eslint-config" : kind}`;
   const eslint = new ESLint({
-    cwd: repoRoot,
+    cwd: `${repoRoot}/${workspace}`,
     overrideConfigFile: true,
-    overrideConfig: createConfig({ kind }),
+    overrideConfig: [
+      ...createConfig({ kind, apiService: ["api", "worker"].includes(kind) }),
+      // Virtual snippets exercise import policies, not TypeScript project discovery.
+      tseslint.configs.disableTypeChecked,
+    ],
   });
-  const [result] = await eslint.lintText(`import "${specifier}";`, {
-    filePath,
-  });
-
-  return result.messages;
+  const [result] = await eslint.lintText(code, { filePath });
+  return result.messages.map(({ ruleId, severity }) => ({ ruleId, severity }));
 }
 
-const forbiddenImports = [
-  ["web", "@nightwatch/db", "web allows only @nightwatch/api-contract."],
-  ["web", "@nightwatch/queue", "web allows only @nightwatch/api-contract."],
-  ["web", "pg", "web forbids PostgreSQL and Redis clients."],
-  ["web", "redis", "web forbids PostgreSQL and Redis clients."],
-  [
-    "web",
-    "@nightwatch/api-contract/auth",
-    "@nightwatch/api-contract exports are available only from its package root.",
+const error = (ruleId) => [{ ruleId, severity: 2 }];
+const policy = {
+  web: [
+    ["@nightwatch/api-contract", true],
+    ["@nightwatch/db", false],
+    ["@nightwatch/queue", false],
+    ["pg", false],
+    ["redis", false],
+    ["@redis/client", false],
+    ["@redis/client/dist", false],
+    ["@upstash/redis", false],
+    ["@redis-tools/client", true],
+    ["@nightwatch/api-contract/auth", false],
+    ["@nightwatch/api-contract-extra", false],
+    ["pg-formatter", true],
   ],
-  [
-    "shared",
-    "@nightwatch/api-contract",
-    "shared allows no workspace runtime packages.",
+  api: [
+    ["@nightwatch/api-contract", true],
+    ["@nightwatch/shared", true],
+    ["@nightwatch/db", true],
+    ["@nightwatch/db/subpath", true],
+    ["@nightwatch/web", false],
   ],
-  ["db", "@nightwatch/shared", "db allows no workspace runtime packages."],
-  [
-    "api-contract",
-    "@nightwatch/db",
-    "api-contract allows no workspace runtime packages.",
+  worker: [
+    ["@nightwatch/shared", true],
+    ["@nightwatch/db", true],
+    ["@nightwatch/api-contract", false],
+    ["@nightwatch/api", false],
   ],
-  [
-    "api",
-    "@nightwatch/web",
-    "api allows only @nightwatch/api-contract, @nightwatch/shared, @nightwatch/db.",
+  shared: [
+    ["zod", true],
+    ["@nightwatch/api-contract", false],
   ],
-  [
-    "worker",
-    "@nightwatch/api-contract",
-    "worker allows only @nightwatch/shared, @nightwatch/db.",
+  db: [
+    ["pg", true],
+    ["@nightwatch/shared", false],
   ],
-  [
-    "worker",
-    "@nightwatch/api",
-    "worker allows only @nightwatch/shared, @nightwatch/db.",
+  "api-contract": [
+    ["zod", true],
+    ["@nightwatch/db", false],
   ],
-  [
-    "config",
-    "@nightwatch/shared",
-    "config allows no workspace runtime packages.",
+  config: [
+    ["eslint", true],
+    ["@nightwatch/shared", false],
   ],
-];
+};
+for (const [kind, cases] of Object.entries(policy)) {
+  test(`${kind} workspace import policy`, async () => {
+    for (const [specifier, allowed] of cases) {
+      assert.deepEqual(
+        await lint(kind, `import "${specifier}";`),
+        allowed ? [] : error("no-restricted-imports"),
+        `${kind}: ${specifier}`,
+      );
+    }
+  });
+}
 
-for (const [kind, specifier, policyMessage] of forbiddenImports) {
-  test(`${kind} rejects ${specifier}`, async () => {
-    const messages = (await lintImport(kind, specifier)).map(
-      ({ ruleId, severity, message }) => ({ ruleId, severity, message }),
+const syntax = {
+  import: (s) => `import "${s}";`,
+  "export all": (s) => `export * from "${s}";`,
+  "export named": (s) => `export { value } from "${s}";`,
+  "dynamic import": (s) => `await import("${s}");`,
+  "static template import": (s) => `await import(\`${s}\`);`,
+};
+for (const [name, code] of Object.entries(syntax)) {
+  test(`${name} respects relative workspace boundaries`, async () => {
+    assert.deepEqual(
+      await lint(
+        "web",
+        code("../../../../packages/db/src/client"),
+        "src/lib/boundary.js",
+      ),
+      error("nightwatch/no-cross-workspace-relative-imports"),
     );
-
-    assert.deepEqual(messages, [
-      {
-        ruleId: "no-restricted-imports",
-        severity: 2,
-        message: `'${specifier}' import is restricted from being used by a pattern. ${policyMessage}`,
-      },
-    ]);
-  });
-}
-
-const forbiddenRelativeImports = [
-  ["web", "../../../packages/db/src/client", "apps/web/src/boundary.js"],
-  [
-    "api",
-    "../../../packages/api-contract/src/auth",
-    "apps/api/src/boundary.js",
-  ],
-  [
-    "web",
-    "../../../packages/api-contract/src/auth",
-    "apps/web/src/boundary.js",
-  ],
-  ["shared", "../../../apps/api/src/app", "packages/shared/src/boundary.js"],
-  ["shared", "../../db/src/client", "packages/shared/src/boundary.js"],
-  ["api", "../../web/src/main", "apps/api/src/boundary.js"],
-  ["worker", "../../api/src/app", "apps/worker/src/boundary.js"],
-];
-
-for (const [kind, specifier, filePath] of forbiddenRelativeImports) {
-  test(`${kind} rejects cross-workspace ${specifier}`, async () => {
-    const messages = (await lintImport(kind, specifier, filePath)).map(
-      ({ ruleId, severity, message }) => ({ ruleId, severity, message }),
+    assert.deepEqual(
+      await lint("web", code("../api/me"), "src/lib/boundary.js"),
+      [],
     );
-    assert.deepEqual(messages, [
-      {
-        ruleId: "nightwatch/no-cross-workspace-relative-imports",
-        severity: 2,
-        message:
-          "Relative imports must not cross workspace roots; import through the package root.",
-      },
-    ]);
   });
 }
 
-test("web allows an internal directory named api", async () => {
+test("relative boundaries cover both workspace roots and allowed named packages", async () => {
+  for (const [kind, source] of [
+    ["api", "../../web/src/main"],
+    ["shared", "../../../apps/api/src/app"],
+    ["shared", "../../db/src/client"],
+    ["api", "../../../packages/api-contract/src/auth"],
+  ]) {
+    assert.deepEqual(
+      await lint(kind, syntax.import(source)),
+      error("nightwatch/no-cross-workspace-relative-imports"),
+      `${kind}: ${source}`,
+    );
+  }
+});
+
+for (const name of ["dynamic import", "static template import"]) {
+  test(`${name} obeys named import policies`, async () => {
+    for (const [specifier, allowed] of policy.web) {
+      assert.deepEqual(
+        await lint("web", syntax[name](specifier)),
+        allowed ? [] : error("no-restricted-syntax"),
+        specifier,
+      );
+    }
+  });
+}
+
+test("service profile blocks Hono for actual service filenames", async () => {
+  for (const file of ["service.ts", "read-service.ts", "projects.service.ts"]) {
+    for (const specifier of [
+      "hono",
+      "hono/http-exception",
+      "@hono/zod-openapi",
+    ]) {
+      assert.deepEqual(
+        await lint("api", syntax.import(specifier), `src/projects/${file}`),
+        error("no-restricted-imports"),
+        `${file}: ${specifier}`,
+      );
+      assert.deepEqual(
+        await lint(
+          "api",
+          syntax["dynamic import"](specifier),
+          `src/projects/${file}`,
+        ),
+        error("no-restricted-syntax"),
+      );
+    }
+    assert.deepEqual(
+      await lint(
+        "api",
+        syntax.import("@nightwatch/db"),
+        `src/projects/${file}`,
+      ),
+      [],
+    );
+  }
   assert.deepEqual(
-    await lintImport("web", "../api/me", "apps/web/src/lib/boundary.js"),
+    await lint("api", syntax.import("hono"), "src/projects/routes.ts"),
     [],
   );
 });
 
-test("workspace kind is required", () => {
-  assert.throws(
-    () => createConfig(),
-    /createConfig requires a valid workspace kind/,
-  );
+test("workspace kind is required and must be known", () => {
+  for (const options of [undefined, { kind: "typo" }]) {
+    assert.throws(
+      () => createConfig(options),
+      /createConfig requires a valid workspace kind/,
+    );
+  }
 });
-
-const allowedImports = [
-  ["web", "@nightwatch/api-contract"],
-  ["api", "@nightwatch/api-contract"],
-  ["api", "@nightwatch/shared"],
-  ["api", "@nightwatch/db/subpath"],
-  ["worker", "@nightwatch/shared"],
-  ["worker", "@nightwatch/db"],
-  ["shared", "zod"],
-  ["db", "pg"],
-  ["api-contract", "zod"],
-  ["config", "eslint"],
-];
-
-for (const [kind, specifier] of allowedImports) {
-  test(`${kind} allows ${specifier}`, async () => {
-    assert.deepEqual(await lintImport(kind, specifier), []);
-  });
-}

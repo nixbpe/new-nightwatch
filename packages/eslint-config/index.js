@@ -40,7 +40,12 @@ const workspaceBoundaryPlugin = {
       create(context) {
         const importerRoot = workspaceLocation(context.filename);
         const checkSource = (node) => {
-          const specifier = node.source?.value;
+          const source = node.source;
+          const specifier =
+            source?.type === "TemplateLiteral" &&
+            source.expressions.length === 0
+              ? source.quasis[0].value.cooked
+              : source?.value;
           if (
             importerRoot === null ||
             typeof specifier !== "string" ||
@@ -59,11 +64,7 @@ const workspaceBoundaryPlugin = {
           ImportDeclaration: checkSource,
           ExportAllDeclaration: checkSource,
           ExportNamedDeclaration: checkSource,
-          ImportExpression(node) {
-            if (node.source.type === "Literal") {
-              checkSource({ source: node.source });
-            }
-          },
+          ImportExpression: checkSource,
         };
       },
     },
@@ -101,6 +102,25 @@ const apiContractRootOnlyPattern = {
     "@nightwatch/api-contract exports are available only from its package root.",
 };
 
+function importRules(patterns) {
+  return {
+    "no-restricted-imports": ["error", { patterns }],
+    "no-restricted-syntax": [
+      "error",
+      ...patterns.map(({ regex, message }) => {
+        const escaped = regex.replaceAll("/", "\\/");
+        return {
+          selector: [
+            `ImportExpression[source.type="Literal"][source.value=/${escaped}/]`,
+            `ImportExpression[source.type="TemplateLiteral"][source.expressions.length=0][source.quasis.0.value.cooked=/${escaped}/]`,
+          ].join(", "),
+          message,
+        };
+      }),
+    ],
+  };
+}
+
 /**
  * NightWatch flat-config factory.
  *
@@ -114,7 +134,7 @@ export function createConfig({ kind, react = false, apiService = false } = {}) {
   if (kind === "web") {
     boundaryPatterns.push({
       regex:
-        "^(?:pg|postgres|drizzle-orm|redis|ioredis|bullmq|@redis/|@upstash/redis)(?:/|$)",
+        "^(?:pg|postgres|drizzle-orm|redis|ioredis|bullmq|@redis|@upstash/redis)(?:/|$)",
       message: "web forbids PostgreSQL and Redis clients.",
     });
   }
@@ -177,12 +197,7 @@ export function createConfig({ kind, react = false, apiService = false } = {}) {
       ignores: ["eslint.config.js"],
       plugins: { nightwatch: workspaceBoundaryPlugin },
       rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: boundaryPatterns,
-          },
-        ],
+        ...importRules(boundaryPatterns),
         "nightwatch/no-cross-workspace-relative-imports": "error",
       },
     },
@@ -190,21 +205,16 @@ export function createConfig({ kind, react = false, apiService = false } = {}) {
       ? [
           {
             name: "nightwatch/api-service-boundary",
-            files: ["src/**/*.service.ts"],
+            files: ["src/**/{service,*-service,*.service}.{ts,mts,cts}"],
             rules: {
-              "no-restricted-imports": [
-                "error",
+              ...importRules([
+                ...boundaryPatterns,
                 {
-                  patterns: [
-                    ...boundaryPatterns,
-                    {
-                      group: ["hono", "hono/*", "@hono/*"],
-                      message:
-                        "Service files hold business logic and must not depend on Hono. HTTP concerns belong in routes.",
-                    },
-                  ],
+                  regex: "^(?:hono(?:/|$)|@hono/)",
+                  message:
+                    "Service files hold business logic and must not depend on Hono. HTTP concerns belong in routes.",
                 },
-              ],
+              ]),
             },
           },
         ]

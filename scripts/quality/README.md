@@ -29,6 +29,19 @@ bun run candidate:manifest -- --base HEAD
 - `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
 - Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
 
+## ESLint configuration tests
+
+```sh
+bun run --cwd packages/eslint-config test
+```
+
+CI runs this suite in the `lint` job. It checks NightWatch import policy and
+rule wiring through ESLint, asserting rule IDs and severity rather than upstream
+English diagnostics. Coverage includes relative imports and re-exports, literal
+and expression-free template dynamic imports, and service filename matching.
+Runtime-computed import targets are not resolved. Virtual TypeScript snippets
+disable type-aware checks; `bun run lint` uses the real TypeScript projects.
+
 ## Local development dependencies (PostgreSQL + Mailpit + Redis)
 
 The auth/database features need real PostgreSQL, observable email, and the
