@@ -195,6 +195,21 @@ CI needs no extra wiring: the `test` job already exports both database URLs
 from its disposable PostgreSQL service and runs `bun run db:migrate` before
 `bun run test:coverage`, so the gate measures real factory/adapter paths.
 
+### Monitor RLS coverage
+
+The database integration suites replace `e2e/verification/rls-check.ts`:
+
+| Check                                                                                          | Retained source                                                                  |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Enabled/forced RLS, restrictive guards, function owners, fixed search paths and EXECUTE grants | [`monitor catalog invariants`](../../packages/db/tests/monitor.db.test.ts)       |
+| Populated A/B isolation, absent context, cross-tenant reads/writes and Project foreign keys    | [`monitor tenant isolation`](../../packages/db/tests/monitor.db.test.ts)         |
+| The connected runtime role is neither superuser nor BYPASSRLS                                  | [`hostname migration`](../../packages/db/tests/notification-hostname.db.test.ts) |
+| Monitor creation through API routes with real PostgreSQL                                       | [`monitor writes`](../../apps/api/src/monitors/write.db.test.ts)                 |
+
+Run the DB package's `test:integration` plus the API integration project with
+`src/monitors/write.db.test.ts`, using the isolated environment above. The remaining
+manual harnesses retain stack-level outage, restart, SSRF and secret/log checks.
+
 ## CI database-backed checks
 
 - The CI `test` job (and the dispatch-only `full` job) run PostgreSQL, Mailpit,
