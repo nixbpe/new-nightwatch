@@ -104,9 +104,10 @@ export function useCurrentProject(): CurrentProject {
     routeProjectId,
     status: resolving,
     rawProjectRoute: projectRoute,
+    // A cached list cannot settle a landing while its latest read is outstanding,
+    // whether the route Project is missing or its cached access has been revoked.
     validation:
-      mePending ||
-      (!denied && projects === undefined && (list.isPending || list.isFetching))
+      mePending || (!denied && (list.isPending || list.isFetching))
         ? "pending"
         : meError !== null ||
             denied ||
