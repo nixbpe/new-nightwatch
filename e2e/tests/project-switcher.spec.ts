@@ -295,3 +295,103 @@ test("a bookmarked Project of another Organization, with many Projects, keeps th
   await page.getByTestId("shell-mobile-open").click();
   await assertBounded(page.getByTestId("shell-mobile-menu"), 560);
 });
+
+test("cached-list miss keeps workspace behind validation and the landing save", async ({
+  page,
+}) => {
+  await signIn(page, people.owner);
+  await page.goto(membersUrl(alpha));
+  await expect
+    .poll(async () => {
+      const resolved = await ownerSession.request(
+        "GET",
+        `/api/me/last-project?organizationId=${org}`,
+      );
+      return (resolved.body as { projectId: string }).projectId;
+    })
+    .toBe(alpha);
+  await page
+    .getByTestId("shell-nav-/organizations/:organizationId/projects")
+    .click();
+  await expect(page.getByTestId("projects-create")).toBeVisible();
+
+  const listStarted = Promise.withResolvers<void>();
+  const releaseList = Promise.withResolvers<void>();
+  const saveStarted = Promise.withResolvers<void>();
+  const releaseSave = Promise.withResolvers<void>();
+  const events: string[] = [];
+  let workspace = false;
+  let landingId: string | undefined;
+  // Keep the existing cache while a real create invalidates and refetches it.
+  await page.route(`**/api/organizations/${org}/projects`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    listStarted.resolve();
+    await releaseList.promise;
+    await route.fulfill({ response });
+  });
+  await page.route("**/api/me/last-project**", async (route) => {
+    const request = route.request();
+    if (request.method() === "PUT") {
+      expect(request.postDataJSON()).toMatchObject({
+        organizationId: org,
+        projectId: landingId,
+      });
+      events.push("save");
+      saveStarted.resolve();
+      await releaseSave.promise;
+    } else if (workspace) events.push("workspace-read");
+    await route.continue();
+  });
+  // Native same-document history navigation preserves the mounted query cache,
+  // unlike page.goto, which would discard the race's cached-list precondition.
+  const navigate = (path: string) =>
+    page.evaluate((destination) => {
+      history.pushState(null, "", destination);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, path);
+  try {
+    await page.getByTestId("projects-create").click();
+    await page.getByTestId("project-form-name").fill(`Landing ${run}`);
+    await page.getByTestId("project-form-slug").fill(`landing-${run}`);
+    const createdResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/organizations/${org}/projects`) &&
+        response.request().method() === "POST",
+    );
+    await page.getByTestId("project-form-submit").click();
+    const created = await createdResponse;
+    expect(created.status()).toBe(201);
+    landingId = ((await created.json()) as { id: string }).id;
+    await listStarted.promise;
+    await navigate(membersUrl(landingId));
+    await expect(page.getByTestId("project-members-table")).toBeVisible();
+    expect(events).toEqual([]);
+
+    workspace = true;
+    const contextResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/me/resolve-active-org",
+    );
+    await navigate("/workspace");
+    // The workspace loader has begun its membership read; keep the list held
+    // until that response is delivered, then release validation, not a timer.
+    await (await contextResponse).finished();
+    releaseList.resolve();
+    await saveStarted.promise;
+    expect(events).toEqual(["save"]);
+    releaseSave.resolve();
+    await expect(page).toHaveURL(
+      `/organizations/${org}/projects/${landingId}/overview`,
+    );
+    expect(events.slice(0, 2)).toEqual(["save", "workspace-read"]);
+    const stored = await ownerSession.request(
+      "GET",
+      `/api/me/last-project?organizationId=${org}`,
+    );
+    expect(stored.body).toMatchObject({ projectId: landingId });
+  } finally {
+    releaseList.resolve();
+    releaseSave.resolve();
+  }
+});

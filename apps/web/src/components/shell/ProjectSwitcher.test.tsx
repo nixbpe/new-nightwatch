@@ -4,6 +4,7 @@ import type {
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -28,12 +29,14 @@ import {
 } from "../../lib/api/projects";
 import {
   bindQueryClientIdentity,
+  publishActiveQueryClient,
   resetQueryClientRegistry,
 } from "../../lib/queryClient";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { AppShell } from "./AppShell";
 import { waitForLastProjectSaves } from "../../lib/lastProjectSave";
+import { workspaceLoader } from "../../lib/auth/loaders";
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
@@ -43,6 +46,11 @@ vi.mock("better-auth/react", () => ({
       },
       isPending: false,
     }),
+    getSession: () =>
+      Promise.resolve({
+        data: { user: { id: "user-1", emailVerified: true } },
+        error: null,
+      }),
     signOut: vi.fn(),
     organization: { inviteMember: vi.fn() },
   }),
@@ -147,6 +155,7 @@ function renderShell({
   lastFails = false,
   secondOrgRole,
   listGate,
+  cachedProjects,
 }: {
   path?: string;
   role?: "owner" | "viewer";
@@ -157,6 +166,7 @@ function renderShell({
   secondOrgRole?: "owner" | "viewer";
   /** Holds every Project list fetch until it resolves. */
   listGate?: Promise<void>;
+  cachedProjects?: ProjectSummary[];
 } = {}) {
   fetchMeContextMock.mockResolvedValue(meContext(role, secondOrgRole));
   fetchProjectListMock.mockImplementation(async (organizationId) => {
@@ -172,6 +182,10 @@ function renderShell({
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
+  if (cachedProjects !== undefined)
+    queryClient.setQueryData(projectQueryKeys.list(ORG_A), {
+      projects: cachedProjects,
+    });
   const router = createMemoryRouter(
     [
       {
@@ -514,6 +528,168 @@ describe("ProjectSwitcher", () => {
       saves[0]?.settle("ok");
       await waiting;
       expect(cached(view)).toEqual({ projectId: P_ALPHA });
+    });
+
+    it.each(["readable", "absent", "failed"] as const)(
+      "cached-list miss holds workspace through latest %s validation and save",
+      async (outcome) => {
+        const list = Promise.withResolvers<undefined>();
+        const view = renderShell({
+          path: membersPath(P_BRAVO),
+          cachedProjects: [ALPHA],
+          projects: outcome === "readable" ? [ALPHA, BRAVO] : [ALPHA],
+          listGate: list.promise,
+          last: P_ALPHA,
+        });
+        const saves = deferSaves();
+        await routeCommitted(P_BRAVO);
+        await waitFor(() => {
+          expect(fetchProjectListMock).toHaveBeenCalled();
+        });
+        publishActiveQueryClient("user-1", view.queryClient);
+        const done = vi.fn();
+        const waiting = waitForLastProjectSaves(
+          view.queryClient,
+          ORG_A,
+          new AbortController().signal,
+        ).then(done);
+        const loaded = vi.fn();
+        const loading = workspaceLoader({
+          request: new Request("http://localhost/workspace"),
+          url: new URL("http://localhost/workspace"),
+          pattern: "/workspace",
+          params: {},
+          context: {},
+        }).then((result) => {
+          loaded();
+          return result;
+        });
+        // Flush resolved loader/session work while the list remains explicitly held.
+        await act(async () => {});
+        expect(done).not.toHaveBeenCalled();
+        expect(loaded).not.toHaveBeenCalled();
+        expect(fetchLastProjectMock).not.toHaveBeenCalled();
+        expect(sentIds(saves)).toEqual([]);
+
+        if (outcome === "failed") list.reject(new Error("latest list failed"));
+        else list.resolve(undefined);
+        if (outcome === "readable") {
+          await waitFor(() => {
+            expect(sentIds(saves)).toEqual([P_BRAVO]);
+          });
+          expect(done).not.toHaveBeenCalled();
+          expect(fetchLastProjectMock).not.toHaveBeenCalled();
+          fetchLastProjectMock.mockResolvedValue({ projectId: P_BRAVO });
+          saves[0]?.settle("ok");
+        }
+        await waiting;
+        const response = await loading;
+        expect(response).toBeInstanceOf(Response);
+        if (response instanceof Response)
+          expect(response.headers.get("Location")).toBe(
+            overviewPath(outcome === "readable" ? P_BRAVO : P_ALPHA),
+          );
+        expect(sentIds(saves)).toEqual(outcome === "readable" ? [P_BRAVO] : []);
+        expect(done).toHaveBeenCalledTimes(1);
+        view.unmount();
+        view.router.dispose();
+        view.queryClient.clear();
+      },
+    );
+
+    it("does not admit a stale cached Project while its latest list is refetching", async () => {
+      const list = Promise.withResolvers<undefined>();
+      const view = renderShell({
+        path: membersPath(P_BRAVO),
+        cachedProjects: [ALPHA, BRAVO],
+        projects: [ALPHA],
+        listGate: list.promise,
+      });
+      const saves = deferSaves();
+      await routeCommitted(P_BRAVO);
+      await waitFor(() => {
+        expect(fetchProjectListMock).toHaveBeenCalled();
+      });
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      await act(async () => {});
+      expect(sentIds(saves)).toEqual([]);
+      expect(done).not.toHaveBeenCalled();
+      list.resolve(undefined);
+      await waiting;
+      expect(sentIds(saves)).toEqual([]);
+      view.unmount();
+      view.router.dispose();
+      view.queryClient.clear();
+    });
+
+    it("saves only the latest rapid landing after cached-list misses validate", async () => {
+      const list = Promise.withResolvers<undefined>();
+      const view = renderShell({
+        path: membersPath(P_ALPHA),
+        cachedProjects: [ALPHA],
+        listGate: list.promise,
+      });
+      const saves = deferSaves();
+      await routeCommitted(P_ALPHA);
+      await waitFor(() => {
+        expect(fetchProjectListMock).toHaveBeenCalled();
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await routeCommitted(P_BRAVO);
+      await view.router.navigate(membersPath(P_CHARLIE));
+      await routeCommitted(P_CHARLIE);
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      await act(async () => {});
+      expect(done).not.toHaveBeenCalled();
+      expect(sentIds(saves)).toEqual([]);
+      list.resolve(undefined);
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_CHARLIE]);
+      });
+      saves[0]?.settle("ok");
+      await waiting;
+      expect(cached(view)).toEqual({ projectId: P_CHARLIE });
+      view.unmount();
+      view.router.dispose();
+      view.queryClient.clear();
+    });
+
+    it("retires a cached-miss landing before a late list validation can save it", async () => {
+      const list = Promise.withResolvers<undefined>();
+      const view = renderShell({
+        path: membersPath(P_BRAVO),
+        cachedProjects: [ALPHA],
+        listGate: list.promise,
+      });
+      const saves = deferSaves();
+      await routeCommitted(P_BRAVO);
+      await waitFor(() => {
+        expect(fetchProjectListMock).toHaveBeenCalled();
+      });
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      );
+      // SessionQueryProvider retires the old identity by unmounting its subtree.
+      view.unmount();
+      await waiting;
+      list.resolve(undefined);
+      await act(async () => {});
+      expect(sentIds(saves)).toEqual([]);
+      expect(cached(view)).toBeUndefined();
+      view.router.dispose();
+      view.queryClient.clear();
     });
 
     it("tracks the raw Project landing before membership context resolves", async () => {
