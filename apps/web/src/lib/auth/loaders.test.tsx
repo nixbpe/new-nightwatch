@@ -1382,8 +1382,18 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
   it("reads the monitor fresh for Edit even when a Detail poll is cached", async () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue(member);
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const key = monitorQueryKeys.detail(organizationId, P, monitorId);
+    client.setQueryData(ME_CONTEXT_QUERY_KEY, member);
+    client.setQueryData(key, { monitor: detail({ version: 8 }) });
     const fresh = { monitor: detail({ version: 9 }) };
-    fetchMonitorDetailMock.mockResolvedValue(fresh);
+    fetchMonitorDetailMock.mockImplementation(() => {
+      expect(
+        client.getQueryData<{ monitor: { version: number } }>(key)?.monitor
+          .version,
+      ).toBe(8);
+      return Promise.resolve(fresh);
+    });
     renderAt([editRoute], editPath);
 
     expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
@@ -1397,6 +1407,10 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
         monitorQueryKeys.detail(organizationId, P, monitorId),
       ),
     ).toEqual(fresh);
+    expect(
+      client.getQueryData<{ monitor: { version: number } }>(key)?.monitor
+        .version,
+    ).toBe(9);
   });
 
   it("requests no monitor for an Organization the user does not belong to", async () => {
