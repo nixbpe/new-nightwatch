@@ -56,7 +56,7 @@ function monitorNotFound(): never {
   throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
 }
 
-// A malformed id answers like a missing or foreign one (AC-48).
+// A malformed id answers like a missing or foreign one.
 export function parseMonitorId(raw: string): string {
   if (!UUID_PATTERN.test(raw)) monitorNotFound();
   return raw;
@@ -106,7 +106,7 @@ async function resolveWithDeadline(
 }
 
 /**
- * Save-time URL checks (AC-09, AC-28). The URL is built exactly as a check
+ * Save-time URL checks. The URL is built exactly as a check
  * builds it, so a URL that only becomes too long after the query params are
  * added is rejected now instead of failing every check later. Resolution runs
  * outside any transaction (REQ-01) and sends no HTTP request. A name that does
@@ -460,7 +460,7 @@ export async function editMonitor(
       stored,
       mode: "save",
     });
-    // A kept value was entered for the old destination (AC-44).
+    // A kept value was entered for the old destination.
     if (plan.keeps.length > 0) assertSameOrigin(previous, next);
     const secretsChanged = plan.writes.length > 0 || plan.deletes.length > 0;
     if (sameConfig(previous, next) && !secretsChanged) {
@@ -600,7 +600,7 @@ async function changeMonitorStatus(
     }
 
     const updated = await client.query<MonitorRow>(
-      // Resume restarts the failure streak (AC-19).
+      // Resume restarts the failure streak.
       `update monitors set status = $3, version = version + 1,
          consecutive_failures = case when $3 = 'active' then 0
                                      else consecutive_failures end,
@@ -613,7 +613,7 @@ async function changeMonitorStatus(
     if (!saved) throw new Error("monitor update returned no row");
 
     // Pause clears the claim so a late result is dropped, and NULL makes the
-    // row unclaimable; Resume is due immediately (AC-54).
+    // row unclaimable; Resume is due immediately.
     await client.query(
       `update monitor_schedule set claim_token = null, claimed_until = null,
          next_check_at = case when $2 = 'paused' then null else now() end

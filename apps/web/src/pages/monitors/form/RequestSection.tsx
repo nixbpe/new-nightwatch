@@ -27,7 +27,7 @@ import {
 import { headerSlot, storedSet } from "./secrets";
 import { replaceButtonId, SecretSlot } from "./SecretSlot";
 
-// AC-47: query parameters and the body are readable by every reader of the monitor.
+// Query parameters and the body are readable by every reader of the monitor.
 const VISIBLE_WARNING =
   "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน";
 

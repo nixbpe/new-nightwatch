@@ -1,8 +1,8 @@
 /**
- * AC-53 across the stack and the Redis half of AC-57. Runs only against a
- * throwaway stack (its own PostgreSQL and Redis containers, API and Worker with
- * all roles): it stops, pauses and starts the Redis container named by
- * REDIS_CONTAINER, so it must never point at a shared Redis.
+ * Runs only against a throwaway stack with its own PostgreSQL and Redis
+ * containers, API and Worker with all roles. It stops, pauses and starts the
+ * Redis container named by REDIS_CONTAINER, so it must never point at a shared
+ * Redis.
  *
  *   REDIS_CONTAINER=... API_PORT=... DATABASE_URL=... DATABASE_OWNER_URL=... \
  *   REDIS_URL=... EVIDENCE_OUT=... bun e2e/verification/redis-outage.ts

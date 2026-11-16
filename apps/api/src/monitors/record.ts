@@ -184,7 +184,7 @@ export function sameConfig(left: StoredConfig, right: StoredConfig): boolean {
   return canonical(left) === canonical(right);
 }
 
-// AC-40: only these fields change what a check sends or how it is judged.
+// Only these fields change what a check sends or how it is judged.
 // Assertions compare their normalized form, so `$.a` and `$['a']` are the same.
 export function affectsChecks(
   previous: StoredConfig,

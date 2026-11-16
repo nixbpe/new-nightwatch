@@ -93,7 +93,7 @@ function AuditEventForOrganization({
     report(actors.error);
   }, [actors.error, report]);
 
-  // AC-18: opening a detail page puts focus on its h1.
+  // Opening a detail page puts focus on its h1.
   useEffect(() => {
     titleRef.current?.focus();
   }, []);

@@ -20,7 +20,7 @@ export type HealthFacts = {
     outcome: "pass" | "fail" | "check_error";
     configVersion: number;
     ageSeconds: number;
-    /** A `resumed` event is newer than this result (AC-19). */
+    /** A `resumed` event is newer than this result. */
     predatesResume: boolean;
   } | null;
 };
@@ -52,12 +52,12 @@ export function computeHealth(facts: HealthFacts): Health {
 
   const { latest } = facts;
   if (latest === null) return unknown("never_checked");
-  // A result of an older config does not describe the current one (AC-40).
+  // A result of an older config does not describe the current one.
   if (latest.configVersion !== facts.checkConfigVersion) {
     return unknown("awaiting_new_config");
   }
-  // A result from before the last Resume does not describe the monitor now
-  // (AC-19); it reads as "no new result" until a check runs after the Resume.
+  // A result from before the last Resume does not describe the monitor now;
+  // it reads as "no new result" until a check runs after the Resume.
   if (latest.predatesResume || latest.ageSeconds > 2 * facts.intervalSeconds) {
     return unknown("stale");
   }

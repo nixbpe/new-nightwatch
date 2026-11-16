@@ -12,7 +12,7 @@ const FORBIDDEN_HEADERS = new Set([
 
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
-/** Returns the offending header name, or null when every header is allowed (AC-29). */
+/** Returns the offending header name, or null when every header is allowed. */
 export function findInvalidHeader(
   headers: Record<string, string>,
 ): string | null {

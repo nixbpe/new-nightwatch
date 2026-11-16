@@ -269,7 +269,7 @@ async function assertOwnerMayChangeOwner(
 // Organization Owners and Admins who are not Project members do not count as
 // Project administrators, same as `assertAnotherAdmin` in the Projects module.
 // Runs under the Organization row lock, so a concurrent Project role change
-// (which takes the row FOR SHARE first) cannot interleave (AC-06).
+// (which takes the row FOR SHARE first) cannot interleave.
 async function assertNotLastProjectAdmin(
   client: PoolClient,
   organizationId: string,

@@ -1,5 +1,5 @@
 /**
- * AC-25, AC-42, AC-56: scan captured API and Worker logs and API response
+ * Scan captured API and Worker logs and API response
  * bodies for the secret and query/body values the scenarios sent.
  *
  *   bun e2e/verification/scan-logs.ts <secrets.json>... @@ <log file>...

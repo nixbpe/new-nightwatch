@@ -204,7 +204,7 @@ export async function addProjectMembers(
       let inserted: { userId: string }[];
       try {
         // A user already in the Project keeps their role: the request adds,
-        // it never changes (AC-04).
+        // it never changes.
         const result = await client.query<{ userId: string }>(
           `insert into project_members (project_id, tenant_id, user_id, role)
            select $1, $2, u, $4 from unnest($3::text[]) as u
@@ -243,7 +243,7 @@ export async function addProjectMembers(
 
 // Rows are read after the Project lock, so two requests that would together
 // remove the last administrator run one after the other and the second sees
-// the first's result (AC-06). Organization Owners and Admins who are not
+// the first's result. Organization Owners and Admins who are not
 // Project members do not count as Project administrators.
 async function targetMemberRole(
   client: PoolClient,

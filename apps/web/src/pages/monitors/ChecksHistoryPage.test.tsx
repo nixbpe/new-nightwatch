@@ -841,7 +841,7 @@ describe("Checks history URL changes", () => {
   });
 });
 
-// Wording of a saved result that the Detail last-result card used to show alone (AC-84).
+// Wording of a saved result that the Detail last-result card used to show alone.
 describe("Checks history saved-result wording", () => {
   const reasonCell = (row: HTMLElement) =>
     within(row).getByTestId("monitor-check-cell-reason");

@@ -12,7 +12,7 @@
  * runs in one transaction with a lock_timeout: on timeout the transaction
  * rolls back (no partial state), the script exits 1 and a rerun is safe.
  *
- * audit_events (F-007) gets the same previous, current and next N month
+ * audit_events gets the same previous, current and next N month
  * partitions; its partitions are dropped once their whole range is older than
  * 366 days. A missing audit partition makes every audited mutation fail.
  *

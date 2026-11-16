@@ -1,5 +1,5 @@
 /**
- * AC-37 and AC-60 on the running stack database: a Worker that is stopped with
+ * On the running stack database, a Worker that is stopped with
  * SIGTERM or killed in the middle of a check leaves no half-written state, no
  * duplicate result and no incident, and two Workers never produce two results
  * for one round. The caller stops the stack's own Worker first so only the
@@ -240,7 +240,7 @@ try {
     incidents2,
   );
 
-  // Two Workers at once (AC-37): one result per round.
+  // Two Workers at once: one result per round.
   const w2 = startWorker("replica");
   workers.push(w2);
   const from = Date.now();

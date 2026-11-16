@@ -1,6 +1,6 @@
 import { auditScopeNote } from "@nightwatch/api-contract";
 
-// P-05, AC-09: the text comes from the contract so the page, the dialog and the files agree.
+// The text comes from the contract so the page, the dialog and the files agree.
 export function RecordingScopeNote({ since }: { since?: string }) {
   return (
     <p

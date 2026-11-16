@@ -16,7 +16,7 @@ import {
 import { updateOrganizationNotificationSettings } from "../organization-notifications/service";
 import { blockAuditInserts, openIsolatedAuditDatabase } from "./test-support";
 
-// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
 let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let database: Database;

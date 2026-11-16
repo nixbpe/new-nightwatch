@@ -245,7 +245,7 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await expect(
     page.getByTestId("monitor-overview-table-region"),
   ).toHaveAccessibleName(/\S/);
-  // AC-04: name with URL, status, p95 and availability over 24 h, last check.
+  // Name with URL, status, p95 and availability over 24 h, last check.
   for (const key of ["name", "health", "p95", "h24", "lastCheck"]) {
     await expect(
       table.getByTestId(`monitor-list-heading-${key}`),

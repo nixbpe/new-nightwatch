@@ -63,7 +63,7 @@ export function monitorNotFound(): never {
   throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
 }
 
-// A malformed id answers like a missing or foreign one (AC-48).
+// A malformed id answers like a missing or foreign one.
 export function parseMonitorId(raw: string): string {
   if (!UUID_PATTERN.test(raw)) monitorNotFound();
   return raw;
@@ -103,8 +103,6 @@ export async function readInTenant<T>(
     },
   );
 }
-
-// ---- Monitor state ---------------------------------------------------------
 
 type StateRow = {
   id: string;
@@ -263,8 +261,6 @@ export function sslOf(row: StateRow, now: Date) {
     now,
   );
 }
-
-// ---- Uptime ----------------------------------------------------------------
 
 export type UptimeWindows = {
   h24: UptimeWindow;
@@ -431,8 +427,6 @@ export function toIsoInterval(interval: Interval) {
     to: interval.to.toISOString(),
   };
 }
-
-// ---- List ------------------------------------------------------------------
 
 const HEALTH_ORDER: Record<MonitorHealthName, number> = {
   down: 0,
@@ -725,8 +719,6 @@ export async function listMonitors(
   );
 }
 
-// ---- Recent events ---------------------------------------------------------
-
 const RECENT_DAYS = 30;
 
 type IncidentEventRow = {
@@ -889,8 +881,6 @@ function compareEvents(
   return left.monitorId < right.monitorId ? -1 : 1;
 }
 
-// ---- Detail ----------------------------------------------------------------
-
 function latestResultOf(row: StateRow): CheckResultView | null {
   if (
     row.latestScheduledFor === null ||
@@ -974,8 +964,6 @@ export async function getMonitor(
     },
   );
 }
-
-// ---- Check history and incidents -------------------------------------------
 
 // A monitor of another Project answers like a missing one (IDOR across Projects).
 async function assertMonitorInProject(
@@ -1135,8 +1123,6 @@ export async function listIncidents(
     },
   );
 }
-
-// ---- Response times --------------------------------------------------------
 
 export async function getResponseTimes(
   database: Database,
@@ -1302,8 +1288,6 @@ export async function getResponseTimes(
     },
   );
 }
-
-// ---- Event feed (#58) ------------------------------------------------------
 
 type FeedRow = {
   kind: MonitorEvent["kind"];
@@ -1513,8 +1497,6 @@ export async function listEvents(
     },
   );
 }
-
-// ---- Last response (#58) ---------------------------------------------------
 
 type LastResponseRow = {
   scheduledFor: Date;

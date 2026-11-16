@@ -5,8 +5,6 @@ import { z } from "zod";
 // the normalized forms, so the Worker never parses user text. The API tests
 // compare the lists below with packages/shared.
 
-// ---- Limits (spec: Design decisions, OD-20) --------------------------------
-
 export const MONITOR_LIMIT_PER_PROJECT = 20;
 export const MONITOR_NAME_MAX_LENGTH = 100;
 export const MONITOR_URL_MAX_LENGTH = 2048;
@@ -78,7 +76,7 @@ export function isStorableText(value: string): boolean {
   return !value.includes("\0") && !UNPAIRED_SURROGATE.test(value);
 }
 
-/** Allowed ports: 80, 443 and 1024-65535 (AC-28). */
+/** Allowed ports: 80, 443 and 1024-65535. */
 export function isAllowedMonitorPort(port: number): boolean {
   return port === 80 || port === 443 || (port >= 1024 && port <= 65535);
 }
@@ -86,8 +84,6 @@ export function isAllowedMonitorPort(port: number): boolean {
 function utf8Length(value: string): number {
   return new TextEncoder().encode(value).length;
 }
-
-// ---- Invalid-input reasons (spec: API, errors table) ------------------------
 
 export const MONITOR_INVALID_REASONS = [
   "required",
@@ -157,8 +153,6 @@ export const MONITOR_ERROR_CODES = [
 ] as const;
 export type MonitorErrorCode = (typeof MONITOR_ERROR_CODES)[number];
 
-// ---- Parsers ---------------------------------------------------------------
-
 export type MonitorParseResult<T> =
   { ok: true; value: T } | { ok: false; reason: MonitorInvalidReason };
 
@@ -173,7 +167,7 @@ export type StatusRange = { from: number; to: number };
 
 const STATUS_TOKEN = /^(\d{1,3})(?:-(\d{1,3}))?$/;
 
-/** `200-299,301` into ranges (AC-30): codes 100-599, at most 10 ranges or codes. */
+/** `200-299,301` into ranges: codes 100-599, at most 10 ranges or codes. */
 export function parseExpectedStatus(
   text: string,
 ): MonitorParseResult<StatusRange[]> {
@@ -199,7 +193,7 @@ const PATH_KEY = /\['([^'\\]*)'\]/y;
 const PATH_INDEX = /\[(0|[1-9][0-9]{0,8})\]/y;
 
 /**
- * JSONPath subset (AC-16): `$`, `.name`, `['name']`, `[index]`. Filters,
+ * JSONPath subset: `$`, `.name`, `['name']`, `[index]`. Filters,
  * wildcards and recursive descent are rejected. At most 32 segments.
  */
 export function parseJsonPath(
@@ -240,7 +234,7 @@ export function parseJsonPath(
 
 export type JsonScalar = string | number | boolean | null;
 
-/** A valid JSON scalar (number, true, false, null, quoted string), else the text itself (AC-16). */
+/** A valid JSON scalar (number, true, false, null, quoted string), else the text itself. */
 export function parseExpectedValue(text: string): JsonScalar {
   try {
     const value: unknown = JSON.parse(text);
@@ -262,7 +256,7 @@ export type MonitorUrlCheck =
   { ok: true } | { ok: false; reason: MonitorInvalidReason };
 
 /**
- * Shape rules of the monitor URL (AC-28). Address policy (private ranges,
+ * Shape rules of the monitor URL. Address policy (private ranges,
  * localhost, DNS) is server-only and reported as `MONITOR_TARGET_BLOCKED`.
  */
 export function checkMonitorUrl(raw: string): MonitorUrlCheck {
@@ -287,8 +281,6 @@ export function checkMonitorUrl(raw: string): MonitorUrlCheck {
   }
   return { ok: true };
 }
-
-// ---- Config schema ---------------------------------------------------------
 
 export const monitorMethodSchema = z.enum(MONITOR_METHODS);
 
@@ -538,13 +530,11 @@ function refineMonitorConfig(
   });
 }
 
-/** Shared by Create, Edit and Test. Defaults make the web and the server agree (AC-06). */
+/** Shared by Create, Edit and Test. Defaults make the web and the server agree. */
 export const monitorConfigSchema =
   monitorConfigBaseSchema.superRefine(refineMonitorConfig);
 export type MonitorConfig = z.output<typeof monitorConfigSchema>;
 export type MonitorConfigInput = z.input<typeof monitorConfigSchema>;
-
-// ---- Secret entries (S07) ----------------------------------------------------
 
 export const MONITOR_SECRET_MAX_BYTES = 4096;
 export const MONITOR_MAX_SECRETS = 32;
@@ -704,8 +694,6 @@ export const monitorEditSchema = monitorConfigBaseSchema
   });
 export type MonitorEditInput = z.output<typeof monitorEditSchema>;
 
-// ---- Normalized forms stored in the database --------------------------------
-
 export type StoredHeader = {
   id?: string;
   name: string;
@@ -759,8 +747,6 @@ export function normalizeMonitorConfig(
     assertions,
   };
 }
-
-// ---- Views -----------------------------------------------------------------
 
 const isoDateTime = z.iso.datetime();
 const monitorIdSchema = z.uuid();
@@ -901,7 +887,7 @@ export type CheckResultView = z.infer<typeof checkResultSchema>;
 
 /**
  * A Test is not recorded, so its result has no schedule slot and no config
- * version. `ssl` carries the certificate facts of this one check (AC-08): the
+ * version. `ssl` carries the certificate facts of this one check: the
  * level comes from the server clock, `no_data` means no TLS attempt happened.
  */
 export const monitorTestDiagnosticsSchema = z.object({
@@ -1133,8 +1119,6 @@ export type MonitorIncidentsResponse = z.infer<
   typeof monitorIncidentsResponseSchema
 >;
 
-// ---- Per-monitor event feed and last response (#58) -------------------------
-
 export const MONITOR_EVENTS_WINDOW_DAYS = 30;
 
 /**
@@ -1348,8 +1332,6 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
 export type MonitorResponseTimesResponse = z.infer<
   typeof monitorResponseTimesResponseSchema
 >;
-
-// ---- Route parameters and error envelopes ------------------------------------
 
 function monitorErrorSchema<Code extends string>(code: Code) {
   return z.object({

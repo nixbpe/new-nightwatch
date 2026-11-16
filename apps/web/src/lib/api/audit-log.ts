@@ -306,7 +306,7 @@ export function toListParams(
 export type CustomRangeError = "start-after-end" | "before-retention";
 
 /**
- * AC-11. `retainedDay` is the "เก็บย้อนหลังถึง" date of the latest response in the
+ * `retainedDay` is the "เก็บย้อนหลังถึง" date of the latest response in the
  * preference zone, not the browser clock; unknown until a list has loaded.
  */
 export function customRangeError(

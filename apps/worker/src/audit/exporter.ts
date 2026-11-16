@@ -245,7 +245,7 @@ export class AuditExporter {
   async #build(claim: AuditExportClaim, request: ExportRequest) {
     const generatedAt = this.#now();
     const startedAt = generatedAt.getTime();
-    // Fixed for the whole job (AC-24 holds at the start of generation): every
+    // Fixed at the start of generation for the whole job: every
     // batch reads the same window, whatever time it takes.
     const retainedFrom = new Date(
       Math.max(

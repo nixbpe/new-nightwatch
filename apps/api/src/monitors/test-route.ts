@@ -169,7 +169,7 @@ export type MonitorTestRouteDeps = {
 };
 
 // The URL a check requests must be well formed before quota is spent. A forbidden
-// address is not rejected here: Test reports it as a result (AC-62).
+// address is not rejected here: Test reports it as a result.
 function assertRequestableUrl(config: MonitorConfig): void {
   const built = buildCheckUrl(config.url, config.queryParams);
   if (!built.ok && built.reason !== "blocked_address") {
@@ -225,7 +225,7 @@ type TestSecrets = {
 // Reads the stored monitor and only the ciphertext of `keep` slots, in one
 // short transaction; the outbound request starts after the connection is back
 // in the pool. A destination change with a kept slot ends here, before any
-// quota is spent or request sent (AC-44).
+// quota is spent or request sent.
 async function prepareEditSecrets(
   database: Database,
   input: {

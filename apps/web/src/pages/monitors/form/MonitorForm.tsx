@@ -152,7 +152,7 @@ export function MonitorForm({
   const base: EditBase | null = initial.base;
   const editing = base !== null && monitorId !== undefined;
   const [values, setValues] = useState<FormValues>(initial.values);
-  // Typed secret values live in this store only, and are gone with the form (AC-25).
+  // Typed secret values live in this store only, and are gone with the form.
   const secretStore = useSecretStore();
   useClearSecretsOnUnmount(secretStore);
   const secretContext = { base, get: secretStore.get };

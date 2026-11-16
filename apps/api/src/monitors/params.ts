@@ -6,7 +6,7 @@ import {
 import { z } from "zod";
 
 // Every monitor route lives under its Project. A malformed id answers 404 like
-// a missing one (AC-48), so ids are parsed in the handlers, not rejected as 400.
+// a missing one, so ids are parsed in the handlers, not rejected as 400.
 export const monitorBase =
   "/api/organizations/{organizationId}/projects/{projectId}/monitors";
 

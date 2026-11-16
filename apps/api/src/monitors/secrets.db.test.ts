@@ -121,7 +121,7 @@ async function listen(
 
 // ---- Fixtures -------------------------------------------------------------------
 
-// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
 let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let ctx: MonitorTestContext;
@@ -334,7 +334,7 @@ async function eventKinds(id: string): Promise<string[]> {
 }
 
 // Audit events of one monitor, oldest first (written in the mutation's own
-// transaction, F-007).
+// transaction).
 const auditActions = async (monitorId: string): Promise<string[]> =>
   (
     await ctx.owner.sql.query<{ action: string }>(
@@ -768,7 +768,7 @@ describe("Edit secrets (AC-26, AC-46)", () => {
   });
 });
 
-// ---- Origin change (AC-44) ------------------------------------------------------------
+// ---- Origin change ------------------------------------------------------------
 
 describe("Origin change with a kept secret (AC-44)", () => {
   it.each([
@@ -820,7 +820,7 @@ describe("Origin change with a kept secret (AC-44)", () => {
   });
 });
 
-// ---- Test (AC-45, AC-43) --------------------------------------------------------------
+// ---- Test --------------------------------------------------------------
 
 const REFLECT = [
   {
@@ -1380,7 +1380,7 @@ describe("An app built without the credential env", () => {
   });
 });
 
-// ---- Leak scan (AC-43, AC-61) ----------------------------------------------------------
+// ---- Leak scan ----------------------------------------------------------
 
 const SCANNED_TABLES = [
   "monitors",

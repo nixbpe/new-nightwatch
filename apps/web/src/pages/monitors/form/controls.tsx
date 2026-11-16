@@ -286,7 +286,7 @@ export function RowShell({
   );
 }
 
-/** Add button with its limit message beside it (AC-16). */
+/** Add button with its limit message beside it. */
 export function AddRowButton({
   "data-testid": testId,
   id,

@@ -36,7 +36,7 @@ export function useOrganizationSwitched(routeOrganizationId: string): boolean {
 /**
  * A page whose route names one Organization's record (a Project, or a monitor
  * in one) cannot follow a switch, so a switch made while it is open sends the
- * user to the new Organization's Projects (AC-49). Returns true from the render
+ * user to the new Organization's Projects. Returns true from the render
  * in which the switch is seen so the page can drop its data instead of showing
  * the old Organization's record for a frame.
  */

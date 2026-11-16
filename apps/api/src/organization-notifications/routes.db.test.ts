@@ -1051,7 +1051,7 @@ describe("organization monitor alerts setting HTTP contract", () => {
         [memberIds[key], settingsOrganizationId, userIds.get(key), role],
       );
     }
-    // The audit event is written in the mutation's transaction (F-007).
+    // The audit event is written in the mutation's transaction.
     const alertAudits = async () =>
       (
         await owner.sql.query<{

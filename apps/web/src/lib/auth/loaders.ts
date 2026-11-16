@@ -466,7 +466,7 @@ export async function auditLogLoader({
     timeZone: preferences.timeZone,
   });
   const queryClient = resolveQueryClientForIdentity(reader.userId);
-  // AC-11: an invalid custom range sends no request. The retained day is the one the page
+  // An invalid custom range sends no request. The retained day is the one the page
   // knows too: the latest list already in the cache, if any.
   const known = queryClient
     .getQueriesData<AuditLogListResponse>({

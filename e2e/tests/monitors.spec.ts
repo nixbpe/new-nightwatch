@@ -176,11 +176,11 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   await expect(page.getByTestId("monitor-test-http-status")).toContainText(
     /\b503\b/,
   );
-  // A Test never creates a monitor (AC-08) and does not block saving (AC-54).
+  // A Test never creates a monitor and does not block saving.
   expect(await monitorCount(orgA)).toBe(before);
 
   target.setMode("up");
-  // A slow first answer keeps the monitor waiting long enough to be seen (AC-54).
+  // A slow first answer keeps the monitor waiting long enough to be seen.
   target.setDelay(4000);
   const createdResponse = page.waitForResponse(
     (response) =>
@@ -503,7 +503,7 @@ test("a target that goes down and comes back reaches the inbox once each", async
       .getByTestId("notification-title"),
   ).not.toHaveText(downTitle);
 
-  // AC-05: the Organization's Owner and the Project's member each get one item per event, never two.
+  // The Organization's Owner and the Project's member each get one item per event, never two.
   const counts = await pool.query<{
     recipient_user_id: string;
     event_type: string;

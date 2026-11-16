@@ -9,7 +9,7 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
   const reason = tlsReasonLabel(ssl.reason);
   const hasCertificate =
     ssl.issuer !== null || ssl.notAfter !== null || ssl.host !== null;
-  // A readable certificate that fails validation keeps its level and dates but carries a reason (AC-35).
+  // A readable certificate that fails validation keeps its level and dates but carries a reason.
   const invalid = ssl.state !== "unreadable" && ssl.reason !== null;
   return (
     <Card

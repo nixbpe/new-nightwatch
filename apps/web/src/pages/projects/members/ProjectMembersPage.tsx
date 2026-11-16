@@ -38,7 +38,7 @@ import { isDenied } from "../../monitors/useMonitorAccess";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
 
-// The same notice for a missing Project and one the user cannot see (AC-08).
+// The same notice for a missing Project and one the user cannot see.
 export const PROJECT_GONE_NOTICE =
   "ไม่พบโปรเจกต์นี้ หรือคุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้แล้ว";
 export const LAST_ADMIN_CHANGE_MESSAGE =

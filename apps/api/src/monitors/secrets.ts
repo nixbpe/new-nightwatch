@@ -58,7 +58,7 @@ function invalid(fields: { field: string; reason: MonitorInvalidReason }[]) {
 }
 
 /**
- * Checks the entries against the saved config and the stored slots (AC-26).
+ * Checks the entries against the saved config and the stored slots.
  * `save` enforces the required rule; `test` leaves a missing slot to the
  * executor, which reports it as a check error.
  */

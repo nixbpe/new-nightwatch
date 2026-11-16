@@ -3,7 +3,7 @@ import { z } from "zod";
 import { organizationRoleSchema } from "./auth";
 
 // Browser-safe on purpose (PKG-01): zod only. The API uses the labels for
-// search and the export file, the web for display (F-007).
+// search and the export file, the web for display.
 
 export const AUDIT_CATEGORIES = [
   "monitor",
@@ -43,7 +43,6 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
 
-// P-04: the labels of feature.md "Event inventory".
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.monitor.create": "สร้างมอนิเตอร์",
   "organization.monitor.update": "แก้ไขมอนิเตอร์",
@@ -217,7 +216,7 @@ export const auditLogOrganizationParamsSchema = z.object({
   organizationId: z.uuid(),
 });
 
-// Any string: a malformed id answers 404 like a missing one (AC-13), after the
+// Any string: a malformed id answers 404 like a missing one, after the
 // role check.
 export const auditLogEventParamsSchema =
   auditLogOrganizationParamsSchema.extend({
@@ -463,7 +462,7 @@ export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
   "AUDIT_EXPORT_EXPIRED",
 );
 
-/** The note on the page, in the export dialog and in every file (feature.md, step 3). */
+/** The note on the page, in the export dialog and in every file. */
 export function auditScopeNote(recordingStartedOn: string): string {
   return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
 }

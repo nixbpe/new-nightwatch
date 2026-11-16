@@ -5,7 +5,6 @@ export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
   member: "สมาชิก",
 };
 
-// Panel text (AC-11).
 export const PROJECT_ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
   admin: "เพิ่มและนำสมาชิกออก เปลี่ยนบทบาท และแก้ไขการตั้งค่าโปรเจกต์",
   member: "ดูและทำงานในโปรเจกต์ จัดการสมาชิกไม่ได้",

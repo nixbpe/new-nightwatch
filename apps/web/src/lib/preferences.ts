@@ -144,7 +144,7 @@ type AuditParts = Record<
   string
 >;
 
-// Audit times are Gregorian, Latin digits and 24-hour whatever the display preferences say (F-007).
+// Audit times are Gregorian, Latin digits and 24-hour whatever the display preferences say.
 const auditFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function auditFormatter(zone: string): Intl.DateTimeFormat {

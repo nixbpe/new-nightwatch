@@ -21,7 +21,7 @@ export function auditEventPath(organizationId: string, eventId: string) {
   return `/organizations/${organizationId}/audit-log/${eventId}`;
 }
 
-// A table of its own: DataTable has no caption, and AC-17 needs one with `th scope`.
+// A table of its own because it needs a caption and headers with `th scope`.
 export function AuditTable({
   organizationId,
   events,

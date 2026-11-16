@@ -104,7 +104,7 @@ export const AUDIT_EXPORT_MAX_EVENTS = 50_000;
 export const AUDIT_EXPORT_MAX_BYTES = 25 * 1024 * 1024;
 export const AUDIT_EXPORT_FILE_TTL_HOURS = 24;
 
-/** The note in every file and on the page (feature.md, step 3). */
+/** The note in every file and on the page. */
 export function auditScopeNote(recordingStartedOn: string): string {
   return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
 }

@@ -15,7 +15,7 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web side of F-001: owner create, duplicate slug, edit and delete through the
+// Web coverage of owner create, duplicate slug, edit and delete through the
 // dialogs, the viewer's empty state, the denied state, and both themes.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);

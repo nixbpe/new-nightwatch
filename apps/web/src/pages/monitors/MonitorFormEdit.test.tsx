@@ -189,7 +189,7 @@ describe("Edit opens with the saved configuration", () => {
     ["a malformed id", "not-a-uuid"],
     ["an id of another Organization", "22222222-aaaa-4aaa-8aaa-222222222222"],
   ])("shows the same not-found text for %s", async (_label, id) => {
-    // The API answers the three the same way (AC-48), so the page cannot tell them apart.
+    // The API answers the three the same way, so the page cannot tell them apart.
     detailMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     renderForm(editPath(A, id));
     expect(

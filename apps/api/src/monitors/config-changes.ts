@@ -146,7 +146,7 @@ function queryParamChanges(
 }
 
 /**
- * The fields an Edit changed, shaped for the event feed (AC-42, AC-56): values
+ * The fields an Edit changed, shaped for the event feed: values
  * only where they are already visible to every reader of the config, never a
  * secret, query value, body or assertion text.
  */

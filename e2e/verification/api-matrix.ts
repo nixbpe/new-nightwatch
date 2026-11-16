@@ -6,10 +6,9 @@
  *   WORKER_LOG=... OUTBOUND_TEST_ALLOWED_HOSTS=<host> \
  *   EVIDENCE_OUT=... bun e2e/verification/api-matrix.ts
  *
- * Scenarios: role x operation matrix with direct requests (AC-02, AC-03, AC-48,
- * AC-57 permission order, AC-61 audit), SSRF blocks (AC-55), secret handling
- * (AC-25, AC-43, AC-44, AC-45, AC-56 including a moved ciphertext) and
- * concurrency (AC-38, AC-59). Every response body is kept in memory and
+ * Scenarios: role x operation matrix with direct requests, permission order
+ * and audit events, SSRF blocks, secret handling including a moved ciphertext,
+ * and concurrency. Every response body is kept in memory and
  * written to RESPONSES_OUT so the secret scan can read it.
  */
 import { randomUUID } from "node:crypto";
@@ -49,8 +48,8 @@ type Target = Awaited<ReturnType<typeof startMonitorTarget>>;
 type Reply = { status: number; body: any };
 // Every secret this run sends anywhere; the log scan reads them from a file.
 export const KNOWN_SECRETS: string[] = [];
-// Query and body values: viewers may read them in the config (AC-47), but they
-// must not reach results, incidents, notifications or logs (AC-42).
+// Query and body values: viewers may read them in the config, but they
+// must not reach results, incidents, notifications or logs.
 export const HIDDEN_VALUES: string[] = [];
 const evidence: Record<string, unknown> = {};
 const responses: string[] = [];
@@ -65,7 +64,7 @@ const check = (name: string, ok: boolean, detail?: unknown) => {
   );
 };
 
-// Test is limited to 10 per 60 s per user and Organization (AC-11). Scenarios
+// Test is limited to 10 per 60 s per user and Organization. Scenarios
 // other than `rateLimit` stay under 9 so a run measures its own behavior.
 const testTimes = new Map<string, number[]>();
 async function pace(key: string) {
@@ -485,7 +484,7 @@ async function matrix() {
     }
   }
 
-  // Non-member answers must not reveal names, URLs or counts (AC-02).
+  // Non-member answers must not reveal names, URLs or counts.
   const leak = await sessions.nonmember.request("GET", mp(orgA));
   const text = JSON.stringify(leak.body);
   check(
@@ -497,7 +496,7 @@ async function matrix() {
     text,
   );
 
-  // AC-48: three kinds of bad id answer alike, in every operation.
+  // Three kinds of bad id answer alike, in every operation.
   const idKinds: [string, string][] = [
     ["missing uuid", randomUUID()],
     ["malformed", "not-a-uuid"],
@@ -538,7 +537,7 @@ async function matrix() {
   );
 }
 
-// ---- SSRF (AC-55) ------------------------------------------------------------
+// ---- SSRF ------------------------------------------------------------
 async function ssrf() {
   const P = probe.port;
   const cases = [
@@ -608,7 +607,7 @@ async function ssrf() {
   );
   evidence.ssrf = rows;
 
-  // Redirect to a blocked address never reaches the second listener (AC-34, AC-55).
+  // Redirect to a blocked address never reaches the second listener.
   const second = await startMonitorTarget();
   const viaRedirect = `/redirect?to=${encodeURIComponent(`http://localhost:${String(second.port)}/x`)}`;
   const rTest = await sessions.owner.request(
@@ -645,9 +644,9 @@ async function ssrf() {
   await second.close();
 }
 
-// ---- secrets (AC-25, AC-43, AC-44, AC-45, AC-46, AC-56) -----------------------
+// ---- secrets -----------------------
 // `redis-cli MONITOR` records every command with its arguments, so the BullMQ
-// job payloads that are removed on completion are still scanned (AC-56).
+// job payloads that are removed on completion are still scanned.
 let redisTrace = "";
 let redisMonitor: ReturnType<typeof Bun.spawn> | null = null;
 const redisContainer = () => {
@@ -815,7 +814,7 @@ async function secrets() {
     detail.body.monitor.secretSlots,
   );
 
-  // Edit: keep uses stored value; replace uses the new one; changing origin is refused (AC-26, AC-44, AC-45).
+  // Edit: keep uses stored value; replace uses the new one; changing origin is refused.
   const bearer = created[0]!;
   const cur = (await sessions.owner.request("GET", mp(orgA, `/${bearer.id}`)))
     .body.monitor;
@@ -923,7 +922,7 @@ async function secrets() {
     [typeChange.status, slotsLeft.rows[0].n],
   );
 
-  // Reflecting endpoint: the secret is redacted from assertion actuals and errors (AC-43).
+  // Reflecting endpoint: the secret is redacted from assertion actuals and errors.
   const reflectToken = mk();
   KNOWN_SECRETS.push(reflectToken);
   const reflect = await sessions.owner.request("POST", mp(orgA, "/test"), {
@@ -946,7 +945,7 @@ async function secrets() {
     reflectText.slice(0, 300),
   );
 
-  // Ciphertext moved to another monitor cannot be decrypted (AC-56 AAD).
+  // Ciphertext moved to another monitor cannot be decrypted (AAD).
   const [a, b] = [created[2]!, created[3]!];
   const rowsA = (
     await pool.query(
@@ -997,7 +996,7 @@ async function secrets() {
     hasIncident.rows[0].n,
   );
 
-  // Query and body values never reach results, incidents, notifications or logs (AC-42).
+  // Query and body values never reach results, incidents, notifications or logs.
   const queryValue = `qval-${run}`;
   const bodyValue = `bodyval-${run}`;
   HIDDEN_VALUES.push(queryValue, bodyValue);
@@ -1074,7 +1073,7 @@ async function secrets() {
   );
   await qbTarget.close();
 
-  // Delete removes stored secrets in the same transaction (AC-46).
+  // Delete removes stored secrets in the same transaction.
   const del = await sessions.owner.request("DELETE", mp(orgA, `/${b.id}`));
   const gone = await pool.query(
     "select count(*)::int n from monitor_secrets where monitor_id=$1",
@@ -1086,8 +1085,8 @@ async function secrets() {
     [del.status, gone.rows[0].n],
   );
 
-  // Audit events for the whole secret scenario: no secret value (F-007 keeps
-  // the masked URL and secret slot names, never a value).
+  // Audit events for the whole secret scenario keep
+  // the masked URL and secret slot names, never a value.
   const mutation = (
     await pool.query(
       "select t::text as text, action from audit_events t where tenant_id=$1 and occurred_at >= $2",
@@ -1126,7 +1125,7 @@ until cursor == "0"
 return out
 `;
 
-/** Known values must not sit in any monitor or notification table, nor in Redis (AC-56). */
+/** Known values must not sit in any monitor or notification table, nor in Redis. */
 async function scanStores() {
   const tables = [
     "monitors",
@@ -1189,7 +1188,7 @@ async function scanStores() {
   );
 }
 
-// ---- concurrency and late results (AC-38, AC-59) ----------------------------
+// ---- concurrency and late results ----------------------------
 async function concurrency() {
   const limitOrg = await createOrganization(pool, `Verify limit ${run}`);
   orgIds.push(limitOrg);
@@ -1260,7 +1259,7 @@ async function concurrency() {
     dup.rowCount,
   );
 
-  // Late result after Pause, Edit and Delete is dropped (AC-38).
+  // Late result after Pause, Edit and Delete is dropped.
   const slow = await startMonitorTarget();
   slow.setDelay(9000);
   const rows: Record<string, unknown>[] = [];
@@ -1322,7 +1321,7 @@ async function concurrency() {
   await slow.close();
 }
 
-// ---- Test rate limit (AC-11) and permission before limiter (AC-57) ----------
+// ---- Test rate limit and permission before limiter ----------
 async function rateLimit() {
   const org = await createOrganization(pool, `Verify rate ${run}`);
   orgIds.push(org);
@@ -1466,7 +1465,7 @@ async function alerts() {
     { incidentA, notifiedA },
   );
 
-  // Pause closes the open incident as paused_by_user and sends no recovery (AC-19, AC-51).
+  // Pause closes the open incident as paused_by_user and sends no recovery.
   await s.request("POST", mp(org, `/${a}/pause`));
   const closed = (
     await pool.query(
@@ -1480,7 +1479,7 @@ async function alerts() {
     closed,
   );
 
-  // Alerts off: an incident still opens but no notification is created (AC-24).
+  // Alerts off: an incident still opens but no notification is created.
   const settingsPath = `/api/organizations/${org}/notification-settings`;
   const current = (await s.request("GET", settingsPath)).body;
   const off = await s.request("PATCH", settingsPath, {

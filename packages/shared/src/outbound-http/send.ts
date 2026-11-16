@@ -243,7 +243,7 @@ export type ResolveOutcome =
 
 /**
  * Resolves a host and applies the address policy: any forbidden address rejects
- * the whole answer. Also used by save-time validation (AC-09).
+ * the whole answer. Also used by save-time validation.
  */
 export async function resolveOutboundHost(
   url: URL,
@@ -465,7 +465,7 @@ async function openSocket(
   throw last;
 }
 
-/** Secret headers travel only to the same origin, or on a default-port http to https upgrade (AC-44). */
+/** Secret headers travel only to the same origin, or on a default-port http to https upgrade. */
 export function sameDestination(from: URL, to: URL): boolean {
   if (from.hostname !== to.hostname) return false;
   if (from.origin === to.origin) return true;

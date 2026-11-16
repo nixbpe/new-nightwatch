@@ -62,7 +62,7 @@ export const projectDetailSchema = projectSummarySchema.extend({
 });
 export type ProjectDetail = z.infer<typeof projectDetailSchema>;
 
-// ---- Last Project (F-010) ----------------------------------------------------
+// ---- Last Project ----------------------------------------------------
 
 /** `projectId` is parsed in the service: a malformed id answers 404 like a missing one. */
 export const lastProjectInputSchema = z.strictObject({

@@ -27,7 +27,7 @@ import {
 } from "../support/monitor-fixtures";
 
 // Browser evidence for the scope, state and concurrency rows that need no long
-// schedule wait: AC-01, AC-04, AC-06, AC-07, AC-09, AC-10, AC-18, AC-40, AC-50.
+// schedule wait.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -649,7 +649,7 @@ test.describe("secrets in the browser", () => {
     expect(await page.content()).not.toContain(token);
 
     await shot(page, "edit-secret-set");
-    // Replace with nothing typed is refused beside the field (AC-26).
+    // Replace with nothing typed is refused beside the field.
     await page.getByTestId("monitor-secret-auth.token-replace").click();
     await shot(page, "edit-secret-replace-open");
     await page.getByTestId("monitor-form-save").click();
@@ -664,7 +664,7 @@ test.describe("secrets in the browser", () => {
     ).toHaveAccessibleDescription(/\S/);
     await page.getByTestId("monitor-secret-auth.token-cancel").click();
 
-    // Changing the type says the old value is dropped before saving (AC-26).
+    // Changing the type says the old value is dropped before saving.
     await page.getByTestId("monitor-form-auth-type").selectOption("basic");
     await expect(
       page.getByTestId("monitor-auth-secret-dropped"),
@@ -674,7 +674,7 @@ test.describe("secrets in the browser", () => {
     );
     await page.getByTestId("monitor-form-auth-type").selectOption("bearer");
 
-    // A new origin with a kept secret cannot be saved or tested (AC-44).
+    // A new origin with a kept secret cannot be saved or tested.
     await page
       .getByTestId("monitor-form-url")
       .fill(`http://${host}:${String(target.port + 1)}/health`);

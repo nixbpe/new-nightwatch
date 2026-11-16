@@ -91,7 +91,6 @@ function inCidr(bytes: Bytes, range: Cidr): boolean {
   return true;
 }
 
-// Ranges fixed by the F-005 spec (Authorization and security, SSRF helper).
 const FORBIDDEN_V4 = [
   "0.0.0.0/8",
   "10.0.0.0/8",

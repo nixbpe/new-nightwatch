@@ -17,7 +17,7 @@ export type ChartBucket = {
   maxMs: number | null;
   /** Checks behind the value; 0 means nothing was recorded. */
   checks: number;
-  /** The check could not run on NightWatch's side; it says nothing about the target (AC-39). */
+  /** The check could not run on NightWatch's side; it says nothing about the target. */
   checkError?: boolean;
   /** Results that had a response time; weights the hourly average. Absent means it cannot be weighted. */
   responseChecks?: number;

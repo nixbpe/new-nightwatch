@@ -90,7 +90,7 @@ export async function addMember(
   return id;
 }
 
-/** A Project of the Organization; monitors live under one (F-011). */
+/** A Project of the Organization; monitors live under one. */
 export async function createProject(
   pool: Pool,
   organizationId: string,
@@ -186,7 +186,6 @@ export function monitorPath(
   return `/api/organizations/${organizationId}/projects/${projectId}/monitors${suffix}`;
 }
 
-/** The web route of a Project's monitors, or of one of its pages when `suffix` is given. */
 export function monitorUrl(
   organizationId: string,
   projectId: string,

@@ -15,7 +15,7 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web side of F-002: an owner adds Organization members to a Project, changes
+// Web coverage of an owner adding Organization members to a Project, changing
 // roles, meets the last-admin rule and removes a member; a Project member sees
 // no controls; an Organization member outside the Project is sent back to the Project list with a notice.
 const run = randomUUID().slice(0, 8);
@@ -67,7 +67,7 @@ test.beforeAll(async () => {
   // A second Organization the owner can switch to from the shell.
   otherOrg = await createOrganization(pool, `E2E Project members other ${run}`);
   await addMember(pool, otherOrg, people.owner.userId, "owner");
-  // An Organization admin who is not in the Project (AC-09).
+  // An Organization admin who is not in the Project.
   people.orgAdmin = await createPerson(pool, "orgadmin", org);
   userIds.push(people.orgAdmin.userId);
   await addMember(pool, org, people.orgAdmin.userId, "admin");

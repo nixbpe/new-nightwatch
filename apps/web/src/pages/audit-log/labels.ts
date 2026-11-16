@@ -60,7 +60,6 @@ export function targetText(target: AuditTarget): string {
   }
 }
 
-// feature.md "label ของ field ใน การเปลี่ยนแปลง".
 export const CHANGE_FIELD_LABELS: Record<AuditChangeField, string> = {
   role: "บทบาท",
   monitorAlertsEnabled: "แจ้งเตือนมอนิเตอร์",

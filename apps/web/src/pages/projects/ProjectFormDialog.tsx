@@ -65,7 +65,7 @@ function toFieldErrors(
 
 export type StaleReason = "denied" | "not-found";
 
-/** Create and edit share one modal; the slug is fixed after creation (AC-03). */
+/** Create and edit share one modal; the slug is fixed after creation. */
 export function ProjectFormDialog({
   organizationId,
   project,

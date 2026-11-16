@@ -47,7 +47,7 @@ export function failureText(
   return incidentReasonLabel(result.failureReason);
 }
 
-/** A truncated body was evaluated from its start (AC-33). */
+/** A truncated body was evaluated from its start. */
 export const EVALUATED_FROM_PREFIX_TEXT = "ประเมินจากส่วนต้นของ response";
 
 const ASSERTION_REASON_LABELS: Record<
@@ -72,7 +72,7 @@ export function assertionReasonLabel(
   actualType: string | null = null,
 ): string | null {
   if (reason === null) return null;
-  // A wrong type is only useful with the type that came back (AC-33).
+  // A wrong type is only useful with the type that came back.
   return reason === "type_mismatch" && actualType !== null
     ? `${ASSERTION_REASON_LABELS[reason]} (ค่าจริงเป็น ${actualType})`
     : ASSERTION_REASON_LABELS[reason];

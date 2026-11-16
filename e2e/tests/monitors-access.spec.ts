@@ -26,7 +26,7 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// UI side of AC-02, AC-03, AC-20 to AC-23 and AC-49: role x screen table,
+// UI coverage of the role x screen table,
 // two sessions changing a role, keyboard flows in both themes, and reflow at a
 // 640 px viewport (200% of a 1280 px layout, LAY-02).
 const run = randomUUID().slice(0, 8);
@@ -126,7 +126,7 @@ const overview = () => monitorUrl(orgA, projA);
 const detail = () => `${overview()}/${monitorId}`;
 
 test.describe("monitor permissions by role and screen", () => {
-  // Write access is the Project admin's and the Organization Owner's and Admin's (AC-03);
+  // Write access is the Project admin's and the Organization Owner's and Admin's;
   // the viewer and the auditor read as Project members, the Project admin is only a viewer of the Organization.
   for (const role of [
     "owner",
@@ -381,7 +381,6 @@ test.describe("monitor role changes across signed-in sessions", () => {
           (await form.getByTestId("monitor-form-denied").isVisible()),
       )
       .toBe(true);
-    // The refused save changed nothing.
     expect((await stored()).rows[0]).toEqual(before);
     await view.reload();
     await expect(view.getByTestId("monitor-detail-denied")).toBeVisible();

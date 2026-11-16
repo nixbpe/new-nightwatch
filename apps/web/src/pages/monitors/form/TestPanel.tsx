@@ -99,7 +99,7 @@ function retryAfterOf(error: ApiError): number | null {
 }
 
 /**
- * The Test box (feature.md, Test Configuration). One request at a time: the
+ * The Test box. One request at a time: the
  * button stays focused and uses `aria-disabled` while it waits, so a repeated
  * press is ignored without moving focus. The result is announced from a
  * status region that exists from the first render.

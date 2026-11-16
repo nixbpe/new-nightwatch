@@ -62,7 +62,7 @@ const TITLE_FOCUS_CLASS =
 export function AuditLogPage() {
   const { organizationId } = useParams();
   if (organizationId === undefined) return null;
-  // Keyed so filters, the pinned snapshot and announcements never carry over to another Organization (AC-07).
+  // Keyed so filters, the pinned snapshot and announcements never carry over to another Organization.
   return (
     <AuditLogForOrganization
       key={organizationId}
@@ -97,7 +97,7 @@ function AuditLogForOrganization({
   // The relative range and the pinned snapshot belong to one filter set: a changed filter
   // starts over (no `asOf`, a new anchor); a page change keeps both (spec "Web").
   const identity = filterIdentity(filters);
-  // AC-18, spec "API": coming back from a detail page reuses the snapshot the user left, so
+  // Coming back from a detail page reuses the snapshot the user left, so
   // the rows and the cached relative range are the same ones.
   const returnState = location.state as AuditListReturnState | null;
   const [view, setView] = useState<ListView>(() => {
@@ -239,7 +239,7 @@ function AuditLogForOrganization({
     tableHeadingRef.current?.focus();
   };
   const refresh = () => {
-    // AC-11: an invalid range sends no request, refresh included.
+    // An invalid range sends no request, refresh included.
     if (rangeError !== undefined) return;
     const next: ListView = {
       identity,
@@ -259,7 +259,7 @@ function AuditLogForOrganization({
     void actors.refetch();
   };
 
-  // AC-18: coming back from a detail page puts focus on that row's link, else on the table heading.
+  // Coming back from a detail page puts focus on that row's link, else on the table heading.
   const returnedTo = returnState?.eventId;
   const restoredFocus = useRef(false);
   useEffect(() => {

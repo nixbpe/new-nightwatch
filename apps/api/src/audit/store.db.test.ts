@@ -89,7 +89,7 @@ async function ensurePartitionFor(at: Date): Promise<void> {
 }
 
 beforeAll(async () => {
-  // Everything before F-007 first, with data that must survive 0020.
+  // Seed data before the audit migration so 0020 must preserve it.
   ({
     database,
     ownerDatabase,

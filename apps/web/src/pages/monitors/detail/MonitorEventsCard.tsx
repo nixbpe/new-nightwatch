@@ -210,7 +210,7 @@ export function MonitorEventsCard({
     placeholderData: keepPreviousData,
   });
   const data = events.data;
-  // One page needs no pager (AC-86); `hasPrevious` keeps the way back when the total shrinks while on a later page.
+  // One page needs no pager; `hasPrevious` keeps the way back when the total shrinks while on a later page.
   const hasPrevious = data !== undefined && data.page.offset > 0;
   const hasNext =
     data !== undefined &&

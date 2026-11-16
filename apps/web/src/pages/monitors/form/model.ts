@@ -194,7 +194,7 @@ export function editBaseFromRecord(record: MonitorRecord): EditBase {
   };
 }
 
-/** A kept secret is sent to the stored origin only (AC-44); the server answers 422 otherwise. */
+/** A kept secret is sent to the stored origin only; the server answers 422 otherwise. */
 export function secretOriginChanged(
   base: EditBase | null,
   values: FormValues,

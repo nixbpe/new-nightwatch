@@ -19,7 +19,7 @@ import {
   type TestOrganization,
 } from "./test-support";
 
-// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
 let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let ctx: MonitorTestContext;
@@ -164,7 +164,7 @@ async function events(id: string) {
   return result.rows;
 }
 
-// Audit events of one monitor, oldest first (F-007: written in the mutation's
+// Audit events of one monitor, oldest first (written in the mutation's
 // own transaction).
 const mutationLines = async (monitorId: string) =>
   (

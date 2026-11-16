@@ -66,7 +66,7 @@ export type AddResult = {
 
 export type AddStaleReason = "denied" | "not-found";
 
-/** Picks Organization members (never outsiders, AC-01) and adds them with one role. */
+/** Picks Organization members (never outsiders) and adds them with one role. */
 export function AddMemberDialog({
   organizationId,
   organizationName,

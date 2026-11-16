@@ -446,7 +446,7 @@ function DetailForMonitor({
   }
 
   const canWrite = access.canWrite;
-  // AC-03: the last response is readable by whoever may write (Project admin, Organization Owner or Admin).
+  // The last response is readable by whoever may write (Project admin, Organization Owner or Admin).
   const canReadResponse = canWrite;
   const paused = monitor.status === "paused";
   const busy = toggle.isPending;

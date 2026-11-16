@@ -733,7 +733,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
       await runSteps(monitor, target, ["fail", "fail"]);
-      // Edit: version 2, streak reset, incident stays open (AC-40).
+      // Edit: version 2, streak reset, incident stays open.
       await updateMonitor(
         db,
         monitor,

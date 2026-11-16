@@ -177,7 +177,7 @@ export async function openIsolatedAuditDatabase(options?: {
 
 /**
  * Makes every insert into `audit_events` for one Organization fail, to prove a
- * mutation rolls back with its event (AC-21). Pass the owner URL of a database
+ * mutation rolls back with its event. Pass the owner URL of a database
  * of its own (`openIsolatedAuditDatabase`): creating and dropping a trigger
  * takes a table lock that deadlocks with the inserts of suites that run in
  * parallel on the shared database, and the trigger stays scoped to the

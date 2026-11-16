@@ -928,7 +928,7 @@ describe("Detail access", () => {
       expect(screen.queryByTestId("monitor-detail-edit")).toBeNull();
       expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
       expect(screen.queryByTestId("monitor-detail-delete")).toBeNull();
-      // A Project member never asks for the last response (AC-03).
+      // A Project member never asks for the last response.
       expect(fetchLastResponseMock).not.toHaveBeenCalled();
     },
   );
@@ -2281,7 +2281,7 @@ describe("Detail response-time chart", () => {
     const group = await screen.findByTestId("monitor-response-chart");
     expectNoStateAttributes(toggle);
     noTable();
-    // AC-76: the keyboard hint stays off the accessibility tree and the polite region stays.
+    // The keyboard hint stays off the accessibility tree and the polite region stays.
     expect(screen.getByTestId("monitor-response-readout")).toHaveAttribute(
       "aria-hidden",
       "true",
