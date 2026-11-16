@@ -1,11 +1,12 @@
 # Feature code index
 
-ใช้ชื่อความสามารถเพื่อหาเจ้าของโค้ด แล้วอ่าน symbol, contract และ tests ที่เกี่ยวข้องก่อนขยายไปยัง consumers หรือ shared state รายละเอียดพฤติกรรมดูจากโค้ดและ tests; ขอบเขตงานใช้คำขอหรือ issue ปัจจุบัน รายการ tests เป็นจุดเริ่มค้นหา ไม่ใช่ชุด verification ทั้งหมด
+ใช้ชื่อความสามารถเพื่อหาเจ้าของโค้ด แล้วอ่าน symbol, contract และ tests ที่เกี่ยวข้องก่อนขยายไปยัง consumers หรือ shared state ขอบเขตงานและเกณฑ์ยอมรับใช้คำขอหรือ issue ปัจจุบัน ข้อกำหนดร่วมอยู่ในเอกสารอ้างอิงตาม [Repository instructions](../AGENTS.md) รายละเอียด implementation และ configuration อยู่ในโค้ด รายการ tests เป็นจุดเริ่มค้นหา ไม่ใช่ชุด verification ทั้งหมด
 
 ## เข้าสู่ระบบและเลือกองค์กร
 
 - API: [Auth](../apps/api/src/auth/index.ts) (`createAuth`), [session และ selection](../apps/api/src/me/service.ts) (`getMeContext`, `resolveActiveOrganization`, `setActiveOrganization`).
 - Web: [loaders](../apps/web/src/lib/auth/loaders.ts) (`workspaceLoader`), [tenant state](../apps/web/src/lib/tenant/TenantProvider.tsx) (`TenantProvider`), [active organization](../apps/web/src/lib/tenant/activeOrganization.ts) (`selectActiveOrganization`).
+- Browser auth: [client and error mapping](../apps/web/src/lib/auth-client.ts) (`authClient`, `authErrorMessage`), [focused tests](../apps/web/src/lib/auth-client.test.ts).
 - Contract: [Auth shapes](../packages/api-contract/src/auth.ts) (`meContextResponseSchema`).
 - Focused tests ตามส่วนที่แก้: [Auth boundary](../apps/api/src/auth/auth.db.test.ts), [selection service](../apps/api/src/me/service.db.test.ts), [loaders](../apps/web/src/lib/auth/loaders.test.tsx), [tenant state](../apps/web/src/lib/tenant/TenantProvider.test.tsx), [selector](../apps/web/src/lib/tenant/activeOrganization.test.ts).
 
@@ -66,8 +67,8 @@
 
 ## Toolchain และ CI
 
-[Package scripts](../package.json), [CI workflow](../.github/workflows/ci.yml), [Local services](../compose.yaml).
+[Package scripts](../package.json), [CI workflow](../.github/workflows/ci.yml), [Local services](../compose.yaml), [Worker runtime](../apps/worker/src/index.ts), [Worker commands](../apps/worker/package.json).
 
 ## การตรวจพฤติกรรม
 
-[Browser tests](../e2e/tests/), [Quality check routing](../scripts/quality/README.md#check-routing).
+[Browser tests](../e2e/tests/), [Playwright configuration](../e2e/playwright.config.ts), [Monitor check fixtures](../e2e/support/monitor-checks.ts), [Quality check routing](../scripts/quality/README.md#check-routing).

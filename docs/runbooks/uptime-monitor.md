@@ -40,9 +40,8 @@ readable with the old key until it is removed from the map.
 
 ## Run the Worker roles
 
-`WORKER_ROLES` is a comma-separated list. Roles: `consumer`, `scheduler`,
-`monitor-scheduler` (claims due checks every 10 s, purges expired data),
-`monitor-checker` (runs checks, concurrency 20).
+Set `WORKER_ROLES` to the comma-separated roles assigned to this process.
+Find supported roles through the [Worker runtime code index](../features.md#toolchain-และ-ci).
 
 - Worker containers must run with `NODE_ENV=production` so the key rules and the
   `OUTBOUND_TEST_ALLOWED_HOSTS` ban apply. The Worker process itself treats a
@@ -52,12 +51,13 @@ readable with the old key until it is removed from the map.
   points at a forbidden address) is cached as failed, so every network-level
   failure becomes `check_error` and no incident or DOWN alert opens. Verify the
   canary URLs resolve from the Worker network before release.
-- Run at least one `monitor-scheduler` and one `monitor-checker`. Several of
-  each are safe: claims use `FOR UPDATE SKIP LOCKED` and job ids are
-  deterministic.
-- Local dev: the `dev` script in `apps/worker/package.json` runs
-  `consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter`.
-- Stop with SIGTERM; the scheduler stops before the checker.
+- Run at least one `monitor-scheduler` and one `monitor-checker`. Each role
+  supports multiple instances.
+- For in-app notifications, run `scheduler` and `consumer`.
+- For audit exports and audit retention, run `audit-exporter`.
+- After [local dependency setup](../../scripts/quality/README.md#local-development-dependencies-postgresql--mailpit--redis),
+  run `bun run dev` for local development.
+- To stop the Worker, send SIGTERM. The scheduler stops before the checker.
 
 ### Worker image
 
@@ -84,8 +84,11 @@ readable with the old key until it is removed from the map.
   starts the Worker. Run other commands with `--entrypoint`, for example
   `docker run --rm --entrypoint /usr/local/bin/bun nightwatch-worker -e 'console.log(process.getuid())'`
   (prints 1001).
-- No `HEALTHCHECK`: the Worker exposes no endpoint. Liveness is the process and
-  the `monitor worker ready` log line.
+- Check that the Worker process is running. The image has no `HEALTHCHECK` or
+  health endpoint. Confirm startup for the configured roles using their startup
+  messages. Find the current messages through the
+  [Worker runtime code index](../features.md#toolchain-และ-ci).
+  A startup message does not prove continuing health.
 - Set at run time: `WORKER_ROLES`, `DATABASE_URL`, `REDIS_URL`,
   `CREDENTIAL_ENCRYPTION_KEYS`, `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`.
   Run one container per role (`monitor-scheduler`, `monitor-checker`) so each

@@ -265,20 +265,17 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   `db:migrate`. Job `build` gets none of these. `MONITOR_EGRESS_CANARY_URLS` is
   unset in CI because runners may lack internet; tests are intended to inject
   the canary (not yet exercised).
-- e2e (`e2e/tests/monitors.spec.ts`): `playwright.config.ts` starts the Worker
-  with roles `consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter`
-  and forwards the four monitor variables above to the Worker
-  and API. The spec needs `OUTBOUND_TEST_ALLOWED_HOSTS` to name a hostname that
-  resolves to 127.0.0.1; it starts its own target server on 127.0.0.1 (from
-  `e2e/support/monitor-target.mjs`) and reaches it through that hostname. CI
-  provides `target.nw-test.internal`. The local runner defaults to
+- E2E uses the same monitor environment for the API and Worker. Set
+  `OUTBOUND_TEST_ALLOWED_HOSTS` to a hostname that resolves to the loopback
+  target server. CI provides `target.nw-test.internal`.
+  The local runner defaults to
   `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io` (public wildcard DNS, needs
   internet). Override it with a loopback hostname already mapped in `/etc/hosts`
   to avoid public DNS. The credential keys stay unset outside
   production (development key). `REDIS_KEY_PREFIX` is optional and defaults to
-  the existing queue and rate-limit namespaces when unset. The down and recovered flow waits for real
-  schedule rounds (1 minute interval), so the spec takes about 5 minutes.
-- `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
+  the existing queue and rate-limit namespaces when unset. Fixture scheduling
+  and isolation requirements are in [Playwright E2E](#playwright-e2e).
+- `turbo.json` `globalPassThroughEnv` forwards monitor environment variables to
   turbo-run tasks without putting key values in the cache hash.
 - Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
   runs `test:bun` on the pinned Bun in three matrix groups: `packages/shared`
@@ -388,8 +385,7 @@ service configuration. Other caller-owned external-service runs retain natural
 scheduling without opening a helper connection.
 
 CI installs Chromium headless shell with `--only-shell`. Local `e2e:setup` keeps
-the full browser available for headed debugging. Historical measurements and
-metric limits are in [Test performance measurement](../verification/test-performance.md).
+the full browser available for headed debugging.
 
 The suite covers observable browser/API contracts. These include public auth
 entry and client-side validation without an invalid boundary request. They also

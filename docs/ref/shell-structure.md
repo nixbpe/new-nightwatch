@@ -9,7 +9,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 │ Org      │ ⊟  Org › Project › Page  [ค้นหาทั้งหมด… ⌘K] 🔔 │  header
 │ switcher ├──────────────────────────────────────────────┤
 │ Project  │                                              │
-│ switcher │  main: scrollable, full width, 32 px padding │
+│ switcher │  main: scrollable, full width                │
 │ nav      │      routed page inside an error boundary    │
 │ groups   │                                              │
 │          │                                              │
@@ -23,7 +23,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 | Sidebar, rail     | 56 px icon rail below 1024 px                                                                                                                                                    |
 | Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close                                                             |
 | Header            | 56 px, side padding 32 px (16 px below 640 px) aligned with main: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
-| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap the form column at 720 px (a test panel may sit beside it from `lg`); 24 px rhythm; workspace entry fallback (`WorkspaceEntryFallback`, no monitor data, retries through its loader) carries the deeper canvas and hairline texture (design-system.md LAY-08/LAY-09), the monitor list and the inbox carry a canvas grain      |
+| Main              | Scrollable with responsive padding that keeps content and actions within the viewport. Data pages fill the column. Form pages cap the form column at 720 px, with an optional test panel beside it from `lg`. The page uses a 24 px rhythm. The workspace entry fallback shows no monitor data and retries through its loader. The workspace entry fallback uses the deeper Canvas and hairline texture from LAY-08 and LAY-09. The monitor list and inbox use the Canvas grain.      |
 
 The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
 
