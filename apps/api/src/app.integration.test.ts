@@ -13,11 +13,13 @@ import {
   type Env,
   type Logger,
 } from "@nightwatch/shared";
+import type { Redis } from "ioredis";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "./app";
 import type { Auth } from "./auth";
 import { createMailer } from "./auth/mailer";
+import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 import pkg from "../package.json";
 
 const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
@@ -37,6 +39,7 @@ function makeApp(options?: {
   auth?: Auth;
   database?: Database;
   logger?: Logger;
+  redis?: Redis;
 }) {
   const mailer = createMailer(
     authEnv,
@@ -59,6 +62,22 @@ function makeApp(options?: {
     throw new Error("connection string postgres://user:sekret@db:5432 leaked");
   });
   return app;
+}
+
+function stubDatabase(
+  query: (queryConfig: unknown, params?: unknown[]) => unknown,
+) {
+  return {
+    db: undefined as unknown as Database["db"],
+    sql: {
+      query: (queryConfig: unknown, params?: unknown[]) =>
+        Promise.resolve(query(queryConfig, params)),
+      connect: () => {
+        throw new Error("not used in tests");
+      },
+    } as unknown as Database["sql"],
+    close: () => Promise.resolve(),
+  } satisfies Database;
 }
 
 describe("GET /api/v1/hello", () => {
@@ -87,6 +106,68 @@ describe("system endpoints", () => {
       status: "ready",
       checks: { self: "ok" },
     });
+  });
+
+  it("reports ready with redis ok when Redis answers", async () => {
+    const redis = {
+      ping: () => Promise.resolve("PONG"),
+    } as unknown as Redis;
+    const res = await makeApp({ redis }).request("/ready");
+
+    expect(res.status).toBe(200);
+    expect(readinessResponseSchema.parse(await res.json())).toEqual({
+      status: "ready",
+      checks: { redis: "ok" },
+    });
+  });
+
+  it("reports not_ready with redis fail when Redis is down", async () => {
+    const redis = {
+      ping: () => Promise.reject(new Error("Redis unavailable")),
+    } as unknown as Redis;
+    const res = await makeApp({ redis }).request("/ready");
+
+    expect(res.status).toBe(503);
+    expect(readinessResponseSchema.parse(await res.json())).toEqual({
+      status: "not_ready",
+      checks: { redis: "fail" },
+    });
+  });
+
+  it("bounds /ready by one deadline when the database and Redis both hang", async () => {
+    vi.useFakeTimers();
+    try {
+      const app = makeApp({
+        database: stubDatabase(() => new Promise<never>(() => {})),
+        redis: {
+          ping: () => new Promise<never>(() => {}),
+        } as unknown as Redis,
+      });
+      let completed = false;
+      const pending = Promise.resolve(app.request("/ready")).then(
+        (response) => {
+          completed = true;
+          return response;
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(
+        Math.max(DB_READINESS_TIMEOUT_MS, RATE_LIMIT_TIMEOUT_MS) - 1,
+      );
+      expect(completed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(completed).toBe(true);
+
+      const res = await pending;
+      expect(res.status).toBe(503);
+      expect(readinessResponseSchema.parse(await res.json())).toEqual({
+        status: "not_ready",
+        checks: { database: "fail", redis: "fail" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("GET /version reports package identity", async () => {
@@ -405,22 +486,6 @@ describe("auth boundary wiring", () => {
       ),
     getSession: () => Promise.resolve(null),
   };
-
-  function stubDatabase(
-    query: (queryConfig: unknown, params?: unknown[]) => unknown,
-  ) {
-    return {
-      db: undefined as unknown as Database["db"],
-      sql: {
-        query: (queryConfig: unknown, params?: unknown[]) =>
-          Promise.resolve(query(queryConfig, params)),
-        connect: () => {
-          throw new Error("not used in tests");
-        },
-      } as unknown as Database["sql"],
-      close: () => Promise.resolve(),
-    } satisfies Database;
-  }
 
   it("returns the canonical 400 envelope for request-validation failures without leaking input", async () => {
     const submittedOrganizationId = "submitted-invalid-organization-id";
