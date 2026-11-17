@@ -63,7 +63,7 @@
 
 ## ฐานข้อมูลและ migrations
 
-[Database package](../packages/db/), [Auth models](../packages/db/src/schema.ts), [raw SQL contexts](../packages/db/src/tenant-context.ts), [SQL migrations](../packages/db/migrations/).
+[Database package](../packages/db/), [Auth models](../packages/db/src/schema.ts), [raw SQL contexts](../packages/db/src/tenant-context.ts), [SQL migrations](../packages/db/migrations/), [PostgreSQL test fixture](../packages/db/tests/support/postgres.ts), [fixture integration proofs](../packages/db/tests/postgres-fixture.db.test.ts).
 
 ## Toolchain และ CI
 
