@@ -7,11 +7,6 @@
  *   REDIS_CONTAINER=... API_PORT=... DATABASE_URL=... DATABASE_OWNER_URL=... \
  *   REDIS_URL=... EVIDENCE_OUT=... bun e2e/verification/redis-outage.ts
  *
- * Part A: Redis stops while the second failing check is running; the incident
- * must still open, and after Redis returns exactly one MONITOR_DOWN reaches the
- * inbox. Part B: Redis stops and returns while the incident stays open; still
- * one MONITOR_DOWN, and one MONITOR_RECOVERED after the target recovers.
- * Part C: Test and write requests while Redis is stopped or frozen.
  */
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -102,16 +97,12 @@ const counts = async (monitorId: string) => {
         "select count(*)::int n from monitor_incidents where tenant_id=$1 and monitor_id=$2",
       )
     ).n as number,
-    down: (
-      await q(
-        "select count(*)::int n from notification_inbox_items where tenant_id=$1 and subject_monitor_id=$2 and event_type='MONITOR_DOWN'",
+    deliveries: (
+      await pool.query<{ recipient_user_id: string; event_type: string }>(
+        "select recipient_user_id, event_type from notification_inbox_items where tenant_id=$1 and subject_monitor_id=$2 order by recipient_user_id, event_type",
+        [org, monitorId],
       )
-    ).n as number,
-    recovered: (
-      await q(
-        "select count(*)::int n from notification_inbox_items where tenant_id=$1 and subject_monitor_id=$2 and event_type='MONITOR_RECOVERED'",
-      )
-    ).n as number,
+    ).rows.map((row) => `${row.recipient_user_id}:${row.event_type}`),
     intents: (
       await q(
         "select count(*)::int n from notification_intents where tenant_id=$1 and subject_monitor_id=$2",
@@ -119,6 +110,13 @@ const counts = async (monitorId: string) => {
     ).n as number,
   };
 };
+
+const expectedDeliveries = (events: string[]) =>
+  [owner.userId, viewer.userId]
+    .flatMap((recipient) => events.map((event) => `${recipient}:${event}`))
+    .sort();
+const hasDeliveries = (actual: string[], events: string[]) =>
+  JSON.stringify(actual) === JSON.stringify(expectedDeliveries(events));
 
 try {
   const ready0 = await fetch(`${apiOrigin}/ready`).then((r) => r.status);
@@ -167,7 +165,7 @@ try {
   );
   check(
     "AC-53 no notification was delivered while Redis is down",
-    whileDown.down === 0,
+    hasDeliveries(whileDown.deliveries, []),
     whileDown,
   );
   const ready1 = await fetch(`${apiOrigin}/ready`).then((r) => r.status);
@@ -220,7 +218,7 @@ try {
   docker("start", container);
   const restartedAt = Date.now();
   const delivered = await waitFor(
-    async () => (await counts(id)).down >= 1,
+    async () => hasDeliveries((await counts(id)).deliveries, ["MONITOR_DOWN"]),
     240_000,
   );
   const afterRestart = await counts(id);
@@ -236,8 +234,10 @@ try {
   await sleep(90_000);
   const settled = await counts(id);
   check(
-    "AC-53 exactly one MONITOR_DOWN, one incident and no duplicate intent after 90 s more",
-    settled.down === 1 && settled.incidents === 1 && settled.intents <= 1,
+    "AC-53 exactly one MONITOR_DOWN per owner and viewer, one incident and no duplicate intent after 90 s more",
+    hasDeliveries(settled.deliveries, ["MONITOR_DOWN"]) &&
+      settled.incidents === 1 &&
+      settled.intents === 1,
     settled,
   );
 
@@ -250,23 +250,31 @@ try {
   const afterB = await counts(id);
   evidence.partB = { midOutage, afterB };
   check(
-    "AC-53 Redis stop and start with an open incident: still one open incident and one MONITOR_DOWN",
-    afterB.openIncidents === 1 && afterB.incidents === 1 && afterB.down === 1,
+    "AC-53 Redis stop and start with an open incident: still one open incident and one MONITOR_DOWN per owner and viewer",
+    afterB.openIncidents === 1 &&
+      afterB.incidents === 1 &&
+      afterB.intents === 1 &&
+      hasDeliveries(afterB.deliveries, ["MONITOR_DOWN"]),
     evidence.partB,
   );
   flap.setMode("up");
   const recovered = await waitFor(
-    async () => (await counts(id)).recovered >= 1,
+    async () =>
+      hasDeliveries((await counts(id)).deliveries, [
+        "MONITOR_DOWN",
+        "MONITOR_RECOVERED",
+      ]),
     240_000,
   );
   await sleep(90_000);
   const final = await counts(id);
   evidence.final = final;
   check(
-    "AC-53 recovery after the outage: exactly one MONITOR_RECOVERED and the incident closed",
+    "AC-53 recovery after the outage: exactly one MONITOR_RECOVERED per owner and viewer and the incident closed",
     recovered !== null &&
-      final.recovered === 1 &&
-      final.down === 1 &&
+      hasDeliveries(final.deliveries, ["MONITOR_DOWN", "MONITOR_RECOVERED"]) &&
+      final.intents === 2 &&
+      final.incidents === 1 &&
       final.openIncidents === 0,
     final,
   );

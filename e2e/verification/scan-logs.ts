@@ -12,6 +12,14 @@ import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const split = args.indexOf("@@");
+if (
+  split < 1 ||
+  split === args.length - 1 ||
+  args.lastIndexOf("@@") !== split
+) {
+  console.error("Usage: scan-logs.ts <secrets.json>... @@ <log file>...");
+  process.exit(2);
+}
 const secretFiles = args.slice(0, split);
 const targets = args.slice(split + 1);
 
@@ -53,4 +61,8 @@ for (const file of targets) {
 console.log(
   `needles: ${String(values.size)} exact values + ${String(patterns.length)} prefix patterns; files: ${String(targets.length)}; bytes: ${String(bytes)}; hits: ${String(total)}`,
 );
+if (bytes === 0) {
+  console.error("No capture content to scan");
+  process.exit(2);
+}
 process.exit(total === 0 ? 0 : 1);

@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
+import { monitorWriteResponseSchema } from "../../packages/api-contract/src/monitor.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
@@ -146,13 +147,20 @@ const userIds: string[] = [];
 const orgIds: string[] = [];
 let target: Target;
 let probe: Target;
+const targets = new Set<Target>();
+async function acquireTarget() {
+  const acquired = await startMonitorTarget();
+  targets.add(acquired);
+  return acquired;
+}
 
 async function setup() {
-  target = await startMonitorTarget();
-  probe = await startMonitorTarget();
+  target = await acquireTarget();
+  probe = await acquireTarget();
   orgA = await createOrganization(pool, orgNames.a);
+  orgIds.push(orgA);
   orgB = await createOrganization(pool, orgNames.b);
-  orgIds.push(orgA, orgB);
+  orgIds.push(orgB);
   await addProject(orgA);
   await addProject(orgB);
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
@@ -182,7 +190,7 @@ const config = (name: string, path = "/health") =>
   basicConfig(name, urlOf(target, path));
 
 async function createMonitor(
-  role: Role,
+  role: Role | "nonmember",
   organizationId: string,
   name: string,
   extra: Record<string, unknown> = {},
@@ -210,10 +218,33 @@ type Row = {
 async function matrix() {
   const owner = sessions.owner;
   const base = await createMonitor("owner", orgA, `base-${run}`);
-  const M: string = base.body.monitor.id;
-  const other = await createMonitor("owner", orgB, `other-${run}`);
-  check("matrix setup created monitors", base.status === 201);
-  const OB = other.body?.monitor?.id ?? randomUUID();
+  if (base.status !== 201) throw new Error("orgA monitor prerequisite failed");
+  const M = monitorWriteResponseSchema.parse(base.body).monitor.id;
+  const other = await createMonitor("nonmember", orgB, `other-${run}`);
+  if (other.status !== 201) throw new Error("orgB monitor prerequisite failed");
+  const OB = monitorWriteResponseSchema.parse(other.body).monitor.id;
+  const provenance = (
+    await pool.query<{ id: string; tenant_id: string; project_id: string }>(
+      "select id, tenant_id, project_id from monitors where id=$1",
+      [OB],
+    )
+  ).rows;
+  const foreignMonitor = provenance.at(0);
+  const foreignExists =
+    provenance.length === 1 &&
+    foreignMonitor?.tenant_id === orgB &&
+    foreignMonitor.project_id === projects.get(orgB);
+  evidence.foreignMonitor = {
+    actor: people.nonmember.userId,
+    status: other.status,
+    provenance,
+  };
+  check(
+    "matrix setup created existing foreign monitor in orgB",
+    foreignExists,
+    provenance,
+  );
+  if (!foreignExists) throw new Error("foreign monitor provenance failed");
   const version = (await owner.request("GET", mp(orgA, `/${M}`))).body.monitor
     .version;
   const secretId = randomUUID();
@@ -608,7 +639,7 @@ async function ssrf() {
   evidence.ssrf = rows;
 
   // Redirect to a blocked address never reaches the second listener.
-  const second = await startMonitorTarget();
+  const second = await acquireTarget();
   const viaRedirect = `/redirect?to=${encodeURIComponent(`http://localhost:${String(second.port)}/x`)}`;
   const rTest = await sessions.owner.request(
     "POST",
@@ -649,47 +680,60 @@ async function ssrf() {
 // job payloads that are removed on completion are still scanned.
 let redisTrace = "";
 let redisMonitor: ReturnType<typeof Bun.spawn> | null = null;
+let redisReader: Promise<void> | undefined;
+const monitorName = `verify-${randomUUID()}`;
 const redisContainer = () => {
   const name = process.env.REDIS_CONTAINER;
   if (!name)
     throw new Error("REDIS_CONTAINER must name the Redis container to inspect");
   return name;
 };
-const monitorClientIds = () =>
-  Bun.spawnSync([
+function monitorClientIds() {
+  const result = Bun.spawnSync([
     "docker",
     "exec",
     redisContainer(),
     "redis-cli",
     "CLIENT",
     "LIST",
-  ])
-    .stdout.toString()
+  ]);
+  if (result.exitCode !== 0) throw new Error("Redis CLIENT LIST failed");
+  return result.stdout
+    .toString()
     .split("\n")
-    .filter((line) => line.includes("cmd=monitor"))
+    .filter((line) => line.split(" ").includes(`name=${monitorName}`))
     .map((line) => /id=(\d+)/.exec(line)?.[1])
     .filter((id): id is string => id !== undefined);
-let monitorsBefore = new Set<string>();
-function startRedisMonitor() {
-  monitorsBefore = new Set(monitorClientIds());
-  redisMonitor = Bun.spawn(
-    ["docker", "exec", redisContainer(), "redis-cli", "MONITOR"],
-    { stdout: "pipe", stderr: "ignore" },
-  );
-  void (async () => {
-    const decoder = new TextDecoder();
-    for await (const chunk of redisMonitor!
-      .stdout as ReadableStream<Uint8Array>) {
-      redisTrace += decoder.decode(chunk);
-    }
-  })();
 }
-/** Killing `docker exec` leaves the MONITOR client alive inside Redis; remove the ones this run added. */
-function stopRedisMonitor() {
-  redisMonitor?.kill();
-  for (const id of monitorClientIds()) {
-    if (!monitorsBefore.has(id)) {
-      Bun.spawnSync([
+async function startRedisMonitor() {
+  const child = Bun.spawn(
+    ["docker", "exec", "-i", redisContainer(), "redis-cli", "--raw"],
+    { stdin: "pipe", stdout: "pipe", stderr: "inherit" },
+  );
+  redisMonitor = child;
+  redisReader = (async () => {
+    const decoder = new TextDecoder();
+    for await (const chunk of child.stdout as ReadableStream<Uint8Array>) {
+      redisTrace += decoder.decode(chunk, { stream: true });
+    }
+    redisTrace += decoder.decode();
+  })();
+  await child.stdin.write(`CLIENT SETNAME ${monitorName}\nMONITOR\n`);
+  await child.stdin.flush();
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (monitorClientIds().length === 1 && redisTrace.startsWith("OK\nOK\n"))
+      return;
+    if (child.exitCode !== null) break;
+    await sleep(50);
+  }
+  throw new Error("Named Redis MONITOR did not become ready");
+}
+async function stopRedisMonitor() {
+  if (!redisMonitor) return;
+  try {
+    for (const id of monitorClientIds()) {
+      const result = Bun.spawnSync([
         "docker",
         "exec",
         redisContainer(),
@@ -699,13 +743,18 @@ function stopRedisMonitor() {
         "ID",
         id,
       ]);
+      if (result.exitCode !== 0) throw new Error("Redis CLIENT KILL failed");
     }
+  } finally {
+    redisMonitor.kill();
+    await redisMonitor.exited;
+    await redisReader;
+    redisMonitor = null;
   }
 }
 
 async function secrets() {
-  startRedisMonitor();
-  await sleep(500);
+  await startRedisMonitor();
   const mk = () => `s-${randomUUID()}`;
   const token = mk();
   const user = `u-${run}`;
@@ -742,8 +791,12 @@ async function secrets() {
     },
   ];
   const headerId = randomUUID();
-  const created: { kind: string; id: string; target: Target; name: string }[] =
-    [];
+  const created: {
+    kind: string;
+    id: string;
+    target: Target;
+    name: string;
+  }[] = [];
   const auditSince = (await pool.query("select clock_timestamp() as t")).rows[0]
     .t as Date;
   for (const k of kinds.concat([
@@ -755,7 +808,7 @@ async function secrets() {
       headers: [{ id: headerId, name: "X-Secret-Thing", secret: true }],
     },
   ] as never)) {
-    const t = await startMonitorTarget();
+    const t = await acquireTarget();
     t.setCredentials(k.creds);
     const name = `secret-${k.kind}-${run}`;
     const body = {
@@ -1000,7 +1053,7 @@ async function secrets() {
   const queryValue = `qval-${run}`;
   const bodyValue = `bodyval-${run}`;
   HIDDEN_VALUES.push(queryValue, bodyValue);
-  const qbTarget = await startMonitorTarget();
+  const qbTarget = await acquireTarget();
   const qbName = `querybody-${run}`;
   const qb = await sessions.owner.request("POST", mp(orgA), {
     ...basicConfig(qbName, urlOf(qbTarget, "/health")),
@@ -1170,7 +1223,7 @@ async function scanStores() {
   ]);
   const text = dump.stdout.toString();
   const redisHits = needles.filter((n) => text.includes(n));
-  stopRedisMonitor();
+  await stopRedisMonitor();
   const traced = needles.filter((n) => redisTrace.includes(n));
   const enqueued = (redisTrace.match(/monitor-check/g) ?? []).length;
   check(
@@ -1260,7 +1313,7 @@ async function concurrency() {
   );
 
   // Late result after Pause, Edit and Delete is dropped.
-  const slow = await startMonitorTarget();
+  const slow = await acquireTarget();
   slow.setDelay(9000);
   const rows: Record<string, unknown>[] = [];
   for (const action of ["pause", "edit", "delete"] as const) {
@@ -1419,7 +1472,7 @@ async function alerts() {
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
   const s = wrap(await signInApi(person));
-  const down = await startMonitorTarget();
+  const down = await acquireTarget();
   down.setMode("down");
   const count = async (monitorId: string, type: string) =>
     (
@@ -1523,26 +1576,38 @@ async function alerts() {
 
 async function main() {
   const only = process.argv[2];
-  await setup();
+  const errors: unknown[] = [];
   try {
+    await setup();
     if (!only || only === "matrix") await matrix();
     if (!only || only === "ssrf") await ssrf();
     if (!only || only === "secrets") await secrets();
     if (!only || only === "ratelimit") await rateLimit();
     if (!only || only === "concurrency") await concurrency();
     if (!only || only === "alerts") await alerts();
+  } catch (error) {
+    errors.push(error);
   } finally {
-    writeFileSync(EVIDENCE_OUT, JSON.stringify(evidence, null, 2));
-    writeFileSync(RESPONSES_OUT, responses.join("\n"));
-    writeFileSync(
-      `${RESPONSES_OUT}.secrets.json`,
-      JSON.stringify({ secrets: KNOWN_SECRETS, hidden: HIDDEN_VALUES }),
-    );
-    await target.close();
-    await probe.close();
-    await cleanUp(pool, userIds, orgIds);
-    await database.close();
+    const cleanup = await Promise.allSettled([
+      stopRedisMonitor(),
+      ...[...targets].map((owned) => owned.close()),
+      cleanUp(pool, userIds, orgIds),
+      Promise.resolve().then(() => {
+        writeFileSync(EVIDENCE_OUT, JSON.stringify(evidence, null, 2));
+        writeFileSync(RESPONSES_OUT, responses.join("\n"));
+        writeFileSync(
+          `${RESPONSES_OUT}.secrets.json`,
+          JSON.stringify({ secrets: KNOWN_SECRETS, hidden: HIDDEN_VALUES }),
+        );
+      }),
+    ]);
+    const closed = await Promise.allSettled([database.close()]);
+    for (const result of [...cleanup, ...closed]) {
+      if (result.status === "rejected") errors.push(result.reason);
+    }
   }
+  if (errors.length) throw new AggregateError(errors, "Verification failed");
+
   const failed = ((evidence.checks ?? []) as { ok: boolean }[]).filter(
     (c) => !c.ok,
   ).length;
