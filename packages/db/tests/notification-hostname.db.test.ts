@@ -1,53 +1,32 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Client } from "pg";
 import { expect, it } from "vitest";
 
-import { createDatabase, runMigrations, withTenantContextRaw } from "../src";
+import { listMigrations, withTenantContextRaw } from "../src";
+import { openTestPostgres } from "./support/postgres";
 
 it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime RLS and hostname checks", async () => {
-  const ownerUrl = process.env.DATABASE_OWNER_URL;
-  const runtimeUrl = process.env.DATABASE_URL;
-  if (!ownerUrl || !runtimeUrl)
-    throw new Error("hostname migration test requires owner/runtime URLs");
-  const name = `notification_hostname_${randomUUID().replaceAll("-", "")}`;
-  const admin = new Client({ connectionString: ownerUrl });
-  const scopedOwnerUrl = new URL(ownerUrl);
-  scopedOwnerUrl.pathname = `/${name}`;
-  const scopedRuntimeUrl = new URL(runtimeUrl);
-  scopedRuntimeUrl.pathname = `/${name}`;
-  const owner = new Client({ connectionString: scopedOwnerUrl.toString() });
-  const runtime = createDatabase(scopedRuntimeUrl.toString());
-  const dir = await mkdtemp(join(tmpdir(), "nightwatch-hostname-migrations-"));
-  const source = new URL("../migrations/", import.meta.url);
-  const migration = "0027_notification_monitor_hostname.sql";
-  let created = false;
+  const fixture = await openTestPostgres(
+    "notification-hostname",
+    "0026_project_monitors.sql",
+  );
+  const errors: unknown[] = [];
   try {
-    await admin.connect();
-    await admin.query(`create database ${name}`);
-    created = true;
-    await admin.query(
-      `grant connect, temporary on database ${name} to nightwatch`,
+    const owner = fixture.owner.sql;
+    const runtime = fixture.runtime;
+    const canonical = await listMigrations(
+      new URL("../migrations", import.meta.url).pathname,
     );
-    for (const file of (await readdir(source)).filter(
-      (file) => /^\d{4}_.*\.sql$/.test(file) && file < migration,
-    )) {
-      // Shared cluster: reuse existing restricted function-owner roles, never alter them.
-      const sql = (await readFile(new URL(file, source), "utf8")).replace(
-        /create role (\w+)([^;]*);/g,
-        (_match, role: string, options: string) =>
-          `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-      );
-      await writeFile(join(dir, file), sql);
-    }
-    await runMigrations({
-      url: scopedOwnerUrl.toString(),
-      migrationsDir: dir,
-      log: () => undefined,
-    });
-    await owner.connect();
+    const ledger = async () =>
+      (
+        await owner.query<{ name: string; sha256: string }>(
+          "select name, sha256 from __nightwatch_migrations order by name",
+        )
+      ).rows;
+    expect(await ledger()).toEqual(
+      canonical
+        .filter(({ name }) => name <= "0026_project_monitors.sql")
+        .map(({ name, sha256 }) => ({ name, sha256 })),
+    );
     const org = randomUUID();
     const user = randomUUID();
     const intent = randomUUID();
@@ -70,15 +49,15 @@ it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime R
       values ($1, $1, $1, $2, 'tenant', $3, 'MONITOR_DOWN', now(), $4)`,
       [intent, user, org, project],
     );
-    await writeFile(
-      join(dir, migration),
-      await readFile(new URL(migration, source), "utf8"),
+    expect(
+      (await fixture.advanceTo("0027_notification_monitor_hostname.sql"))
+        .applied,
+    ).toEqual(["0027_notification_monitor_hostname.sql"]);
+    expect(await ledger()).toEqual(
+      canonical
+        .filter(({ name }) => name <= "0027_notification_monitor_hostname.sql")
+        .map(({ name, sha256 }) => ({ name, sha256 })),
     );
-    await runMigrations({
-      url: scopedOwnerUrl.toString(),
-      migrationsDir: dir,
-      log: () => undefined,
-    });
     for (const table of [
       "notification_intents",
       "notification_inbox_items",
@@ -144,11 +123,16 @@ it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime R
         [randomUUID(), org],
       ),
     ).rejects.toMatchObject({ code: "23514" });
+  } catch (error) {
+    errors.push(error);
   } finally {
-    await runtime.close();
-    await owner.end().catch(() => undefined);
-    if (created) await admin.query(`drop database ${name}`);
-    await admin.end();
-    await rm(dir, { recursive: true, force: true });
+    try {
+      await fixture.close();
+    } catch (error) {
+      errors.push(error);
+    }
   }
-}, 120_000);
+  if (errors.length === 1) throw errors[0];
+  if (errors.length)
+    throw new AggregateError(errors, "fixture assertions and cleanup failed");
+}, 180_000);

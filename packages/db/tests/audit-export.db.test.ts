@@ -1,46 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-import { Client } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   claimAuditExport,
-  createDatabase,
+  type Database,
+  listMigrations,
   failStaleAuditExports,
   findStaleAuditExports,
   insertAuditExportNotificationIntent,
   purgeAuditExports,
-  runMigrations,
   withTenantUserContextRaw,
 } from "../src";
 
-const runtimeUrl = process.env.DATABASE_URL;
-const ownerUrl = process.env.DATABASE_OWNER_URL;
-if (!runtimeUrl || !ownerUrl) {
-  throw new Error(
-    "audit export database tests require DATABASE_URL and DATABASE_OWNER_URL",
-  );
-}
+import { openTestPostgres, type TestPostgres } from "./support/postgres";
 
-// claim_audit_export() claims across every Organization, so this file runs in
-// its own database on the shared cluster (see monitor.db.test.ts).
-const databaseName = `audit_export_db_${randomUUID().replaceAll("-", "")}`;
-const isolatedOwnerUrl = new URL(ownerUrl);
-isolatedOwnerUrl.pathname = `/${databaseName}`;
-const isolatedRuntimeUrl = new URL(runtimeUrl);
-isolatedRuntimeUrl.pathname = `/${databaseName}`;
-const admin = new Client({ connectionString: ownerUrl });
-const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
-const database = createDatabase(isolatedRuntimeUrl.toString());
-const ownerDatabase = createDatabase(isolatedOwnerUrl.toString());
-const sourceMigrations = new URL("../migrations", import.meta.url).pathname;
-const EXPORT_MIGRATION = "0021_audit_exports.sql";
-let migrationsCopyDir: string | undefined;
-let adminConnected = false;
-let ownerConnected = false;
+let fixture: TestPostgres | undefined;
+let database: Database;
+let ownerDatabase: Database;
+let owner: Pool;
 
 const run = randomUUID().slice(0, 8);
 const tenantA = randomUUID();
@@ -48,22 +26,6 @@ const tenantB = randomUUID();
 const userA1 = `exp-a1-${run}`;
 const userA2 = `exp-a2-${run}`;
 const userB1 = `exp-b1-${run}`;
-
-const idempotentRole = (_match: string, role: string, options: string) =>
-  `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`;
-
-async function copyMigrations(skip?: string): Promise<string> {
-  const target = await mkdtemp(join(tmpdir(), "nightwatch-export-migrations-"));
-  for (const name of await readdir(sourceMigrations)) {
-    if (name === skip) continue;
-    const sql = (await readFile(join(sourceMigrations, name), "utf8")).replace(
-      /create role (\w+)([^;]*);/g,
-      idempotentRole,
-    );
-    await writeFile(join(target, name), sql);
-  }
-  return target;
-}
 
 type ExportSeed = {
   tenantId: string;
@@ -134,21 +96,7 @@ async function jobState(id: string) {
   return result.rows[0];
 }
 
-beforeAll(async () => {
-  await admin.connect();
-  adminConnected = true;
-  await admin.query(`create database ${databaseName}`);
-  await admin.query(
-    `grant connect, temporary on database ${databaseName} to nightwatch`,
-  );
-  migrationsCopyDir = await copyMigrations(EXPORT_MIGRATION);
-  await runMigrations({
-    url: isolatedOwnerUrl.toString(),
-    migrationsDir: migrationsCopyDir,
-    log: () => undefined,
-  });
-  await owner.connect();
-  ownerConnected = true;
+async function seedIdentity(owner: Pool) {
   await owner.query(
     `insert into organization (id, name, slug) values ($1, 'A', $2), ($3, 'B', $4)`,
     [tenantA, `a-${run}`, tenantB, `b-${run}`],
@@ -168,119 +116,164 @@ beforeAll(async () => {
       [`m-${id}`, tenant, id],
     );
   }
+}
+
+beforeAll(async () => {
+  fixture = await openTestPostgres("audit-export-current");
+  database = fixture.runtime;
+  ownerDatabase = fixture.owner;
+  owner = ownerDatabase.sql;
+  await seedIdentity(owner);
 }, 180_000);
 
 afterAll(async () => {
-  try {
-    await database.close();
-    await ownerDatabase.close();
-    if (ownerConnected) await owner.end();
-  } finally {
-    try {
-      if (adminConnected) {
-        try {
-          await admin.query(`drop database if exists ${databaseName}`);
-        } catch {
-          await admin.query(
-            `select pg_terminate_backend(pid) from pg_stat_activity
-             where datname = $1 and pid <> pg_backend_pid()`,
-            [databaseName],
-          );
-          await admin.query(`drop database if exists ${databaseName}`);
-        }
-      }
-    } finally {
-      await admin.end().catch(() => undefined);
-      if (migrationsCopyDir) {
-        await rm(migrationsCopyDir, { recursive: true, force: true });
-      }
-    }
-  }
+  await fixture?.close();
 }, 60_000);
 
 describe("migration 0021 on a database that already holds notifications", () => {
   it("applies, keeps existing notification rows and accepts the two new types for tenant scope only", async () => {
-    await owner.query(
-      `insert into notification_intents
+    const upgrade = await openTestPostgres(
+      "audit-export-upgrade",
+      "0020_organization_audit_log.sql",
+    );
+    const errors: unknown[] = [];
+    try {
+      const owner = upgrade.owner.sql;
+      await seedIdentity(owner);
+      const canonical = await listMigrations(
+        new URL("../migrations", import.meta.url).pathname,
+      );
+      const ledger = async () =>
+        (
+          await owner.query<{ name: string; sha256: string }>(
+            "select name, sha256 from __nightwatch_migrations order by name",
+          )
+        ).rows;
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0020_organization_audit_log.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+      await owner.query(
+        `insert into notification_intents
          (id, scope_kind, tenant_id, origin, event_type, occurred_at)
        values ('legacy-intent-${run}', 'tenant', $1, 'legacy-${run}',
                'ORG-NOTIFICATION-SETTINGS-CHANGED', now())`,
-      [tenantA],
-    );
-    if (!migrationsCopyDir) throw new Error("migration copy missing");
-    const sql = (
-      await readFile(join(sourceMigrations, EXPORT_MIGRATION), "utf8")
-    ).replace(/create role (\w+)([^;]*);/g, idempotentRole);
-    await writeFile(join(migrationsCopyDir, EXPORT_MIGRATION), sql);
-    await runMigrations({
-      url: isolatedOwnerUrl.toString(),
-      migrationsDir: migrationsCopyDir,
-      log: () => undefined,
-    });
-    const legacy = await owner.query(
-      "select 1 from notification_intents where id = $1",
-      [`legacy-intent-${run}`],
-    );
-    expect(legacy.rowCount).toBe(1);
-
-    for (const eventType of ["AUDIT_EXPORT_READY", "AUDIT_EXPORT_FAILED"]) {
-      await owner.query(
-        `insert into notification_intents
-           (id, scope_kind, tenant_id, origin, event_type, occurred_at, subject_audit_export_id)
-         values ($1, 'tenant', $2, $3, $4, now(), gen_random_uuid())`,
-        [`i-${eventType}-${run}`, tenantA, `o-${eventType}-${run}`, eventType],
+        [tenantA],
       );
       await owner.query(
         `insert into notification_inbox_items
+         (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id, event_type, occurred_at)
+         values ($1, $2, $3, $4, 'tenant', $5, 'ORG-NOTIFICATION-SETTINGS-CHANGED', now())`,
+        [
+          `legacy-inbox-${run}`,
+          `legacy-intent-${run}`,
+          `legacy-${run}`,
+          userA1,
+          tenantA,
+        ],
+      );
+      expect(
+        (await upgrade.advanceTo("0021_audit_exports.sql")).applied,
+      ).toEqual(["0021_audit_exports.sql"]);
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0021_audit_exports.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+      for (const [table, id] of [
+        ["notification_intents", `legacy-intent-${run}`],
+        ["notification_inbox_items", `legacy-inbox-${run}`],
+      ] as const) {
+        expect(
+          (
+            await owner.query(
+              `select id, event_type from ${table} where id = $1`,
+              [id],
+            )
+          ).rows,
+        ).toEqual([{ id, event_type: "ORG-NOTIFICATION-SETTINGS-CHANGED" }]);
+      }
+
+      for (const eventType of ["AUDIT_EXPORT_READY", "AUDIT_EXPORT_FAILED"]) {
+        await owner.query(
+          `insert into notification_intents
+           (id, scope_kind, tenant_id, origin, event_type, occurred_at, subject_audit_export_id)
+         values ($1, 'tenant', $2, $3, $4, now(), gen_random_uuid())`,
+          [
+            `i-${eventType}-${run}`,
+            tenantA,
+            `o-${eventType}-${run}`,
+            eventType,
+          ],
+        );
+        await owner.query(
+          `insert into notification_inbox_items
            (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
             event_type, occurred_at, subject_audit_export_id)
          values ($1, $2, $3, $4, 'tenant', $5, $6, now(), gen_random_uuid())`,
-        [
-          `x-${eventType}-${run}`,
-          `i-${eventType}-${run}`,
-          `o-${eventType}-${run}`,
-          userA1,
-          tenantA,
-          eventType,
-        ],
-      );
-      await expect(
-        owner.query(
-          `insert into notification_intents
-             (id, scope_kind, user_id, origin, event_type, occurred_at)
-           values ($1, 'account', $2, $3, $4, now())`,
           [
-            `acct-${eventType}-${run}`,
+            `x-${eventType}-${run}`,
+            `i-${eventType}-${run}`,
+            `o-${eventType}-${run}`,
             userA1,
-            `acct-${eventType}-${run}`,
+            tenantA,
             eventType,
           ],
-        ),
-      ).rejects.toMatchObject({ code: "23514" });
-      await expect(
-        owner.query(
-          `insert into notification_inbox_items
+        );
+        await expect(
+          owner.query(
+            `insert into notification_intents
+             (id, scope_kind, user_id, origin, event_type, occurred_at)
+           values ($1, 'account', $2, $3, $4, now())`,
+            [
+              `acct-${eventType}-${run}`,
+              userA1,
+              `acct-${eventType}-${run}`,
+              eventType,
+            ],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+        await expect(
+          owner.query(
+            `insert into notification_inbox_items
              (id, intent_id, origin, recipient_user_id, scope_kind, user_id,
               event_type, occurred_at)
            values ($1, $2, $3, $4, 'account', $4, $5, now())`,
-          [
-            `acct-x-${eventType}-${run}`,
-            `i-${eventType}-${run}`,
-            `acct-x-${eventType}-${run}`,
-            userA1,
-            eventType,
-          ],
-        ),
-      ).rejects.toMatchObject({ code: "23514" });
+            [
+              `acct-x-${eventType}-${run}`,
+              `i-${eventType}-${run}`,
+              `acct-x-${eventType}-${run}`,
+              userA1,
+              eventType,
+            ],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+      }
+      expect(
+        (
+          await owner.query<{ d: Date }>(
+            "select audit_export_deadline('2026-10-03T10:00:00Z') as d",
+          )
+        ).rows[0]?.d.toISOString(),
+      ).toBe("2026-10-03T11:00:00.000Z");
+      await upgrade.advanceTo("latest");
+      expect(await ledger()).toEqual(
+        canonical.map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      try {
+        await upgrade.close();
+      } catch (error) {
+        errors.push(error);
+      }
     }
-    expect(
-      (
-        await owner.query<{ d: Date }>(
-          "select audit_export_deadline('2026-10-03T10:00:00Z') as d",
-        )
-      ).rows[0]?.d.toISOString(),
-    ).toBe("2026-10-03T11:00:00.000Z");
-  });
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "upgrade assertions and cleanup failed");
+  }, 180_000);
 });
 
 describe("row level security", () => {
@@ -518,13 +511,71 @@ describe("claim_audit_export", () => {
     await clearExports();
     const a = await seedExport({ tenantId: tenantA, userId: userA1 });
     const b = await seedExport({ tenantId: tenantA, userId: userA2 });
-    const claims = await Promise.all([
-      claimAuditExport(database),
-      claimAuditExport(database),
-    ]);
-    expect(claims.map((claim) => claim?.exportId).sort()).toEqual(
-      [a, b].sort(),
-    );
+    const first = await database.sql.connect();
+    let second: PoolClient | undefined;
+    const errors: unknown[] = [];
+    const claims: { export_id: string; claim_token: string }[] = [];
+    try {
+      await first.query("begin");
+      await first.query("set local statement_timeout = '1500ms'");
+      await first.query(
+        "set local idle_in_transaction_session_timeout = '10s'",
+      );
+      second = await database.sql.connect();
+      await second.query("begin");
+      await second.query("set local statement_timeout = '1500ms'");
+      await second.query(
+        "set local idle_in_transaction_session_timeout = '10s'",
+      );
+      const held = await first.query<{
+        export_id: string;
+        claim_token: string;
+      }>("select * from claim_audit_export()");
+      expect(held.rows).toHaveLength(1);
+      claims.push(...held.rows);
+      const other = await second.query<{
+        export_id: string;
+        claim_token: string;
+      }>("select * from claim_audit_export()");
+      expect(other.rows).toHaveLength(1);
+      claims.push(...other.rows);
+      expect(claims.map((claim) => claim.export_id).sort()).toEqual(
+        [a, b].sort(),
+      );
+      await second.query("commit");
+      await first.query("commit");
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      for (const client of [second, first]) {
+        if (!client) continue;
+        try {
+          await client.query("rollback");
+        } catch (error) {
+          errors.push(error);
+        } finally {
+          client.release();
+        }
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "Audit claim transactions failed");
+    for (const claim of claims) {
+      expect(await jobState(claim.export_id)).toEqual({
+        state: "running",
+        attempt_count: 1,
+        claim_token: claim.claim_token,
+      });
+      expect(
+        (
+          await owner.query(
+            "select claimed_until > now() as leased from audit_export_jobs where export_id = $1",
+            [claim.export_id],
+          )
+        ).rows,
+      ).toEqual([{ leased: true }]);
+    }
   });
 
   it("gives the claim role no access to the request itself", async () => {
