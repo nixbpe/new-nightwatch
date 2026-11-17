@@ -3,6 +3,7 @@ import {
   monitorWriteResponseSchema,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
+import { openTestPostgres } from "@nightwatch/db/testing";
 import {
   decryptSecret,
   encryptSecret,
@@ -21,10 +22,7 @@ import {
   it,
 } from "vitest";
 
-import {
-  blockAuditInserts,
-  openIsolatedAuditDatabase,
-} from "../audit/test-support";
+import { blockAuditInserts } from "../audit/test-support";
 import { createRedisClient } from "../rate-limit";
 import {
   monitorsPath,
@@ -123,48 +121,71 @@ async function listen(
 
 // The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
-let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
+let isolated: Awaited<ReturnType<typeof openTestPostgres>>;
 let ctx: MonitorTestContext;
 let bare: MonitorTestContext;
 let redis: Redis;
 let org: TestOrganization;
-// Listening before collection lets the `it.each` tables name the real port.
-const other = await listen(() => 0, {
-  same: STUB_HOSTS.allowed,
-  other: STUB_HOSTS.allowedOther,
-});
-const target = await listen(() => other.port, {
-  same: STUB_HOSTS.allowed,
-  other: STUB_HOSTS.allowedOther,
-});
+let other: Target;
+let target: Target;
+const acquired: {
+  target?: Target;
+  other?: Target;
+  redis?: Redis;
+  isolated?: Awaited<ReturnType<typeof openTestPostgres>>;
+  ctx?: MonitorTestContext;
+  bare?: MonitorTestContext;
+} = {};
 const responses: string[] = [];
 const organizationIds: string[] = [];
 
 beforeAll(async () => {
-  redis = createRedisClient(redisUrl);
-  isolated = await openIsolatedAuditDatabase();
-  ctx = await openMonitorTestContext({
+  other = acquired.other = await listen(() => 0, {
+    same: STUB_HOSTS.allowed,
+    other: STUB_HOSTS.allowedOther,
+  });
+  target = acquired.target = await listen(() => other.port, {
+    same: STUB_HOSTS.allowed,
+    other: STUB_HOSTS.allowedOther,
+  });
+  redis = acquired.redis = createRedisClient(redisUrl);
+  isolated = acquired.isolated = await openTestPostgres("api-monitor-secrets");
+  ctx = acquired.ctx = await openMonitorTestContext({
     defaultProject: true,
     redis,
     urls: isolated.urls,
   });
-  bare = await openMonitorTestContext({
+  bare = acquired.bare = await openMonitorTestContext({
     defaultProject: true,
     withoutCredentials: true,
     urls: isolated.urls,
   });
   org = await ctx.createOrganization("secrets");
   organizationIds.push(org.id);
-}, 120_000);
+}, 180_000);
 
 afterAll(async () => {
-  await target.close();
-  await other.close();
-  await clearRateLimitKeys();
-  redis.disconnect();
-  await bare.close();
-  await ctx.close();
-  await isolated.close();
+  const errors: unknown[] = [];
+  const cleanups: (() => unknown)[] = [
+    () => acquired.target?.close(),
+    () => acquired.other?.close(),
+    () => (acquired.redis ? clearRateLimitKeys() : undefined),
+    () => {
+      acquired.redis?.disconnect();
+    },
+    () => acquired.bare?.close(),
+    () => acquired.ctx?.close(),
+    () => acquired.isolated?.close(),
+  ];
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, "Secret test cleanup failed");
 }, 60_000);
 
 beforeEach(async () => {
@@ -447,83 +468,89 @@ describe("Create with secrets (AC-25, AC-56)", () => {
   it.each([
     [
       "bearer without a token",
-      config({ auth: { type: "bearer" } }),
+      () => config({ auth: { type: "bearer" } }),
       [{ field: "auth", reason: "required" }],
     ],
     [
       "basic with only a username",
-      {
+      () => ({
         ...config({ auth: { type: "basic" } }),
         secrets: [{ slot: "auth.username", value: USERNAME }],
-      },
+      }),
       [{ field: "auth", reason: "required" }],
     ],
     [
       "a secret header without a value",
-      config({ headers: [{ id: HEADER_ID, name: "X-S", secret: true }] }),
+      () => config({ headers: [{ id: HEADER_ID, name: "X-S", secret: true }] }),
       [{ field: "headers.0.value", reason: "required" }],
     ],
     [
       "a secret header without an id",
-      {
+      () => ({
         ...config({ headers: [{ name: "X-S", secret: true }] }),
         secrets: [{ slot: HEADER_SLOT, value: "v" }],
-      },
+      }),
       [{ field: "headers.0.id", reason: "required" }],
     ],
     [
       "a slot the auth type does not use",
-      {
+      () => ({
         ...config({ auth: { type: "bearer" } }),
         secrets: [
           { slot: "auth.token", value: TOKEN },
           { slot: "auth.password", value: "x" },
         ],
-      },
+      }),
       [{ field: "secrets.1.slot", reason: "invalid_format" }],
     ],
     [
       "an unknown slot",
-      { ...config(), secrets: [{ slot: "auth.other", value: "x" }] },
+      () => ({ ...config(), secrets: [{ slot: "auth.other", value: "x" }] }),
       [{ field: "secrets.0.slot", reason: "invalid_format" }],
     ],
     [
       "a duplicate slot",
-      {
+      () => ({
         ...config({ auth: { type: "bearer" } }),
         secrets: [
           { slot: "auth.token", value: "a" },
           { slot: "auth.token", value: "b" },
         ],
-      },
+      }),
       [{ field: "secrets.1.slot", reason: "duplicate" }],
     ],
     [
       "an empty value",
-      { ...bearer(), secrets: [{ slot: "auth.token", value: "" }] },
+      () => ({ ...bearer(), secrets: [{ slot: "auth.token", value: "" }] }),
       [{ field: "secrets.0.value", reason: "required" }],
     ],
     [
       "a value over 4 KiB",
-      {
+      () => ({
         ...bearer(),
         secrets: [{ slot: "auth.token", value: "é".repeat(2049) }],
-      },
+      }),
       [{ field: "secrets.0.value", reason: "too_long" }],
     ],
     [
       "a value with a line break",
-      { ...bearer(), secrets: [{ slot: "auth.token", value: "a\nb: c" }] },
+      () => ({
+        ...bearer(),
+        secrets: [{ slot: "auth.token", value: "a\nb: c" }],
+      }),
       [{ field: "secrets.0.value", reason: "crlf" }],
     ],
     [
       "a value with NUL",
-      { ...bearer(), secrets: [{ slot: "auth.token", value: "a\0b" }] },
+      () => ({ ...bearer(), secrets: [{ slot: "auth.token", value: "a\0b" }] }),
       [{ field: "secrets.0.value", reason: "invalid_format" }],
     ],
     [
       "a lone surrogate",
-      { ...bearer(), secrets: [{ slot: "auth.token", value: "a\uD800" }] },
+      () => ({
+        ...bearer(),
+        secrets: [{ slot: "auth.token", value: "a\uD800" }],
+      }),
       [{ field: "secrets.0.value", reason: "invalid_format" }],
     ],
   ] as const)("rejects %s and stores nothing", async (_label, body, fields) => {
@@ -531,7 +558,7 @@ describe("Create with secrets (AC-25, AC-56)", () => {
       "select count(*)::int as total from monitors where tenant_id = $1",
       [org.id],
     );
-    const response = await create(body);
+    const response = await create(body());
     expect(response.status).toBe(400);
     expect(invalidFields(response.json)).toEqual(fields);
     const after = await ctx.owner.sql.query(
@@ -1401,14 +1428,32 @@ const SCANNED_TABLES = [
 describe("Scan for known secret values (AC-43)", () => {
   it("finds no secret in any response, log line, monitor table or notification table", async () => {
     const monitor = await created(bearer());
-    await editOk(monitor, {
+    const replaced = await editOk(monitor, {
       secrets: [{ slot: "auth.token", action: "replace", value: NEW_TOKEN }],
     });
-    await testEdit(monitor, { assertions: REFLECT });
+    const bearerTest = await testEdit(replaced, { assertions: REFLECT });
+    expect(bearerTest.status).toBe(200);
+    expect(target.seen.at(-1)?.headers.authorization).toBe(
+      `Bearer ${NEW_TOKEN}`,
+    );
     const second = await created(basic());
-    await testEdit(second, { assertions: REFLECT });
-    await created(apiKey());
-    await created(secretHeader());
+    const basicTest = await testEdit(second, { assertions: REFLECT });
+    expect(basicTest.status).toBe(200);
+    const encodedBasic = Buffer.from(`${USERNAME}:${PASSWORD}`).toString(
+      "base64",
+    );
+    expect(target.seen.at(-1)?.headers.authorization).toBe(
+      `Basic ${encodedBasic}`,
+    );
+    const keyMonitor = await created(apiKey());
+    const headerMonitor = await created(secretHeader());
+    const graph = [
+      { monitor_id: monitor.id, slot: "auth.token", value: NEW_TOKEN },
+      { monitor_id: second.id, slot: "auth.password", value: PASSWORD },
+      { monitor_id: second.id, slot: "auth.username", value: USERNAME },
+      { monitor_id: keyMonitor.id, slot: "auth.apiKey", value: API_KEY },
+      { monitor_id: headerMonitor.id, slot: HEADER_SLOT, value: HEADER_VALUE },
+    ];
 
     const haystacks: [string, string][] = [
       ["responses", responses.join("\n")],
@@ -1418,12 +1463,8 @@ describe("Scan for known secret values (AC-43)", () => {
       const result = await ctx.owner.sql.query<{ text: string }>(
         `select t::text as text from ${table} t`,
       );
-      // Rows of other suites may share the table; the fixtures here are ours.
       haystacks.push([table, result.rows.map((row) => row.text).join("\n")]);
     }
-    const encodedBasic = Buffer.from(`${USERNAME}:${PASSWORD}`).toString(
-      "base64",
-    );
     for (const [name, text] of haystacks) {
       for (const value of [...KNOWN_SECRETS, encodedBasic]) {
         expect(text.includes(value), `${name} contains a secret`).toBe(false);
@@ -1431,17 +1472,43 @@ describe("Scan for known secret values (AC-43)", () => {
     }
     // The stored bytes stay in monitor_secrets: ciphertext, iv and tag must not
     // appear, in hex or base64, in any response, log line or other table.
-    const stored = await ctx.owner.sql.query<{
-      ciphertext: Buffer;
-      iv: Buffer;
-      auth_tag: Buffer;
-    }>(
-      // A row a test overwrote with a few bytes would match anywhere.
-      `select ciphertext, iv, auth_tag from monitor_secrets
-       where tenant_id = $1 and length(ciphertext) >= 8`,
-      [org.id],
+    const stored = await ctx.owner.sql.query<
+      SecretRow & { monitor_id: string }
+    >(
+      `select monitor_id, slot, ciphertext, iv, auth_tag, key_version from monitor_secrets
+       where tenant_id = $1 and monitor_id = any($2::uuid[])`,
+      [org.id, [monitor.id, second.id, keyMonitor.id, headerMonitor.id]],
     );
-    expect(stored.rows.length).toBeGreaterThan(5);
+    expect(
+      stored.rows
+        .map(({ monitor_id, slot }) => ({ monitor_id, slot }))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    ).toEqual(
+      graph
+        .map(({ monitor_id, slot }) => ({ monitor_id, slot }))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    );
+    for (const row of stored.rows) {
+      expect(
+        decryptSecret(
+          {
+            tenantId: org.id,
+            monitorId: row.monitor_id,
+            slot: row.slot,
+            keyVersion: row.key_version,
+            iv: row.iv,
+            authTag: row.auth_tag,
+            ciphertext: row.ciphertext,
+          },
+          credentialEnv,
+        ),
+      ).toBe(
+        graph.find(
+          (entry) =>
+            entry.monitor_id === row.monitor_id && entry.slot === row.slot,
+        )?.value,
+      );
+    }
     const bytes = stored.rows.flatMap((row) =>
       [row.ciphertext, row.iv, row.auth_tag].flatMap((part) => [
         part.toString("hex"),

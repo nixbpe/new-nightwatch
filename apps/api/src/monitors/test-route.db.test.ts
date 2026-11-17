@@ -200,6 +200,15 @@ let fullApp: OpenAPIHono;
 let noRedisApp: OpenAPIHono;
 let clock = 1_000_000_000;
 let clockedApp: OpenAPIHono;
+const acquired: {
+  runtime?: Database;
+  owner?: Database;
+  pki?: ReturnType<typeof createSelfSignedCertificates>;
+  http1?: Listener;
+  https1?: Listener;
+  httpsExpired?: Listener;
+  redis?: Redis;
+} = {};
 
 const auth: Auth = {
   handler: () => Promise.resolve(new Response(null, { status: 404 })),
@@ -442,16 +451,10 @@ function resultOf(reply: Reply): MonitorTestResult {
   return monitorTestResultSchema.strict().parse(body.result);
 }
 
-// Counts per parent table: a partition another suite adds or drops while this
-// one runs must not change the set of tables or the counts (a partitioned
-// parent counts its rows across all partitions).
-async function monitorTableCounts(
+async function monitorTableSnapshot(
   organizationId: string,
-): Promise<Record<string, number>> {
-  const tables = await owner.sql.query<{
-    name: string;
-    has_tenant: boolean;
-  }>(
+): Promise<Record<string, unknown[]>> {
+  const tables = await owner.sql.query<{ name: string; has_tenant: boolean }>(
     `select c.relname as name,
             exists (select 1 from pg_attribute a
                     where a.attrelid = c.oid and a.attname = 'tenant_id'
@@ -461,17 +464,16 @@ async function monitorTableCounts(
        and not c.relispartition and c.relname like 'monitor%'
      order by c.relname`,
   );
-  // A monitor table without tenant_id would escape the per-Organization count.
   expect(tables.rows.filter((row) => !row.has_tenant)).toEqual([]);
-  const counts: Record<string, number> = {};
+  const snapshot: Record<string, unknown[]> = {};
   for (const { name } of tables.rows) {
-    const rows = await owner.sql.query<{ total: string }>(
-      `select count(*) as total from "${name}" where tenant_id = $1`,
+    const rows = await owner.sql.query<{ row: unknown }>(
+      `select to_jsonb(t) as row from "${name}" t where tenant_id = $1 order by to_jsonb(t)::text`,
       [organizationId],
     );
-    counts[name] = Number(rows.rows[0]?.total ?? 0);
+    snapshot[name] = rows.rows.map(({ row }) => row);
   }
-  return counts;
+  return snapshot;
 }
 
 async function clearRateLimitKeys(): Promise<void> {
@@ -486,8 +488,8 @@ let org: Awaited<ReturnType<typeof createOrganization>>;
 
 beforeAll(async () => {
   const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-  runtime = createDatabase(runtimeUrl);
-  owner = createDatabase(ownerUrl);
+  runtime = acquired.runtime = createDatabase(runtimeUrl);
+  owner = acquired.owner = createDatabase(ownerUrl);
   await runMigrations({
     url: ownerUrl,
     migrationsDir:
@@ -496,35 +498,59 @@ beforeAll(async () => {
         new URL("../../../../packages/db/migrations", import.meta.url),
       ),
   });
-  pki = createSelfSignedCertificates(TARGET_HOST);
+  pki = acquired.pki = createSelfSignedCertificates(TARGET_HOST);
   const redirects: ListenerRedirects = {};
-  http1 = await listen(redirects);
+  http1 = acquired.http1 = await listen(redirects);
   redirects.httpPort = () => http1.port;
-  https1 = await listen(redirects, pki.valid);
-  httpsExpired = await listen(redirects, pki.expired);
+  https1 = acquired.https1 = await listen(redirects, pki.valid);
+  httpsExpired = acquired.httpsExpired = await listen(redirects, pki.expired);
   dns.set(TARGET_HOST, [LOOPBACK]);
   dns.set(PUBLIC_HOST, [PUBLIC_ADDRESS]);
-  redis = trackedRedis(redisUrl);
+  redis = acquired.redis = trackedRedis(redisUrl);
   fullApp = buildFullApp(redis);
   noRedisApp = buildFullApp(undefined);
   clockedApp = buildClockedApp(createRateLimiter({ redis, now: () => clock }));
   org = await createOrganization("test-route");
-}, 120_000);
+}, 180_000);
 
 afterAll(async () => {
-  await clearRateLimitKeys();
-  for (const client of redisClients) client.disconnect();
-  await Promise.all([http1.close(), https1.close(), httpsExpired.close()]);
-  pki.dispose();
-  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
-    organizationIds,
-  ]);
-  await owner.sql.query('delete from "user" where id = any($1::text[])', [
-    userIds,
-  ]);
-  await owner.close();
-  await runtime.close();
-});
+  const errors: unknown[] = [];
+  const cleanups: (() => unknown)[] = [
+    () => (acquired.redis ? clearRateLimitKeys() : undefined),
+    ...redisClients.map((client) => () => {
+      client.disconnect();
+    }),
+    () => acquired.http1?.close(),
+    () => acquired.https1?.close(),
+    () => acquired.httpsExpired?.close(),
+    () => {
+      acquired.pki?.dispose();
+    },
+    () =>
+      acquired.owner?.sql.query(
+        "delete from organization where id = any($1::uuid[])",
+        [organizationIds],
+      ),
+    () =>
+      acquired.owner?.sql.query(
+        'delete from "user" where id = any($1::text[])',
+        [userIds],
+      ),
+    () => acquired.owner?.close(),
+    () => acquired.runtime?.close(),
+  ];
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  projectOf.clear();
+  sessions.clear();
+  if (errors.length)
+    throw new AggregateError(errors, "Test route cleanup failed");
+}, 60_000);
 
 function resetCounters(): void {
   http1.reset();
@@ -549,7 +575,7 @@ describe("role x operation", () => {
     async (role) => {
       const monitor = await createMonitor(org.id, org.users.owner);
       resetCounters();
-      const before = await monitorTableCounts(org.id);
+      const before = await monitorTableSnapshot(org.id);
       const create = await call(
         fullApp,
         org.users[role],
@@ -567,7 +593,13 @@ describe("role x operation", () => {
         `${role.padEnd(8)} create=${String(create.status)} edit=${String(edit.status)} requests=${String(http1.requests())}`,
       );
       if (allowed) {
-        expect([create.status, edit.status]).toEqual([200, 200]);
+        for (const reply of [create, edit]) {
+          expect(resultOf(reply)).toMatchObject({
+            outcome: "pass",
+            httpStatus: 200,
+            failureReason: null,
+          });
+        }
         expect(http1.requests()).toBe(2);
       } else {
         expect([create.status, edit.status]).toEqual([403, 403]);
@@ -576,7 +608,7 @@ describe("role x operation", () => {
         expect(outboundSeen()).toBe(0);
         expect(resolverCalls).toEqual([]);
       }
-      expect(await monitorTableCounts(org.id)).toEqual(before);
+      expect(await monitorTableSnapshot(org.id)).toEqual(before);
     },
   );
 
@@ -872,27 +904,51 @@ describe("rate limit (AC-11)", () => {
   });
 
   it("does not spend the Organization budget on a user who is already over their own", async () => {
-    const rlOrg = await createOrganization("test-route-atomic", 1);
+    const rlOrg = await createOrganization("test-route-atomic", 2);
     clock += 10_000_000;
     const path = testPath(rlOrg.id);
     const body = config(target(http1, "/ok"));
+    resetCounters();
     for (let i = 0; i < 10; i += 1) {
       clock += 100;
-      await call(clockedApp, rlOrg.users.admin, path, body);
+      expect(
+        resultOf(await call(clockedApp, rlOrg.users.admin, path, body)).outcome,
+      ).toBe("pass");
     }
+    expect(http1.requests()).toBe(10);
     for (let i = 0; i < 5; i += 1) {
       clock += 100;
-      expect(
-        (await call(clockedApp, rlOrg.users.admin, path, body)).status,
-      ).toBe(429);
+      const denied = await call(clockedApp, rlOrg.users.admin, path, body);
+      expect([denied.status, errorCode(denied)]).toEqual([
+        429,
+        "MONITOR_TEST_RATE_LIMITED",
+      ]);
+      expect(denied.headers.get("retry-after")).not.toBeNull();
+      expect(http1.requests()).toBe(10);
     }
-    // 10 of 30 are spent, so the second admin still has 10 more requests.
-    for (let i = 0; i < 10; i += 1) {
-      clock += 100;
-      expect(
-        (await call(clockedApp, rlOrg.admins[0] as string, path, body)).status,
-      ).toBe(200);
+    for (const user of [rlOrg.users.owner, rlOrg.admins[0] as string]) {
+      for (let i = 0; i < 10; i += 1) {
+        clock += 100;
+        expect(resultOf(await call(clockedApp, user, path, body)).outcome).toBe(
+          "pass",
+        );
+      }
     }
+    expect(http1.requests()).toBe(30);
+    resetCounters();
+    const denied = await call(
+      clockedApp,
+      rlOrg.admins[1] as string,
+      path,
+      body,
+    );
+    expect([denied.status, errorCode(denied)]).toEqual([
+      429,
+      "MONITOR_TEST_RATE_LIMITED",
+    ]);
+    expect(denied.headers.get("retry-after")).not.toBeNull();
+    expect(outboundSeen()).toBe(0);
+    expect(resolverCalls).toEqual([]);
   });
 
   it("answers 503 and sends nothing when the API has no Redis", async () => {
@@ -1264,31 +1320,63 @@ describe("saved monitor whose host now resolves to a forbidden address (AC-62)",
 
 describe("no database write", () => {
   it("leaves every monitor table of the Organization unchanged", async () => {
+    const org = await createOrganization("no-write");
     const monitorId = await createMonitor(org.id, org.users.owner);
     await clearRateLimitKeys();
-    const before = await monitorTableCounts(org.id);
-    const versions = await owner.sql.query(
-      "select id, version, updated_at, last_check_at from monitors where tenant_id = $1 order by id",
-      [org.id],
-    );
-    const cases: [string, unknown][] = [
-      [testPath(org.id), config(target(http1, "/ok"))],
-      [testPath(org.id, monitorId), config(target(http1, "/down"))],
-      [testPath(org.id), config(target(http1, "/hold"), { timeoutSeconds: 1 })],
-      [testPath(org.id), config("ftp://x.example/")],
+    const before = await monitorTableSnapshot(org.id);
+    expect(before.monitor_schedule).toHaveLength(1);
+    const cases = [
+      {
+        path: testPath(org.id),
+        body: config(target(http1, "/ok")),
+        outcome: "pass",
+        failureReason: null,
+        httpStatus: 200,
+      },
+      {
+        path: testPath(org.id, monitorId),
+        body: config(target(http1, "/ok")),
+        outcome: "pass",
+        failureReason: null,
+        httpStatus: 200,
+      },
+      {
+        path: testPath(org.id, monitorId),
+        body: config(target(http1, "/down")),
+        outcome: "fail",
+        failureReason: "http_status",
+        httpStatus: 503,
+      },
+      {
+        path: testPath(org.id),
+        body: config(target(http1, "/hold"), { timeoutSeconds: 1 }),
+        outcome: "fail",
+        failureReason: "timeout",
+        httpStatus: null,
+      },
     ];
-    for (const [path, body] of cases) {
-      await call(fullApp, org.users.owner, path, body);
+    for (const { path, body, ...result } of cases) {
+      resetCounters();
+      expect(
+        resultOf(await call(fullApp, org.users.owner, path, body)),
+      ).toMatchObject(result);
+      expect(http1.requests()).toBe(1);
+      expect(await monitorTableSnapshot(org.id)).toEqual(before);
     }
-    expect(await monitorTableCounts(org.id)).toEqual(before);
-    expect(
-      (
-        await owner.sql.query(
-          "select id, version, updated_at, last_check_at from monitors where tenant_id = $1 order by id",
-          [org.id],
-        )
-      ).rows,
-    ).toEqual(versions.rows);
+    resetCounters();
+    const invalid = await call(
+      fullApp,
+      org.users.owner,
+      testPath(org.id),
+      config("ftp://x.example/"),
+    );
+    expect([invalid.status, errorCode(invalid)]).toEqual([
+      400,
+      "MONITOR_INVALID",
+    ]);
+    expect(outboundSeen()).toBe(0);
+    expect(resolverCalls).toEqual([]);
+    expect(await monitorTableSnapshot(org.id)).toEqual(before);
   });
 
   it("writes no audit event for a successful Test", async () => {
@@ -1300,14 +1388,32 @@ describe("no database write", () => {
           [org.id],
         )
       ).rows[0]?.n;
+    const auditRows = async () =>
+      (
+        await owner.sql.query<{ row: unknown }>(
+          "select to_jsonb(t) as row from audit_events t where tenant_id = $1 order by to_jsonb(t)::text",
+          [org.id],
+        )
+      ).rows;
     const before = await count();
-    await call(
+    const auditBefore = await auditRows();
+    const monitorBefore = await monitorTableSnapshot(org.id);
+    resetCounters();
+    const reply = await call(
       fullApp,
       org.users.owner,
       testPath(org.id),
       config(target(http1, "/ok")),
     );
+    expect(resultOf(reply)).toMatchObject({
+      outcome: "pass",
+      httpStatus: 200,
+      failureReason: null,
+    });
+    expect(http1.requests()).toBe(1);
     expect(await count()).toBe(before);
+    expect(await auditRows()).toEqual(auditBefore);
+    expect(await monitorTableSnapshot(org.id)).toEqual(monitorBefore);
   });
 });
 
