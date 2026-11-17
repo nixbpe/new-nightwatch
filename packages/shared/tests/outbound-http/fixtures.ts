@@ -34,164 +34,171 @@ function openssl(cwd: string, ...args: string[]) {
 /** Builds a throwaway CA and leaf certificates with the openssl CLI. */
 export function createTestPki(): TestPki {
   const dir = mkdtempSync(join(tmpdir(), "nw-outbound-pki-"));
-  const read = (file: string) => readFileSync(join(dir, file), "utf8");
-  mkdirSync(join(dir, "newcerts"));
-  writeFileSync(join(dir, "index.txt"), "");
-  writeFileSync(join(dir, "serial"), "01\n");
-  writeFileSync(
-    join(dir, "ca.cnf"),
-    [
-      "[ca]",
-      "default_ca = local",
-      "[local]",
-      `dir = ${dir}`,
-      "database = $dir/index.txt",
-      "new_certs_dir = $dir/newcerts",
-      "serial = $dir/serial",
-      "default_md = sha256",
-      "policy = any",
-      "unique_subject = no",
-      "[any]",
-      "commonName = supplied",
-      "",
-    ].join("\n"),
-  );
+  try {
+    const read = (file: string) => readFileSync(join(dir, file), "utf8");
+    mkdirSync(join(dir, "newcerts"));
+    writeFileSync(join(dir, "index.txt"), "");
+    writeFileSync(join(dir, "serial"), "01\n");
+    writeFileSync(
+      join(dir, "ca.cnf"),
+      [
+        "[ca]",
+        "default_ca = local",
+        "[local]",
+        `dir = ${dir}`,
+        "database = $dir/index.txt",
+        "new_certs_dir = $dir/newcerts",
+        "serial = $dir/serial",
+        "default_md = sha256",
+        "policy = any",
+        "unique_subject = no",
+        "[any]",
+        "commonName = supplied",
+        "",
+      ].join("\n"),
+    );
 
-  openssl(
-    dir,
-    "req",
-    "-x509",
-    "-newkey",
-    "ec",
-    "-pkeyopt",
-    "ec_paramgen_curve:prime256v1",
-    "-nodes",
-    "-keyout",
-    "ca.key",
-    "-out",
-    "ca.crt",
-    "-days",
-    "30",
-    "-subj",
-    "/CN=NW Test CA/O=NW Test",
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
-  );
-  openssl(
-    dir,
-    "req",
-    "-x509",
-    "-newkey",
-    "ec",
-    "-pkeyopt",
-    "ec_paramgen_curve:prime256v1",
-    "-nodes",
-    "-keyout",
-    "ca2.key",
-    "-out",
-    "ca2.crt",
-    "-days",
-    "30",
-    "-subj",
-    "/CN=Other CA",
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
-  );
-
-  const issue = (
-    name: string,
-    host: string,
-    signer: "ca" | "ca2",
-    dates: string[],
-  ) => {
-    writeFileSync(join(dir, `${name}.ext`), `subjectAltName=DNS:${host}\n`);
     openssl(
       dir,
       "req",
+      "-x509",
       "-newkey",
       "ec",
       "-pkeyopt",
       "ec_paramgen_curve:prime256v1",
       "-nodes",
       "-keyout",
-      `${name}.key`,
+      "ca.key",
       "-out",
-      `${name}.csr`,
+      "ca.crt",
+      "-days",
+      "30",
       "-subj",
-      `/CN=${host}`,
+      "/CN=NW Test CA/O=NW Test",
+      "-addext",
+      "basicConstraints=critical,CA:TRUE",
     );
     openssl(
       dir,
-      "ca",
-      "-batch",
-      "-notext",
-      "-config",
-      "ca.cnf",
-      "-cert",
-      `${signer}.crt`,
-      "-keyfile",
-      `${signer}.key`,
-      "-in",
-      `${name}.csr`,
+      "req",
+      "-x509",
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-nodes",
+      "-keyout",
+      "ca2.key",
       "-out",
-      `${name}.crt`,
-      "-extfile",
-      `${name}.ext`,
-      ...dates,
+      "ca2.crt",
+      "-days",
+      "30",
+      "-subj",
+      "/CN=Other CA",
+      "-addext",
+      "basicConstraints=critical,CA:TRUE",
     );
-    return { key: read(`${name}.key`), cert: read(`${name}.crt`) };
-  };
-  const valid = ["-days", "30"];
 
-  openssl(
-    dir,
-    "req",
-    "-x509",
-    "-newkey",
-    "ec",
-    "-pkeyopt",
-    "ec_paramgen_curve:prime256v1",
-    "-nodes",
-    "-keyout",
-    "self.key",
-    "-out",
-    "self.crt",
-    "-days",
-    "30",
-    "-subj",
-    `/CN=${TARGET_HOST}`,
-    "-addext",
-    `subjectAltName=DNS:${TARGET_HOST}`,
-  );
+    const issue = (
+      name: string,
+      host: string,
+      signer: "ca" | "ca2",
+      dates: string[],
+    ) => {
+      writeFileSync(join(dir, `${name}.ext`), `subjectAltName=DNS:${host}\n`);
+      openssl(
+        dir,
+        "req",
+        "-newkey",
+        "ec",
+        "-pkeyopt",
+        "ec_paramgen_curve:prime256v1",
+        "-nodes",
+        "-keyout",
+        `${name}.key`,
+        "-out",
+        `${name}.csr`,
+        "-subj",
+        `/CN=${host}`,
+      );
+      openssl(
+        dir,
+        "ca",
+        "-batch",
+        "-notext",
+        "-config",
+        "ca.cnf",
+        "-cert",
+        `${signer}.crt`,
+        "-keyfile",
+        `${signer}.key`,
+        "-in",
+        `${name}.csr`,
+        "-out",
+        `${name}.crt`,
+        "-extfile",
+        `${name}.ext`,
+        ...dates,
+      );
+      return { key: read(`${name}.key`), cert: read(`${name}.crt`) };
+    };
+    const valid = ["-days", "30"];
 
-  return {
-    ca: read("ca.crt"),
-    leaf: {
-      good: issue("good", TARGET_HOST, "ca", valid),
-      wrongName: issue("wrong", "other.nw-test.internal", "ca", valid),
-      expired: issue("expired", TARGET_HOST, "ca", [
-        "-startdate",
-        "20200101000000Z",
-        "-enddate",
-        "20200102000000Z",
-      ]),
-      selfSigned: { key: read("self.key"), cert: read("self.crt") },
-      notYetValid: issue("future", TARGET_HOST, "ca", [
-        "-startdate",
-        "20990101000000Z",
-        "-enddate",
-        "20990102000000Z",
-      ]),
-      unknownCa: issue("unknown", TARGET_HOST, "ca2", valid),
-    },
-    dispose: () => {
-      rmSync(dir, { recursive: true, force: true });
-    },
-  };
+    openssl(
+      dir,
+      "req",
+      "-x509",
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-nodes",
+      "-keyout",
+      "self.key",
+      "-out",
+      "self.crt",
+      "-days",
+      "30",
+      "-subj",
+      `/CN=${TARGET_HOST}`,
+      "-addext",
+      `subjectAltName=DNS:${TARGET_HOST}`,
+    );
+
+    return {
+      ca: read("ca.crt"),
+      leaf: {
+        good: issue("good", TARGET_HOST, "ca", valid),
+        wrongName: issue("wrong", "other.nw-test.internal", "ca", valid),
+        expired: issue("expired", TARGET_HOST, "ca", [
+          "-startdate",
+          "20200101000000Z",
+          "-enddate",
+          "20200102000000Z",
+        ]),
+        selfSigned: { key: read("self.key"), cert: read("self.crt") },
+        notYetValid: issue("future", TARGET_HOST, "ca", [
+          "-startdate",
+          "20990101000000Z",
+          "-enddate",
+          "20990102000000Z",
+        ]),
+        unknownCa: issue("unknown", TARGET_HOST, "ca2", valid),
+      },
+      dispose: () => {
+        rmSync(dir, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export interface CapturedRequest {
   head: string;
+  /** Null until the declared request body has arrived in full. */
+  body: Buffer | null;
   socket: net.Socket;
 }
 
@@ -209,6 +216,7 @@ export interface RawServer {
 export async function startRawServer(options: {
   tls?: { key: string; cert: string };
   onRequest?: (request: CapturedRequest) => void;
+  onBody?: (request: CapturedRequest) => void;
 }): Promise<RawServer> {
   let bytes = 0;
   let connections = 0;
@@ -218,19 +226,27 @@ export async function startRawServer(options: {
     open.add(socket);
     socket.on("close", () => open.delete(socket));
     socket.on("error", () => undefined);
-    let buffer = "";
-    let handled = false;
+    let buffer: Buffer = Buffer.alloc(0);
+    let request: CapturedRequest | undefined;
+    let headEnd = -1;
+    let bodyLength = 0;
     socket.on("data", (data: Buffer) => {
       bytes += data.length;
-      buffer += data.toString("latin1");
-      if (!handled && buffer.includes("\r\n\r\n")) {
-        handled = true;
-        const request = {
-          head: buffer.slice(0, buffer.indexOf("\r\n\r\n")),
-          socket,
-        };
+      buffer = Buffer.concat([buffer, data]);
+      if (request === undefined) {
+        headEnd = buffer.indexOf("\r\n\r\n");
+        if (headEnd === -1) return;
+        const head = buffer.subarray(0, headEnd).toString("latin1");
+        bodyLength = Number(/\r\ncontent-length: *(\d+)/i.exec(head)?.[1] ?? 0);
+        request = { head, body: null, socket };
         requests.push(request);
         options.onRequest?.(request);
+      }
+      const body = buffer.subarray(headEnd + 4);
+      if (body.length >= bodyLength) {
+        const firstComplete = request.body === null;
+        request.body = body;
+        if (firstComplete) options.onBody?.(request);
       }
     });
   };

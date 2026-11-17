@@ -1,10 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   runCheck,
   type NormalizedMonitorConfig,
 } from "../../src/monitor-check";
 import {
+  respond,
   startRawServer,
   type RawServer,
   type TestPki,
@@ -22,10 +23,8 @@ let pki: TestPki;
 const servers: RawServer[] = [];
 beforeAll(() => {
   pki = createTestPki();
+  return pki.dispose;
 }, 60_000);
-afterAll(() => {
-  pki.dispose();
-});
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -625,10 +624,16 @@ describe("request building", () => {
   );
 
   it("POST sends the body with a default content type", async () => {
-    const server = await serve(() => ({}));
+    const server = await startRawServer({
+      onBody: ({ socket }) => {
+        respond(socket, "200 OK", { "Content-Length": "0" });
+      },
+    });
+    servers.push(server);
     await runCheck(
       configFor("http", server.port, {
         method: "POST",
+        timeoutSeconds: 1,
         body: { type: "json", content: '{"a":1}' },
       }),
       {},
@@ -638,6 +643,7 @@ describe("request building", () => {
       "content-type: application/json",
     );
     expect(head(server).toLowerCase()).toContain("content-length: 7");
+    expect(server.requests[0]?.body).toEqual(Buffer.from('{"a":1}'));
   });
 
   it("keeps a user content type on POST", async () => {

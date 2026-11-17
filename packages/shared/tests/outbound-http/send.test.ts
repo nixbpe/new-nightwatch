@@ -1,14 +1,6 @@
 import net, { type Socket } from "node:net";
 import tls from "node:tls";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   resolveOutboundHost,
@@ -34,10 +26,8 @@ const servers: RawServer[] = [];
 
 beforeAll(() => {
   pki = createTestPki();
+  return pki.dispose;
 }, 60_000);
-afterAll(() => {
-  pki.dispose();
-});
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => server.close()));
@@ -476,15 +466,20 @@ describe("HTTP/1.1 framing over node:net", () => {
 
   it("sends a POST body with Content-Length", async () => {
     const server = await serve({
-      onRequest: ({ socket }) => {
+      onBody: ({ socket }) => {
         okBody(socket);
       },
     });
     await sendOutboundRequest(
-      baseRequest(at(server), { method: "POST", body: "payload" }),
+      baseRequest(at(server), {
+        method: "POST",
+        body: "payload",
+        timeoutMs: 1000,
+      }),
       deps(),
     );
     expect(server.requests[0]?.head).toContain("Content-Length: 7");
+    expect(server.requests[0]?.body).toEqual(Buffer.from("payload"));
   });
 });
 
@@ -777,7 +772,7 @@ describe("redirects", () => {
   it("switches POST to GET on 302 and keeps POST with its body on 307", async () => {
     const run = async (status: string) => {
       const server = await serve({
-        onRequest: ({ head, socket }) => {
+        onBody: ({ head, socket }) => {
           if (head.includes("/start"))
             respond(socket, status, {
               Location: "/end",
@@ -787,17 +782,25 @@ describe("redirects", () => {
         },
       });
       await sendOutboundRequest(
-        baseRequest(at(server, "/start"), { method: "POST", body: "data" }),
+        baseRequest(at(server, "/start"), {
+          method: "POST",
+          body: "data",
+          timeoutMs: 1000,
+        }),
         deps(),
       );
-      return server.requests[1]?.head ?? "";
+      expect(server.requests[0]?.head).toContain("POST /start");
+      expect(server.requests[0]?.body).toEqual(Buffer.from("data"));
+      return server.requests[1];
     };
     const after302 = await run("302 Found");
-    expect(after302).toContain("GET /end");
-    expect(after302).not.toContain("Content-Length");
+    expect(after302?.head).toContain("GET /end");
+    expect(after302?.head).not.toContain("Content-Length");
+    expect(after302?.body).toEqual(Buffer.alloc(0));
     const after307 = await run("307 Temporary Redirect");
-    expect(after307).toContain("POST /end");
-    expect(after307).toContain("Content-Length: 4");
+    expect(after307?.head).toContain("POST /end");
+    expect(after307?.head).toContain("Content-Length: 4");
+    expect(after307?.body).toEqual(Buffer.from("data"));
   });
 
   it("drops secret headers when the redirect goes to another host", async () => {

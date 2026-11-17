@@ -1,24 +1,13 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   runCheck,
   type NormalizedMonitorConfig,
 } from "../../src/monitor-check";
-import {
-  startRawServer,
-  type RawServer,
-  type TestPki,
-} from "../outbound-http/fixtures";
-import { configFor, createTestPki, deps, first } from "./fixtures";
+import { startRawServer, type RawServer } from "../outbound-http/fixtures";
+import { configFor, deps, first } from "./fixtures";
 
-let pki: TestPki;
 const servers: RawServer[] = [];
-beforeAll(() => {
-  pki = createTestPki();
-}, 60_000);
-afterAll(() => {
-  pki.dispose();
-});
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -1252,16 +1241,23 @@ describe("work limits", () => {
 
   it("does not spend the budget of one snapshot on the next", async () => {
     const first = await check(
-      response({ headers: [["X-A", noisy.slice(0, 1300)]], body: "plain" }),
+      body(noisy.repeat(30)),
       { headers: [secretHeader("h1", "X-Own")] },
       { "header.h1": thai },
     );
     const second = await check(
-      response({ headers: [["Content-Type", "text/plain"]], body: "plain" }),
+      body("plain+body"),
       { headers: [secretHeader("h1", "X-Own")] },
       { "header.h1": thai },
     );
-    expect(first.headers[0]?.value).not.toBe("•••");
-    expect(second.body).toMatchObject({ text: "plain" });
+    expect(first.body).toMatchObject({
+      kind: "text",
+      text: "•••",
+      truncated: true,
+    });
+    expect(second.body).toMatchObject({
+      kind: "text",
+      text: "plain+body",
+    });
   });
 });

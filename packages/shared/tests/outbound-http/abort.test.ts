@@ -91,13 +91,17 @@ async function abortWhen<T>(
 ) {
   const controller = new AbortController();
   const pending = run(controller.signal);
-  await vi.waitFor(
-    () => {
-      expect(ready()).toBe(true);
-    },
-    { timeout: 25_000, interval: 5 },
-  );
-  controller.abort();
+  try {
+    await vi.waitFor(
+      () => {
+        expect(ready()).toBe(true);
+      },
+      { timeout: 25_000, interval: 5 },
+    );
+  } finally {
+    controller.abort();
+    await pending;
+  }
   return pending;
 }
 
@@ -174,11 +178,30 @@ describe("caller abort of sendOutboundRequest", { timeout: 30_000 }, () => {
       socket.write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial");
     });
     servers.push(server);
+    let clientResponse = Buffer.alloc(0);
+    netModule.connect = (options) => {
+      const socket = realConnect(options);
+      const emit = socket.emit.bind(socket);
+      socket.emit = (event: string | symbol, ...args: unknown[]) => {
+        const emitted = emit(event, ...args);
+        if (event === "data") {
+          clientResponse = Buffer.concat([clientResponse, args[0] as Buffer]);
+        }
+        return emitted;
+      };
+      return socket;
+    };
     const result = await abortWhen(
-      () => server.received() > 0,
+      () =>
+        clientResponse.equals(
+          Buffer.from("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial"),
+        ),
       (signal) =>
         sendOutboundRequest(request(target(server.port), signal), deps()),
     );
+    expect(
+      clientResponse.subarray(clientResponse.indexOf("\r\n\r\n") + 4),
+    ).toEqual(Buffer.from("partial"));
     expect(result.failure?.reason).toBe("executor_error");
     expect(result.response).toBeUndefined();
     expect(result.diagnostics).toBeUndefined();
