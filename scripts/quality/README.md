@@ -152,14 +152,22 @@ label/error relationships remain valid when explicitly classified.
 
 - **unit** — `bun run test`; no database required, ever.
 - **integration** — `bun run test:integration` (root alias) runs
-  `*.db.test.ts` against an explicitly supplied database. **Both URLs are
-  required** before any database work: `DATABASE_URL` (runtime role,
+  `*.db.test.ts` against real PostgreSQL. Suites using supplied services require
+  **both URLs**: `DATABASE_URL` (runtime role,
   non-owner NOBYPASSRLS) and `DATABASE_OWNER_URL` (owner role for
   self-applied idempotent migrations and the privilege-denial case; the
   runtime role is never borrowed for owner work, so there is no fallback).
   A missing database URL throws a refusal — the suite never silently
   skips. Root `test:coverage` intentionally runs **both** projects, so the
   coverage gate also needs the integration environment.
+
+Canonical migration, audit, seed and Worker fixtures use
+`@nightwatch/db/testing` (`packages/db/tests/support/postgres.ts`). They require
+Docker and provision fresh `postgres:17.11-alpine` clusters with separate runtime
+and owner roles. Historical cases advance through unchanged canonical migration
+prefixes. Those fixtures ignore supplied database URLs and remove their own
+containers, volumes and migration copies on close. Full integration and coverage
+commands still need both URLs for the remaining service-backed suites.
 
 Local invocation never uses an ambient or production database — load this
 worktree's generated URLs through `scripts/dev-env.mjs` (shell env still
