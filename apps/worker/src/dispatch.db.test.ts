@@ -1,15 +1,12 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 
 import {
   claimNotificationDispatches,
-  createDatabase,
   failNotificationDispatch,
-  runMigrations,
   withAccountContextRaw,
   type Database,
 } from "@nightwatch/db";
+import { openTestPostgres, type TestPostgres } from "@nightwatch/db/testing";
 import { createLogger } from "@nightwatch/shared";
 import { Queue, Worker } from "bullmq";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -30,16 +27,6 @@ import {
 type Uuid = `${string}-${string}-${string}-${string}-${string}`;
 
 const run = randomUUID();
-const ownerPassword = `owner-${randomUUID()}`;
-const runtimePassword = `runtime-${randomUUID()}`;
-const postgresContainer = `nightwatch-dispatch-postgres-${run}`;
-const initRolesScript = fileURLToPath(
-  new URL("../../../scripts/db/init/001-roles.sh", import.meta.url),
-);
-const migrationsDir = new URL(
-  "../../../packages/db/migrations",
-  import.meta.url,
-).pathname;
 const userId = randomUUID();
 const redisPrefix = `dispatch-test-${run}`;
 const redisUrl = process.env.REDIS_URL;
@@ -49,77 +36,7 @@ if (!redisUrl)
 const logger = createLogger({ level: "silent", name: "dispatch-db-test" });
 let owner!: Database;
 let runtime!: Database;
-let ownerInitialized = false;
-let runtimeInitialized = false;
-let postgresStarted = false;
-
-type DockerResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
-function docker(args: string[], allowFailure = false): Promise<DockerResult> {
-  const { promise, reject, resolve } = Promise.withResolvers<DockerResult>();
-  const process = spawn("docker", args, {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const stdout: Buffer[] = [];
-  const stderr: Buffer[] = [];
-  process.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-  process.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-  process.once("error", reject);
-  process.once("close", (exitCode) => {
-    const result = {
-      exitCode: exitCode ?? 1,
-      stdout: Buffer.concat(stdout).toString(),
-      stderr: Buffer.concat(stderr).toString(),
-    };
-    if (result.exitCode !== 0 && !allowFailure)
-      reject(
-        new Error(
-          result.stderr ||
-            result.stdout ||
-            `docker exited with ${String(result.exitCode)}`,
-        ),
-      );
-    else resolve(result);
-  });
-  return promise;
-}
-
-async function publishedPort(
-  container: string,
-  target: string,
-): Promise<number> {
-  const { stdout } = await docker(["port", container, target]);
-  const port = /:(\d+)\s*$/.exec(stdout)?.[1];
-  if (!port) throw new Error(`missing published port for ${container}`);
-  return Number(port);
-}
-
-// Wait for the service readiness signal instead of a fixed startup delay.
-async function waitFor(
-  container: string,
-  readinessCommand: string,
-): Promise<void> {
-  await docker([
-    "exec",
-    "--env",
-    `READINESS_COMMAND=${readinessCommand}`,
-    container,
-    "sh",
-    "-ceu",
-    `timeout 40 sh -ceu 'until sh -ceu "$READINESS_COMMAND"; do sleep 0.1; done'`,
-  ]);
-}
-
-function databaseUrl(username: string, password: string, port: number): string {
-  const url = new URL("postgres://localhost/nightwatch");
-  url.username = username;
-  url.password = password;
-  url.port = String(port);
-  return url.toString();
-}
+let fixture: TestPostgres | undefined;
 
 async function state(id: string) {
   const result = await owner.sql.query<{
@@ -203,59 +120,13 @@ function acknowledgementFaultDatabase(): Database {
 }
 
 beforeAll(async () => {
-  postgresStarted = true;
-  await docker([
-    "run",
-    "--detach",
-    "--rm",
-    "--name",
-    postgresContainer,
-    "--publish",
-    "127.0.0.1::5432",
-    "--env",
-    "POSTGRES_USER=nightwatch_owner",
-    "--env",
-    `POSTGRES_PASSWORD=${ownerPassword}`,
-    "--env",
-    "POSTGRES_DB=nightwatch",
-    "--env",
-    `NW_DB_PASSWORD=${runtimePassword}`,
-    "--volume",
-    `${initRolesScript}:/docker-entrypoint-initdb.d/001-roles.sh:ro`,
-    "postgres:17.11-alpine",
-  ]);
-  // Probe over TCP: the init-time server is socket-only and restarts after init
-  // scripts, so a socket probe can pass before the final server is up.
-  await waitFor(
-    postgresContainer,
-    "pg_isready -h 127.0.0.1 -U nightwatch_owner -d nightwatch >/dev/null && " +
-      `psql -h 127.0.0.1 -U nightwatch_owner -d nightwatch -Atqc "select 1 from pg_roles where rolname = 'nightwatch'" | grep -qx 1`,
-  );
-  const postgresPort = await publishedPort(postgresContainer, "5432/tcp");
-  const ownerUrl = databaseUrl("nightwatch_owner", ownerPassword, postgresPort);
-  const runtimeUrl = databaseUrl("nightwatch", runtimePassword, postgresPort);
-  await runMigrations({
-    url: ownerUrl,
-    migrationsDir,
-    log: () => undefined,
-  });
-  owner = createDatabase(ownerUrl);
-  ownerInitialized = true;
-  runtime = createDatabase(runtimeUrl);
-  runtimeInitialized = true;
-}, 60_000);
+  fixture = await openTestPostgres("dispatch-worker");
+  owner = fixture.owner;
+  runtime = fixture.runtime;
+}, 180_000);
 
 afterAll(async () => {
-  try {
-    if (runtimeInitialized) await runtime.close();
-  } finally {
-    try {
-      if (ownerInitialized) await owner.close();
-    } finally {
-      if (postgresStarted)
-        await docker(["rm", "--force", "--volumes", postgresContainer], true);
-    }
-  }
+  await fixture?.close();
 }, 60_000);
 
 describe("notification dispatch scheduler faults", () => {
@@ -266,6 +137,8 @@ describe("notification dispatch scheduler faults", () => {
       connection: redisConnection(redisUrl),
       prefix: redisPrefix,
     });
+    let worker: Worker<MaterializeJobData> | undefined;
+    const failures: unknown[] = [];
     const transportFailureQueue: DispatchQueue = {
       add: () =>
         Promise.reject(
@@ -398,16 +271,17 @@ describe("notification dispatch scheduler faults", () => {
       expect(new Set(jobs.map((job) => job.id)).size).toBe(3);
       await expect(visible()).resolves.toMatchObject({ items: [] });
 
+      if (!recovered.claimToken)
+        throw new Error("missing recovered claim token");
+      const expectedJobId = dispatchJobId(dispatchId, recovered.claimToken);
       const completed = Promise.withResolvers<undefined>();
-      const worker = new Worker<MaterializeJobData>(
+      worker = new Worker<MaterializeJobData>(
         queue.name,
         async (job) => {
           await processMaterialization(
             job.data,
             createMaterializationDependencies(runtime),
           );
-          if (job.data.claimToken === recovered.claimToken)
-            completed.resolve(undefined);
         },
         {
           connection: redisConnection(redisUrl),
@@ -415,11 +289,36 @@ describe("notification dispatch scheduler faults", () => {
           prefix: redisPrefix,
         },
       );
+      worker.on("completed", (job) => {
+        if (job.id === expectedJobId) completed.resolve(undefined);
+      });
+      worker.on("failed", (job, error) => {
+        if (
+          job?.id === expectedJobId &&
+          job.attemptsMade >= (job.opts.attempts ?? 1)
+        )
+          completed.reject(error);
+      });
+      const onError = (error: Error) => {
+        completed.reject(error);
+      };
+      worker.on("error", onError);
+      queue.on("error", onError);
+      const deadline = setTimeout(() => {
+        completed.reject(
+          new Error(`timed out waiting for materialization ${expectedJobId}`),
+        );
+      }, 20_000);
       try {
-        await worker.waitUntilReady();
-        await completed.promise;
+        await Promise.all([worker.waitUntilReady(), completed.promise]);
       } finally {
-        await worker.close();
+        clearTimeout(deadline);
+        try {
+          await worker.close();
+        } catch (error) {
+          failures.push(error);
+        }
+        queue.off("error", onError);
       }
       await expect(state(dispatchId)).resolves.toMatchObject({
         status: "completed",
@@ -435,19 +334,35 @@ describe("notification dispatch scheduler faults", () => {
         items: [{ id: inboxItem.id, intentId, readAt: null }],
         unreadCount: 1,
       });
+    } catch (error) {
+      failures.push(error);
     } finally {
       try {
+        await worker?.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
         await queue.obliterate({ force: true });
-      } finally {
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
         await queue.close();
+      } catch (error) {
+        failures.push(error);
       }
     }
-  });
+    if (failures.length)
+      throw new AggregateError(failures, "dispatch scenario or cleanup failed");
+  }, 30_000);
   it("queues every claim in one scheduler batch as a distinct job", async () => {
     const queue = new Queue<MaterializeJobData>(IN_APP_MATERIALIZE_QUEUE, {
       connection: redisConnection(redisUrl),
       prefix: redisPrefix,
     });
+    let worker: Worker<MaterializeJobData> | undefined;
+    const failures: unknown[] = [];
     const batch = [
       { intentId: randomUUID(), dispatchId: randomUUID() },
       { intentId: randomUUID(), dispatchId: randomUUID() },
@@ -495,15 +410,13 @@ describe("notification dispatch scheduler faults", () => {
 
       const completed = new Set<string>();
       const done = Promise.withResolvers<undefined>();
-      const worker = new Worker<MaterializeJobData>(
+      worker = new Worker<MaterializeJobData>(
         queue.name,
         async (job) => {
           await processMaterialization(
             job.data,
             createMaterializationDependencies(runtime),
           );
-          completed.add(job.data.dispatchId);
-          if (completed.size === 2) done.resolve(undefined);
         },
         {
           connection: redisConnection(redisUrl),
@@ -511,11 +424,38 @@ describe("notification dispatch scheduler faults", () => {
           prefix: redisPrefix,
         },
       );
+      const expectedJobIds = new Set(jobs.map((job) => job.id));
+      worker.on("completed", (job) => {
+        if (!job.id || !expectedJobIds.has(job.id)) return;
+        completed.add(job.id);
+        if (completed.size === expectedJobIds.size) done.resolve(undefined);
+      });
+      worker.on("failed", (job, error) => {
+        if (
+          job &&
+          expectedJobIds.has(job.id) &&
+          job.attemptsMade >= (job.opts.attempts ?? 1)
+        )
+          done.reject(error);
+      });
+      const onError = (error: Error) => {
+        done.reject(error);
+      };
+      worker.on("error", onError);
+      queue.on("error", onError);
+      const deadline = setTimeout(() => {
+        done.reject(new Error("timed out waiting for batch materialization"));
+      }, 20_000);
       try {
-        await worker.waitUntilReady();
-        await done.promise;
+        await Promise.all([worker.waitUntilReady(), done.promise]);
       } finally {
-        await worker.close();
+        clearTimeout(deadline);
+        try {
+          await worker.close();
+        } catch (error) {
+          failures.push(error);
+        }
+        queue.off("error", onError);
       }
       await Promise.all(
         dispatches.map((id) =>
@@ -537,12 +477,26 @@ describe("notification dispatch scheduler faults", () => {
       if (!firstItem) throw new Error("missing first batch inbox item");
       const readAt = await markVisibleItemRead(firstItem.id);
       expect(readAt).toBeInstanceOf(Date);
+    } catch (error) {
+      failures.push(error);
     } finally {
       try {
+        await worker?.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
         await queue.obliterate({ force: true });
-      } finally {
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
         await queue.close();
+      } catch (error) {
+        failures.push(error);
       }
     }
-  });
+    if (failures.length)
+      throw new AggregateError(failures, "dispatch scenario or cleanup failed");
+  }, 30_000);
 });

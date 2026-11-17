@@ -25,6 +25,7 @@ import {
 } from "./test-harness";
 
 let db!: TestDatabase;
+let acquiredDatabase: TestDatabase | undefined;
 const silent = createLogger({ level: "silent", name: "checker-test" });
 
 function dependencies(
@@ -99,12 +100,40 @@ async function claimToken(monitor: SeededMonitor): Promise<string | null> {
   return row?.claim_token ?? null;
 }
 
+async function waitForRequests(
+  target: Target,
+  count: number,
+  running: Promise<unknown>,
+): Promise<void> {
+  const arrived = Promise.withResolvers<undefined>();
+  const deadline = Date.now() + 3_000;
+  const poll = setInterval(() => {
+    if (target.requests.length >= count) arrived.resolve(undefined);
+    else if (Date.now() >= deadline)
+      arrived.reject(
+        new Error(`timed out waiting for target request ${String(count)}`),
+      );
+  }, 10);
+  try {
+    await Promise.race([
+      arrived.promise,
+      running.then(() => {
+        throw new Error(
+          `check completed before target request ${String(count)}`,
+        );
+      }),
+    ]);
+  } finally {
+    clearInterval(poll);
+  }
+}
+
 beforeAll(async () => {
-  db = await startTestDatabase("checker");
-}, 90_000);
+  acquiredDatabase = db = await startTestDatabase("checker");
+}, 180_000);
 
 afterAll(async () => {
-  await db.stop();
+  await acquiredDatabase?.stop();
 }, 60_000);
 
 describe("checker records a result (transaction A then B)", () => {
@@ -1315,17 +1344,17 @@ describe("AC-62 and shutdown", () => {
 
   it("an aborted check records nothing and keeps its claim (gap)", async () => {
     const target = await startTarget();
+    const controller = new AbortController();
+    let running: Promise<unknown> | undefined;
+    const failures: unknown[] = [];
     target.setHandler(() => undefined);
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/hang` });
-      const controller = new AbortController();
-      const running = processMonitorCheck(
+      running = processMonitorCheck(
         monitor.job(),
         dependencies({ signal: controller.signal }),
       );
-      while (target.requests.length === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await waitForRequests(target, 1, running);
       controller.abort();
       expect(await running).toBe("aborted");
       // The request itself is torn down, not just abandoned.
@@ -1333,9 +1362,23 @@ describe("AC-62 and shutdown", () => {
       expect(target.closedConnections()).toBe(1);
       expect((await countAll(monitor)).results).toBe(0);
       expect(await claimToken(monitor)).toBe(monitor.claimToken);
+    } catch (error) {
+      failures.push(error);
     } finally {
-      await target.close();
+      controller.abort();
+      try {
+        await running;
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await target.close();
+      } catch (error) {
+        failures.push(error);
+      }
     }
+    if (failures.length)
+      throw new AggregateError(failures, "abort scenario or cleanup failed");
   });
 });
 
@@ -1639,48 +1682,68 @@ describe("hourly rollup response times", () => {
 describe("shutdown signal listeners", () => {
   it("finished checks leave no abort listener on the shared signal", async () => {
     const target = await startTarget();
+    const controller = new AbortController();
+    const held = Promise.withResolvers<undefined>();
+    let running: Promise<unknown> | undefined;
+    const runningChecks: Promise<unknown>[] = [];
+    const failures: unknown[] = [];
     try {
-      const controller = new AbortController();
       const monitors = await Promise.all(
         Array.from({ length: 5 }, () =>
           seedMonitor(db, { url: `${target.url}/` }),
         ),
       );
-      await Promise.all(
-        monitors.map((monitor) =>
+      runningChecks.push(
+        ...monitors.map((monitor) =>
           processMonitorCheck(
             monitor.job(),
             dependencies({ signal: controller.signal }),
           ),
         ),
       );
+      await Promise.all(runningChecks);
       expect(target.requests).toHaveLength(5);
       expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
 
       // Not vacuous: a check in flight does hold listeners on the signal.
-      const held = Promise.withResolvers<undefined>();
       target.setHandler((_request, response) => {
         void held.promise.then(() => {
           response.end("ok");
         });
       });
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
-      const running = processMonitorCheck(
+      running = processMonitorCheck(
         monitor.job(),
         dependencies({ signal: controller.signal }),
       );
-      while (target.requests.length < 6) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      runningChecks.push(running);
+      await waitForRequests(target, 6, running);
       expect(
         getEventListeners(controller.signal, "abort").length,
       ).toBeGreaterThan(0);
       held.resolve(undefined);
       await running;
       expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    } catch (error) {
+      failures.push(error);
     } finally {
-      await target.close();
+      held.resolve(undefined);
+      controller.abort();
+      const outcomes = await Promise.allSettled(runningChecks);
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected") failures.push(outcome.reason);
+      }
+      try {
+        await target.close();
+      } catch (error) {
+        failures.push(error);
+      }
     }
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        "signal listener scenario or cleanup failed",
+      );
   });
 });
 

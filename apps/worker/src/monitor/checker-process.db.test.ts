@@ -47,6 +47,12 @@ let dnsFile = "";
 const children: WorkerProcess[] = [];
 const stops: { stop(): Promise<void> }[] = [];
 const targets: Target[] = [];
+let suiteCleanup: Promise<void> | undefined;
+const acquired: {
+  db?: TestDatabase;
+  redis?: TestRedis;
+  queue?: Queue<MonitorCheckJob>;
+} = {};
 
 type WorkerProcess = {
   child: ChildProcess;
@@ -153,36 +159,121 @@ function startScheduler(
   return handle;
 }
 
+async function cleanupCases(): Promise<void> {
+  const errors: unknown[] = [];
+  for (const handle of stops.splice(0)) {
+    try {
+      await handle.stop();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const { child, exited } of children.splice(0)) {
+    try {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+      await exited;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const target of targets.splice(0)) {
+    try {
+      await target.close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (acquired.queue) {
+    try {
+      await acquired.queue.obliterate({ force: true });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (acquired.db) {
+    try {
+      await acquired.db.owner.sql.query(
+        "delete from organization where name = 'Checker'",
+      );
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, "checker process case cleanup failed");
+}
+
+function cleanupSuite(): Promise<void> {
+  suiteCleanup ??= (async () => {
+    const errors: unknown[] = [];
+    try {
+      await cleanupCases();
+    } catch (error) {
+      errors.push(error);
+    }
+    if (acquired.queue) {
+      try {
+        await acquired.queue.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (dnsDir) {
+      try {
+        rmSync(dnsDir, { recursive: true, force: true });
+      } catch (error) {
+        errors.push(error);
+      }
+      dnsDir = "";
+    }
+    if (acquired.redis) {
+      try {
+        await acquired.redis.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (acquired.db) {
+      try {
+        await acquired.db.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length)
+      throw new AggregateError(errors, "checker process suite cleanup failed");
+  })();
+  return suiteCleanup;
+}
+
 beforeAll(async () => {
-  [db, redis] = await Promise.all([
-    startTestDatabase("checker-process"),
-    startTestRedis("checker-process"),
-  ]);
-  queue = createMonitorCheckQueue(redis.url);
-  queue.on("error", () => undefined);
-  dnsDir = mkdtempSync(join(tmpdir(), "nw-checker-dns-"));
-  dnsFile = join(dnsDir, "hosts.json");
-  writeDns({ [TARGET_HOST]: "127.0.0.1" });
-}, 120_000);
+  try {
+    acquired.db = db = await startTestDatabase("checker-process");
+    acquired.redis = redis = await startTestRedis("checker-process");
+    acquired.queue = queue = createMonitorCheckQueue(redis.url);
+    queue.on("error", () => undefined);
+    dnsDir = mkdtempSync(join(tmpdir(), "nw-checker-dns-"));
+    dnsFile = join(dnsDir, "hosts.json");
+    writeDns({ [TARGET_HOST]: "127.0.0.1" });
+  } catch (error) {
+    try {
+      await cleanupSuite();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "checker process setup and cleanup failed",
+        { cause: cleanupError },
+      );
+    }
+    throw error;
+  }
+}, 180_000);
 
 afterEach(async () => {
-  for (const handle of stops.splice(0)) await handle.stop();
-  for (const { child, exited } of children.splice(0)) {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGKILL");
-    }
-    await exited;
-  }
-  for (const target of targets.splice(0)) await target.close();
-  await queue.obliterate({ force: true }).catch(() => undefined);
-  await db.owner.sql.query("delete from organization where name = 'Checker'");
-});
-
-afterAll(async () => {
-  await queue.close().catch(() => undefined);
-  rmSync(dnsDir, { recursive: true, force: true });
-  await Promise.all([db.stop(), redis.stop()]);
+  if (!suiteCleanup) await cleanupCases();
 }, 60_000);
+afterAll(cleanupSuite, 60_000);
 
 async function target(
   handler?: Parameters<typeof startTarget>[0],

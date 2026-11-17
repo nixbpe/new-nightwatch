@@ -10,6 +10,7 @@ import {
 } from "@nightwatch/db";
 import { createLogger, type AuditChange } from "@nightwatch/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { NotificationDispatchScheduler, type DispatchQueue } from "../dispatch";
 import {
@@ -22,7 +23,7 @@ import { ensureAuditPartitionFor, openIsolatedDatabase } from "./test-support";
 
 let runtime: Database;
 let owner: Database;
-let close: () => Promise<void>;
+let close: (() => Promise<void>) | undefined;
 const lines: string[] = [];
 const logger = createLogger(
   { level: "info", name: "audit-exporter-test" },
@@ -252,7 +253,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await close();
+  await close?.();
 }, 60_000);
 
 beforeEach(resetAll);
@@ -1056,44 +1057,84 @@ describe("notifications reach the requester (P-07)", () => {
     ]);
     const failed = await seedRequest();
     await exporter().runOnce();
+    const materializePending = async () => {
+      const claimToken = randomUUID();
+      const claims = await claimNotificationDispatches(runtime, {
+        claimToken,
+        limit: 10,
+      });
+      expect(claims).toHaveLength(1);
+      for (const claim of claims) {
+        expect(claim.tenantId).toBe(org);
+        await expect(
+          markNotificationDispatchEnqueued(runtime, {
+            id: claim.id,
+            claimToken,
+          }),
+        ).resolves.toBe(true);
+        await processMaterialization(
+          {
+            dispatchId: claim.id,
+            claimToken,
+            scope: { kind: "tenant", tenantId: org },
+          },
+          createMaterializationDependencies(runtime),
+        );
+      }
+    };
+    await expect(
+      sql(
+        "select role from member where organization_id = $1 and user_id = $2",
+        [org, requester],
+      ),
+    ).resolves.toEqual([{ role: "viewer" }]);
+    await materializePending();
+    const failureItems = await sql<{
+      id: string;
+      event_type: string;
+      recipient_user_id: string;
+      subject_audit_export_id: string;
+    }>(
+      `select id, event_type, recipient_user_id, subject_audit_export_id
+       from notification_inbox_items where tenant_id = $1`,
+      [org],
+    );
+    expect(
+      failureItems.map(({ id, ...item }) => {
+        z.uuid().parse(id);
+        return item;
+      }),
+    ).toEqual([
+      {
+        event_type: "AUDIT_EXPORT_FAILED",
+        recipient_user_id: requester,
+        subject_audit_export_id: failed,
+      },
+    ]);
+
     await sql("update member set role = 'admin' where user_id = $1", [
       requester,
     ]);
     const ready = await seedRequest();
     await exporter().runOnce();
+    await materializePending();
 
-    const claimToken = randomUUID();
-    const claims = await claimNotificationDispatches(runtime, {
-      claimToken,
-      limit: 10,
-    });
-    expect(claims).toHaveLength(2);
-    const dependencies = createMaterializationDependencies(runtime);
-    for (const claim of claims) {
-      if (!claim.tenantId) throw new Error("tenant scope expected");
-      await markNotificationDispatchEnqueued(runtime, {
-        id: claim.id,
-        claimToken,
-      });
-      await processMaterialization(
-        {
-          dispatchId: claim.id,
-          claimToken,
-          scope: { kind: "tenant", tenantId: claim.tenantId },
-        },
-        dependencies,
-      );
-    }
     const items = await sql<{
+      id: string;
       event_type: string;
       recipient_user_id: string;
       subject_audit_export_id: string;
     }>(
-      `select event_type, recipient_user_id, subject_audit_export_id
+      `select id, event_type, recipient_user_id, subject_audit_export_id
        from notification_inbox_items where tenant_id = $1 order by event_type`,
       [org],
     );
-    expect(items).toEqual([
+    expect(
+      items.map(({ id, ...item }) => {
+        z.uuid().parse(id);
+        return item;
+      }),
+    ).toEqual([
       {
         event_type: "AUDIT_EXPORT_FAILED",
         recipient_user_id: requester,

@@ -5,14 +5,9 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { fileURLToPath } from "node:url";
 
-import {
-  createDatabase,
-  runMigrations,
-  withTenantContextRaw,
-  type Database,
-} from "@nightwatch/db";
+import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import { openTestPostgres } from "@nightwatch/db/testing";
 import type { OutboundDeps } from "@nightwatch/shared";
 
 import type { MonitorCheckJob } from "./queue";
@@ -25,42 +20,36 @@ export const outboundDeps: OutboundDeps = {
   testAllowedHosts: [TARGET_HOST],
 };
 
-const initRolesScript = fileURLToPath(
-  new URL("../../../../scripts/db/init/001-roles.sh", import.meta.url),
-);
-const migrationsDir = new URL(
-  "../../../../packages/db/migrations",
-  import.meta.url,
-).pathname;
-
 type DockerResult = { exitCode: number; stdout: string; stderr: string };
-function docker(args: string[], allowFailure = false): Promise<DockerResult> {
+function docker(args: string[], timeoutMs = 5_000): Promise<DockerResult> {
   const { promise, reject, resolve } = Promise.withResolvers<DockerResult>();
   const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
   child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
   child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-  child.once("error", reject);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGKILL");
+  }, timeoutMs);
+  child.once("error", (error) => {
+    clearTimeout(timer);
+    reject(error);
+  });
   child.once("close", (exitCode) => {
+    clearTimeout(timer);
     const result = {
       exitCode: exitCode ?? 1,
       stdout: Buffer.concat(stdout).toString(),
       stderr: Buffer.concat(stderr).toString(),
     };
-    if (result.exitCode !== 0 && !allowFailure)
+    if (timedOut) reject(new Error(`docker ${args[0] ?? "command"} timed out`));
+    else if (result.exitCode !== 0)
       reject(new Error(result.stderr || result.stdout || "docker failed"));
     else resolve(result);
   });
   return promise;
-}
-
-function databaseUrl(username: string, password: string, port: number): string {
-  const url = new URL("postgres://localhost/nightwatch");
-  url.username = username;
-  url.password = password;
-  url.port = String(port);
-  return url.toString();
 }
 
 export type TestDatabase = {
@@ -72,64 +61,13 @@ export type TestDatabase = {
 };
 
 export async function startTestDatabase(label: string): Promise<TestDatabase> {
-  const run = randomUUID();
-  const ownerPassword = `owner-${randomUUID()}`;
-  const runtimePassword = `runtime-${randomUUID()}`;
-  const container = `nightwatch-monitor-${label}-postgres-${run}`;
-  await docker([
-    "run",
-    "--detach",
-    "--rm",
-    "--name",
-    container,
-    "--publish",
-    "127.0.0.1::5432",
-    "--env",
-    "POSTGRES_USER=nightwatch_owner",
-    "--env",
-    `POSTGRES_PASSWORD=${ownerPassword}`,
-    "--env",
-    "POSTGRES_DB=nightwatch",
-    "--env",
-    `NW_DB_PASSWORD=${runtimePassword}`,
-    "--volume",
-    `${initRolesScript}:/docker-entrypoint-initdb.d/001-roles.sh:ro`,
-    "postgres:17.11-alpine",
-  ]);
-  let owner: Database | null = null;
-  let runtime: Database | null = null;
-  try {
-    await docker([
-      "exec",
-      container,
-      "sh",
-      "-ceu",
-      `timeout 40 sh -ceu 'until pg_isready -h 127.0.0.1 -U nightwatch_owner -d nightwatch >/dev/null && psql -h 127.0.0.1 -U nightwatch_owner -d nightwatch -Atqc "select 1 from pg_roles where rolname = '"'"'nightwatch'"'"'" | grep -qx 1; do sleep 0.1; done'`,
-    ]);
-    const { stdout } = await docker(["port", container, "5432/tcp"]);
-    const port = Number(/:(\d+)\s*$/.exec(stdout)?.[1]);
-    const ownerUrl = databaseUrl("nightwatch_owner", ownerPassword, port);
-    const runtimeUrl = databaseUrl("nightwatch", runtimePassword, port);
-    await runMigrations({ url: ownerUrl, migrationsDir, log: () => undefined });
-    owner = createDatabase(ownerUrl);
-    runtime = createDatabase(runtimeUrl);
-    const opened = { owner, runtime };
-    return {
-      ...opened,
-      ownerUrl,
-      runtimeUrl,
-      async stop() {
-        await opened.runtime.close();
-        await opened.owner.close();
-        await docker(["rm", "--force", "--volumes", container], true);
-      },
-    };
-  } catch (error) {
-    await runtime?.close();
-    await owner?.close();
-    await docker(["rm", "--force", "--volumes", container], true);
-    throw error;
-  }
+  const fixture = await openTestPostgres(label);
+  return {
+    owner: fixture.owner,
+    runtime: fixture.runtime,
+    ...fixture.urls,
+    stop: () => fixture.close(),
+  };
 }
 
 export type SeedOptions = {
@@ -345,37 +283,77 @@ export type TestRedis = {
 /** Throwaway Redis so process tests never share a queue with other runs. */
 export async function startTestRedis(label: string): Promise<TestRedis> {
   const container = `nightwatch-monitor-${label}-redis-${randomUUID()}`;
-  await docker([
-    "run",
-    "--detach",
-    "--rm",
-    "--name",
-    container,
-    "--publish",
-    "127.0.0.1::6379",
-    "redis:7.4.7-alpine",
-  ]);
+  let stopping: Promise<void> | undefined;
+  const stop = (): Promise<void> => {
+    stopping ??= (async () => {
+      const { stdout } = await docker([
+        "container",
+        "ls",
+        "--all",
+        "--quiet",
+        "--filter",
+        `name=^/${container}$`,
+      ]);
+      if (stdout.trim())
+        await docker(["rm", "--force", "--volumes", container]);
+      const remaining = await docker([
+        "container",
+        "ls",
+        "--all",
+        "--quiet",
+        "--filter",
+        `name=^/${container}$`,
+      ]);
+      if (remaining.stdout.trim())
+        throw new Error(`Unresolved owned container ${container}`);
+    })();
+    return stopping;
+  };
   try {
-    await docker([
-      "exec",
-      container,
-      "sh",
-      "-ceu",
-      "timeout 30 sh -ceu 'until redis-cli ping | grep -q PONG; do sleep 0.1; done'",
-    ]);
+    await docker(
+      [
+        "run",
+        "--detach",
+        "--rm",
+        "--name",
+        container,
+        "--publish",
+        "127.0.0.1::6379",
+        "redis:7.4.7-alpine",
+      ],
+      15_000,
+    );
+    await docker(
+      [
+        "exec",
+        container,
+        "sh",
+        "-ceu",
+        "timeout 20 sh -ceu 'until redis-cli ping | grep -q PONG; do sleep 0.1; done'",
+      ],
+      25_000,
+    );
     const { stdout } = await docker(["port", container, "6379/tcp"]);
-    const port = Number(/:(\d+)\s*$/.exec(stdout)?.[1]);
+    const port = Number(/^127\.0\.0\.1:(\d+)\s*$/.exec(stdout)?.[1]);
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new Error("Invalid Redis loopback port binding");
     return {
       url: `redis://127.0.0.1:${String(port)}`,
       freeze: async () => {
         await docker(["pause", container]);
       },
-      stop: async () => {
-        await docker(["rm", "--force", "--volumes", container], true);
-      },
+      stop,
     };
   } catch (error) {
-    await docker(["rm", "--force", "--volumes", container], true);
+    try {
+      await stop();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `Redis setup and cleanup failed: ${container}`,
+        { cause: cleanupError },
+      );
+    }
     throw error;
   }
 }

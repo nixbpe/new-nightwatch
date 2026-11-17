@@ -181,16 +181,14 @@ describe("worker tenant materialization and recovery", () => {
         }>(
           `select id, recipient_user_id as "recipientUserId"
            from notification_inbox_items
-           where intent_id = $1 and recipient_user_id = $2
-             and exists (
-               select 1 from member
-               where organization_id = $3 and user_id = $2
-             )
+           where intent_id = $1
            order by recipient_user_id`,
-          [intentId, retainedAdminId, tenantId],
+          [intentId],
         ),
     );
-    expect(visible.rows).toHaveLength(1);
+    expect(visible.rows.map((item) => item.recipientUserId)).toEqual([
+      retainedAdminId,
+    ]);
     const visibleItem = visible.rows[0];
     if (!visibleItem) throw new Error("missing materialized tenant inbox item");
     expect(visibleItem.recipientUserId).toBe(retainedAdminId);
@@ -280,14 +278,29 @@ describe("worker tenant materialization and recovery", () => {
         }),
       { connection: redisConnection(redisUrl), concurrency: 1 },
     );
-    retryWorker.on("failed", (job) => {
-      if (job?.id !== dispatchId || job.attemptsMade < (job.opts.attempts ?? 1))
+    let markingFailed: Promise<boolean> | undefined;
+    let submitting: ReturnType<typeof retryQueue.add> | undefined;
+    const failures: unknown[] = [];
+    retryWorker.on("failed", (job, error) => {
+      if (
+        job?.id !== dispatchId ||
+        job.data.claimToken !== claimToken ||
+        job.attemptsMade < (job.opts.attempts ?? 1)
+      )
         return;
-      void failNotificationDispatch(runtime, {
+      if (
+        job.attemptsMade !== 2 ||
+        error.message !== "injected acknowledgement failure"
+      ) {
+        exhausted.reject(error);
+        return;
+      }
+      markingFailed = failNotificationDispatch(runtime, {
         id: dispatchId,
         claimToken,
         reason: "MATERIALIZATION_EXHAUSTED",
-      }).then(
+      });
+      void markingFailed.then(
         (failed) => {
           if (failed) exhausted.resolve(undefined);
           else
@@ -300,9 +313,25 @@ describe("worker tenant materialization and recovery", () => {
         },
       );
     });
+    const onError = (error: Error) => {
+      exhausted.reject(error);
+    };
+    retryWorker.on("error", onError);
+    retryQueue.on("error", onError);
+    retryWorker.on("completed", (job) => {
+      if (job.id === dispatchId)
+        exhausted.reject(
+          new Error(`retry job ${dispatchId} completed before exhaustion`),
+        );
+    });
+    const deadline = setTimeout(() => {
+      exhausted.reject(
+        new Error(`timed out waiting for retry exhaustion ${dispatchId}`),
+      );
+    }, 3_000);
     try {
-      await retryWorker.waitUntilReady();
-      await retryQueue.add(
+      await Promise.race([retryWorker.waitUntilReady(), exhausted.promise]);
+      submitting = retryQueue.add(
         "materialize",
         {
           dispatchId,
@@ -316,15 +345,36 @@ describe("worker tenant materialization and recovery", () => {
           jobId: dispatchId,
         },
       );
+      await Promise.race([submitting, exhausted.promise]);
       await exhausted.promise;
+    } catch (error) {
+      failures.push(error);
     } finally {
-      await retryWorker.close();
+      clearTimeout(deadline);
+      try {
+        await retryWorker.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      const pending = await Promise.allSettled([submitting, markingFailed]);
+      for (const outcome of pending) {
+        if (outcome.status === "rejected") failures.push(outcome.reason);
+      }
       try {
         await retryQueue.obliterate({ force: true });
-      } finally {
-        await retryQueue.close();
+      } catch (error) {
+        failures.push(error);
       }
+      try {
+        await retryQueue.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      retryWorker.off("error", onError);
+      retryQueue.off("error", onError);
     }
+    if (failures.length)
+      throw new AggregateError(failures, "retry exhaustion or cleanup failed");
     await expect(ledger(dispatchId)).resolves.toMatchObject({
       status: "failed",
       failureReason: "MATERIALIZATION_EXHAUSTED",
