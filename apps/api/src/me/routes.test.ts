@@ -35,6 +35,7 @@ type SqlResult = { rows: Record<string, unknown>[] };
 function stubDatabase(
   queryHandler: (text: string, params: unknown[]) => SqlResult,
   clientHandler?: (text: string, params: unknown[]) => SqlResult,
+  release: () => void = () => {},
 ): Database {
   return {
     db: undefined as unknown as Database["db"],
@@ -45,7 +46,7 @@ function stubDatabase(
         Promise.resolve({
           query: (text: string, params: unknown[]) =>
             Promise.resolve(clientHandler?.(text, params) ?? { rows: [] }),
-          release: () => {},
+          release,
         }),
     },
     close: () => Promise.resolve(),
@@ -311,16 +312,18 @@ describe("PATCH /api/me/active-org", () => {
     });
   });
 
-  it("answers 500 without partially switching when the write fails mid-transaction", async () => {
-    let calls = 0;
-    const clientHandler = (): SqlResult => {
-      calls += 1;
-      if (calls === 2) throw new Error("connection lost");
+  it("maps a BEGIN failure to 500 INTERNAL_ERROR before any writes", async () => {
+    const release = vi.fn();
+    const phases: string[] = [];
+    const clientHandler = (text: string): SqlResult => {
+      phases.push(text.trim().toLowerCase());
+      if (text.trim().toLowerCase() === "begin")
+        throw new Error("connection lost");
       return { rows: [{ organizationId: ORG_A }] };
     };
     const app = makeApp({
       auth: stubAuth(session),
-      database: stubDatabase(() => ({ rows: [] }), clientHandler),
+      database: stubDatabase(() => ({ rows: [] }), clientHandler, release),
       logger: stubLogger(),
     });
     const res = await app.request("/api/me/active-org", {
@@ -332,6 +335,11 @@ describe("PATCH /api/me/active-org", () => {
     expect(errorResponseSchema.parse(await res.json()).error.code).toBe(
       "INTERNAL_ERROR",
     );
+    expect(phases).toEqual([
+      "select 1 from member where organization_id = $1 and user_id = $2",
+      "begin",
+    ]);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });
 

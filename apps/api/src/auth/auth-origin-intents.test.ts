@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   markResetCredentialWrite,
@@ -52,16 +52,30 @@ function adapter(userId = "user-1"): FakeAdapter {
 
 function setup(options?: { failIntent?: boolean }) {
   const calls: string[] = [];
-  let transactionCalls = 0;
-  let runInMfaRequest:
-    (<T>(callback: () => Promise<T>) => Promise<T>) | undefined;
-  const writer: AccountNotificationOriginWriter<FakeTransaction> = {
-    insertPasswordChanged: (_tx, input) => {
-      calls.push(`password:${input.userId}`);
+  const rootAdapter = adapter();
+  const txAdapter = adapter();
+  const rootUpdate = vi.spyOn(rootAdapter, "update");
+  const txUpdate = vi.spyOn(txAdapter, "update");
+  const rootCreate = vi.spyOn(rootAdapter, "create");
+  const txCreate = vi.spyOn(txAdapter, "create");
+  const rootUpdateMany = vi.spyOn(rootAdapter, "updateMany");
+  const txUpdateMany = vi.spyOn(txAdapter, "updateMany");
+  const tx = { id: "tx-1" } as FakeTransaction;
+  const passwordWriter = vi.fn(
+    (transaction: FakeTransaction, userId: string) => {
+      expect(transaction).toBe(tx);
+      calls.push(`password:${userId}`);
       if (options?.failIntent)
         return Promise.reject(new Error("intent write failed"));
       return Promise.resolve();
     },
+  );
+  let transactionCalls = 0;
+  let runInMfaRequest:
+    (<T>(callback: () => Promise<T>) => Promise<T>) | undefined;
+  const writer: AccountNotificationOriginWriter<FakeTransaction> = {
+    insertPasswordChanged: (transaction, input) =>
+      passwordWriter(transaction, input.userId),
     initializeMfaState: (_tx, input) => {
       calls.push(`baseline:${input.userId}`);
       return Promise.resolve(undefined);
@@ -71,20 +85,30 @@ function setup(options?: { failIntent?: boolean }) {
       return Promise.resolve({ transitioned: true });
     },
   };
-  const tx = { id: "tx-1" } as FakeTransaction;
-  const wrapped = withAccountNotificationOrigins((() => adapter()) as never, {
+  const wrapped = withAccountNotificationOrigins((() => rootAdapter) as never, {
     writer,
     transaction: (callback) => {
       transactionCalls += 1;
       return callback(tx);
     },
-    transactionAdapter: () => adapter() as never,
+    transactionAdapter: (transaction) => {
+      expect(transaction).toBe(tx);
+      return txAdapter as never;
+    },
     onMfaRequestReady: (runner) => {
       runInMfaRequest = runner;
     },
   })({}) as unknown as FakeAdapter;
   return {
     calls,
+    rootUpdate,
+    txUpdate,
+    rootCreate,
+    txCreate,
+    rootUpdateMany,
+    txUpdateMany,
+    passwordWriter,
+    tx,
     transactionCalls: () => transactionCalls,
     runInMfaRequest: <T>(callback: () => Promise<T>) => {
       if (!runInMfaRequest) {
@@ -98,15 +122,24 @@ function setup(options?: { failIntent?: boolean }) {
 
 describe("withAccountNotificationOrigins", () => {
   it("inserts the password intent in the transaction that performs a qualified update", async () => {
-    const { calls, wrapped } = setup();
+    const { calls, wrapped, rootUpdate, txUpdate, passwordWriter, tx } =
+      setup();
 
-    await wrapped.update({
+    const result = await wrapped.update({
       model: "account",
       update: { password: "hash" },
       where: [{ field: "id", value: "account-1" }],
     });
 
+    expect(result).toMatchObject({ password: "hash", userId: "user-1" });
     expect(calls).toEqual(["password:user-1"]);
+    expect(rootUpdate).not.toHaveBeenCalled();
+    expect(txUpdate).toHaveBeenCalledWith({
+      model: "account",
+      update: { password: "hash" },
+      where: [{ field: "id", value: "account-1" }],
+    });
+    expect(passwordWriter).toHaveBeenCalledWith(tx, "user-1");
   });
 
   it("does not emit when a credential update persists the same hash", async () => {
@@ -122,9 +155,9 @@ describe("withAccountNotificationOrigins", () => {
   });
 
   it("does not emit when a credential updateMany persists the same hash", async () => {
-    const { calls, wrapped } = setup();
+    const { calls, wrapped, rootUpdateMany, txUpdateMany } = setup();
 
-    await wrapped.updateMany({
+    const result = await wrapped.updateMany({
       model: "account",
       update: { password: "old-hash" },
       where: [
@@ -133,10 +166,15 @@ describe("withAccountNotificationOrigins", () => {
       ],
     });
 
+    expect(result).toBe(1);
     expect(calls).toEqual([]);
+    expect(rootUpdateMany).not.toHaveBeenCalled();
+    expect(txUpdateMany).toHaveBeenCalledTimes(1);
   });
-  it("rolls back the credential write when the qualified intent insert fails", async () => {
-    const { wrapped } = setup({ failIntent: true });
+  it("propagates a qualified intent failure after dispatching the credential write to the transaction adapter", async () => {
+    const { wrapped, rootUpdate, txUpdate, passwordWriter, tx } = setup({
+      failIntent: true,
+    });
 
     await expect(
       wrapped.update({
@@ -145,6 +183,9 @@ describe("withAccountNotificationOrigins", () => {
         where: [{ field: "id", value: "account-1" }],
       }),
     ).rejects.toThrow("intent write failed");
+    expect(rootUpdate).not.toHaveBeenCalled();
+    expect(txUpdate).toHaveBeenCalledTimes(1);
+    expect(passwordWriter).toHaveBeenCalledWith(tx, "user-1");
   });
 
   it("does not turn ordinary credential account creation into a password event", async () => {
@@ -175,9 +216,17 @@ describe("withAccountNotificationOrigins", () => {
   });
 
   it("keeps a qualified write inside the adapter's outer transaction", async () => {
-    const { calls, transactionCalls, wrapped } = setup();
+    const {
+      calls,
+      transactionCalls,
+      wrapped,
+      rootUpdate,
+      txUpdate,
+      passwordWriter,
+      tx,
+    } = setup();
 
-    await wrapped.transaction((transactionAdapter) =>
+    const result = await wrapped.transaction((transactionAdapter) =>
       transactionAdapter.update({
         model: "account",
         update: { password: "hash" },
@@ -187,6 +236,10 @@ describe("withAccountNotificationOrigins", () => {
 
     expect(calls).toEqual(["password:user-1"]);
     expect(transactionCalls()).toBe(1);
+    expect(result).toMatchObject({ password: "hash", userId: "user-1" });
+    expect(rootUpdate).not.toHaveBeenCalled();
+    expect(txUpdate).toHaveBeenCalledTimes(1);
+    expect(passwordWriter).toHaveBeenCalledWith(tx, "user-1");
   });
 
   it("initializes a verified two-factor creation in its origin transaction", async () => {
@@ -461,7 +514,8 @@ describe("withAccountNotificationOrigins", () => {
   });
 
   it("emits for only a hook-marked first reset credential", async () => {
-    const { calls, wrapped } = setup();
+    const { calls, wrapped, rootCreate, txCreate, passwordWriter, tx } =
+      setup();
     const data = {
       userId: "user-1",
       providerId: "credential",
@@ -469,8 +523,12 @@ describe("withAccountNotificationOrigins", () => {
     };
     markResetCredentialWrite(data);
 
-    await wrapped.create({ model: "account", data });
+    const result = await wrapped.create({ model: "account", data });
 
+    expect(result).toMatchObject({ password: "hash", userId: "user-1" });
     expect(calls).toEqual(["password:user-1"]);
+    expect(rootCreate).not.toHaveBeenCalled();
+    expect(txCreate).toHaveBeenCalledWith({ model: "account", data });
+    expect(passwordWriter).toHaveBeenCalledWith(tx, "user-1");
   });
 });

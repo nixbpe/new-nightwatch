@@ -74,7 +74,7 @@ describe("findInvitationPreview", () => {
     expect(calls[0]?.text).not.toContain("lower(i.email)");
   });
 
-  it("returns null for exhausted invitations", async () => {
+  it("returns null when the preview lookup returns no row", async () => {
     const { database } = stubDatabase([]);
     expect(await findInvitationPreview(database, "inv_expired")).toBeNull();
   });

@@ -67,12 +67,33 @@ const database: Database = createDatabase(DATABASE_URL);
 const ownerDatabase: Database = createDatabase(OWNER_URL);
 const orgName = "Auth IT Org";
 let app: OpenAPIHono;
-const passwordOriginFixtureEmails: string[] = [];
-const mfaReenrollmentFixtureEmails: string[] = [];
-const memberGuardFixtureEmails: string[] = [];
-const memberGuardOrganizationIds: string[] = [];
+const ownedUserEmails = new Set<string>([OWNER_INVITER_EMAIL]);
+const ownedUserIds = new Set<string>();
+const ownedOrganizationIds = new Set<string>([ORG_ID]);
+const ownedInvitationIds = new Set<string>();
+const ownedVerificationIdentifiers = new Set<string>();
 function userEmail(local: string): string {
-  return `${local}-${RUN}@example.test`;
+  const email = `${local}-${RUN}@example.test`;
+  ownedUserEmails.add(email);
+  return email;
+}
+
+async function captureAuthFixtures(): Promise<void> {
+  const users = await ownerDatabase.sql.query<{ id: string }>(
+    'select id from "user" where email = any($1::text[])',
+    [[...ownedUserEmails]],
+  );
+  for (const { id } of users.rows) ownedUserIds.add(id);
+  const records = await ownerDatabase.sql.query<{ identifier: string }>(
+    "select identifier from verification where value = any($1::text[])",
+    [[...ownedUserIds]],
+  );
+  for (const { identifier } of records.rows) {
+    ownedVerificationIdentifiers.add(identifier);
+    if (identifier.startsWith("2fa-")) {
+      ownedVerificationIdentifiers.add(`2fa-attempts-${identifier}`);
+    }
+  }
 }
 
 type ApiRequestOptions = {
@@ -122,6 +143,7 @@ function client(
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    await captureAuthFixtures();
     for (const setCookie of response.headers.getSetCookie()) {
       const pair = setCookie.split(";")[0];
       if (!pair) continue;
@@ -483,6 +505,7 @@ async function createInvitation(
   const inviterId = inviter.rows[0]?.id;
   if (!inviterId) throw new Error("seeded inviter missing");
   const invitationId = crypto.randomUUID();
+  ownedInvitationIds.add(invitationId);
   await database.sql.query(
     `insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
@@ -497,7 +520,7 @@ async function createInvitation(
 async function signInOwner(): Promise<ApiRequest> {
   const owner = client();
   const signIn = await owner("POST", "/api/auth/sign-in/email", {
-    email: userEmail("gate"),
+    email: userEmail("prerequisite-owner"),
     password: PASSWORD,
   });
   expect(signIn.status).toBe(200);
@@ -515,6 +538,7 @@ beforeAll(async () => {
     [ORG_ID, orgName, ORG_SLUG],
   );
   const inviterId = crypto.randomUUID();
+  ownedUserIds.add(inviterId);
   await database.sql.query(
     'insert into "user" (id, name, email, created_at) values ($1, $2, $3, now())',
     [inviterId, "Seeded Inviter", OWNER_INVITER_EMAIL],
@@ -562,32 +586,69 @@ beforeAll(async () => {
     database,
     mailer,
   });
+  const ownerInvitation = await createInvitation(
+    userEmail("prerequisite-owner"),
+    "owner",
+  );
+  const prerequisiteOwner = await admitUser(
+    "prerequisite-owner",
+    ownerInvitation,
+  );
+  expect(
+    (
+      await prerequisiteOwner.request(
+        "POST",
+        `/api/onboarding/invitations/${ownerInvitation}/accept`,
+      )
+    ).status,
+  ).toBe(200);
 }, 120_000);
 
 afterAll(async () => {
-  const fixtureEmails = [
-    ...passwordOriginFixtureEmails,
-    ...mfaReenrollmentFixtureEmails,
-    ...memberGuardFixtureEmails,
-  ];
-  if (fixtureEmails.length > 0) {
-    await database.sql.query(
-      "delete from invitation where email = any($1::text[])",
-      [fixtureEmails],
-    );
-    await database.sql.query(
-      'delete from "user" where email = any($1::text[])',
-      [fixtureEmails],
-    );
+  const errors: unknown[] = [];
+  async function attempt(cleanup: () => Promise<unknown>) {
+    try {
+      await cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
   }
-  if (memberGuardOrganizationIds.length > 0) {
-    await ownerDatabase.sql.query(
+  await attempt(captureAuthFixtures);
+  await attempt(async () => {
+    const invitations = await ownerDatabase.sql.query<{ id: string }>(
+      "select id from invitation where organization_id = any($1::uuid[])",
+      [[...ownedOrganizationIds]],
+    );
+    for (const { id } of invitations.rows) ownedInvitationIds.add(id);
+  });
+  await attempt(() =>
+    ownerDatabase.sql.query(
+      "delete from verification where identifier = any($1::text[]) or value = any($2::text[])",
+      [[...ownedVerificationIdentifiers], [...ownedUserIds]],
+    ),
+  );
+  await attempt(() =>
+    ownerDatabase.sql.query(
+      "delete from invitation where id = any($1::text[])",
+      [[...ownedInvitationIds]],
+    ),
+  );
+  await attempt(() =>
+    ownerDatabase.sql.query(
+      'delete from "user" where id = any($1::text[]) or email = any($2::text[])',
+      [[...ownedUserIds], [...ownedUserEmails]],
+    ),
+  );
+  await attempt(() =>
+    ownerDatabase.sql.query(
       "delete from organization where id = any($1::uuid[])",
-      [memberGuardOrganizationIds],
-    );
-  }
-  await ownerDatabase.close();
-  await database.close();
+      [[...ownedOrganizationIds]],
+    ),
+  );
+  await attempt(() => database.close());
+  await attempt(() => ownerDatabase.close());
+  if (errors.length)
+    throw new AggregateError(errors, "Auth fixture cleanup failed");
 });
 
 describe("Better Auth failure diagnostics", () => {
@@ -682,11 +743,14 @@ describe("invitation-gated signup against the real boundary", () => {
     expect(response.status).toBe(403);
     const body = response.json as { message?: string };
     expect(body.message).toContain(DENIAL_MESSAGE);
-    const count = await database.sql.query<{ n: number }>(
-      'select count(*)::int as n from "user" where email = $1',
+    const state = await database.sql.query(
+      `select
+        (select count(*)::int from "user" where email = $1) as users,
+        (select count(*)::int from account a join "user" u on u.id = a.user_id where u.email = $1) as accounts,
+        (select count(*)::int from session s join "user" u on u.id = s.user_id where u.email = $1) as sessions`,
       [email],
     );
-    expect(count.rows[0]?.n).toBe(0);
+    expect(state.rows).toEqual([{ users: 0, accounts: 0, sessions: 0 }]);
   }
 
   it("refuses a raw signup without the invitation header, fail-closed", async () => {
@@ -723,6 +787,50 @@ describe("invitation-gated signup against the real boundary", () => {
     );
     await expectDenied(expired, userEmail("expired"));
   });
+
+  it.each(["accepted", "canceled"])(
+    "refuses raw signup and conceals the public preview for a future-expiring %s invitation",
+    async (status) => {
+      const email = userEmail(`lookup-${status}`);
+      const invitationId = await createInvitation(email);
+      await database.sql.query(
+        "update invitation set status = $1 where id = $2",
+        [status, invitationId],
+      );
+      const prerequisite = await database.sql.query(
+        "select status, expires_at > now() as future from invitation where id = $1",
+        [invitationId],
+      );
+      expect(prerequisite.rows).toEqual([{ status, future: true }]);
+      const response = await client()(
+        "POST",
+        "/api/auth/sign-up/email",
+        {
+          name: "Non-pending recipient",
+          email,
+          password: PASSWORD,
+        },
+        { invitationId },
+      );
+      await expectDenied(response, email);
+      const missing = await client()(
+        "GET",
+        "/api/onboarding/invitations/no-such-invitation",
+      );
+      const preview = await client()(
+        "GET",
+        `/api/onboarding/invitations/${invitationId}`,
+      );
+      expect(preview).toEqual(missing);
+      expect(preview).toMatchObject({
+        status: 404,
+        json: { error: { code: "INVITATION_NOT_FOUND" } },
+      });
+      expect(JSON.stringify(preview.json)).not.toContain(email);
+      expect(JSON.stringify(preview.json)).not.toContain(orgName);
+      expect(await invitationStatus(invitationId)).toBe(status);
+    },
+  );
 
   it("serves the public preview only for a pending invitation", async () => {
     const pending = await database.sql.query<{ id: string }>(
@@ -1062,7 +1170,6 @@ describe("concurrent acceptance race", () => {
 describe("native password notification origins", () => {
   it("emits once for a changed native credential hash, skips repeated identical hashes, and rolls back failed intent writes", async () => {
     const email = userEmail("password-origin");
-    passwordOriginFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
     const member = await admitUser("password-origin", invitationId);
     const userId = await sqlUserId(member.email);
@@ -1292,7 +1399,6 @@ describe("native password notification origins", () => {
 
   it("writes an intent when reset creates the first credential account", async () => {
     const email = userEmail("first-credential");
-    passwordOriginFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
     const member = await admitUser("first-credential", invitationId);
     const userId = await sqlUserId(member.email);
@@ -1745,7 +1851,6 @@ describe("MFA notification intent rollback", () => {
 describe("MFA re-enrollment guard", () => {
   it("refuses re-enrollment while TOTP is verified and keeps the credential, projection and intents unchanged", async () => {
     const email = userEmail("mfa-reenrollment");
-    mfaReenrollmentFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
     const member = await admitUser("mfa-reenrollment", invitationId);
     const accepted = await member.request(
@@ -1895,7 +2000,6 @@ describe("MFA re-enrollment guard", () => {
 
   it("restarts a pending enrollment in place without touching projection or intents", async () => {
     const email = userEmail("mfa-restart");
-    mfaReenrollmentFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
     const member = await admitUser("mfa-restart", invitationId);
     const accepted = await member.request(
@@ -1976,8 +2080,7 @@ describe("native organization membership mutation guard", () => {
     const ownerEmail = userEmail("member-guard-owner");
     const targetEmail = userEmail("member-guard-target");
     const leaverEmail = userEmail("member-guard-leaver");
-    memberGuardFixtureEmails.push(ownerEmail, targetEmail, leaverEmail);
-    memberGuardOrganizationIds.push(organizationId);
+    ownedOrganizationIds.add(organizationId);
     await database.sql.query(
       "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
       [organizationId, `Member Guard ${RUN}`, `member-guard-${RUN}`],
@@ -2112,8 +2215,7 @@ describe("native organization membership mutation guard", () => {
   it("denies the 9 hotfix paths in the Better Auth hook when the first-layer guard is bypassed", async () => {
     const organizationId = crypto.randomUUID();
     const ownerEmail = userEmail("native-hook-owner");
-    memberGuardFixtureEmails.push(ownerEmail);
-    memberGuardOrganizationIds.push(organizationId);
+    ownedOrganizationIds.add(organizationId);
     await database.sql.query(
       "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
       [organizationId, `Native Hook ${RUN}`, `native-hook-${RUN}`],
@@ -2245,6 +2347,11 @@ describe("locked invitation acceptance at the member cap", () => {
   it("serializes two recipients at 999 and keeps the capped invitation pending", async () => {
     const organizationId = crypto.randomUUID();
     const prefix = `cap-${RUN}-`;
+    ownedOrganizationIds.add(organizationId);
+    for (let index = 1; index <= 999; index += 1) {
+      ownedUserIds.add(`${prefix}${String(index)}`);
+      ownedUserEmails.add(`${prefix}${String(index)}@example.test`);
+    }
     const firstEmail = userEmail("cap-first");
     const secondEmail = userEmail("cap-second");
     await database.sql.query(
