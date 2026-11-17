@@ -206,6 +206,10 @@ function renderShell({
               membersRedirect === null ? null : redirect(membersRedirect),
             element: <Probe />,
           },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
+            element: <Probe />,
+          },
         ],
       },
     ],
@@ -409,11 +413,15 @@ describe("ProjectSwitcher", () => {
 
   it("AC-04: switching from a monitor's detail page opens the new Project's monitor list", async () => {
     const user = userEvent.setup();
-    renderShell({ path: monitorsPath(P_ALPHA) });
+    const detailPath = `${monitorsPath(P_ALPHA)}/99999999-9999-4999-8999-999999999999`;
+    const { router } = renderShell({ path: detailPath });
     await openMenu(user);
+    expect(router.state.location.pathname).toBe(detailPath);
+    expect(screen.getByTestId("probe").textContent).toBe(detailPath);
     await user.click(screen.getByTestId(`shell-project-option-${P_BRAVO}`));
     await waitFor(() => {
-      expect(screen.getByTestId("probe")).toHaveTextContent(
+      expect(router.state.location.pathname).toBe(monitorsPath(P_BRAVO));
+      expect(screen.getByTestId("probe").textContent).toBe(
         monitorsPath(P_BRAVO),
       );
     });

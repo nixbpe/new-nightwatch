@@ -175,6 +175,43 @@ describe("TwoFactorPage challenge", () => {
     expect(screen.getByTestId("two-factor-submit")).toBeInTheDocument();
   });
 
+  it.each([
+    ["totp", "123456"],
+    ["recovery", "backup-code-1"],
+  ] as const)(
+    "%s sends an explicit trust-device choice without admitting a session",
+    async (mode, code) => {
+      const verify =
+        mode === "totp"
+          ? twoFactorMock.verifyTotp
+          : twoFactorMock.verifyBackupCode;
+      const otherVerify =
+        mode === "totp"
+          ? twoFactorMock.verifyBackupCode
+          : twoFactorMock.verifyTotp;
+      verify.mockResolvedValue({ data: null, error: null });
+      const user = userEvent.setup();
+      renderPage();
+
+      if (mode === "recovery") {
+        await user.click(screen.getByTestId("two-factor-mode-recovery"));
+      }
+      expect(screen.getByTestId("two-factor-trust-device")).not.toBeChecked();
+      await user.click(screen.getByTestId("two-factor-trust-device"));
+      expect(screen.getByTestId("two-factor-trust-device")).toBeChecked();
+      await user.type(screen.getByTestId("two-factor-code"), code);
+      await user.click(screen.getByTestId("two-factor-submit"));
+
+      expect(verify).toHaveBeenCalledExactlyOnceWith({
+        code,
+        trustDevice: true,
+      });
+      expect(otherVerify).not.toHaveBeenCalled();
+      expect(screen.getByTestId("two-factor-page")).toBeInTheDocument();
+      expect(screen.queryByTestId("location")).toBeNull();
+    },
+  );
+
   it.each(["totp", "recovery"] as const)(
     "%s preserves invitation priority across identity remount and late verification completion",
     async (mode) => {

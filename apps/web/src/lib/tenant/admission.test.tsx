@@ -21,6 +21,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MeContextResponse } from "@nightwatch/api-contract";
@@ -1927,6 +1928,7 @@ it.each([
 it.each(["save", "test"] as const)(
   "CR88-01 %s membership refusal withdraws private edit presentation and keyboard retry restores focus without losing typed secret",
   async (operation) => {
+    const user = userEvent.setup();
     const c = client();
     vi.mocked(fetchMonitorDetail).mockResolvedValue({
       monitor: detail({
@@ -1965,9 +1967,12 @@ it.each(["save", "test"] as const)(
     });
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
     const retry = await screen.findByTestId("monitor-form-admission-retry");
+    const callsBeforeRetry = vi.mocked(fetchMeContext).mock.calls.length;
     retry.focus();
-    fireEvent.keyDown(retry, { key: "Enter" });
-    fireEvent.click(retry);
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(fetchMeContext).toHaveBeenCalledTimes(callsBeforeRetry + 1);
+    });
     const restored = await screen.findByTestId(
       operation === "save" ? "monitor-form-save" : "monitor-form-test",
     );

@@ -277,6 +277,7 @@ describe("AcceptInvitationPage", () => {
   });
 
   it("keeps the invitation pending on cap denial, announces the cap, and focuses the error", async () => {
+    rememberInvitation("inv-123");
     fetchInvitationMock.mockResolvedValue(invitation);
     acceptInvitationMock.mockRejectedValue(
       new ApiError("ORGANIZATION_MEMBERSHIP_LIMIT_REACHED", "cap", 409),
@@ -289,6 +290,14 @@ describe("AcceptInvitationPage", () => {
     expect(await screen.findByTestId("invitation-accept-error")).toBeVisible();
     await waitFor(() =>
       expect(screen.getByTestId("invitation-accept-error-focus")).toHaveFocus(),
+    );
+    expect(readInvitation()).toBe("inv-123");
+    expect(screen.getByTestId("invitation-accept-error")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByTestId("invitation-accept-error")).toHaveTextContent(
+      "1,000",
     );
     expect(acceptInvitationMock).toHaveBeenCalledWith("inv-123");
     expect(screen.getByTestId("invitation-accept")).toBeEnabled();

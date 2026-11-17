@@ -2,9 +2,14 @@ import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import { bindQueryClientIdentity } from "../queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  type QueryClientConfig,
+} from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -142,7 +147,16 @@ function Probe() {
   );
 }
 
-function renderProvider(queryClient = new QueryClient()) {
+const queryClients = new Set<QueryClient>();
+
+function createQueryClient(options?: QueryClientConfig) {
+  const queryClient = new QueryClient(options);
+  queryClients.add(queryClient);
+  return queryClient;
+}
+
+function renderProvider(queryClient = createQueryClient()) {
+  queryClients.add(queryClient);
   bindQueryClientIdentity(queryClient, "user-1");
   return render(
     <QueryClientProvider client={queryClient}>
@@ -154,7 +168,13 @@ function renderProvider(queryClient = new QueryClient()) {
 }
 
 describe("TenantProvider", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    cleanup();
+    for (const queryClient of queryClients) {
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    }
+    queryClients.clear();
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
     getSessionMock.mockReset();
@@ -170,7 +190,7 @@ describe("TenantProvider", () => {
         .mockResolvedValueOnce(me)
         .mockReturnValueOnce(manual.promise)
         .mockReturnValueOnce(shared.promise);
-      const queryClient = new QueryClient({
+      const queryClient = createQueryClient({
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
@@ -229,7 +249,7 @@ describe("TenantProvider", () => {
     fetchMeContextMock
       .mockResolvedValueOnce(me)
       .mockReturnValueOnce(resolver.promise);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     renderProvider(queryClient);
@@ -277,7 +297,7 @@ describe("TenantProvider", () => {
       fetchMeContextMock
         .mockResolvedValueOnce(me)
         .mockReturnValueOnce(resolver.promise);
-      const queryClient = new QueryClient({
+      const queryClient = createQueryClient({
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
@@ -391,7 +411,7 @@ describe("TenantProvider", () => {
     fetchMeContextMock.mockResolvedValue(me);
     const updated: MeContextResponse = { ...me, lastActiveTenantId: "org-a" };
     updateActiveOrganizationMock.mockResolvedValue(updated);
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     queryClient.setQueryData(["tenant", "org-b", "widgets"], { stale: true });
     renderProvider(queryClient);
     await waitFor(() =>
@@ -417,7 +437,7 @@ describe("TenantProvider", () => {
       ...me,
       lastActiveTenantId: "org-a",
     });
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     let resolveOldTenant!: (value: { source: string }) => void;
     const oldTenant = new Promise<{ source: string }>((resolve) => {
       resolveOldTenant = resolve;
@@ -464,7 +484,7 @@ describe("TenantProvider", () => {
     updateActiveOrganizationMock.mockImplementationOnce(
       () => pendingSwitch.promise,
     );
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
     await waitFor(() =>
@@ -518,7 +538,7 @@ describe("TenantProvider", () => {
     updateActiveOrganizationMock
       .mockImplementationOnce(() => switchA.promise)
       .mockImplementationOnce(() => switchB.promise);
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
     await waitFor(() =>
@@ -567,7 +587,7 @@ describe("TenantProvider", () => {
     updateActiveOrganizationMock
       .mockImplementationOnce(() => switchA.promise)
       .mockImplementationOnce(() => switchB.promise);
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
     await waitFor(() =>
@@ -603,7 +623,7 @@ describe("TenantProvider", () => {
     updateActiveOrganizationMock.mockRejectedValue(
       new ApiError("FORBIDDEN", "denied", 403),
     );
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     renderProvider(queryClient);
     await waitFor(() =>
       expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
@@ -653,7 +673,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(aContext)
       .mockRejectedValueOnce(new Error("context unavailable"))
       .mockResolvedValueOnce(bContext);
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     queryClient.setQueryData(["tenant", "org-a", "members"], { stale: true });
     renderProvider(queryClient);
     await waitFor(() =>
@@ -701,7 +721,7 @@ describe("TenantProvider", () => {
     fetchMeContextMock
       .mockImplementationOnce(() => oldRequest.promise)
       .mockResolvedValueOnce(freshB);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     const oldQuery = queryClient
@@ -749,7 +769,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => olderRefresh.promise)
       .mockImplementationOnce(() => newerRefresh.promise);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     renderProvider(queryClient);
@@ -804,7 +824,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => olderRefresh.promise)
       .mockResolvedValueOnce(restrictedB);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     publishActiveQueryClient(me.user.id, queryClient);
@@ -850,7 +870,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => olderRefresh.promise)
       .mockResolvedValueOnce(deepEqualContext);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     publishActiveQueryClient(me.user.id, queryClient);
@@ -891,7 +911,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => firstRefresh.promise)
       .mockImplementationOnce(() => currentRefresh.promise);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     publishActiveQueryClient(me.user.id, queryClient);
@@ -929,7 +949,7 @@ describe("TenantProvider", () => {
   });
 
   it("observes a directory publication between render and subscription", async () => {
-    const queryClient = new QueryClient();
+    const queryClient = createQueryClient();
     const claim = createContextPublicationClaim();
     expect(claimContextPublication(queryClient, claim, "bootstrap")).toBe(true);
 
@@ -963,10 +983,10 @@ describe("TenantProvider", () => {
   });
 
   it("ignores old query client publications after changing identity clients", async () => {
-    const oldClient = new QueryClient({
+    const oldClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const newClient = new QueryClient({
+    const newClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     const stalledRefresh = Promise.withResolvers<MeContextResponse>();
@@ -1004,6 +1024,11 @@ describe("TenantProvider", () => {
     expect(publishContextPublication(oldClient, oldClaim, me)).toBe(true);
 
     expect(screen.getByTestId("active")).toHaveTextContent("none");
+    view.unmount();
+    await act(async () => {
+      stalledRefresh.resolve(me);
+      await stalledRefresh.promise;
+    });
   });
 
   it("keeps membership unavailable when the newest refresh fails before an older refresh resolves", async () => {
@@ -1020,7 +1045,7 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => olderRefresh.promise)
       .mockImplementationOnce(() => newerRefresh.promise);
-    const queryClient = new QueryClient({
+    const queryClient = createQueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     renderProvider(queryClient);
@@ -1062,7 +1087,7 @@ describe("TenantProvider", () => {
         .mockResolvedValueOnce(me)
         .mockReturnValueOnce(completion.promise);
       updateActiveOrganizationMock.mockReturnValueOnce(completion.promise);
-      const queryClient = new QueryClient({
+      const queryClient = createQueryClient({
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
@@ -1098,7 +1123,7 @@ describe("TenantProvider", () => {
     fetchMeContextMock.mockRejectedValueOnce(new Error("server exploded"));
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      createQueryClient({ defaultOptions: { queries: { retry: false } } }),
     );
 
     await waitFor(() =>

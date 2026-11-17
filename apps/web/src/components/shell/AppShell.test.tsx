@@ -882,42 +882,111 @@ describe("AppShell", () => {
     },
   );
 
-  it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
-    fetchMeContextMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_A),
-    );
-    updateActiveOrganizationMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_B),
-    );
-    const user = userEvent.setup();
-    const { queryClient } = renderShell(<WorkspaceEntryFallback />);
-    await findScope("Org A", "owner");
-    const stalePatchClaim = createContextPublicationClaim();
-    expect(
-      claimContextPublication(queryClient, stalePatchClaim, "switch"),
-    ).toBe(true);
+  it.each(["success", "rejection"] as const)(
+    "switching organization from the sidebar publishes the new tenant only after the PATCH succeeds (%s)",
+    async (outcome) => {
+      const origin = meContext([ownerOrg, viewerOrg], ORG_A);
+      const destination = meContext([ownerOrg, viewerOrg], ORG_B);
+      fetchMeContextMock.mockResolvedValue(origin);
+      const patch = Promise.withResolvers<MeContextResponse>();
+      updateActiveOrganizationMock.mockReturnValue(patch.promise);
+      const user = userEvent.setup();
+      const view = renderShell(<WorkspaceEntryFallback />);
+      const { queryClient } = view;
+      const originKey = ["tenant", "switch-origin", ORG_A];
+      try {
+        await findScope("Org A", "owner");
+        queryClient.setQueryData(originKey, { organizationId: ORG_A });
+        const stalePatchClaim = createContextPublicationClaim();
+        expect(
+          claimContextPublication(queryClient, stalePatchClaim, "switch"),
+        ).toBe(true);
 
-    await user.click(screen.getByTestId("shell-organization-switch"));
-    const menu = screen.getByTestId("shell-organization-menu");
-    expect(
-      within(menu).getByTestId(`shell-organization-${ORG_A}`),
-    ).toHaveAttribute("aria-checked", "true");
-    await user.click(within(menu).getByTestId(`shell-organization-${ORG_B}`));
+        await user.click(screen.getByTestId("shell-organization-switch"));
+        const menu = screen.getByTestId("shell-organization-menu");
+        expect(
+          within(menu).getByTestId(`shell-organization-${ORG_A}`),
+        ).toHaveAttribute("aria-checked", "true");
+        await user.click(
+          within(menu).getByTestId(`shell-organization-${ORG_B}`),
+        );
+        await waitFor(() => {
+          expect(updateActiveOrganizationMock).toHaveBeenCalledExactlyOnceWith({
+            organizationId: ORG_B,
+          });
+        });
+        await findScope("Org A", "owner");
+        expect(
+          getContextPublicationSnapshot(queryClient).admission,
+        ).toMatchObject({
+          kind: "confirmed",
+          context: origin,
+        });
+        expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(origin);
+        expect(queryClient.getQueryData(originKey)).toEqual({
+          organizationId: ORG_A,
+        });
+        expect(hasContextPublicationClaim(queryClient, stalePatchClaim)).toBe(
+          false,
+        );
 
-    await findScope("Org B", "viewer");
-    expect(hasContextPublicationClaim(queryClient, stalePatchClaim)).toBe(
-      false,
-    );
-    expect(screen.getByTestId("shell-organization-switch")).toHaveTextContent(
-      "Org B",
-    );
-    expect(screen.getByTestId("shell-organization-role-viewer")).toBeVisible();
-    expect(
-      within(screen.getByTestId("shell-breadcrumb")).getByTestId(
-        "shell-breadcrumb-organization",
-      ),
-    ).toBeInTheDocument();
-  });
+        if (outcome === "success") {
+          patch.resolve(destination);
+          await findScope("Org B", "viewer");
+          expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+            destination,
+          );
+          expect(queryClient.getQueryData(originKey)).toBeUndefined();
+          expect(
+            screen.getByTestId("shell-organization-switch"),
+          ).toHaveTextContent("Org B");
+          expect(
+            screen.getByTestId("shell-organization-role-viewer"),
+          ).toBeVisible();
+          expect(
+            within(screen.getByTestId("shell-breadcrumb")).getByTestId(
+              "shell-breadcrumb-organization",
+            ),
+          ).toBeInTheDocument();
+        } else {
+          await user.click(screen.getByTestId("shell-organization-switch"));
+          const option = screen.getByTestId(`shell-organization-${ORG_B}`);
+          expect(option).toBeDisabled();
+          await act(async () => {
+            patch.reject(new ApiError("NETWORK_ERROR", "PATCH failed", 0));
+            await patch.promise.catch(() => undefined);
+          });
+          await waitFor(() => expect(option).toBeEnabled());
+          await findScope("Org A", "owner");
+          expect(
+            screen.getByTestId(`shell-organization-${ORG_A}`),
+          ).toHaveAttribute("aria-checked", "true");
+          expect(option).toHaveAttribute("aria-checked", "false");
+          expect(
+            getContextPublicationSnapshot(queryClient).admission,
+          ).toMatchObject({
+            kind: "confirmed",
+            context: origin,
+          });
+          expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+            origin,
+          );
+          expect(queryClient.getQueryData(originKey)).toEqual({
+            organizationId: ORG_A,
+          });
+        }
+      } finally {
+        view.unmount();
+        view.router.dispose();
+        await act(async () => {
+          patch.resolve(destination);
+          await patch.promise.catch(() => undefined);
+        });
+        await queryClient.cancelQueries();
+        queryClient.clear();
+      }
+    },
+  );
 
   it("retires role-dependent shell controls after a permission denial refreshes an owner to viewer", async () => {
     const downgradedOrg = { ...ownerOrg, role: "viewer" as const };

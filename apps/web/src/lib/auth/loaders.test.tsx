@@ -1431,12 +1431,31 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
   });
 
-  it("sends an anonymous visitor to sign in from Edit and from Create", async () => {
-    sessionState.data = null;
-    renderAt([editRoute], editPath);
-    expect(await screen.findByTestId("from")).toHaveTextContent(editPath);
-    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
-  });
+  it.each([
+    ["Edit", editRoute, editPath, "edit-area"],
+    [
+      "Create",
+      createRoute,
+      `/organizations/${organizationId}/projects/${P}/monitors/new`,
+      "create-area",
+    ],
+  ] as const)(
+    "sends an anonymous visitor to sign in from %s",
+    async (_mode, route, path, protectedArea) => {
+      sessionState.data = null;
+      renderAt([route], path);
+
+      expect(await screen.findByTestId("location")).toHaveTextContent(
+        `/login?from=${encodeURIComponent(path)}`,
+      );
+      expect(screen.getByTestId("from").textContent).toBe(path);
+      expect(screen.queryByTestId(protectedArea)).toBeNull();
+      expect(fetchMeContextMock).not.toHaveBeenCalled();
+      expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
+      expect(fetchMonitorListMock).not.toHaveBeenCalled();
+      expect(peekStagedQueryClient()).toBeNull();
+    },
+  );
 
   it("lets a signed-in member open Create without any monitor request", async () => {
     sessionState.data = { user: VERIFIED };
