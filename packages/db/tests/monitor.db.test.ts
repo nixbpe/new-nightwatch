@@ -1,47 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import { Client, type PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   claimDueMonitorChecks,
-  createDatabase,
   purgeExpiredMonitorData,
-  runMigrations,
+  listMigrations,
+  type Database,
   withTenantContextRaw,
 } from "../src";
 
-const runtimeUrl = process.env.DATABASE_URL;
-const ownerUrl = process.env.DATABASE_OWNER_URL;
+import { openTestPostgres, type TestPostgres } from "./support/postgres";
 
-if (!runtimeUrl || !ownerUrl) {
-  throw new Error(
-    "monitor database tests require DATABASE_URL and DATABASE_OWNER_URL",
-  );
-}
-
-// This file creates and drops monitor partitions, which lock the parent
-// tables against every other suite that deletes organizations or calls
-// ensure_monitor_partitions on the shared database (deadlocks, dropped
-// fixtures). It therefore runs in its own database on the same cluster.
-const databaseName = `monitor_db_${randomUUID().replaceAll("-", "")}`;
-const isolatedOwnerUrl = new URL(ownerUrl);
-isolatedOwnerUrl.pathname = `/${databaseName}`;
-const isolatedRuntimeUrl = new URL(runtimeUrl);
-isolatedRuntimeUrl.pathname = `/${databaseName}`;
-const admin = new Client({ connectionString: ownerUrl });
-let adminConnected = false;
-let migrationsCopyDir: string | undefined;
-const database = createDatabase(isolatedRuntimeUrl.toString());
-const ownerDatabase = createDatabase(isolatedOwnerUrl.toString());
-const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
+let fixture: TestPostgres | undefined;
+let database: Database;
+let ownerDatabase: Database;
+let owner: Pool;
 const run = randomUUID();
 const tenantA = randomUUID();
 const tenantB = randomUUID();
-let ownerConnected = false;
 
 const MONITOR_TABLES = [
   "monitors",
@@ -60,7 +38,7 @@ type Seeded = { monitorId: string };
 const projectOf = new Map<string, string>();
 
 async function insertMonitor(
-  client: PoolClient | Client,
+  client: PoolClient | Pool,
   tenantId: string,
   input: {
     id?: string;
@@ -89,7 +67,7 @@ async function insertMonitor(
 }
 
 async function insertSchedule(
-  client: PoolClient | Client,
+  client: PoolClient | Pool,
   tenantId: string,
   monitorId: string,
   nextCheckAt: string | null,
@@ -185,40 +163,11 @@ function must<T>(value: T | undefined): T {
 let seededA: Seeded;
 let seededB: Seeded;
 
-/** Copies the migrations with `create role` made idempotent: roles are
- * cluster-global and already exist once any NightWatch database on the
- * cluster has been migrated (architecture DB-13). */
-async function copyMigrationsWithIdempotentRoles(): Promise<string> {
-  const source = new URL("../migrations", import.meta.url).pathname;
-  const target = await mkdtemp(
-    join(tmpdir(), "nightwatch-monitor-migrations-"),
-  );
-  for (const name of await readdir(source)) {
-    const sql = (await readFile(join(source, name), "utf8")).replace(
-      /create role (\w+)([^;]*);/g,
-      (_match, role: string, options: string) =>
-        `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-    );
-    await writeFile(join(target, name), sql);
-  }
-  return target;
-}
-
 beforeAll(async () => {
-  await admin.connect();
-  adminConnected = true;
-  await admin.query(`create database ${databaseName}`);
-  await admin.query(
-    `grant connect, temporary on database ${databaseName} to nightwatch`,
-  );
-  migrationsCopyDir = await copyMigrationsWithIdempotentRoles();
-  await runMigrations({
-    url: isolatedOwnerUrl.toString(),
-    migrationsDir: migrationsCopyDir,
-    log: () => undefined,
-  });
-  await owner.connect();
-  ownerConnected = true;
+  fixture = await openTestPostgres("monitor-current");
+  database = fixture.runtime;
+  ownerDatabase = fixture.owner;
+  owner = ownerDatabase.sql;
   await owner.query(
     `insert into organization (id, name, slug)
      values ($1, 'Monitor A', $2), ($3, 'Monitor B', $4)`,
@@ -234,34 +183,10 @@ beforeAll(async () => {
   }
   seededA = await seedTenant(tenantA);
   seededB = await seedTenant(tenantB);
-}, 120_000);
+}, 180_000);
 
 afterAll(async () => {
-  try {
-    await database.close();
-    await ownerDatabase.close();
-    if (ownerConnected) await owner.end();
-  } finally {
-    try {
-      if (adminConnected) {
-        try {
-          await admin.query(`drop database if exists ${databaseName}`);
-        } catch {
-          await admin.query(
-            `select pg_terminate_backend(pid) from pg_stat_activity
-             where datname = $1 and pid <> pg_backend_pid()`,
-            [databaseName],
-          );
-          await admin.query(`drop database if exists ${databaseName}`);
-        }
-      }
-    } finally {
-      await admin.end().catch(() => undefined);
-      if (migrationsCopyDir) {
-        await rm(migrationsCopyDir, { recursive: true, force: true });
-      }
-    }
-  }
+  await fixture?.close();
 }, 60_000);
 
 describe("monitor tenant isolation", () => {
@@ -791,290 +716,254 @@ describe("monitors alert settings defaults and bounds", () => {
 });
 
 describe("monitors alert settings backfill from migration 0022", () => {
-  // Migrates a fresh database only through 0021, inserts a monitor row the
-  // way pre-#60 code would, then applies 0022 alone. Postgres serves an
-  // ADD COLUMN ... DEFAULT to a pre-existing row through a fast-default
-  // (attmissingval), a different path than the INSERT-time default new rows
-  // get; this is the proof that a deployed monitor keeps today's behavior.
-  const legacyDbName = `monitor_legacy_${randomUUID().replaceAll("-", "")}`;
-  const legacyOwnerUrl = new URL(ownerUrl);
-  legacyOwnerUrl.pathname = `/${legacyDbName}`;
-  let legacyOwner: Client | undefined;
-  let preDir: string | undefined;
-  let postDir: string | undefined;
-
-  async function copyIdempotent(names: string[], dir: string): Promise<void> {
-    const source = new URL("../migrations", import.meta.url).pathname;
-    for (const name of names) {
-      const sql = (await readFile(join(source, name), "utf8")).replace(
-        /create role (\w+)([^;]*);/g,
-        (_match, role: string, options: string) =>
-          `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-      );
-      await writeFile(join(dir, name), sql);
-    }
-  }
-
-  afterAll(async () => {
-    await legacyOwner?.end().catch(() => undefined);
-    if (adminConnected) {
-      try {
-        await admin.query(`drop database if exists ${legacyDbName}`);
-      } catch {
-        await admin.query(
-          `select pg_terminate_backend(pid) from pg_stat_activity
-           where datname = $1 and pid <> pg_backend_pid()`,
-          [legacyDbName],
-        );
-        await admin.query(`drop database if exists ${legacyDbName}`);
-      }
-    }
-    for (const dir of [preDir, postDir]) {
-      if (dir) await rm(dir, { recursive: true, force: true });
-    }
-  }, 60_000);
-
   it("backfills threshold 2, both toggles on and 30-day caution onto a row inserted before 0022", async () => {
-    await admin.query(`create database ${legacyDbName}`);
-    await admin.query(
-      `grant connect, temporary on database ${legacyDbName} to nightwatch`,
+    const legacy = await openTestPostgres(
+      "monitor-alert-backfill",
+      "0021_audit_exports.sql",
     );
-
-    const source = new URL("../migrations", import.meta.url).pathname;
-    const allNames = (await readdir(source)).sort();
-    const preNames = allNames.filter((name) => name < "0022_");
-    // 0026 wipes monitors, so the row this test follows would not survive it.
-    const postNames = allNames.filter(
-      (name) => !preNames.includes(name) && name < "0026_",
-    );
-
-    preDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-pre-"));
-    await copyIdempotent(preNames, preDir);
-    await runMigrations({
-      url: legacyOwnerUrl.toString(),
-      migrationsDir: preDir,
-      log: () => undefined,
-    });
-
-    legacyOwner = new Client({ connectionString: legacyOwnerUrl.toString() });
-    await legacyOwner.connect();
-    const tenantId = randomUUID();
-    await legacyOwner.query(
-      `insert into organization (id, name, slug) values ($1, 'Legacy', $2)`,
-      [tenantId, `monitor-legacy-${run}`],
-    );
-    const monitorId = randomUUID();
-    await legacyOwner.query(
-      `insert into monitors (id, tenant_id, name, url, client_request_id)
+    const errors: unknown[] = [];
+    try {
+      const legacyOwner = legacy.owner.sql;
+      const canonical = await listMigrations(
+        new URL("../migrations", import.meta.url).pathname,
+      );
+      const ledger = async () =>
+        (
+          await legacyOwner.query<{ name: string; sha256: string }>(
+            "select name, sha256 from __nightwatch_migrations order by name",
+          )
+        ).rows;
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0021_audit_exports.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+      const tenantId = randomUUID();
+      await legacyOwner.query(
+        `insert into organization (id, name, slug) values ($1, 'Legacy', $2)`,
+        [tenantId, `monitor-legacy-${run}`],
+      );
+      const monitorId = randomUUID();
+      await legacyOwner.query(
+        `insert into monitors (id, tenant_id, name, url, client_request_id)
        values ($1, $2, 'legacy', 'https://target.example.test/', $3)`,
-      [monitorId, tenantId, randomUUID()],
-    );
+        [monitorId, tenantId, randomUUID()],
+      );
 
-    postDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-post-"));
-    await copyIdempotent(postNames, postDir);
-    const result = await runMigrations({
-      url: legacyOwnerUrl.toString(),
-      migrationsDir: postDir,
-      log: () => undefined,
-    });
-    // Later migrations run on the same fixture; only 0022 is under test.
-    expect(result.applied).toContain("0022_monitor_alert_settings.sql");
+      const result = await legacy.advanceTo("0022_monitor_alert_settings.sql");
+      expect(result.applied).toEqual(["0022_monitor_alert_settings.sql"]);
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0022_monitor_alert_settings.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
 
-    const row = await legacyOwner.query<{
-      alert_failure_threshold: number;
-      alert_down_enabled: boolean;
-      alert_ssl_enabled: boolean;
-      alert_ssl_caution_days: number;
-    }>(
-      `select alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
+      const row = await legacyOwner.query<{
+        alert_failure_threshold: number;
+        alert_down_enabled: boolean;
+        alert_ssl_enabled: boolean;
+        alert_ssl_caution_days: number;
+      }>(
+        `select alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
               alert_ssl_caution_days
        from monitors where id = $1`,
-      [monitorId],
-    );
-    expect(row.rows[0]).toEqual({
-      alert_failure_threshold: 2,
-      alert_down_enabled: true,
-      alert_ssl_enabled: true,
-      alert_ssl_caution_days: 30,
-    });
-  }, 60_000);
+        [monitorId],
+      );
+      expect(row.rows[0]).toEqual({
+        alert_failure_threshold: 2,
+        alert_down_enabled: true,
+        alert_ssl_enabled: true,
+        alert_ssl_caution_days: 30,
+      });
+      await legacy.advanceTo("0025_member_last_project.sql");
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0025_member_last_project.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+      expect(
+        (
+          await legacyOwner.query(
+            "select alert_failure_threshold, alert_down_enabled, alert_ssl_enabled, alert_ssl_caution_days from monitors where id = $1",
+            [monitorId],
+          )
+        ).rows,
+      ).toEqual(row.rows);
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      try {
+        await legacy.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "legacy assertions and cleanup failed");
+  }, 180_000);
 });
 
 describe("0026 wipes monitor data and scopes monitors to a Project", () => {
-  // Builds a database at 0025, seeds monitor rows, monitor notifications, an
-  // unrelated notification and an audit event, then applies 0026.
-  const wipeDbName = `monitor_wipe_${randomUUID().replaceAll("-", "")}`;
-  const wipeOwnerUrl = new URL(ownerUrl);
-  wipeOwnerUrl.pathname = `/${wipeDbName}`;
-  let wipeOwner: Client | undefined;
-  const dirs: string[] = [];
-
-  async function copyIdempotent(names: string[]): Promise<string> {
-    const dir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-wipe-"));
-    dirs.push(dir);
-    const source = new URL("../migrations", import.meta.url).pathname;
-    for (const name of names) {
-      const sql = (await readFile(join(source, name), "utf8")).replace(
-        /create role (\w+)([^;]*);/g,
-        (_match, role: string, options: string) =>
-          `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-      );
-      await writeFile(join(dir, name), sql);
-    }
-    return dir;
-  }
-
-  afterAll(async () => {
-    await wipeOwner?.end().catch(() => undefined);
-    if (adminConnected) {
-      await admin
-        .query(
-          `select pg_terminate_backend(pid) from pg_stat_activity
-           where datname = $1 and pid <> pg_backend_pid()`,
-          [wipeDbName],
-        )
-        .catch(() => undefined);
-      await admin.query(`drop database if exists ${wipeDbName}`);
-    }
-    for (const dir of dirs) await rm(dir, { recursive: true, force: true });
-  }, 60_000);
-
   it("empties monitor tables and monitor notifications, keeps other notifications and audit events", async () => {
-    await admin.query(`create database ${wipeDbName}`);
-    await admin.query(
-      `grant connect, temporary on database ${wipeDbName} to nightwatch`,
+    const wipe = await openTestPostgres(
+      "monitor-project-wipe",
+      "0025_member_last_project.sql",
     );
-    const source = new URL("../migrations", import.meta.url).pathname;
-    const names = (await readdir(source)).sort();
-    const before = names.filter((name) => name < "0026_");
-    const after = names.filter((name) => name >= "0026_");
-    expect(after).toEqual([
-      "0026_project_monitors.sql",
-      "0027_notification_monitor_hostname.sql",
-    ]);
-    await runMigrations({
-      url: wipeOwnerUrl.toString(),
-      migrationsDir: await copyIdempotent(before),
-      log: () => undefined,
-    });
-
-    wipeOwner = new Client({ connectionString: wipeOwnerUrl.toString() });
-    await wipeOwner.connect();
-    const tenantId = randomUUID();
-    const userId = randomUUID();
-    const monitorId = randomUUID();
-    await wipeOwner.query(
-      `insert into organization (id, name, slug) values ($1, 'Wipe', $2)`,
-      [tenantId, `wipe-${run}`],
-    );
-    await wipeOwner.query(
-      `insert into "user" (id, name, email, email_verified) values ($1, 'u', $2, true)`,
-      [userId, `wipe-${run}@example.test`],
-    );
-    await wipeOwner.query(
-      `insert into monitors (id, tenant_id, name, url, client_request_id)
+    const errors: unknown[] = [];
+    try {
+      const wipeOwner = wipe.owner.sql;
+      const canonical = await listMigrations(
+        new URL("../migrations", import.meta.url).pathname,
+      );
+      const ledger = async () =>
+        (
+          await wipeOwner.query<{ name: string; sha256: string }>(
+            "select name, sha256 from __nightwatch_migrations order by name",
+          )
+        ).rows;
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0025_member_last_project.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+      const tenantId = randomUUID();
+      const userId = randomUUID();
+      const monitorId = randomUUID();
+      await wipeOwner.query(
+        `insert into organization (id, name, slug) values ($1, 'Wipe', $2)`,
+        [tenantId, `wipe-${run}`],
+      );
+      await wipeOwner.query(
+        `insert into "user" (id, name, email, email_verified) values ($1, 'u', $2, true)`,
+        [userId, `wipe-${run}@example.test`],
+      );
+      await wipeOwner.query(
+        `insert into monitors (id, tenant_id, name, url, client_request_id)
        values ($1, $2, 'old', 'https://target.example.test/', $3)`,
-      [monitorId, tenantId, randomUUID()],
-    );
-    await wipeOwner.query(
-      `insert into monitor_schedule
+        [monitorId, tenantId, randomUUID()],
+      );
+      await wipeOwner.query(
+        `insert into monitor_schedule
          (monitor_id, tenant_id, next_check_at, check_config_version,
           interval_seconds, timeout_seconds)
        values ($1, $2, now(), 1, 60, 10)`,
-      [monitorId, tenantId],
-    );
-    await wipeOwner.query(
-      `insert into monitor_check_results
+        [monitorId, tenantId],
+      );
+      await wipeOwner.query(
+        `insert into monitor_check_results
          (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
           url_masked, check_config_version, interval_seconds)
        values ($1, $2, now(), now(), 'pass', 'https://target.example.test/', 1, 60)`,
-      [monitorId, tenantId],
-    );
-    await wipeOwner.query(
-      `insert into monitor_events (monitor_id, tenant_id, kind)
-       values ($1, $2, 'paused')`,
-      [monitorId, tenantId],
-    );
-    const intents = [
-      { id: randomUUID(), type: "MONITOR_DOWN" },
-      { id: randomUUID(), type: "ORG-NOTIFICATION-SETTINGS-CHANGED" },
-    ];
-    for (const intent of intents) {
-      const origin = `wipe-${intent.id}`;
-      await wipeOwner.query(
-        `insert into notification_intents
-           (id, scope_kind, tenant_id, origin, event_type, occurred_at)
-         values ($1, 'tenant', $2, $3, $4, now())`,
-        [intent.id, tenantId, origin, intent.type],
+        [monitorId, tenantId],
       );
       await wipeOwner.query(
-        `insert into notification_inbox_items
+        `insert into monitor_events (monitor_id, tenant_id, kind)
+       values ($1, $2, 'paused')`,
+        [monitorId, tenantId],
+      );
+      const intents = [
+        { id: randomUUID(), type: "MONITOR_DOWN" },
+        { id: randomUUID(), type: "ORG-NOTIFICATION-SETTINGS-CHANGED" },
+      ];
+      for (const intent of intents) {
+        const origin = `wipe-${intent.id}`;
+        await wipeOwner.query(
+          `insert into notification_intents
+           (id, scope_kind, tenant_id, origin, event_type, occurred_at)
+         values ($1, 'tenant', $2, $3, $4, now())`,
+          [intent.id, tenantId, origin, intent.type],
+        );
+        await wipeOwner.query(
+          `insert into notification_inbox_items
            (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
             event_type, occurred_at)
          values ($1, $2, $3, $4, 'tenant', $5, $6, now())`,
-        [randomUUID(), intent.id, origin, userId, tenantId, intent.type],
-      );
-      await wipeOwner.query(
-        `insert into notification_dispatch_ledger
+          [randomUUID(), intent.id, origin, userId, tenantId, intent.type],
+        );
+        await wipeOwner.query(
+          `insert into notification_dispatch_ledger
            (id, intent_id, scope_kind, tenant_id)
          values ($1, $2, 'tenant', $3)`,
-        [randomUUID(), intent.id, tenantId],
-      );
-    }
-    await wipeOwner.query(
-      `insert into audit_events
+          [randomUUID(), intent.id, tenantId],
+        );
+      }
+      await wipeOwner.query(
+        `insert into audit_events
          (tenant_id, actor_user_id, actor_role, category, action, target_type, target_id)
        values ($1, $2, 'owner', 'monitor', 'organization.monitor.create', 'monitor', $3)`,
-      [tenantId, userId, monitorId],
-    );
-
-    await runMigrations({
-      url: wipeOwnerUrl.toString(),
-      migrationsDir: await copyIdempotent(after),
-      log: () => undefined,
-    });
-
-    const count = async (table: string, where = "true"): Promise<number> =>
-      Number(
-        (
-          await must(wipeOwner).query<{ n: string }>(
-            `select count(*) as n from ${table} where ${where}`,
-          )
-        ).rows[0]?.n,
+        [tenantId, userId, monitorId],
       );
-    for (const table of MONITOR_TABLES) expect(await count(table)).toBe(0);
-    for (const table of [
-      "notification_intents",
-      "notification_inbox_items",
-      "notification_dispatch_ledger",
-    ]) {
-      const ledger = table === "notification_dispatch_ledger";
-      const monitorRows = await count(
-        table,
-        ledger
-          ? `intent_id = '${must(intents[0]).id}'`
-          : "event_type like 'MONITOR\\_%'",
-      );
-      expect({ table, monitorRows }).toEqual({ table, monitorRows: 0 });
+
       expect(
-        await count(
-          table,
-          table === "notification_dispatch_ledger"
-            ? `intent_id = '${must(intents[1]).id}'`
-            : "event_type = 'ORG-NOTIFICATION-SETTINGS-CHANGED'",
-        ),
-      ).toBe(1);
-    }
-    expect(await count("audit_events", `target_id = '${monitorId}'`)).toBe(1);
+        (await wipe.advanceTo("0026_project_monitors.sql")).applied,
+      ).toEqual(["0026_project_monitors.sql"]);
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(({ name }) => name <= "0026_project_monitors.sql")
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
 
-    // FORCE RLS is back on the table the migration relaxed.
-    const forced = await must(wipeOwner).query<{
-      relforcerowsecurity: boolean;
-    }>(
-      "select relforcerowsecurity from pg_class where relname = 'notification_intents'",
-    );
-    expect(forced.rows[0]?.relforcerowsecurity).toBe(true);
-  }, 120_000);
+      const count = async (table: string, where = "true"): Promise<number> =>
+        Number(
+          (
+            await must(wipeOwner).query<{ n: string }>(
+              `select count(*) as n from ${table} where ${where}`,
+            )
+          ).rows[0]?.n,
+        );
+      for (const table of MONITOR_TABLES) expect(await count(table)).toBe(0);
+      for (const table of [
+        "notification_intents",
+        "notification_inbox_items",
+        "notification_dispatch_ledger",
+      ]) {
+        const ledger = table === "notification_dispatch_ledger";
+        const monitorRows = await count(
+          table,
+          ledger
+            ? `intent_id = '${must(intents[0]).id}'`
+            : "event_type like 'MONITOR\\_%'",
+        );
+        expect({ table, monitorRows }).toEqual({ table, monitorRows: 0 });
+        expect(
+          await count(
+            table,
+            table === "notification_dispatch_ledger"
+              ? `intent_id = '${must(intents[1]).id}'`
+              : "event_type = 'ORG-NOTIFICATION-SETTINGS-CHANGED'",
+          ),
+        ).toBe(1);
+      }
+      expect(await count("audit_events", `target_id = '${monitorId}'`)).toBe(1);
+
+      const forced = await must(wipeOwner).query<{
+        relforcerowsecurity: boolean;
+      }>(
+        "select relforcerowsecurity from pg_class where relname = 'notification_intents'",
+      );
+      expect(forced.rows[0]?.relforcerowsecurity).toBe(true);
+      await wipe.advanceTo("0027_notification_monitor_hostname.sql");
+      expect(await ledger()).toEqual(
+        canonical
+          .filter(
+            ({ name }) => name <= "0027_notification_monitor_hostname.sql",
+          )
+          .map(({ name, sha256 }) => ({ name, sha256 })),
+      );
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      try {
+        await wipe.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "wipe assertions and cleanup failed");
+  }, 180_000);
 });
 
 describe("claim_due_monitor_checks", () => {
@@ -1157,18 +1046,16 @@ describe("claim_due_monitor_checks", () => {
     for (let i = 0; i < 6; i += 1) {
       await dueMonitor(tenantA, ancient);
     }
-    const first = new Client({
-      connectionString: isolatedRuntimeUrl.toString(),
-    });
-    const second = new Client({
-      connectionString: isolatedRuntimeUrl.toString(),
-    });
-    await first.connect();
-    await second.connect();
+    const first = await database.sql.connect();
+    let second: PoolClient | undefined;
+    const errors: unknown[] = [];
     try {
       await first.query("begin");
+      await first.query("set local statement_timeout = '1500ms'");
+      second = await database.sql.connect();
       await second.query("begin");
-      const [r1, r2] = await Promise.all([
+      await second.query("set local statement_timeout = '1500ms'");
+      const outcomes = await Promise.allSettled([
         first.query<{ monitor_id: string }>(
           "select monitor_id from claim_due_monitor_checks(3)",
         ),
@@ -1176,17 +1063,42 @@ describe("claim_due_monitor_checks", () => {
           "select monitor_id from claim_due_monitor_checks(3)",
         ),
       ]);
-      const set1 = r1.rows.map((r) => r.monitor_id);
-      const set2 = r2.rows.map((r) => r.monitor_id);
+      const rejected = outcomes.filter(
+        (outcome) => outcome.status === "rejected",
+      );
+      if (rejected.length)
+        throw new AggregateError(
+          rejected.map((outcome): unknown => outcome.reason),
+          "Monitor claim queries failed",
+        );
+      const [r1, r2] = outcomes.map((outcome) => {
+        if (outcome.status === "rejected") throw outcome.reason;
+        return outcome.value;
+      });
+      const set1 = must(r1).rows.map((r) => r.monitor_id);
+      const set2 = must(r2).rows.map((r) => r.monitor_id);
       expect(set1).toHaveLength(3);
       expect(set2).toHaveLength(3);
       expect(set1.filter((id) => set2.includes(id))).toEqual([]);
       await first.query("commit");
       await second.query("commit");
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await first.end();
-      await second.end();
+      for (const client of [second, first]) {
+        if (!client) continue;
+        try {
+          await client.query("rollback");
+        } catch (error) {
+          errors.push(error);
+        } finally {
+          client.release();
+        }
+      }
     }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "Monitor claim transactions failed");
   });
 
   it("re-claims only after the lease expires", async () => {
@@ -1352,7 +1264,7 @@ describe("purge_expired_monitor_data", () => {
   }
 
   afterAll(async () => {
-    if (!ownerConnected) return;
+    if (!fixture) return;
     await owner.query("delete from monitors where id = any($1::uuid[])", [
       fixtureMonitors,
     ]);
@@ -1598,7 +1510,7 @@ describe("purge of monitor_last_responses", () => {
   }
 
   afterAll(async () => {
-    if (!ownerConnected) return;
+    if (!fixture) return;
     await owner.query("delete from monitors where id = any($1::uuid[])", [
       monitorIds,
     ]);
@@ -1794,7 +1706,7 @@ describe("monitor_events feed columns", () => {
   }
 
   afterAll(async () => {
-    if (!ownerConnected) return;
+    if (!fixture) return;
     await owner.query("delete from monitors where id = any($1::uuid[])", [
       monitorIds,
     ]);
