@@ -518,6 +518,16 @@ for (const theme of ["light", "dark"] as const) {
         await openOverview(page, "table");
 
         await scrollListIntoView(page, "table");
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(
+          await page.evaluate(() => document.documentElement.clientWidth),
+        );
+        const region = page.getByTestId("monitor-overview-table-region");
+        await expect(region).toBeInViewport({ ratio: 1 });
+        expect(await region.evaluate((element) => element.scrollHeight)).toBe(
+          await region.evaluate((element) => element.clientHeight),
+        );
         await shot(page, `table-640-${theme}`, true);
       });
 
@@ -528,6 +538,18 @@ for (const theme of ["light", "dark"] as const) {
         await openWorkspaceCertificate(page);
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(
+          await page.evaluate(() => document.documentElement.clientWidth),
+        );
+        const issuer = page.getByTestId("monitor-detail-ssl-issuer");
+        await expect(issuer).toBeInViewport({ ratio: 1 });
+        expect(
+          await issuer.evaluate((element) => element.scrollWidth),
+        ).toBeLessThanOrEqual(
+          await issuer.evaluate((element) => element.clientWidth),
+        );
         await shot(page, `workspace-detail-ssl-640-${theme}`, true);
       });
     });

@@ -338,11 +338,27 @@ test("P58-10: a 16 KiB body on one unbroken line does not scroll the page at 375
     /\S/,
   );
 
-  // 200% text size (WCAG 1.4.4): scale the root font size, rem units follow.
-  await page.evaluate(() => {
-    document.documentElement.style.fontSize = "200%";
-  });
-  await expect(body).toHaveText("x".repeat(16384));
+  for (const scale of [100, 200]) {
+    await page.evaluate((value) => {
+      document.documentElement.style.fontSize = `${String(value)}%`;
+    }, scale);
+    await expect(body).toHaveText("x".repeat(16384));
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
+    const bounds = await body.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        viewport: document.documentElement.clientWidth,
+      };
+    });
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(bounds.viewport);
+  }
   await shot(page, "p58-10-long-body-375-200pct", true);
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "";

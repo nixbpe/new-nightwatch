@@ -67,7 +67,12 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
             {ssl.issuer === null ? null : (
               <>
                 <dt className="text-foreground-secondary">ผู้ออก</dt>
-                <dd data-testid="monitor-detail-ssl-issuer">{ssl.issuer}</dd>
+                <dd
+                  data-testid="monitor-detail-ssl-issuer"
+                  className="break-all"
+                >
+                  {ssl.issuer}
+                </dd>
               </>
             )}
             {ssl.host === null ? null : (

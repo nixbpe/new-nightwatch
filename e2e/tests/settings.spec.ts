@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 
 /**
  * Personal settings (/settings/*).
@@ -82,6 +82,47 @@ async function signIn(page: Page, password: string) {
   );
 }
 
+async function expectReflow(page: Page, elements: Locator) {
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
+  for (const element of await elements.all()) {
+    await expect(element).toBeVisible();
+    const geometry = await element.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      const textRects: DOMRect[] = [];
+      while (walker.nextNode()) {
+        if (!walker.currentNode.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(walker.currentNode);
+        textRects.push(...range.getClientRects());
+      }
+      return {
+        left: bounds.left,
+        right: bounds.right,
+        viewport: document.documentElement.clientWidth,
+        unclipped:
+          node.scrollWidth <= node.clientWidth &&
+          node.scrollHeight <= node.clientHeight &&
+          textRects.length > 0 &&
+          textRects.every(
+            (rect) =>
+              rect.left >= bounds.left - 1 &&
+              rect.right <= bounds.right + 1 &&
+              rect.top >= bounds.top - 1 &&
+              rect.bottom <= bounds.bottom + 1,
+          ),
+      };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+    expect(geometry.unclipped).toBe(true);
+  }
+}
+
 test.describe("signed-in settings", () => {
   test.skip(
     !credentialed,
@@ -153,6 +194,37 @@ test.describe("signed-in settings", () => {
             const activeTab = tablist.getByTestId(
               `settings-tab-/settings/${route}`,
             );
+            await expectReflow(page, tablist.getByRole("tab"));
+            expect(
+              await tablist.evaluate((element) => element.scrollWidth),
+            ).toBe(await tablist.evaluate((element) => element.clientWidth));
+            expect(
+              await tablist.evaluate((element) => element.scrollHeight),
+            ).toBe(await tablist.evaluate((element) => element.clientHeight));
+            for (const tab of await tablist.getByRole("tab").all()) {
+              await tab.scrollIntoViewIfNeeded();
+              await expect(tab).toBeInViewport({ ratio: 1 });
+              expect(
+                await tab.evaluate((element) => {
+                  const text = [...element.childNodes].find(
+                    (node) =>
+                      node.nodeType === Node.TEXT_NODE &&
+                      node.textContent?.trim(),
+                  );
+                  if (!text) return false;
+                  const range = document.createRange();
+                  range.selectNodeContents(text);
+                  const lines = [...range.getClientRects()];
+                  const firstLine = lines.at(0);
+                  return (
+                    firstLine !== undefined &&
+                    lines.every(
+                      (line) => Math.abs(line.top - firstLine.top) <= 1,
+                    )
+                  );
+                }),
+              ).toBe(true);
+            }
             await expect(activeTab).toBeVisible();
             await expect(activeTab).toHaveRole("tab");
             await expect(activeTab).toHaveAttribute("aria-selected", "true");
@@ -249,6 +321,22 @@ test.describe("signed-in settings", () => {
                 "aria-current",
                 "step",
               );
+          }
+          await expectReflow(page, stepper.getByTestId(/^mfa-step-/));
+          await expectReflow(page, leftAction.or(rightAction));
+          for (const action of [leftAction, rightAction]) {
+            const withinCard = await action.evaluate((element) => {
+              const actionBounds = element.getBoundingClientRect();
+              const card = element
+                .closest('[data-testid="mfa-card"]')
+                ?.getBoundingClientRect();
+              return (
+                card !== undefined &&
+                actionBounds.left >= card.left &&
+                actionBounds.right <= card.right
+              );
+            });
+            expect(withinCard).toBe(true);
           }
           await leftAction.focus();
           await page.keyboard.press("Tab");

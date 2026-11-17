@@ -714,6 +714,31 @@ test.describe("reflow at 200% (640 px viewport, LAY-02)", () => {
             page.getByTestId("monitor-form-url"),
           ).toHaveAccessibleName(/\S/);
         }
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(
+          await page.evaluate(() => document.documentElement.clientWidth),
+        );
+        const controls =
+          path === overview()
+            ? ["monitor-overview-add", "monitor-overview-refresh"]
+            : path === detail()
+              ? [
+                  "monitor-detail-edit",
+                  "monitor-detail-toggle",
+                  "monitor-detail-delete",
+                ]
+              : [
+                  "monitor-form-name",
+                  "monitor-form-url",
+                  "monitor-form-test",
+                  "monitor-form-save",
+                ];
+        for (const id of controls) {
+          const control = page.getByTestId(id);
+          await control.scrollIntoViewIfNeeded();
+          await expect(control).toBeInViewport({ ratio: 1 });
+        }
         await shot(
           page,
           `reflow-640-${theme}-${path.endsWith("/new") ? "new" : path.endsWith("/edit") ? "edit" : path.includes(monitorId) ? "detail" : "overview"}`,
