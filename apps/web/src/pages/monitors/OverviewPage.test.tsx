@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -1882,9 +1883,11 @@ describe("Overview recent events", () => {
       list([item({ id: "5991a0a4-323a-48a5-8238-505645ec0855", name: "Web" })]),
     );
     renderPage();
+    const card = within(await screen.findByTestId("monitor-overview-events"));
     expect(
-      await screen.findByTestId("monitor-overview-health-down"),
-    ).toBeInTheDocument();
+      await card.findByTestId("monitor-overview-events-empty"),
+    ).toHaveTextContent(/\S/);
+    expect(card.queryAllByTestId("monitor-overview-event")).toHaveLength(0);
   });
 
   it("keeps the table when the card fails and retries only the card", async () => {
@@ -1915,14 +1918,21 @@ describe("Overview recent events", () => {
 
     fetchEventsMock.mockResolvedValue(noEvents);
     const listCalls = fetchListMock.mock.calls.length;
-    await user.click(
-      within(screen.getByTestId("monitor-overview-events")).getByTestId(
-        "monitor-overview-events-retry",
-      ),
-    );
+    const eventCalls = fetchEventsMock.mock.calls.length;
+    const card = within(screen.getByTestId("monitor-overview-events"));
+    await user.click(card.getByTestId("monitor-overview-events-retry"));
     expect(
-      await screen.findByTestId("monitor-overview-health-down"),
-    ).toBeInTheDocument();
+      await card.findByTestId("monitor-overview-events-empty"),
+    ).toHaveTextContent(/\S/);
+    expect(fetchEventsMock).toHaveBeenCalledTimes(eventCalls + 1);
+    expect(fetchEventsMock).toHaveBeenLastCalledWith(A, P);
+    expect(card.queryByTestId("monitor-overview-events-error")).toBeNull();
+    expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f00e20af-74f7-4105-a609-63f14cebb06b",
+      ),
+    ).toHaveTextContent(/^Web$/);
     expect(fetchListMock.mock.calls.length).toBe(listCalls);
   });
 });
@@ -2055,17 +2065,27 @@ describe("Overview refetch and announcements", () => {
                   name: "Payments",
                 }),
               ],
-              { total: 12, pageTotal: 1 },
+              { total: 30, pageTotal: 1 },
             )
-          : list(
-              [
-                item({
-                  id: "7e634261-a627-4884-a7e4-61ecef13ae89",
-                  name: "Web",
-                }),
-              ],
-              { total: 12, pageTotal: 12 },
-            ),
+          : params.offset === 25
+            ? list(
+                [
+                  item({
+                    id: "11dffade-15bc-4c61-a118-a464e27d5e17",
+                    name: "Second",
+                  }),
+                ],
+                { total: 30, pageTotal: 30, offset: 25 },
+              )
+            : list(
+                [
+                  item({
+                    id: "7e634261-a627-4884-a7e4-61ecef13ae89",
+                    name: "Web",
+                  }),
+                ],
+                { total: 30, pageTotal: 30 },
+              ),
       ),
     );
     renderPage();
@@ -2082,7 +2102,53 @@ describe("Overview refetch and announcements", () => {
       "href",
       `/organizations/${A}/projects/${P}/monitors/7e634261-a627-4884-a7e4-61ecef13ae89`,
     );
-    await user.type(screen.getByTestId("monitor-overview-search"), "pay");
+    await user.click(screen.getByTestId("monitor-overview-next"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-11dffade-15bc-4c61-a118-a464e27d5e17",
+      ),
+    ).toHaveTextContent(/^Second$/);
+    expect(fetchListMock).toHaveBeenLastCalledWith(A, P, {
+      limit: 25,
+      offset: 25,
+      health: undefined,
+      q: undefined,
+      sort: undefined,
+    });
+    expect(screen.getByTestId("monitor-overview-previous")).toBeEnabled();
+
+    vi.useFakeTimers({ now: NOW });
+    const search = screen.getByTestId("monitor-overview-search");
+    fireEvent.change(search, { target: { value: "p" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    fireEvent.change(search, { target: { value: "pa" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    fireEvent.change(search, { target: { value: "pay" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(fetchListMock.mock.calls.map(([, , params]) => params.q)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchListMock).toHaveBeenLastCalledWith(A, P, {
+      limit: 25,
+      offset: 0,
+      health: undefined,
+      q: "pay",
+      sort: undefined,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    vi.useRealTimers();
     expect(
       await screen.findByTestId(
         "monitor-list-name-145b829a-4b43-4c4a-89fc-904b5256ee80",
@@ -2100,7 +2166,7 @@ describe("Overview refetch and announcements", () => {
       screen
         .getByTestId("monitor-overview-announcement")
         .textContent.match(/\d+/g),
-    ).toEqual(["1", "12"]);
+    ).toEqual(["1", "30"]);
     const queries = fetchListMock.mock.calls.map(([, , params]) => params.q);
     expect(queries).not.toContain("p");
     expect(queries).not.toContain("pa");
@@ -2129,8 +2195,12 @@ describe("Overview refetch and announcements", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    const warning = await screen.findByTestId("monitor-overview-as-of");
-    expect(warning).toHaveTextContent(formatTimeWithSeconds(DATA_AS_OF));
+    const warning = await screen.findByTestId("monitor-overview-refetch-error");
+    expect(warning).toHaveAttribute("role", "alert");
+    const time = within(warning).getByTestId("monitor-overview-refetch-time");
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("datetime", "2026-09-30T07:32:05.000Z");
+    expect(time).toHaveTextContent(formatTimeWithSeconds(DATA_AS_OF));
     expect(
       screen.getByTestId(
         "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",

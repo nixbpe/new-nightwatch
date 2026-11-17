@@ -5,11 +5,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
+import { getContextPublicationSnapshot } from "../../lib/queryClient";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
+  monitorQueryKeys,
   fetchMonitorEvents,
   fetchMonitorLastResponse,
   fetchMonitorChecks,
@@ -224,8 +226,20 @@ describe("Create validation and save", () => {
     await user.keyboard("{Enter}");
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("monitor-form-save")).toHaveFocus();
-    pending.resolve(written());
-    await screen.findByTestId("location");
+    await act(async () => {
+      pending.resolve(written());
+      await pending.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+      );
+    });
+    expect(await screen.findByTestId("monitor-detail-title")).toHaveTextContent(
+      "Payments API",
+    );
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 
   it("shows a blocked address beside the URL, without an address, and keeps the values", async () => {
@@ -366,18 +380,85 @@ describe("Organization switch", () => {
   it("does not navigate back to the old Organization when a save lands after the switch", async () => {
     const pending = deferred<ReturnType<typeof written>>();
     createMock.mockReturnValue(pending.promise);
-    const user = await openCreate();
+    const user = userEvent.setup();
+    const { queryClient, router } = renderForm(newPath());
+    await screen.findByTestId("monitor-form-name");
     await fillBasic(user);
     await user.click(screen.getByTestId("monitor-form-save"));
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock.mock.calls[0]?.[0]).toBe(A);
     await switchToB(user);
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
+      expect(router.state.location.pathname).toBe(projectsOfB);
     });
-    pending.resolve(written());
-    await waitFor(() => {
+    expect(getContextPublicationSnapshot(queryClient).admission).toMatchObject({
+      kind: "confirmed",
+      context: { lastActiveTenantId: B },
+    });
+    expect(screen.getByTestId("projects-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+
+    const originKey = monitorQueryKeys.project(A, P);
+    expect(
+      queryClient
+        .getQueriesData({ queryKey: originKey })
+        .every(([, data]) => data === undefined),
+    ).toBe(true);
+    const paths: string[] = [];
+    const unsubscribe = router.subscribe((state) => {
+      paths.push(state.location.pathname);
+      if (state.navigation.location)
+        paths.push(state.navigation.location.pathname);
+    });
+    const invalidated = vi.fn();
+    const releaseInvalidation = deferred<undefined>();
+    const invalidateQueries = queryClient.invalidateQueries.bind(queryClient);
+    const invalidation = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation(async (...args) => {
+        await invalidateQueries(...args);
+        invalidated();
+        await releaseInvalidation.promise;
+      });
+    try {
+      await act(async () => {
+        pending.resolve(written());
+        await pending.promise;
+      });
+      await waitFor(() => {
+        expect(invalidation).toHaveBeenCalledWith({
+          queryKey: originKey,
+          refetchType: "none",
+        });
+      });
+      await waitFor(() => {
+        expect(invalidated).toHaveBeenCalledTimes(1);
+      });
+      expect(router.state.location.pathname).toBe(projectsOfB);
+      await act(async () => {
+        releaseInvalidation.resolve(undefined);
+        await invalidation.mock.results[0]?.value;
+      });
+      expect(paths.every((path) => path === projectsOfB)).toBe(true);
+      expect(router.state.location.pathname).toBe(projectsOfB);
+      expect(screen.getByTestId("location").textContent).toBe(projectsOfB);
+      expect(
+        queryClient
+          .getQueriesData({ queryKey: originKey })
+          .every(([, data]) => data === undefined),
+      ).toBe(true);
+      expect(fetchDetailMock).not.toHaveBeenCalled();
       expect(createMock).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
+    } finally {
+      await act(async () => {
+        pending.resolve(written());
+        releaseInvalidation.resolve(undefined);
+        await pending.promise;
+        await invalidation.mock.results[0]?.value;
+      });
+      invalidation.mockRestore();
+      unsubscribe();
+    }
   });
 });
 

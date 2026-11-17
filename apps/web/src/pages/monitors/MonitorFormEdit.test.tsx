@@ -1,6 +1,6 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,6 +32,8 @@ import {
   deferred,
   detail,
   editPath,
+  MONITOR_ID,
+  P,
   newPath,
   record,
   renderForm,
@@ -188,14 +190,16 @@ describe("Edit opens with the saved configuration", () => {
     ["a missing id", "99999999-9999-4999-8999-999999999999"],
     ["a malformed id", "not-a-uuid"],
     ["an id of another Organization", "22222222-aaaa-4aaa-8aaa-222222222222"],
-  ])("shows the same not-found text for %s", async (_label, id) => {
-    // The API answers the three the same way, so the page cannot tell them apart.
+  ])("presents MONITOR_NOT_FOUND for %s", async (_label, id) => {
     detailMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     renderForm(editPath(A, id));
     expect(
       await screen.findByTestId("monitor-form-not-found"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-load-error")).toBeNull();
+    expect(detailMock).toHaveBeenCalledWith(A, P, id);
+    expect(screen.getByTestId("location").textContent).toBe(editPath(A, id));
   });
 
   it("keeps the nav leaf active on /new and /edit", () => {
@@ -223,8 +227,20 @@ describe("Edit save", () => {
     await user.keyboard("{Enter}");
     expect(updateMock).toHaveBeenCalledTimes(1);
     expect(saveEdit()).toHaveFocus();
-    pending.resolve({ monitor: record({ version: 4 }) });
-    await screen.findByTestId("location");
+    await act(async () => {
+      pending.resolve({ monitor: record({ version: 4 }) });
+      await pending.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+      );
+    });
+    expect(await screen.findByTestId("monitor-detail-title")).toHaveTextContent(
+      "Payments API",
+    );
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 
   it("loads stored alert settings and submits the complete alerts object unchanged when only the monitor name changes", async () => {

@@ -40,6 +40,7 @@ import {
   detail,
   editPath,
   MONITOR_ID,
+  P,
   newPath,
   record,
   renderForm,
@@ -1447,8 +1448,15 @@ describe("Secret hygiene", () => {
     expect(findSecrets(rendered, [SECRET])).toEqual([]);
     await user.click(saveEdit());
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(MONITOR_ID);
+      expect(screen.getByTestId("location").textContent).toBe(
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+      );
     });
+    expect(await screen.findByTestId("monitor-detail-title")).toHaveTextContent(
+      "Payments API",
+    );
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+    expect(passwordInputs()).toHaveLength(0);
     expect(updateMock).toHaveBeenCalledTimes(1);
     expect(findSecrets(rendered, [SECRET])).toEqual([]);
     expectNoRetainedRequests(rendered);

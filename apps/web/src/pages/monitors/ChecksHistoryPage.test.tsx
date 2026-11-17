@@ -309,8 +309,9 @@ function assertionRecords(row: HTMLElement) {
 describe("Checks history states", () => {
   it("shows a loading state under the monitor placeholder title, then the title and the checks", async () => {
     const pendingDetail = deferred<{ monitor: ReturnType<typeof detail> }>();
+    const pendingChecks = deferred<MonitorChecksResponse>();
     fetchDetailMock.mockReturnValue(pendingDetail.promise);
-    fetchChecksMock.mockReturnValue(new Promise(() => undefined));
+    fetchChecksMock.mockReturnValue(pendingChecks.promise);
     renderChecks();
     expect(await screen.findByTestId("monitor-checks-loading")).toHaveAttribute(
       "role",
@@ -328,6 +329,21 @@ describe("Checks history states", () => {
         /^Payments API$/,
       );
     });
+    expect(screen.getByTestId("monitor-checks-loading")).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+
+    act(() => {
+      pendingChecks.resolve(chunk([0, 1], 0, 2));
+    });
+    expect(
+      await screen.findByTestId("monitor-checks-table"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-loading")).toBeNull();
+    expect(checkTimes()).toEqual([
+      "2026-09-30T07:55:00.000Z",
+      "2026-09-30T07:50:00.000Z",
+    ]);
+    await waitCount([2]);
   });
 
   it("shows the empty state without a button or a count", async () => {

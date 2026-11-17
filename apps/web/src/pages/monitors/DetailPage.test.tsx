@@ -1215,11 +1215,6 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     const fresh = await dataAsOfDot();
     expect(fresh).toHaveAttribute("aria-hidden", "true");
     expect(fresh).toHaveAttribute("data-fresh", "true");
-    expect(fresh).toHaveAttribute("data-fresh", "true");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "true",
-    );
 
     fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     expect(
@@ -1227,19 +1222,12 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     ).toBeInTheDocument();
     const stale = await dataAsOfDot();
     expect(stale).toHaveAttribute("data-fresh", "false");
-    expect(stale).toHaveAttribute("data-fresh", "false");
-    expect(stale).toHaveAttribute("data-fresh", "false");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
 
     showDetail(detail());
     await waitFor(() => {
       expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
     });
     const recovered = await dataAsOfDot();
-    expect(recovered).toHaveAttribute("data-fresh", "true");
     expect(recovered).toHaveAttribute("data-fresh", "true");
   });
 
@@ -1296,7 +1284,6 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       ).toHaveAttribute("data-fresh", "false");
     });
     const paused = await dataAsOfDot();
-    expect(paused).toHaveAttribute("data-fresh", "false");
     expect(paused).toHaveAttribute("data-fresh", "false");
     // No new copy: a pause is not a failed refresh.
     expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
