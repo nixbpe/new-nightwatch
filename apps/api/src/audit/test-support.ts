@@ -1,11 +1,7 @@
-import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
+import { openTestPostgres, type TestPostgres } from "@nightwatch/db/testing";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Client } from "pg";
-
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 
 function partitionName(month: Date): string {
   const year = month.getUTCFullYear();
@@ -43,136 +39,71 @@ export async function createAuditPartitionFor(
   return { name, created: true };
 }
 
-export async function dropAuditPartition(
-  owner: Client,
-  name: string,
-): Promise<void> {
-  if (!/^audit_events_p\d{6}$/.test(name)) {
-    throw new Error(`refusing to drop ${name}: not an audit partition`);
-  }
-  await owner.query(`drop table if exists public.${name}`);
-}
-
-const IDEMPOTENT_ROLE = /create role (\w+)([^;]*);/g;
-const idempotentRole = (_match: string, role: string, options: string) =>
-  `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`;
-
-/**
- * A migrated database of its own on the shared cluster, for tests that create
- * or drop `audit_events` partitions (those lock the parent table). `close`
- * drops it, and so does a failed setup. Roles are cluster-global, so `create
- * role` is made idempotent in the migration copy (architecture DB-13).
- *
- * `skip` leaves migration files out (a later migration that alters what the
- * skipped one creates must be listed too); `applySkipped` runs them later, for
- * a test that needs data in place before that migration. `leaveOut` omits
- * files for good, for a later migration that would erase that data.
- */
+/** Owns a fresh cluster because audit partition DDL locks the parent table. */
 export async function openIsolatedAuditDatabase(options?: {
-  skip?: readonly string[];
-  leaveOut?: readonly string[];
+  history: "before-audit-log";
 }): Promise<{
   database: Database;
   ownerDatabase: Database;
   owner: Client;
-  /** URLs of the isolated database, for a context that opens its own pools. */
-  urls: { runtimeUrl: string; ownerUrl: string };
-  applySkipped: () => Promise<void>;
+  urls: TestPostgres["urls"];
+  advanceTo: TestPostgres["advanceTo"];
   close: () => Promise<void>;
 }> {
-  const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-  const name = `audit_db_${crypto.randomUUID().replaceAll("-", "")}`;
-  const ownerTarget = new URL(ownerUrl);
-  ownerTarget.pathname = `/${name}`;
-  const runtimeTarget = new URL(runtimeUrl);
-  runtimeTarget.pathname = `/${name}`;
-  const source = new URL("../../../../packages/db/migrations", import.meta.url)
-    .pathname;
-  const admin = new Client({ connectionString: ownerUrl });
-  const owner = new Client({ connectionString: ownerTarget.toString() });
-  const database = createDatabase(runtimeTarget.toString());
-  const ownerDatabase = createDatabase(ownerTarget.toString());
-  let copy: string | undefined;
-  let adminConnected = false;
-  let ownerConnected = false;
-
-  const close = async (): Promise<void> => {
-    await database.close().catch(() => undefined);
-    await ownerDatabase.close().catch(() => undefined);
-    if (ownerConnected) await owner.end().catch(() => undefined);
-    if (adminConnected) {
+  const fixture = await openTestPostgres(
+    "api-audit",
+    options?.history === "before-audit-log"
+      ? "0019_monitor_event_feed.sql"
+      : "latest",
+  );
+  let owner: Client | undefined;
+  let closing: Promise<void> | undefined;
+  function close(): Promise<void> {
+    closing ??= (async () => {
+      const errors: unknown[] = [];
       try {
-        try {
-          await admin.query(`drop database if exists ${name}`);
-        } catch {
-          await admin.query(
-            `select pg_terminate_backend(pid) from pg_stat_activity
-             where datname = $1 and pid <> pg_backend_pid()`,
-            [name],
-          );
-          await admin.query(`drop database if exists ${name}`);
-        }
-      } finally {
-        await admin.end().catch(() => undefined);
+        await owner?.end();
+      } catch (error) {
+        errors.push(error);
       }
-    }
-    if (copy) await rm(copy, { recursive: true, force: true });
-  };
-
-  const migrate = () =>
-    runMigrations({
-      url: ownerTarget.toString(),
-      migrationsDir: copy ?? "",
-      log: () => undefined,
-    });
-
-  try {
-    await admin.connect();
-    adminConnected = true;
-    await admin.query(`create database ${name}`);
-    await admin.query(
-      `grant connect, temporary on database ${name} to nightwatch`,
-    );
-    copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
-    for (const file of await readdir(source)) {
-      if (options?.skip?.includes(file) || options?.leaveOut?.includes(file)) {
-        continue;
+      try {
+        await fixture.close();
+      } catch (error) {
+        errors.push(error);
       }
-      const sql = (await readFile(join(source, file), "utf8")).replace(
-        IDEMPOTENT_ROLE,
-        idempotentRole,
-      );
-      await writeFile(join(copy, file), sql);
-    }
-    await migrate();
-    await owner.connect();
-    ownerConnected = true;
-  } catch (error) {
-    await close();
-    throw error;
+      if (errors.length)
+        throw new AggregateError(errors, "Audit cleanup failed");
+    })();
+    return closing;
   }
-
-  return {
-    database,
-    ownerDatabase,
-    owner,
-    urls: {
-      runtimeUrl: runtimeTarget.toString(),
-      ownerUrl: ownerTarget.toString(),
-    },
-    applySkipped: async () => {
-      if (!options?.skip || !copy) throw new Error("no migration was skipped");
-      for (const file of options.skip) {
-        const sql = (await readFile(join(source, file), "utf8")).replace(
-          IDEMPOTENT_ROLE,
-          idempotentRole,
-        );
-        await writeFile(join(copy, file), sql);
-      }
-      await migrate();
-    },
-    close,
-  };
+  try {
+    owner = new Client({
+      connectionString: fixture.urls.ownerUrl,
+      connectionTimeoutMillis: 5_000,
+    });
+    await owner.connect();
+    return {
+      database: fixture.runtime,
+      ownerDatabase: fixture.owner,
+      owner,
+      urls: fixture.urls,
+      advanceTo: (target) => fixture.advanceTo(target),
+      close,
+    };
+  } catch (primary) {
+    try {
+      await close();
+    } catch (cleanup) {
+      throw new AggregateError(
+        [primary, cleanup],
+        "Audit setup and cleanup failed",
+        {
+          cause: cleanup,
+        },
+      );
+    }
+    throw primary;
+  }
 }
 
 /**
@@ -190,13 +121,29 @@ export async function blockAuditInserts(
 ): Promise<() => Promise<void>> {
   const name = `audit_events_block_${randomUUID().replaceAll("-", "")}`;
   const run = async (statements: string[]) => {
-    const client = new Client({ connectionString: ownerUrl });
-    await client.connect();
+    const client = new Client({
+      connectionString: ownerUrl,
+      connectionTimeoutMillis: 5_000,
+    });
+    const errors: unknown[] = [];
     try {
-      for (const statement of statements) await client.query(statement);
-    } finally {
-      await client.end();
+      await client.connect();
+      // One simple-query message makes function and trigger DDL atomic.
+      await client.query(statements.join(";\n"));
+    } catch (error) {
+      errors.push(error);
     }
+    try {
+      await client.end();
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
+      throw new AggregateError(
+        errors,
+        "Audit trigger operation and cleanup failed",
+      );
   };
   await run([
     `create function ${name}() returns trigger language plpgsql as $$

@@ -15,7 +15,7 @@ import {
 // Seeds events in past months, so partitions are created: own database.
 let database: Database;
 let owner: Client;
-let close: () => Promise<void>;
+let close: (() => Promise<void>) | undefined;
 const run = crypto.randomUUID().slice(0, 8);
 const org = crypto.randomUUID();
 const reader = `ret-reader-${run}`;
@@ -40,36 +40,50 @@ const identity = { organizationId: org, actorUserId: reader };
 const query = { limit: 50, offset: 0 } as const;
 
 beforeAll(async () => {
-  ({ database, owner, close } = await openIsolatedAuditDatabase());
-  await owner.query(
-    `insert into organization (id, name, slug, audit_recording_started_at)
-     values ($1, 'Retention', $2, now() - interval '400 days')`,
-    [org, `retention-${run}`],
-  );
-  for (const id of [reader, onlyExpiredActor, liveActor]) {
+  const isolated = await openIsolatedAuditDatabase();
+  ({ database, owner, close } = isolated);
+  try {
     await owner.query(
-      `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, $1, $2, true, now(), now())`,
-      [id, `${id}@example.test`],
+      `insert into organization (id, name, slug, audit_recording_started_at)
+       values ($1, 'Retention', $2, now() - interval '400 days')`,
+      [org, `retention-${run}`],
     );
-    await owner.query(
-      `insert into member (id, organization_id, user_id, role)
-       values ($1, $2, $3, $4)`,
-      [crypto.randomUUID(), org, id, id === reader ? "auditor" : "viewer"],
-    );
+    for (const id of [reader, onlyExpiredActor, liveActor]) {
+      await owner.query(
+        `insert into "user" (id, name, email, email_verified, created_at, updated_at)
+         values ($1, $1, $2, true, now(), now())`,
+        [id, `${id}@example.test`],
+      );
+      await owner.query(
+        `insert into member (id, organization_id, user_id, role)
+         values ($1, $2, $3, $4)`,
+        [crypto.randomUUID(), org, id, id === reader ? "auditor" : "viewer"],
+      );
+    }
+    const now = Date.now();
+    for (const days of [364, 365, 366]) {
+      await createAuditPartitionFor(owner, new Date(now - days * DAY));
+    }
+    events.live364 = await seed(liveActor, "364 days");
+    events.live = await seed(liveActor, "364 days 23 hours 59 minutes");
+    events.expired = await seed(onlyExpiredActor, "365 days 1 minute");
+    events.expired366 = await seed(onlyExpiredActor, "366 days");
+  } catch (primary) {
+    try {
+      await isolated.close();
+    } catch (cleanup) {
+      throw new AggregateError(
+        [primary, cleanup],
+        "Audit setup and cleanup failed",
+        { cause: cleanup },
+      );
+    }
+    throw primary;
   }
-  const now = Date.now();
-  for (const days of [364, 365, 366]) {
-    await createAuditPartitionFor(owner, new Date(now - days * DAY));
-  }
-  events.live364 = await seed(liveActor, "364 days");
-  events.live = await seed(liveActor, "364 days 23 hours 59 minutes");
-  events.expired = await seed(onlyExpiredActor, "365 days 1 minute");
-  events.expired366 = await seed(onlyExpiredActor, "366 days");
 }, 180_000);
 
 afterAll(async () => {
-  await close();
+  await close?.();
 }, 60_000);
 
 describe("365-day cutoff on every read (AC-24)", () => {

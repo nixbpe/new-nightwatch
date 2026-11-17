@@ -1,51 +1,36 @@
 import { notificationListResponseSchema } from "@nightwatch/api-contract";
 import { verifyPassword } from "better-auth/crypto";
 
-import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import { runMigrations, type Database } from "@nightwatch/db";
+import { openTestPostgres, type TestPostgres } from "@nightwatch/db/testing";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { seedLocalDemo } from "./seed";
 
-const { ownerUrl, runtimeUrl } = requireIntegrationDatabaseUrls();
-const migrationsDir =
-  process.env.MIGRATIONS_DIR ??
-  fileURLToPath(new URL("../../../../packages/db/migrations", import.meta.url));
-const owner: Database = createDatabase(ownerUrl);
-const runtime: Database = createDatabase(runtimeUrl);
+let fixture: TestPostgres | undefined;
+let ownerUrl: string;
+let runtimeUrl: string;
+let owner: Database;
+let runtime: Database;
+const migrationsDir = fileURLToPath(
+  new URL("../../../../packages/db/migrations", import.meta.url),
+);
 const origin = "nightwatch-local-demo-seed-v3:";
 const extraUserId = crypto.randomUUID();
 const ambientIntentId = `seed-test-ambient:${crypto.randomUUID()}`;
 const ambientLedgerId = `seed-test-ledger:${crypto.randomUUID()}`;
 
-async function removeDemo(): Promise<void> {
-  await owner.sql.query(
-    "delete from notification_intents where id like 'nightwatch-local-demo-seed-v3:%'",
-  );
-  await owner.sql.query('delete from "user" where id = $1', [extraUserId]);
-  await owner.sql.query(
-    "delete from notification_dispatch_ledger where id = $1",
-    [ambientLedgerId],
-  );
-  await owner.sql.query("delete from notification_intents where id = $1", [
-    ambientIntentId,
-  ]);
-}
-
 beforeAll(async () => {
-  await runMigrations({ url: ownerUrl, migrationsDir });
-  await removeDemo();
-});
+  fixture = await openTestPostgres("api-seed");
+  owner = fixture.owner;
+  runtime = fixture.runtime;
+  ({ ownerUrl, runtimeUrl } = fixture.urls);
+}, 180_000);
 
 afterAll(async () => {
-  try {
-    await removeDemo();
-  } finally {
-    await runtime.close();
-    await owner.close();
-  }
-});
+  await fixture?.close();
+}, 60_000);
 async function canonicalGraph(): Promise<unknown> {
   const graph = await owner.sql.query<{ payload: unknown }>(
     `select jsonb_build_object(
@@ -195,9 +180,13 @@ describe("local demo seed against PostgreSQL", () => {
       ).rows,
     ).toEqual([{ organizations: 2, users: 4, accounts: 4, memberships: 8 }]);
 
-    await Promise.all([
+    const reruns = await Promise.allSettled([
       seedLocalDemo(ownerUrl, runtimeUrl),
       seedLocalDemo(ownerUrl, runtimeUrl),
+    ]);
+    expect(reruns.map((outcome) => outcome.status)).toEqual([
+      "fulfilled",
+      "fulfilled",
     ]);
     const refreshed = await owner.sql.query<{ latest: Date }>(
       "select max(occurred_at) as latest from notification_intents where id like $1",
@@ -392,6 +381,7 @@ describe("local demo seed against PostgreSQL", () => {
   });
 
   it("refuses canonical graph timestamp and read-state tampering without mutation", async () => {
+    await seedLocalDemo(ownerUrl, runtimeUrl);
     const intentId = `${origin}intent:nightwatch-demo-alpha:older`;
     for (const mutation of [
       "update notification_inbox_items set occurred_at = occurred_at + interval '1 minute' where intent_id = $1",
@@ -412,6 +402,7 @@ describe("local demo seed against PostgreSQL", () => {
     }
   });
   it("repairs canonical credential and active-organization drift without accepting foreign identity aliases", async () => {
+    await seedLocalDemo(ownerUrl, runtimeUrl);
     const ownerId = "6b0a2d01-60c2-4b32-9b17-1e9e87000001";
     await owner.sql.query(
       "update account set password = 'malformed' where id = $1",
@@ -466,6 +457,7 @@ describe("local demo seed against PostgreSQL", () => {
       | undefined;
     const runnerState = { settled: false };
     let removedName: string | undefined;
+    const errors: unknown[] = [];
     try {
       await client.query("select pg_advisory_lock($1)", [migrationLock]);
       const latest = await client.query<{
@@ -525,6 +517,8 @@ describe("local demo seed against PostgreSQL", () => {
           "database migrations are not current",
         );
         await expect(canonicalGraph()).resolves.toEqual(before);
+      } catch (primary) {
+        errors.push(primary);
       } finally {
         // Restore the exact tracking row before any waiting runner can read it.
         await client.query(
@@ -532,28 +526,34 @@ describe("local demo seed against PostgreSQL", () => {
           [removed.name, removed.sha256, removed.applied_at],
         );
       }
+    } catch (error) {
+      errors.push(error);
     } finally {
+      let discard = false;
       try {
-        await client
-          .query("select pg_advisory_unlock($1)", [migrationLock])
-          .catch((error: unknown) => {
-            client.release(true);
-            throw error;
-          });
-        client.release();
+        await client.query("select pg_advisory_unlock($1)", [migrationLock]);
+      } catch (error) {
+        errors.push(error);
+        discard = true;
       } finally {
-        // Observe every started runner after unlocking, including on assertion failure.
-        await runner;
+        client.release(discard);
       }
     }
     const outcome = await runner;
-    expect(outcome.status).toBe("fulfilled");
-    if (outcome.status === "fulfilled") {
+    if (outcome?.status === "rejected") errors.push(outcome.reason);
+    if (errors.length)
+      throw new AggregateError(
+        errors,
+        "Migration guard case and cleanup failed",
+      );
+    expect(outcome?.status).toBe("fulfilled");
+    if (outcome?.status === "fulfilled") {
       expect(outcome.value.applied).toEqual([]);
       expect(outcome.value.alreadyApplied).toContain(removedName);
     }
   });
   it("refuses every lower-email ownership collision before identity mutation", async () => {
+    await seedLocalDemo(ownerUrl, runtimeUrl);
     const ownerId = "6b0a2d01-60c2-4b32-9b17-1e9e87000001";
     const canonicalEmail = "owner@nightwatch.invalid";
     for (const foreignEmail of [

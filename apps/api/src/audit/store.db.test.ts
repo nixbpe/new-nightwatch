@@ -5,33 +5,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { recordAuditEvent } from "./record";
 import {
   createAuditPartitionFor,
-  dropAuditPartition,
   openIsolatedAuditDatabase,
 } from "./test-support";
 
-// Partition create and drop lock the parent table, so this file runs in its
-// own database (see openIsolatedAuditDatabase); the other audit suites keep
-// writing to the shared database.
-const AUDIT_MIGRATION = "0020_organization_audit_log.sql";
-// Alters the audit_events that AUDIT_MIGRATION creates.
-const PROJECT_AUDIT_MIGRATION = "0023_projects.sql";
-// Replaces the action constraint 0023 wrote, and grants on a 0023 table.
-const PROJECT_MEMBERS_MIGRATION = "0024_project_members.sql";
-// Creates a table that references the 0023 projects table.
-const LAST_PROJECT_MIGRATION = "0025_member_last_project.sql";
-// Wipes monitors, which this test needs to find again after 0020.
-const PROJECT_MONITORS_MIGRATION = "0026_project_monitors.sql";
 let database: Database;
 let ownerDatabase: Database;
 let owner: Client;
-let applyAuditMigration: () => Promise<void>;
-let closeDatabase: () => Promise<void>;
+let closeDatabase: (() => Promise<void>) | undefined;
 
 const run = crypto.randomUUID().slice(0, 8);
 const tenantA = crypto.randomUUID();
 const tenantB = crypto.randomUUID();
-const legacyTenant = crypto.randomUUID();
-const legacyCreatedAt = "2026-01-15T00:00:00Z";
 
 async function partitionNames(): Promise<string[]> {
   const result = await owner.query<{ name: string }>(
@@ -82,110 +66,37 @@ async function ownerRows(tenantId: string): Promise<{ id: string }[]> {
   ).rows;
 }
 
-const createdPartitions: string[] = [];
 async function ensurePartitionFor(at: Date): Promise<void> {
-  const { name, created } = await createAuditPartitionFor(owner, at);
-  if (created) createdPartitions.push(name);
+  await createAuditPartitionFor(owner, at);
 }
 
 beforeAll(async () => {
-  // Seed data before the audit migration so 0020 must preserve it.
-  ({
-    database,
-    ownerDatabase,
-    owner,
-    applySkipped: applyAuditMigration,
-    close: closeDatabase,
-  } = await openIsolatedAuditDatabase({
-    skip: [
-      AUDIT_MIGRATION,
-      PROJECT_AUDIT_MIGRATION,
-      PROJECT_MEMBERS_MIGRATION,
-      LAST_PROJECT_MIGRATION,
-    ],
-    leaveOut: [PROJECT_MONITORS_MIGRATION],
-  }));
-  await owner.query(
-    `insert into organization (id, name, slug, created_at)
-     values ($1, 'Legacy', $2, $3)`,
-    [legacyTenant, `legacy-${run}`, legacyCreatedAt],
-  );
-  await owner.query(
-    `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-     values ($1, 'Legacy user', $2, true, now(), now())`,
-    [`legacy-user-${run}`, `legacy-${run}@example.test`],
-  );
-  await owner.query(
-    `insert into member (id, organization_id, user_id, role)
-     values ($1, $2, $3, 'owner')`,
-    [`legacy-member-${run}`, legacyTenant, `legacy-user-${run}`],
-  );
-  await owner.query(
-    `insert into monitors
-       (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-     values ($1, $2, 'legacy monitor', 'https://target.example.test/', 60, 10, $3)`,
-    [crypto.randomUUID(), legacyTenant, crypto.randomUUID()],
-  );
-}, 180_000);
-
-afterAll(async () => {
-  for (const name of createdPartitions) {
-    await dropAuditPartition(owner, name).catch(() => undefined);
-  }
-  await closeDatabase();
-}, 60_000);
-
-describe("migration 0020 on a database that already holds F-004 to F-006 data", () => {
-  it("applies, keeps existing rows, stamps the recording start and creates 3 months of partitions", async () => {
-    const before = await owner.query(
-      "select count(*)::int as n from monitors where tenant_id = $1",
-      [legacyTenant],
-    );
-    await applyAuditMigration();
+  const isolated = await openIsolatedAuditDatabase();
+  ({ database, ownerDatabase, owner, close: closeDatabase } = isolated);
+  try {
     await owner.query(
       `insert into organization (id, name, slug) values ($1, 'A', $2), ($3, 'B', $4)`,
       [tenantA, `a-${run}`, tenantB, `b-${run}`],
     );
+  } catch (primary) {
+    try {
+      await isolated.close();
+    } catch (cleanup) {
+      throw new AggregateError(
+        [primary, cleanup],
+        "Store setup and cleanup failed",
+        { cause: cleanup },
+      );
+    }
+    throw primary;
+  }
+}, 180_000);
 
-    const started = await owner.query<{
-      id: string;
-      started: Date;
-    }>(
-      `select id, audit_recording_started_at as started from organization
-       where id = any($1::uuid[])`,
-      [[legacyTenant, tenantA]],
-    );
-    const checkedAt = await dbNow();
-    const startedOf = (id: string) =>
-      must(started.rows.find((row) => row.id === id)).started.getTime();
-    // An Organization created before the migration starts recording when the
-    // migration ran, not at its created_at; a new one starts at creation.
-    expect(startedOf(legacyTenant)).toBeGreaterThan(
-      new Date(legacyCreatedAt).getTime(),
-    );
-    expect(startedOf(legacyTenant)).toBeLessThanOrEqual(checkedAt.getTime());
-    expect(Math.abs(startedOf(tenantA) - checkedAt.getTime())).toBeLessThan(
-      60_000,
-    );
+afterAll(async () => {
+  await closeDatabase?.();
+}, 60_000);
 
-    expect(
-      (
-        await owner.query(
-          "select count(*)::int as n from monitors where tenant_id = $1",
-          [legacyTenant],
-        )
-      ).rows[0],
-    ).toEqual(before.rows[0]);
-
-    const now = new Date();
-    const expected = [-1, 0, 1, 2, 3].map((offset) =>
-      monthName(
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1)),
-      ),
-    );
-    expect(await partitionNames()).toEqual(expected.sort());
-  });
-
+describe("current audit partitions", () => {
   it("db:partitions logic is repeatable and has no default partition", async () => {
     const before = await partitionNames();
     await ownerDatabase.sql.query(

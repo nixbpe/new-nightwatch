@@ -18,7 +18,7 @@ import { blockAuditInserts, openIsolatedAuditDatabase } from "./test-support";
 
 // The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
-let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
+let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>> | undefined;
 let database: Database;
 let owner: Client;
 const run = crypto.randomUUID().slice(0, 8);
@@ -103,22 +103,31 @@ beforeAll(async () => {
   isolated = await openIsolatedAuditDatabase();
   database = isolated.database;
   owner = isolated.owner;
-  await owner.query(
-    "insert into organization (id, name, slug) values ($1, 'Audit events', $2)",
-    [organizationId, `audit-events-${run}`],
-  );
-  ownerPerson = await addMember("owner", "owner");
-  adminPerson = await addMember("admin", "admin");
-  viewerPerson = await addMember("viewer", "viewer");
-  auditorPerson = await addMember("auditor", "auditor");
-}, 120_000);
+  try {
+    await owner.query(
+      "insert into organization (id, name, slug) values ($1, 'Audit events', $2)",
+      [organizationId, `audit-events-${run}`],
+    );
+    ownerPerson = await addMember("owner", "owner");
+    adminPerson = await addMember("admin", "admin");
+    viewerPerson = await addMember("viewer", "viewer");
+    auditorPerson = await addMember("auditor", "auditor");
+  } catch (primary) {
+    try {
+      await isolated.close();
+    } catch (cleanup) {
+      throw new AggregateError(
+        [primary, cleanup],
+        "Audit setup and cleanup failed",
+        { cause: cleanup },
+      );
+    }
+    throw primary;
+  }
+}, 180_000);
 
 afterAll(async () => {
-  await owner.query("delete from organization where id = $1", [organizationId]);
-  await owner.query('delete from "user" where id = any($1::text[])', [
-    createdUsers,
-  ]);
-  await isolated.close();
+  await isolated?.close();
 }, 60_000);
 
 describe("member events", () => {
@@ -641,10 +650,12 @@ describe("a failed event insert rolls the mutation back", () => {
     const intentsBefore = await intentCount();
     const eventsBefore = await eventCount();
 
+    if (!isolated) throw new Error("audit fixture was not opened");
     const unblock = await blockAuditInserts(
       isolated.urls.ownerUrl,
       organizationId,
     );
+    const errors: unknown[] = [];
     try {
       const attempts: (() => Promise<unknown>)[] = [
         () =>
@@ -709,9 +720,20 @@ describe("a failed event insert rolls the mutation back", () => {
       for (const attempt of attempts) {
         await expect(attempt()).rejects.toThrow(/audit insert blocked by test/);
       }
+    } catch (primary) {
+      errors.push(primary);
     } finally {
-      await unblock();
+      try {
+        await unblock();
+      } catch (cleanup) {
+        errors.push(cleanup);
+      }
     }
+    if (errors.length)
+      throw new AggregateError(
+        errors,
+        "Audit rollback case and cleanup failed",
+      );
 
     expect(await memberRole(roleTarget.memberId)).toBe("viewer");
     expect(await memberRole(revokeTarget.memberId)).toBe("viewer");
