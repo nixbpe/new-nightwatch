@@ -158,54 +158,67 @@ describe("legacy MFA projection migration", () => {
     const releaseDisable = Promise.withResolvers<undefined>();
     const baselineLocked = Promise.withResolvers<undefined>();
     let runtimeBackendPid = 0;
-    const raceDisable = withAccountContext(
-      isolatedDatabase,
-      raceUser,
-      async (tx) => {
-        await initializeAccountMfaState(tx, { userId: raceUser });
-        const backend = await tx.execute<{ pid: number }>(
-          sql`select pg_backend_pid() as pid`,
-        );
-        runtimeBackendPid = backend.rows[0]?.pid ?? 0;
-        baselineLocked.resolve(undefined);
-        await releaseDisable.promise;
-        await tx.execute(sql`
+    let raceDisable: Promise<{ transitioned: boolean }> | undefined;
+    let migration: ReturnType<typeof runMigrations> | undefined;
+    const errors: unknown[] = [];
+    const readyTimeout = setTimeout(() => {
+      baselineLocked.reject(new Error("MFA source lock readiness timed out"));
+    }, 5_000);
+    try {
+      raceDisable = withAccountContext(
+        isolatedDatabase,
+        raceUser,
+        async (tx) => {
+          await initializeAccountMfaState(tx, { userId: raceUser });
+          const backend = await tx.execute<{ pid: number }>(
+            sql`select pg_backend_pid() as pid`,
+          );
+          runtimeBackendPid = backend.rows[0]?.pid ?? 0;
+          baselineLocked.resolve(undefined);
+          await releaseDisable.promise;
+          await tx.execute(sql`
           update "user"
           set two_factor_enabled = false
           where id = ${raceUser}
         `);
-        await tx.execute(sql`
+          await tx.execute(sql`
           delete from "twoFactor"
           where user_id = ${raceUser}
         `);
-        return recordAccountMfaTransition(tx, {
-          id: randomUUID(),
-          dispatchId: randomUUID(),
-          userId: raceUser,
-          origin: `legacy-race-disable:${databaseName}`,
-          transition: "disabled",
-          occurredAt: new Date(),
-        });
-      },
-    );
-    await baselineLocked.promise;
-    await Promise.all(
-      [
-        "0006_notification_account_mfa_backfill.sql",
-        "0007_notification_dispatch_failure_summary.sql",
-      ].map((name) =>
-        cp(join(migrationsDir, name), join(legacyMigrationsDir, name)),
-      ),
-    );
-    const migration = runMigrations({
-      url: isolatedOwnerUrl.toString(),
-      migrationsDir: legacyMigrationsDir,
-      log: () => undefined,
-    });
-    expect(runtimeBackendPid).toBeGreaterThan(0);
-    let migrationWaitedOnSourceLock = false;
-    const deadline = Date.now() + 5_000;
-    try {
+          return recordAccountMfaTransition(tx, {
+            id: randomUUID(),
+            dispatchId: randomUUID(),
+            userId: raceUser,
+            origin: `legacy-race-disable:${databaseName}`,
+            transition: "disabled",
+            occurredAt: new Date(),
+          });
+        },
+      );
+      await Promise.race([baselineLocked.promise, raceDisable]);
+      clearTimeout(readyTimeout);
+      const copies = await Promise.allSettled(
+        [
+          "0006_notification_account_mfa_backfill.sql",
+          "0007_notification_dispatch_failure_summary.sql",
+        ].map((name) =>
+          cp(join(migrationsDir, name), join(legacyMigrationsDir, name)),
+        ),
+      );
+      const copyErrors = copies
+        .filter((copy) => copy.status === "rejected")
+        .map((copy): unknown => copy.reason);
+      if (copyErrors.length)
+        throw new AggregateError(copyErrors, "MFA migration copy failed");
+      migration = runMigrations({
+        url: isolatedOwnerUrl.toString(),
+        migrationsDir: legacyMigrationsDir,
+        log: () => undefined,
+      });
+      void migration.catch(() => undefined);
+      expect(runtimeBackendPid).toBeGreaterThan(0);
+      let migrationWaitedOnSourceLock = false;
+      const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
         const waiting = await isolatedOwner.query<{ count: number }>(
           `select count(*)::integer as count
@@ -221,16 +234,33 @@ describe("legacy MFA projection migration", () => {
           break;
         }
         // This integration race waits for PostgreSQL's real lock manager.
-        await sleep(20);
+        await Promise.race([
+          sleep(20),
+          migration.then(() => {
+            throw new Error(
+              "MFA migration completed without waiting on its source lock",
+            );
+          }),
+        ]);
       }
       expect(migrationWaitedOnSourceLock).toBe(true);
+    } catch (error) {
+      errors.push(error);
     } finally {
+      clearTimeout(readyTimeout);
       releaseDisable.resolve(undefined);
-      await Promise.allSettled([raceDisable, migration]);
+      const outcomes = await Promise.allSettled([raceDisable, migration]);
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected" && !errors.includes(outcome.reason))
+          errors.push(outcome.reason);
+      }
     }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, "MFA race and migration failed");
     expect(await raceDisable).toEqual({ transitioned: true });
     const result = await migration;
-    expect(result.applied).toEqual([
+    expect(result?.applied).toEqual([
       "0006_notification_account_mfa_backfill.sql",
       "0007_notification_dispatch_failure_summary.sql",
     ]);

@@ -21,6 +21,7 @@ const tenantB = randomUUID();
 const userA = `proj-a-${run}`;
 const userA2 = `proj-a2-${run}`;
 const userB = `proj-b-${run}`;
+const cleanupUsers = [userA, userA2, userB];
 let projectA: string;
 let projectB: string;
 
@@ -71,7 +72,7 @@ afterAll(async () => {
     [tenantA, tenantB],
   ]);
   await owner.query('delete from "user" where id = any($1::text[])', [
-    [userA, userA2, userB],
+    cleanupUsers,
   ]);
   await owner.end();
   await database.close();
@@ -348,6 +349,7 @@ describe("project constraints", () => {
 describe("cascades", () => {
   it("deleting a member removes their project memberships without a tenant context", async () => {
     const user = `proj-gone-${run}`;
+    cleanupUsers.push(user);
     await owner.query(
       'insert into "user" (id, name, email, email_verified) values ($1, $1, $2, true)',
       [user, `gone-${run}@example.test`],
