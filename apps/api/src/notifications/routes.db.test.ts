@@ -195,9 +195,24 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await owner.sql.query('delete from "user" where id = $1', [userId]);
-  await owner.sql.end();
-  await runtime.sql.end();
+  const failures: unknown[] = [];
+  for (const cleanup of [
+    () => owner.sql.query('delete from "user" where id = $1', [userId]),
+    () =>
+      owner.sql.query("delete from organization where id = any($1::uuid[])", [
+        [orgA, orgB, revokedOrg],
+      ]),
+    () => owner.close(),
+    () => runtime.close(),
+  ]) {
+    try {
+      await cleanup();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length)
+    throw new AggregateError(failures, "inbox cleanup failed");
 });
 
 describe("notification inbox API", () => {

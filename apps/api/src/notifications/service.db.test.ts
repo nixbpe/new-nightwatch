@@ -904,59 +904,85 @@ describe("notification pagination precision", () => {
     });
     // Pause the list's first data query (after scope resolution) on a
     // dedicated pool so the wrapper never leaks into the shared one.
-    const pausingPool = createDatabase(runtimeUrl);
     const paused = Promise.withResolvers<number>();
     const release = Promise.withResolvers<undefined>();
-    const pausing: Database = {
-      ...pausingPool,
-      sql: new Proxy(pausingPool.sql, {
-        get(target, property, receiver) {
-          if (property !== "connect")
-            return Reflect.get(target, property, receiver) as unknown;
-          return async (): Promise<PoolClient> => {
-            const client = await target.connect();
-            const query = client.query.bind(client) as (
-              text: string,
-              values?: unknown[],
-            ) => Promise<{ rows: { pid?: number }[] }>;
-            let held = false;
-            Object.assign(client, {
-              query: async (text: string, values?: unknown[]) => {
-                if (
-                  !held &&
-                  text.includes("from notification_inbox_items") &&
-                  text.includes("scope_kind = 'account'")
-                ) {
-                  held = true;
-                  const pid = (await query("select pg_backend_pid() as pid"))
-                    .rows[0]?.pid;
-                  if (!pid) throw new Error("list backend PID missing");
-                  paused.resolve(pid);
-                  await release.promise;
-                }
-                return query(text, values);
-              },
-            });
-            return client;
-          };
-        },
-      }),
-    };
-    const switcher = new Client({ connectionString: ownerUrl });
+    const switcher = new Client({
+      connectionString: ownerUrl,
+      statement_timeout: 10_000,
+      query_timeout: 10_000,
+    });
     let transactionOpen = false;
     let list: Promise<NotificationListResponse> | undefined;
     let switched: Promise<unknown> | undefined;
+    let listPid: number | undefined;
+    let switcherPid: number | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const failures: unknown[] = [];
+    const pausingPool = createDatabase(runtimeUrl);
     try {
+      const pausing: Database = {
+        ...pausingPool,
+        sql: new Proxy(pausingPool.sql, {
+          get(target, property, receiver) {
+            if (property !== "connect")
+              return Reflect.get(target, property, receiver) as unknown;
+            return async (): Promise<PoolClient> => {
+              const client = await target.connect();
+              const query = client.query.bind(client) as (
+                text: string,
+                values?: unknown[],
+              ) => Promise<{ rows: { pid?: number }[] }>;
+              let pid: number;
+              try {
+                const row = (await query("select pg_backend_pid() as pid"))
+                  .rows[0];
+                if (!row?.pid) throw new Error("list backend PID missing");
+                pid = row.pid;
+                listPid = pid;
+              } catch (error) {
+                client.release(true);
+                throw error;
+              }
+              let held = false;
+              Object.assign(client, {
+                query: async (text: string, values?: unknown[]) => {
+                  if (
+                    !held &&
+                    text.includes("from notification_inbox_items") &&
+                    text.includes("scope_kind = 'account'")
+                  ) {
+                    held = true;
+                    paused.resolve(pid);
+                    await release.promise;
+                  }
+                  return query(text, values);
+                },
+              });
+              return client;
+            };
+          },
+        }),
+      };
       list = listInbox(
         { database: pausing, cursorSecret: "hold-scope-secret" },
         { userId, sessionToken: token, limit: 20 },
       );
-      const listPid = await paused.promise;
+      listPid = await Promise.race([
+        paused.promise,
+        list.then(() => {
+          throw new Error("notification list completed before the pause seam");
+        }),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => {
+            reject(new Error("notification list did not reach the pause seam"));
+          }, 5_000);
+        }),
+      ]);
 
       await switcher.connect();
       await switcher.query("begin");
       transactionOpen = true;
-      const switcherPid = (
+      switcherPid = (
         await switcher.query<{ pid: number }>("select pg_backend_pid() as pid")
       ).rows[0]?.pid;
       if (!switcherPid) throw new Error("switcher backend PID missing");
@@ -964,6 +990,7 @@ describe("notification pagination precision", () => {
         'update "user" set last_active_tenant_id = $1 where id = $2',
         [orgB, userId],
       );
+      void switched.catch(() => undefined);
       await waitForClientToBlock(switcherPid, listPid, "organization switch");
 
       release.resolve(undefined);
@@ -979,16 +1006,44 @@ describe("notification pagination precision", () => {
         [userId],
       );
       expect(mirror.rows[0]?.organizationId).toBe(orgB);
+    } catch (error) {
+      failures.push(error);
     } finally {
+      clearTimeout(deadline);
       release.resolve(undefined);
-      if (transactionOpen)
-        await switcher.query("rollback").catch(() => undefined);
-      await Promise.allSettled(
+      if (failures.length) {
+        for (const pid of [listPid, switcherPid]) {
+          if (pid === undefined) continue;
+          try {
+            await owner.query("select pg_cancel_backend($1)", [pid]);
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+      }
+      const drained = await Promise.allSettled(
         [list, switched].filter((promise) => promise !== undefined),
       );
-      await switcher.end().catch(() => undefined);
-      await pausingPool.close();
+      for (const outcome of drained) {
+        if (outcome.status === "rejected" && !failures.includes(outcome.reason))
+          failures.push(outcome.reason);
+      }
+      for (const cleanup of [
+        async () => {
+          if (transactionOpen) await switcher.query("rollback");
+        },
+        () => switcher.end(),
+        () => pausingPool.close(),
+      ]) {
+        try {
+          await cleanup();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
     }
+    if (failures.length)
+      throw new AggregateError(failures, "hold-scope list scenario failed");
   });
 
   it("returns each mixed-scope microsecond row once across limit-one pages", async () => {

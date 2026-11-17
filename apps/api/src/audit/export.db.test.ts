@@ -2,7 +2,7 @@ import type {
   AuditExportCreateResponse,
   AuditExportListResponse,
 } from "@nightwatch/api-contract";
-import { Client } from "pg";
+import { Client, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createAuditExport } from "./export-service";
@@ -335,15 +335,88 @@ describe("POST exports", () => {
     const org = await organization("auditexp-demote");
     await seedEvents(org.id, org.users.owner);
     const holder = new Client({ connectionString: ownerUrl });
-    await holder.connect();
+    const requester = Promise.withResolvers<number>();
+    const connect = ctx.runtime.sql.connect.bind(ctx.runtime.sql);
+    let pending: Promise<ApiResponse> | undefined;
+    let observing: Promise<void> | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const failures: unknown[] = [];
     try {
+      await holder.connect();
       await holder.query("begin");
+      const holderPid = (
+        await holder.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      if (!holderPid) throw new Error("demotion holder PID missing");
       await holder.query(
         "select id from organization where id = $1 for update",
         [org.id],
       );
-      const pending = requestExport(org.users.admin, org.id);
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      ctx.runtime.sql.connect = new Proxy(connect, {
+        apply(target, thisArg: unknown, args: unknown[]): unknown {
+          if (typeof args[0] === "function")
+            return Reflect.apply(target, thisArg, args) as unknown;
+          return (async () => {
+            const client = (await Reflect.apply(
+              target,
+              thisArg,
+              args,
+            )) as PoolClient;
+            return new Proxy(client, {
+              get(inner, property): unknown {
+                if (property === "query") {
+                  return async (text: string, values?: unknown[]) => {
+                    if (
+                      text ===
+                        "select id from organization where id = $1 for share" &&
+                      values?.[0] === org.id
+                    ) {
+                      const result = await inner.query<{ pid: number }>(
+                        "select pg_backend_pid() as pid",
+                      );
+                      const pid = result.rows[0]?.pid;
+                      if (!pid) throw new Error("export requester PID missing");
+                      requester.resolve(pid);
+                    }
+                    return inner.query(text, values);
+                  };
+                }
+                const value: unknown = Reflect.get(inner, property);
+                return typeof value === "function" ? value.bind(inner) : value;
+              },
+            });
+          })();
+        },
+      });
+      pending = requestExport(org.users.admin, org.id);
+      const completed = pending.then(() => {
+        throw new Error("export POST completed before its blocked recheck");
+      });
+      const expired = new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => {
+          reject(new Error("export POST did not block on its demotion holder"));
+        }, 5_000);
+      });
+      const requesterPid = await Promise.race([
+        requester.promise,
+        completed,
+        expired,
+      ]);
+      observing = (async () => {
+        const until = Date.now() + 5_000;
+        while (Date.now() < until) {
+          const blocked = await ctx.owner.sql.query<{ pid: number }>(
+            `select pid from pg_stat_activity
+             where pid = $1 and wait_event_type = 'Lock'
+               and $2 = any(pg_blocking_pids(pid))`,
+            [requesterPid, holderPid],
+          );
+          if (blocked.rows.length === 1) return;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error("export requester PID did not wait for its holder PID");
+      })();
+      await Promise.race([observing, completed, expired]);
       await holder.query(
         "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
         [org.id, org.users.admin],
@@ -355,10 +428,31 @@ describe("POST exports", () => {
         error: { code: "PERMISSION_DENIED" },
       });
       expect(await counts(org.id)).toEqual({ exports: 0, jobs: 0, events: 0 });
+    } catch (error) {
+      failures.push(error);
     } finally {
-      await holder.query("rollback").catch(() => undefined);
-      await holder.end();
+      clearTimeout(deadline);
+      try {
+        await holder.query("rollback");
+      } catch (error) {
+        failures.push(error);
+      }
+      const drained = await Promise.allSettled(
+        [pending, observing].filter((promise) => promise !== undefined),
+      );
+      for (const outcome of drained) {
+        if (outcome.status === "rejected" && !failures.includes(outcome.reason))
+          failures.push(outcome.reason);
+      }
+      ctx.runtime.sql.connect = connect;
+      try {
+        await holder.end();
+      } catch (error) {
+        failures.push(error);
+      }
     }
+    if (failures.length)
+      throw new AggregateError(failures, "export demotion scenario failed");
 
     const second = await requestExport(org.users.owner, org.id);
     expect(second.status).toBe(201);
@@ -673,6 +767,7 @@ describe("GET download (AC-23)", () => {
       `${base(org.id)}/exports/${csv}/download`,
     );
     expect(response.status).toBe(200);
+    expect(response.text).toBe("a,b\n1,2\n");
     expect(response.headers.get("content-type")).toBe(
       "text/csv; charset=utf-8",
     );
@@ -682,10 +777,16 @@ describe("GET download (AC-23)", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     const jsonResponse = await download(org.users.admin, org.id, json);
+    expect(jsonResponse.status).toBe(200);
+    expect(jsonResponse.text).toBe('{"events":[]}');
     expect(jsonResponse.headers.get("content-type")).toBe(
       "application/json; charset=utf-8",
     );
-    expect(jsonResponse.headers.get("content-disposition")).toContain(".json");
+    expect(jsonResponse.headers.get("content-disposition")).toBe(
+      'attachment; filename="nightwatch-audit-log-20261003T102030Z.json"',
+    );
+    expect(jsonResponse.headers.get("cache-control")).toBe("no-store");
+    expect(jsonResponse.headers.get("x-content-type-options")).toBe("nosniff");
     expect((await counts(org.id))?.events).toBe(eventsBefore);
   });
 
