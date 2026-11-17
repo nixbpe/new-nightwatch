@@ -20,6 +20,7 @@ const duplicateUserA = `user-a-${run}`;
 const duplicateUserZ = `user-z-${run}`;
 const duplicateMemberA = `member-a-${run}`;
 const duplicateMemberZ = `member-z-${run}`;
+const outerUserIds = [ownerId, viewerId, duplicateUserA, duplicateUserZ];
 const database: Database = createDatabase(runtimeUrl);
 const owner = new Client({ connectionString: ownerUrl });
 const migrationsDir = new URL(
@@ -45,6 +46,7 @@ beforeAll(async () => {
   }
   for (let index = 0; index < 51; index += 1) {
     const userId = crypto.randomUUID();
+    outerUserIds.push(userId);
     await owner.query(
       'insert into "user" (id, name, email, email_verified, created_at, updated_at) values ($1, $2, $3, true, now(), now())',
       [
@@ -90,11 +92,34 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await owner.query("delete from organization where id = any($1::uuid[])", [
-    [organizationId, otherOrganizationId],
-  ]);
-  await owner.end();
-  await database.close();
+  const errors: unknown[] = [];
+  try {
+    for (const cleanup of [
+      () =>
+        owner.query("delete from organization where id = any($1::uuid[])", [
+          [organizationId, otherOrganizationId],
+        ]),
+      () =>
+        owner.query('delete from "user" where id = any($1::text[])', [
+          outerUserIds,
+        ]),
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  } finally {
+    for (const result of await Promise.allSettled([
+      owner.end(),
+      database.close(),
+    ])) {
+      if (result.status === "rejected") errors.push(result.reason);
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, "Directory cleanup failed");
 });
 
 describe("listOrganizationMembers", () => {

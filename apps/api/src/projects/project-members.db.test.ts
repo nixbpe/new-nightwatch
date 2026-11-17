@@ -8,6 +8,7 @@ import {
   projectSummarySchema,
   type ProjectMember,
 } from "@nightwatch/api-contract";
+import type { PoolClient } from "pg";
 import {
   afterAll,
   afterEach,
@@ -108,6 +109,30 @@ async function memberEvents(organizationId: string, projectId: string) {
     [organizationId, projectId],
   );
   return rows.rows;
+}
+
+async function waitForProjectLocks(
+  holderPid: number,
+  requestPids: Set<number>,
+  count: number,
+) {
+  await vi.waitFor(
+    async () => {
+      const waiting = await ctx.owner.sql.query<{ pid: number }>(
+        `with recursive blocked(pid) as (
+           select $1::int
+           union
+           select activity.pid from pg_stat_activity activity
+           join blocked on blocked.pid = any(pg_blocking_pids(activity.pid))
+           where activity.pid = any($2::int[])
+         )
+         select pid from blocked where pid <> $1`,
+        [holderPid, [...requestPids]],
+      );
+      expect(waiting.rows).toHaveLength(count);
+    },
+    { timeout: 5_000, interval: 20 },
+  );
 }
 
 const errorCode = (response: { json: unknown }) =>
@@ -491,35 +516,43 @@ describe("change role and remove (AC-05, AC-06, AC-09)", () => {
       [org.users.auditor, "admin"],
     ]);
     const holder = await ctx.owner.sql.connect();
-    let responses: Awaited<ReturnType<typeof ctx.call>>[];
+    const pending: ReturnType<typeof ctx.call>[] = [];
+    let requestOutcomes = Promise.resolve<PromiseSettledResult<unknown>[]>([]);
+    let responses: Awaited<ReturnType<typeof ctx.call>>[] = [];
+    const requestPids = new Set<number>();
+    const errors: unknown[] = [];
+    const capture = (client: PoolClient) => {
+      void client.query<{ pid: number }>("select pg_backend_pid() as pid").then(
+        ({ rows }) => requestPids.add(rows[0]?.pid ?? -1),
+        (error: unknown) => errors.push(error),
+      );
+    };
     try {
+      const {
+        rows: [backend],
+      } = await holder.query<{ pid: number }>("select pg_backend_pid() as pid");
+      ctx.runtime.sql.on("acquire", capture);
       await holder.query("begin");
       await holder.query("select id from projects where id = $1 for update", [
         projectId,
       ]);
-      const pending = Promise.all([first(projectId), second(projectId)]);
-      await vi.waitFor(
-        async () => {
-          // The first waiter queues on the holder's transaction id; the second
-          // queues behind the first on the row's tuple lock.
-          const waiting = await holder.query<{ total: string }>(
-            `select count(*) as total from pg_locks
-             where not granted
-               and ((locktype = 'transactionid'
-                     and transactionid = xid(pg_current_xact_id()))
-                 or (locktype = 'tuple'
-                     and relation = 'projects'::regclass))`,
-          );
-          expect(Number(waiting.rows[0]?.total)).toBe(2);
-        },
-        { timeout: 10_000, interval: 25 },
-      );
+      pending.push(first(projectId));
+      pending.push(second(projectId));
+      requestOutcomes = Promise.allSettled(pending);
+      await waitForProjectLocks(backend?.pid ?? -1, requestPids, 2);
       await holder.query("commit");
-      responses = await pending;
+      responses = await Promise.all(pending);
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await holder.query("rollback").catch(() => undefined);
-      holder.release();
+      ctx.runtime.sql.off("acquire", capture);
+      const rollback = await Promise.allSettled([holder.query("rollback")]);
+      holder.release(rollback[0].status === "rejected");
+      for (const result of [...rollback, ...(await requestOutcomes)]) {
+        if (result.status === "rejected") errors.push(result.reason);
+      }
     }
+    if (errors.length) throw new AggregateError(errors, "Project race failed");
     const statuses = responses.map((response) => response.status);
     expect(statuses.filter((status) => status === 409)).toHaveLength(1);
     expect(
@@ -1029,6 +1062,41 @@ describe("audit (AC-10)", () => {
         project: { projectId, displayName: projectName, deleted: false },
       });
     }
+
+    const renamed = await ctx.call(
+      auditOrg.users.owner,
+      "PATCH",
+      base(auditOrg, projectId),
+      { name: "Renamed member audit Project" },
+    );
+    expect(renamed.status).toBe(200);
+    const reread = await ctx.call(
+      auditOrg.users.owner,
+      "GET",
+      `/api/organizations/${auditOrg.id}/audit-log/events?categories=project`,
+    );
+    expect(reread.status).toBe(200);
+    const renamedEvents = auditLogListResponseSchema
+      .parse(reread.json)
+      .events.filter((event) =>
+        event.action.startsWith("organization.project.member."),
+      );
+    expect(
+      renamedEvents.map((event) => ({ id: event.id, action: event.action })),
+    ).toEqual(events.map((event) => ({ id: event.id, action: event.action })));
+    for (const event of renamedEvents) {
+      expect(event.target).toEqual({
+        type: "member",
+        userId: auditOrg.users.auditor,
+        displayName: "pmember-audit-auditor",
+        membership: "current",
+        project: {
+          projectId,
+          displayName: "Renamed member audit Project",
+          deleted: false,
+        },
+      });
+    }
   });
 
   it("rolls the member write back when the audit write fails", async () => {
@@ -1091,35 +1159,42 @@ describe("reads racing a Project delete", () => {
       `${base(org, projectId)}/member-candidates`,
     ];
     const holder = await ctx.owner.sql.connect();
-    let responses: Awaited<ReturnType<typeof ctx.call>>[];
+    const pending: ReturnType<typeof ctx.call>[] = [];
+    let requestOutcomes = Promise.resolve<PromiseSettledResult<unknown>[]>([]);
+    let responses: Awaited<ReturnType<typeof ctx.call>>[] = [];
+    const requestPids = new Set<number>();
+    const errors: unknown[] = [];
+    const capture = (client: PoolClient) => {
+      void client.query<{ pid: number }>("select pg_backend_pid() as pid").then(
+        ({ rows }) => requestPids.add(rows[0]?.pid ?? -1),
+        (error: unknown) => errors.push(error),
+      );
+    };
     try {
+      const {
+        rows: [backend],
+      } = await holder.query<{ pid: number }>("select pg_backend_pid() as pid");
+      ctx.runtime.sql.on("acquire", capture);
       await holder.query("begin");
       await holder.query("delete from projects where id = $1", [projectId]);
-      const pending = Promise.all(
-        paths.map((path) => ctx.call(org.users.owner, "GET", path)),
-      );
-      await vi.waitFor(
-        async () => {
-          // Each read waits on the delete's row lock (the first on its
-          // transaction id, the others behind it on the tuple lock).
-          const waiting = await holder.query<{ total: string }>(
-            `select count(*) as total from pg_locks
-             where not granted
-               and ((locktype = 'transactionid'
-                     and transactionid = xid(pg_current_xact_id()))
-                 or (locktype = 'tuple'
-                     and relation = 'projects'::regclass))`,
-          );
-          expect(Number(waiting.rows[0]?.total)).toBeGreaterThanOrEqual(3);
-        },
-        { timeout: 10_000, interval: 25 },
-      );
+      for (const path of paths) {
+        pending.push(ctx.call(org.users.owner, "GET", path));
+      }
+      requestOutcomes = Promise.allSettled(pending);
+      await waitForProjectLocks(backend?.pid ?? -1, requestPids, 3);
       await holder.query("commit");
-      responses = await pending;
+      responses = await Promise.all(pending);
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await holder.query("rollback").catch(() => undefined);
-      holder.release();
+      ctx.runtime.sql.off("acquire", capture);
+      const rollback = await Promise.allSettled([holder.query("rollback")]);
+      holder.release(rollback[0].status === "rejected");
+      for (const result of [...rollback, ...(await requestOutcomes)]) {
+        if (result.status === "rejected") errors.push(result.reason);
+      }
     }
+    if (errors.length) throw new AggregateError(errors, "Project race failed");
     for (const response of responses) {
       expect(response.status).toBe(404);
       expect(errorCode(response)).toBe("PROJECT_NOT_FOUND");

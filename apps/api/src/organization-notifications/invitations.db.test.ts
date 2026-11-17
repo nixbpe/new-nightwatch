@@ -2,7 +2,8 @@ import { invitationCreateResponseSchema } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations } from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../app";
 import type { Auth, AuthSession } from "../auth";
@@ -117,6 +118,30 @@ async function rows(org = orgA) {
       [org],
     )
   ).rows;
+}
+
+async function waitForInvitationLocks(
+  holderPid: number,
+  requestPids: Set<number>,
+  count: number,
+) {
+  await vi.waitFor(
+    async () => {
+      const waiting = await owner.sql.query<{ pid: number }>(
+        `with recursive blocked(pid) as (
+           select $1::int
+           union
+           select activity.pid from pg_stat_activity activity
+           join blocked on blocked.pid = any(pg_blocking_pids(activity.pid))
+           where activity.pid = any($2::int[])
+         )
+         select pid from blocked where pid <> $1`,
+        [holderPid, [...requestPids]],
+      );
+      expect(waiting.rows).toHaveLength(count);
+    },
+    { timeout: 5_000, interval: 20 },
+  );
 }
 
 beforeAll(async () => {
@@ -380,6 +405,16 @@ describe("first-party invitation create", () => {
 
   it("ignores invitations expiring during an organization lock wait and starts the 48h window after the wait", async () => {
     const holder = await runtime.sql.connect();
+    const pending: ReturnType<typeof request>[] = [];
+    let requestOutcomes = Promise.resolve<PromiseSettledResult<unknown>[]>([]);
+    const requestPids = new Set<number>();
+    const errors: unknown[] = [];
+    const capture = (client: PoolClient) => {
+      void client.query<{ pid: number }>("select pg_backend_pid() as pid").then(
+        ({ rows }) => requestPids.add(rows[0]?.pid ?? -1),
+        (error: unknown) => errors.push(error),
+      );
+    };
     const expiredEmail = `wait-expired-${run}@example.test`;
     const freshEmail = `wait-fresh-${run}@example.test`;
     try {
@@ -397,23 +432,19 @@ describe("first-party invitation create", () => {
          from generate_series(1, $5::int) n`,
         [orgB, expiredEmail, `-${run}@example.test`, actorIds.both, expiring],
       );
+      const {
+        rows: [backend],
+      } = await holder.query<{ pid: number }>("select pg_backend_pid() as pid");
+      runtime.sql.on("acquire", capture);
       await holder.query("begin");
       await holder.query(
         "select id from organization where id = $1 for update",
         [orgB],
       );
-      const duplicate = request("both", orgB, expiredEmail);
-      const cap = request("both", orgB, freshEmail);
-      let waiting = false;
-      for (let attempt = 0; attempt < 500 && !waiting; attempt += 1) {
-        const activity = await owner.sql.query<{ count: number }>(
-          `select count(*)::int as count from pg_stat_activity
-           where wait_event_type = 'Lock'
-             and query like 'select name from organization where id = $1 for update%'`,
-        );
-        waiting = (activity.rows[0]?.count ?? 0) >= 2;
-      }
-      expect(waiting).toBe(true);
+      pending.push(request("both", orgB, expiredEmail));
+      pending.push(request("both", orgB, freshEmail));
+      requestOutcomes = Promise.allSettled(pending);
+      await waitForInvitationLocks(backend?.pid ?? -1, requestPids, 2);
       const expiry = await owner.sql.query<{
         observedAt: Date;
         expiresAt: Date;
@@ -433,7 +464,7 @@ describe("first-party invitation create", () => {
         expiry.rows[0]?.expiresAt.getTime() ?? 0,
       );
       await holder.query("commit");
-      const outcomes = await Promise.all([duplicate, cap]);
+      const outcomes = await Promise.all(pending);
       expect(outcomes.map((outcome) => outcome.status)).toEqual([201, 201]);
       const inserted = await owner.sql.query<{
         email: string;
@@ -454,92 +485,134 @@ describe("first-party invitation create", () => {
           48 * 60 * 60 * 1000,
         );
       }
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await holder.query("rollback");
-      holder.release();
+      runtime.sql.off("acquire", capture);
+      const rollback = await Promise.allSettled([holder.query("rollback")]);
+      holder.release(rollback[0].status === "rejected");
+      for (const result of [...rollback, ...(await requestOutcomes)]) {
+        if (result.status === "rejected") errors.push(result.reason);
+      }
     }
+    if (errors.length)
+      throw new AggregateError(errors, "Invitation race failed");
   }, 15_000);
 
   it("rechecks a downgraded actor after waiting for the organization lock", async () => {
     const holder = await runtime.sql.connect();
+    const pending: ReturnType<typeof request>[] = [];
+    let requestOutcomes = Promise.resolve<PromiseSettledResult<unknown>[]>([]);
+    const requestPids = new Set<number>();
+    const errors: unknown[] = [];
+    const capture = (client: PoolClient) => {
+      void client.query<{ pid: number }>("select pg_backend_pid() as pid").then(
+        ({ rows }) => requestPids.add(rows[0]?.pid ?? -1),
+        (error: unknown) => errors.push(error),
+      );
+    };
     try {
+      const {
+        rows: [backend],
+      } = await holder.query<{ pid: number }>("select pg_backend_pid() as pid");
+      runtime.sql.on("acquire", capture);
       await holder.query("begin");
       await holder.query(
         "select id from organization where id = $1 for update",
         [orgB],
       );
       const email = `downgraded-${run}@example.test`;
-      const pending = request("both", orgB, email);
-      let waiting = false;
-      for (let attempt = 0; attempt < 500 && !waiting; attempt += 1) {
-        const activity = await owner.sql.query<{ waiting: boolean }>(
-          `select exists (
-             select 1 from pg_stat_activity where wait_event_type = 'Lock'
-               and query like 'select name from organization where id = $1 for update%'
-           ) as waiting`,
-        );
-        waiting = activity.rows[0]?.waiting ?? false;
-      }
-      expect(waiting).toBe(true);
+      pending.push(request("both", orgB, email));
+      requestOutcomes = Promise.allSettled(pending);
+      await waitForInvitationLocks(backend?.pid ?? -1, requestPids, 1);
       await owner.sql.query(
         "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
         [orgB, actorIds.both],
       );
       await holder.query("commit");
-      expect(await pending).toMatchObject({
+      expect(await pending[0]).toMatchObject({
         status: 403,
         body: { error: { code: "PERMISSION_DENIED" } },
       });
       expect((await rows(orgB)).some((row) => row.email === email)).toBe(false);
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await holder.query("rollback");
-      holder.release();
-      await owner.sql.query(
-        "update member set role = 'admin' where organization_id = $1 and user_id = $2",
-        [orgB, actorIds.both],
-      );
+      runtime.sql.off("acquire", capture);
+      const rollback = await Promise.allSettled([holder.query("rollback")]);
+      holder.release(rollback[0].status === "rejected");
+      for (const result of [...rollback, ...(await requestOutcomes)]) {
+        if (result.status === "rejected") errors.push(result.reason);
+      }
+      try {
+        await owner.sql.query(
+          "update member set role = 'admin' where organization_id = $1 and user_id = $2",
+          [orgB, actorIds.both],
+        );
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length)
+      throw new AggregateError(errors, "Invitation race failed");
   });
 
   it("rechecks membership after a revoke while waiting for the organization lock", async () => {
     const holder = await runtime.sql.connect();
+    const pending: ReturnType<typeof request>[] = [];
+    let requestOutcomes = Promise.resolve<PromiseSettledResult<unknown>[]>([]);
+    const requestPids = new Set<number>();
+    const errors: unknown[] = [];
+    const capture = (client: PoolClient) => {
+      void client.query<{ pid: number }>("select pg_backend_pid() as pid").then(
+        ({ rows }) => requestPids.add(rows[0]?.pid ?? -1),
+        (error: unknown) => errors.push(error),
+      );
+    };
     try {
+      const {
+        rows: [backend],
+      } = await holder.query<{ pid: number }>("select pg_backend_pid() as pid");
+      runtime.sql.on("acquire", capture);
       await holder.query("begin");
       await holder.query(
         "select id from organization where id = $1 for update",
         [orgB],
       );
       const email = `revoked-${run}@example.test`;
-      const pending = request("both", orgB, email);
-      let waiting = false;
-      for (let attempt = 0; attempt < 500 && !waiting; attempt += 1) {
-        const activity = await owner.sql.query<{ waiting: boolean }>(
-          `select exists (
-             select 1 from pg_stat_activity where wait_event_type = 'Lock'
-               and query like 'select name from organization where id = $1 for update%'
-           ) as waiting`,
-        );
-        waiting = activity.rows[0]?.waiting ?? false;
-      }
-      expect(waiting).toBe(true);
+      pending.push(request("both", orgB, email));
+      requestOutcomes = Promise.allSettled(pending);
+      await waitForInvitationLocks(backend?.pid ?? -1, requestPids, 1);
       await owner.sql.query(
         "delete from member where organization_id = $1 and user_id = $2",
         [orgB, actorIds.both],
       );
       await holder.query("commit");
-      expect(await pending).toMatchObject({
+      expect(await pending[0]).toMatchObject({
         status: 403,
         body: { error: { code: "MEMBERSHIP_DENIED" } },
       });
       expect((await rows(orgB)).some((row) => row.email === email)).toBe(false);
+    } catch (error) {
+      errors.push(error);
     } finally {
-      await holder.query("rollback");
-      holder.release();
-      await owner.sql.query(
-        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin') on conflict (organization_id, user_id) do nothing",
-        [crypto.randomUUID(), orgB, actorIds.both],
-      );
+      runtime.sql.off("acquire", capture);
+      const rollback = await Promise.allSettled([holder.query("rollback")]);
+      holder.release(rollback[0].status === "rejected");
+      for (const result of [...rollback, ...(await requestOutcomes)]) {
+        if (result.status === "rejected") errors.push(result.reason);
+      }
+      try {
+        await owner.sql.query(
+          "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin') on conflict (organization_id, user_id) do nothing",
+          [crypto.randomUUID(), orgB, actorIds.both],
+        );
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length)
+      throw new AggregateError(errors, "Invitation race failed");
   });
 
   it("denies native creation before the native auth handler while retaining the public preview", async () => {
