@@ -581,12 +581,17 @@ describe("NotificationsPage", () => {
       await screen.findByTestId(`notification-open-${ready.id}`),
     );
 
+    const detail = await screen.findByTestId(`notification-detail-${ready.id}`);
+    expect(detail).toHaveRole("article");
     expect(
-      await screen.findByTestId("notification-detail-read"),
+      within(detail).getByTestId("notification-detail-read"),
     ).not.toBeEmptyDOMElement();
-    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
-      "datetime",
-      "2026-09-25T03:01:00.000Z",
+    expect(
+      within(detail).getByTestId("notification-detail-read-at"),
+    ).toHaveAttribute("datetime", "2026-09-25T03:01:00.000Z");
+    expect(within(detail).getByRole("link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/audit-log#my-exports`,
     );
   });
 
@@ -1220,6 +1225,16 @@ describe("NotificationsPage", () => {
         ).toBeInTheDocument();
       }
       expect(
+        within(screen.getByTestId("notification-day-2026-10-02")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^วันนี้$/);
+      expect(
+        within(screen.getByTestId("notification-day-2026-10-01")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^เมื่อวาน$/);
+      expect(
         within(screen.getByTestId("notification-day-2026-09-25")).getByTestId(
           "notification-day-title",
         ),
@@ -1255,6 +1270,16 @@ describe("NotificationsPage", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.getAllByTestId(/^notification-day-\d/)).toHaveLength(2);
+      expect(
+        within(screen.getByTestId("notification-day-2026-10-02")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^วันนี้$/);
+      expect(
+        within(screen.getByTestId("notification-day-2026-10-01")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^เมื่อวาน$/);
     });
 
     it("labels yesterday by calendar date across a DST change", async () => {
@@ -1285,6 +1310,16 @@ describe("NotificationsPage", () => {
           "notification-open-a0000000-0000-4000-8000-000000000001",
         ),
       ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("notification-day-2026-11-02")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^วันนี้$/);
+      expect(
+        within(screen.getByTestId("notification-day-2026-11-01")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/^เมื่อวาน$/);
     });
 
     it("shows the unread dot image", async () => {

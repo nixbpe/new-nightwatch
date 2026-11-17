@@ -118,12 +118,24 @@ async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByTestId("audit-export-dialog");
 }
 
+const originalObjectUrlDescriptors = {
+  createObjectURL: Object.getOwnPropertyDescriptor(URL, "createObjectURL"),
+  revokeObjectURL: Object.getOwnPropertyDescriptor(URL, "revokeObjectURL"),
+};
+
 beforeEach(() => {
   setTimeZone("Asia/Bangkok");
   vi.mocked(fetchAuditActors).mockResolvedValue({ actors: [] });
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  for (const [name, descriptor] of Object.entries(
+    originalObjectUrlDescriptors,
+  )) {
+    if (descriptor === undefined) Reflect.deleteProperty(URL, name);
+    else Object.defineProperty(URL, name, descriptor);
+  }
   vi.resetAllMocks();
   localStorage.removeItem(PREFERENCES_KEY);
 });

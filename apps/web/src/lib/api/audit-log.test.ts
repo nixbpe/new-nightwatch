@@ -57,11 +57,29 @@ describe("audit list filters in the URL", () => {
     });
   });
 
-  it("keeps all five categories in the URL so the chips stay pressed", () => {
-    const all = "monitor,notification_settings,member,invitation,audit_log";
-    const filters = parse(`categories=${all}`);
-    expect(filters.categories).toHaveLength(5);
-    expect(serializeAuditFilters(filters).get("categories")).toBe(all);
+  it("keeps all six selected categories in canonical URL order", () => {
+    const filters = parse(
+      "categories=project,audit_log,invitation,member,notification_settings,monitor",
+    );
+    expect(filters.categories).toEqual([
+      "monitor",
+      "notification_settings",
+      "member",
+      "invitation",
+      "audit_log",
+      "project",
+    ]);
+    expect(serializeAuditFilters(filters).get("categories")).toBe(
+      "monitor,notification_settings,member,invitation,audit_log,project",
+    );
+  });
+
+  it("round-trips the project category on its own", () => {
+    const filters = parse("categories=project");
+    expect(filters.categories).toEqual(["project"]);
+    expect(serializeAuditFilters(filters).toString()).toBe(
+      "categories=project",
+    );
   });
 });
 

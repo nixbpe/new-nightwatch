@@ -493,39 +493,61 @@ describe("AuditLogPage same-tick filter changes (O1)", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const pendingLoader = Promise.withResolvers<null>();
+    const loader = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockReturnValue(pendingLoader.promise);
     const router = createMemoryRouter(
-      [
-        {
-          path: PATH,
-          // A slow loader keeps the URL of the last render stale for a while.
-          loader: () =>
-            new Promise((resolve) =>
-              setTimeout(() => {
-                resolve(null);
-              }, 150),
-            ),
-          element: <AuditLogPage />,
-        },
-      ],
+      [{ path: PATH, loader, element: <AuditLogPage /> }],
       { initialEntries: [`/organizations/${ORG_A}/audit-log?range=custom`] },
     );
-    render(
+    const view = render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    await screen.findByTestId("audit-events-table");
-    fireEvent.change(screen.getByTestId("audit-filter-from"), {
-      target: { value: "2026-09-30" },
-    });
-    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
-    fireEvent.change(screen.getByTestId("audit-filter-to"), {
-      target: { value: "2026-10-02" },
-    });
-    await waitFor(() => {
-      expect(router.state.location.search).toContain("to=2026-10-02");
-    });
-    expect(router.state.location.search).toContain("from=2026-09-30");
+    try {
+      await screen.findByTestId("audit-events-table");
+      fireEvent.change(screen.getByTestId("audit-filter-from"), {
+        target: { value: "2026-09-30" },
+      });
+      await waitFor(() => {
+        expect(loader).toHaveBeenCalledTimes(2);
+        expect(router.state.navigation.state).toBe("loading");
+        expect(router.state.navigation.location?.search).toBe(
+          "?range=custom&from=2026-09-30",
+        );
+      });
+      expect(router.state.location.search).toBe("?range=custom");
+      fireEvent.change(screen.getByTestId("audit-filter-to"), {
+        target: { value: "2026-10-02" },
+      });
+      await waitFor(() => {
+        expect(loader).toHaveBeenCalledTimes(3);
+        expect(router.state.navigation.state).toBe("loading");
+      });
+      expect(router.state.location.search).toBe("?range=custom");
+      await act(async () => {
+        pendingLoader.resolve(null);
+        await pendingLoader.promise;
+      });
+      await waitFor(() => {
+        expect(router.state.navigation.state).toBe("idle");
+        expect(router.state.location.search).toBe(
+          "?range=custom&from=2026-09-30&to=2026-10-02",
+        );
+      });
+      expect(screen.getByTestId("audit-filter-from")).toHaveValue("2026-09-30");
+      expect(screen.getByTestId("audit-filter-to")).toHaveValue("2026-10-02");
+    } finally {
+      view.unmount();
+      router.dispose();
+      pendingLoader.resolve(null);
+      await pendingLoader.promise;
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    }
   });
 });
 

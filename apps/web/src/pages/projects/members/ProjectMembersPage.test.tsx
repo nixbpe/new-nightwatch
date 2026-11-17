@@ -163,6 +163,12 @@ beforeEach(() => {
           person.name.toLowerCase().includes(needle) ||
           `${person.userId}@example.test`.includes(needle),
       )
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name) ||
+          left.userId.localeCompare(right.userId),
+      )
+      .slice(0, 50)
       .map((person) => ({
         userId: person.userId,
         name: person.name,
@@ -249,17 +255,32 @@ describe("members list", () => {
 
   it("filters by name or email in the browser", async () => {
     const user = userEvent.setup();
+    roster = roster.map((item) =>
+      item.userId === "thanakorn"
+        ? { ...item, name: "Mali", email: "billing@example.test" }
+        : item,
+    );
     renderPage();
     await loaded();
-    await user.type(screen.getByTestId("project-members-search"), "THANA");
-    expect(screen.queryByTestId(`project-member-row-siriporn`)).toBeNull();
-    expect(row("thanakorn")).toBeInTheDocument();
-    expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
-      "แสดง 1–1 จาก 3",
-    );
-    await user.clear(screen.getByTestId("project-members-search"));
-    await user.type(screen.getByTestId("project-members-search"), "zzz");
+    const search = screen.getByTestId("project-members-search");
+    for (const query of ["MALI", "BILLING@"]) {
+      await user.clear(search);
+      await user.type(search, query);
+      expect(row("thanakorn")).toBeInTheDocument();
+      expect(screen.queryByTestId("project-member-row-siriporn")).toBeNull();
+      expect(screen.queryByTestId(`project-member-row-${ME}`)).toBeNull();
+      expect(screen.getAllByTestId(/^project-member-row-/)).toHaveLength(1);
+      expect(screen.getByTestId("project-member-count")).toHaveTextContent(
+        /^3$/,
+      );
+      expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
+        /1–1.*3/,
+      );
+    }
+    await user.clear(search);
+    await user.type(search, "zzz");
     expect(screen.getByTestId("project-members-no-results")).toBeVisible();
+    expect(screen.queryAllByTestId(/^project-member-row-/)).toHaveLength(0);
   });
 
   it("states the role descriptions and both rules (AC-11)", async () => {
@@ -455,20 +476,38 @@ describe("states", () => {
     await waitFor(() => {
       expect(meMock).toHaveBeenCalledTimes(2);
     });
-    // The user picks another page and the reload settles before React renders
-    // the new navigation state: only the router itself knows it is loading.
-    void router.navigate("/elsewhere");
-    expect(router.state.navigation.state).toBe("loading");
-    finishReload(context("owner"));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-    act(() => {
-      finishLoader(null);
-    });
-    expect(await screen.findByTestId("elsewhere")).toBeVisible();
-    expect(router.state.location.pathname).toBe("/elsewhere");
-    expect(screen.queryByTestId("projects-notice-role-changed")).toBeNull();
+    const sentinelKey = [...projectQueryKeys.project(A, P), "race-sentinel"];
+    queryClient.setQueryData(sentinelKey, "waiting for context continuation");
+    expect(queryClient.getQueryData(sentinelKey)).toBe(
+      "waiting for context continuation",
+    );
+    const navigation = router.navigate("/elsewhere");
+    try {
+      try {
+        expect(router.state.navigation.state).toBe("loading");
+        await act(async () => {
+          finishReload(context("owner"));
+          await waitFor(() => {
+            expect(queryClient.getQueryState(sentinelKey)).toBeUndefined();
+          });
+        });
+        expect(router.state.navigation.state).toBe("loading");
+        expect(router.state.navigation.location?.pathname).toBe("/elsewhere");
+        expect(router.state.location.pathname).toBe(
+          `/organizations/${A}/projects/${P}/members`,
+        );
+      } finally {
+        await act(async () => {
+          finishLoader(null);
+          await navigation;
+        });
+      }
+      expect(await screen.findByTestId("elsewhere")).toBeVisible();
+      expect(router.state.location.pathname).toBe("/elsewhere");
+      expect(screen.queryByTestId("projects-notice-role-changed")).toBeNull();
+    } finally {
+      router.dispose();
+    }
   });
 
   it("shows denied for an organization the user does not belong to, without a request", async () => {
@@ -822,22 +861,52 @@ describe("add member dialog", () => {
     for (let index = 0; index < 101; index += 1) {
       orgPeople.push({
         userId: `bulk-${String(index).padStart(3, "0")}`,
-        name: `Bulk ${String(index).padStart(3, "0")}`,
+        name: `Wave ${index < 50 ? "A" : index < 100 ? "B" : "C"} ${String(index).padStart(3, "0")}`,
         organizationRole: "viewer",
       });
     }
+    addMock.mockImplementation((_org, _project, body) => {
+      roster = [...roster, ...body.userIds.map((id) => member(id, body.role))];
+      return Promise.resolve({ members: roster, addedUserIds: body.userIds });
+    });
     renderPage();
     const dialog = await openDialog(user);
-    await within(dialog).findByTestId("add-member-row-bulk-100");
-    for (let index = 0; index < 100; index += 1) {
-      fireEvent.click(
-        candidate(dialog, `bulk-${String(index).padStart(3, "0")}`).getByTestId(
-          "add-member-checkbox",
-        ),
+    expect(within(dialog).getAllByTestId("add-member-checkbox")).toHaveLength(
+      50,
+    );
+    const search = within(dialog).getByTestId("add-member-search");
+    for (const [query, first, end] of [
+      ["Wave A", 0, 50],
+      ["Wave B", 50, 100],
+    ] as const) {
+      await user.clear(search);
+      await user.type(search, query);
+      await within(dialog).findByTestId(
+        `add-member-row-bulk-${String(end - 1).padStart(3, "0")}`,
+      );
+      expect(within(dialog).getAllByTestId("add-member-checkbox")).toHaveLength(
+        50,
+      );
+      for (let index = first; index < end; index += 1) {
+        fireEvent.click(
+          candidate(
+            dialog,
+            `bulk-${String(index).padStart(3, "0")}`,
+          ).getByTestId("add-member-checkbox"),
+        );
+      }
+      expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+        new RegExp(`^${String(end)}$`),
       );
     }
+    await user.clear(search);
+    await user.type(search, "Wave C");
+    await within(dialog).findByTestId("add-member-row-bulk-100");
+    expect(within(dialog).getAllByTestId("add-member-checkbox")).toHaveLength(
+      1,
+    );
     expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
-      "100",
+      /^100$/,
     );
     expect(within(dialog).getByTestId("add-member-limit")).toHaveTextContent(
       "เพิ่มได้ครั้งละไม่เกิน 100 คน",
@@ -847,15 +916,151 @@ describe("add member dialog", () => {
     );
     expect(last).toBeDisabled();
     expect(last).toHaveAccessibleDescription(/เพิ่มได้ครั้งละไม่เกิน 100 คน/);
-    expect(
-      candidate(dialog, "bulk-000").getByTestId("add-member-checkbox"),
-    ).not.toHaveAccessibleDescription(/เพิ่มได้ครั้งละไม่เกิน/);
-    // Unticking one frees a slot again.
-    fireEvent.click(
-      candidate(dialog, "bulk-000").getByTestId("add-member-checkbox"),
+    await user.click(last);
+    expect(last).not.toBeChecked();
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      /^100$/,
     );
-    expect(last).toBeEnabled();
+
+    await user.clear(search);
+    await user.type(search, "Wave A");
+    await within(dialog).findByTestId("add-member-row-bulk-000");
+    const first = candidate(dialog, "bulk-000").getByTestId(
+      "add-member-checkbox",
+    );
+    expect(first).toBeChecked();
+    expect(first).toBeEnabled();
+    expect(first).not.toHaveAccessibleDescription(/เพิ่มได้ครั้งละไม่เกิน/);
+    await user.click(first);
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      /^99$/,
+    );
     expect(within(dialog).queryByTestId("add-member-limit")).toBeNull();
+
+    await user.clear(search);
+    await user.type(search, "Wave C");
+    await within(dialog).findByTestId("add-member-row-bulk-100");
+    const recovered = candidate(dialog, "bulk-100").getByTestId(
+      "add-member-checkbox",
+    );
+    expect(recovered).toBeEnabled();
+    await user.click(recovered);
+    expect(recovered).toBeChecked();
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      /^100$/,
+    );
+    await user.click(within(dialog).getByTestId("add-member-submit"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("add-member-dialog")).toBeNull();
+    });
+    expect(addMock).toHaveBeenCalledExactlyOnceWith(A, P, {
+      userIds: [
+        "bulk-001",
+        "bulk-002",
+        "bulk-003",
+        "bulk-004",
+        "bulk-005",
+        "bulk-006",
+        "bulk-007",
+        "bulk-008",
+        "bulk-009",
+        "bulk-010",
+        "bulk-011",
+        "bulk-012",
+        "bulk-013",
+        "bulk-014",
+        "bulk-015",
+        "bulk-016",
+        "bulk-017",
+        "bulk-018",
+        "bulk-019",
+        "bulk-020",
+        "bulk-021",
+        "bulk-022",
+        "bulk-023",
+        "bulk-024",
+        "bulk-025",
+        "bulk-026",
+        "bulk-027",
+        "bulk-028",
+        "bulk-029",
+        "bulk-030",
+        "bulk-031",
+        "bulk-032",
+        "bulk-033",
+        "bulk-034",
+        "bulk-035",
+        "bulk-036",
+        "bulk-037",
+        "bulk-038",
+        "bulk-039",
+        "bulk-040",
+        "bulk-041",
+        "bulk-042",
+        "bulk-043",
+        "bulk-044",
+        "bulk-045",
+        "bulk-046",
+        "bulk-047",
+        "bulk-048",
+        "bulk-049",
+        "bulk-050",
+        "bulk-051",
+        "bulk-052",
+        "bulk-053",
+        "bulk-054",
+        "bulk-055",
+        "bulk-056",
+        "bulk-057",
+        "bulk-058",
+        "bulk-059",
+        "bulk-060",
+        "bulk-061",
+        "bulk-062",
+        "bulk-063",
+        "bulk-064",
+        "bulk-065",
+        "bulk-066",
+        "bulk-067",
+        "bulk-068",
+        "bulk-069",
+        "bulk-070",
+        "bulk-071",
+        "bulk-072",
+        "bulk-073",
+        "bulk-074",
+        "bulk-075",
+        "bulk-076",
+        "bulk-077",
+        "bulk-078",
+        "bulk-079",
+        "bulk-080",
+        "bulk-081",
+        "bulk-082",
+        "bulk-083",
+        "bulk-084",
+        "bulk-085",
+        "bulk-086",
+        "bulk-087",
+        "bulk-088",
+        "bulk-089",
+        "bulk-090",
+        "bulk-091",
+        "bulk-092",
+        "bulk-093",
+        "bulk-094",
+        "bulk-095",
+        "bulk-096",
+        "bulk-097",
+        "bulk-098",
+        "bulk-099",
+        "bulk-100",
+      ],
+      role: "member",
+    });
+    expect(screen.getByTestId("project-member-count")).toHaveTextContent(
+      /^103$/,
+    );
   });
 
   it("selects an owner, admin, viewer and auditor candidate (AC-12)", async () => {
