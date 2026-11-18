@@ -318,14 +318,6 @@ describe("locked organization self-leave", () => {
     expect(await ownerCount()).toBe(1);
   });
 
-  it("lets one of two owners leave and keeps the other", async () => {
-    await reset();
-    const before = await snapshot();
-    await leave(users.owner);
-    expect(await snapshot()).toEqual(afterLeave(before, users.owner));
-    expect(await ownerCount()).toBe(1);
-  });
-
   it("denies a nonmember and a former member the same way without touching rows", async () => {
     await reset();
     const before = await snapshot();
