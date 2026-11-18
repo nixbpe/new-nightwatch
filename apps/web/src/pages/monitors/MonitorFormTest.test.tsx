@@ -41,6 +41,7 @@ import {
   deferred,
   detail,
   editPath,
+  expectInvalid,
   newPath,
   record,
   renderForm,
@@ -149,15 +150,6 @@ function result(overrides: Partial<MonitorTestResult> = {}): {
       ...overrides,
     },
   };
-}
-
-function expectInvalid(field: HTMLElement) {
-  expect(field).toHaveAttribute("aria-invalid", "true");
-  expect(field).toHaveAccessibleDescription();
-  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
-  const error = described.find((id) => id.endsWith("-error"));
-  expect(error).toBeDefined();
-  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
 }
 
 function assertionRecords() {

@@ -110,6 +110,56 @@ describe("client validation mirrors the server's field paths and reasons", () =>
 });
 
 describe("server errors", () => {
+  const valueReasons: [MonitorInvalidReason, string][] = [
+    ["required", "ยังไม่ได้กรอกค่าลับ"],
+    ["too_long", "ค่าลับยาวได้ไม่เกิน 4 KiB"],
+    ["invalid_format", "ค่าลับมีอักขระที่ใช้ไม่ได้"],
+    ["crlf", "ค่าลับห้ามมีการขึ้นบรรทัดใหม่"],
+  ];
+
+  it.each(valueReasons)(
+    "places secret value %s with its literal message at password and header fields",
+    (reason, message) => {
+      const sent = [
+        { slot: "auth.username", path: "auth.username" },
+        { slot: "auth.password", path: "auth.password" },
+        { slot: "header.x", path: "headers.0.value" },
+      ];
+      const errors = serverFieldErrors(
+        {
+          fields: [
+            { field: "secrets.1.value", reason },
+            { field: "secrets.2.value", reason },
+          ],
+        },
+        sent,
+      );
+      const expected = {
+        "auth.password": message,
+        "headers.0.value": message,
+      };
+      expect(errors).toEqual(expected);
+    },
+  );
+
+  const slotReasons: [MonitorInvalidReason, string][] = [
+    ["invalid_format", "ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน"],
+    ["duplicate", "ค่าลับนี้ถูกระบุซ้ำ"],
+    ["required", "ค่าลับนี้ยังจำเป็นต้องใช้ ลบไม่ได้"],
+  ];
+
+  it.each(slotReasons)(
+    "places secret slot %s with its literal message at the stored token field",
+    (reason, message) => {
+      const sent = [{ slot: "auth.token", path: "auth.token" }];
+      const errors = serverFieldErrors(
+        { fields: [{ field: "secrets.0.slot", reason }] },
+        sent,
+      );
+      expect(errors).toEqual({ "auth.token": message });
+    },
+  );
+
   it("places MONITOR_INVALID fields with the same messages and rejects anything else", () => {
     expect(
       serverFieldErrors({

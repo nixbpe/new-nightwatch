@@ -1,4 +1,4 @@
-import { afterEach } from "vitest";
+import { afterEach, expect } from "vitest";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ import {
 
 import { OrgSwitcher } from "../../components/shell/OrgSwitcher";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
-import { A, MONITOR_ID, P } from "./detail-test-support";
+import { A, MONITOR_ID, P, must } from "./detail-test-support";
 import { DetailPage } from "./DetailPage";
 import { MonitorFormPage } from "./MonitorFormPage";
 import { OverviewPage } from "./OverviewPage";
@@ -132,6 +132,15 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
       </Wrapper>,
     ),
   };
+}
+
+export function expectInvalid(field: HTMLElement) {
+  expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(field).toHaveAccessibleDescription();
+  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
+  const error = described.find((id) => id.endsWith("-error"));
+  expect(error).toBeDefined();
+  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
 }
 
 export const newPath = (organizationId = A) =>

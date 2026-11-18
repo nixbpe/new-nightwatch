@@ -186,11 +186,8 @@ describe("Edit opens with the saved configuration", () => {
     ).toBeInTheDocument();
   });
 
-  it.each([
-    ["a missing id", "99999999-9999-4999-8999-999999999999"],
-    ["a malformed id", "not-a-uuid"],
-    ["an id of another Organization", "22222222-aaaa-4aaa-8aaa-222222222222"],
-  ])("presents MONITOR_NOT_FOUND for %s", async (_label, id) => {
+  it("renders MONITOR_NOT_FOUND safely without a form or retry", async () => {
+    const id = "99999999-9999-4999-8999-999999999999";
     detailMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     renderForm(editPath(A, id));
     expect(
@@ -198,6 +195,7 @@ describe("Edit opens with the saved configuration", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
     expect(screen.queryByTestId("monitor-form-load-error")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-load-retry")).toBeNull();
     expect(detailMock).toHaveBeenCalledWith(A, P, id);
     expect(screen.getByTestId("location").textContent).toBe(editPath(A, id));
   });

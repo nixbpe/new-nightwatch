@@ -24,6 +24,7 @@ import {
   context,
   detail,
   newPath,
+  expectInvalid,
   record,
   renderForm,
 } from "./form-test-support";
@@ -138,15 +139,6 @@ async function addAssertionRow(user: User) {
     .filter((row) => !before.has(row.getAttribute("data-testid")));
   expect(added).toHaveLength(1);
   return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
-}
-
-function expectInvalid(field: HTMLElement) {
-  expect(field).toHaveAttribute("aria-invalid", "true");
-  expect(field).toHaveAccessibleDescription();
-  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
-  const error = described.find((id) => id.endsWith("-error"));
-  expect(error).toBeDefined();
-  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
 }
 
 const save = () => screen.getByTestId("monitor-form-save");

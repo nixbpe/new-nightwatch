@@ -39,6 +39,7 @@ import {
   context,
   detail,
   editPath,
+  expectInvalid,
   MONITOR_ID,
   P,
   newPath,
@@ -189,15 +190,6 @@ async function openEdit(monitor = storedBearer()): Promise<User> {
     return field;
   });
   return user;
-}
-
-function expectInvalid(field: HTMLElement) {
-  expect(field).toHaveAttribute("aria-invalid", "true");
-  expect(field).toHaveAccessibleDescription();
-  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
-  const error = described.find((id) => id.endsWith("-error"));
-  expect(error).toBeDefined();
-  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
 }
 
 function secretHeaderId() {
@@ -1194,8 +1186,6 @@ describe("Server refusals of secret entries", () => {
 });
 
 describe("Server refusals of secret entries are placed beside the slot's field", () => {
-  const reasons = ["required", "too_long", "invalid_format", "crlf"] as const;
-
   async function refuse(fields: { field: string; reason: string }[]) {
     const { ApiError } = await import("../../lib/api/client");
     createMock.mockRejectedValue(
@@ -1235,37 +1225,32 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     return user;
   }
 
-  it.each(reasons)(
-    "places secrets.N.value %s at the auth field and at the header row",
-    async (reason) => {
-      const user = await openWithAuthAndHeader();
-      // Entries: 0 auth.username, 1 auth.password, 2 the header slot.
-      await refuse([
-        { field: "secrets.1.value", reason },
-        { field: "secrets.2.value", reason },
-      ]);
-      await user.click(saveCreate());
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("monitor-secret-auth.password-value"),
-        ).toHaveAttribute("aria-invalid", "true");
-      });
-      for (const field of [
-        screen.getByTestId("monitor-secret-auth.password-value"),
-        within(screen.getByTestId(/^monitor-form-header-row-/)).getByTestId(
-          "monitor-form-header-value",
-        ),
-      ]) {
-        expect(field).toHaveAttribute("aria-invalid", "true");
-        expectInvalid(field);
-      }
+  it("places secrets.N.value crlf at the auth field and at the header row", async () => {
+    const user = await openWithAuthAndHeader();
+    await refuse([
+      { field: "secrets.1.value", reason: "crlf" },
+      { field: "secrets.2.value", reason: "crlf" },
+    ]);
+    await user.click(saveCreate());
+    await waitFor(() => {
       expect(
-        screen.getByTestId("monitor-secret-auth.username-value"),
-      ).not.toHaveAttribute("aria-invalid");
-      // Nothing falls back to the summary line.
-      expect(screen.queryByTestId("monitor-form-unplaced-error")).toBeNull();
-    },
-  );
+        screen.getByTestId("monitor-secret-auth.password-value"),
+      ).toHaveAttribute("aria-invalid", "true");
+    });
+    for (const field of [
+      screen.getByTestId("monitor-secret-auth.password-value"),
+      within(screen.getByTestId(/^monitor-form-header-row-/)).getByTestId(
+        "monitor-form-header-value",
+      ),
+    ]) {
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expectInvalid(field);
+    }
+    expect(
+      screen.getByTestId("monitor-secret-auth.username-value"),
+    ).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByTestId("monitor-form-unplaced-error")).toBeNull();
+  });
 
   it("places a keep with no stored value, and the section-level auth required, at the token field", async () => {
     const { ApiError } = await import("../../lib/api/client");
@@ -1287,27 +1272,24 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     expect(screen.queryByTestId("monitor-form-unplaced-error")).toBeNull();
   });
 
-  it.each(["invalid_format", "duplicate", "required"])(
-    "places secrets.N.slot %s at the field of that slot",
-    async (reason) => {
-      const { ApiError } = await import("../../lib/api/client");
-      updateMock.mockRejectedValue(
-        new ApiError("MONITOR_INVALID", "invalid", 400, {
-          fields: [{ field: "secrets.0.slot", reason }],
-        }),
-      );
-      const user = await openEdit();
-      await user.click(saveEdit());
-      const replace = await screen.findByTestId(
-        "monitor-secret-auth.token-replace",
-      );
-      await waitFor(() => {
-        expect(replace).toHaveAttribute("aria-invalid", "true");
-      });
-      expectInvalid(replace);
-      expect(screen.queryByTestId("monitor-form-unplaced-error")).toBeNull();
-    },
-  );
+  it("places secrets.N.slot required at the field of that stored slot", async () => {
+    const { ApiError } = await import("../../lib/api/client");
+    updateMock.mockRejectedValue(
+      new ApiError("MONITOR_INVALID", "invalid", 400, {
+        fields: [{ field: "secrets.0.slot", reason: "required" }],
+      }),
+    );
+    const user = await openEdit();
+    await user.click(saveEdit());
+    const replace = await screen.findByTestId(
+      "monitor-secret-auth.token-replace",
+    );
+    await waitFor(() => {
+      expect(replace).toHaveAttribute("aria-invalid", "true");
+    });
+    expectInvalid(replace);
+    expect(screen.queryByTestId("monitor-form-unplaced-error")).toBeNull();
+  });
 
   it("lists an entry no field matches in the summary line", async () => {
     const user = await openWithAuthAndHeader();
