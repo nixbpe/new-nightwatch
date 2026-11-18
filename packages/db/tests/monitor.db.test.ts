@@ -262,26 +262,45 @@ describe("monitor tenant isolation", () => {
     expect(await ownerCount("monitors", [seededB.monitorId])).toBe(1);
   });
 
-  it.each(MONITOR_TABLES)(
-    "%s rows go with the Project when it is deleted, other Projects keep theirs",
-    async (table) => {
-      const doomed = randomUUID();
-      const kept = randomUUID();
-      for (const projectId of [doomed, kept]) {
-        await owner.query(
-          `insert into projects (id, tenant_id, name, slug) values ($1, $2, 'X', $3)`,
-          [projectId, tenantA, `x-${projectId.slice(0, 8)}`],
-        );
-      }
-      const inDoomed = await seedTenant(tenantA, doomed);
-      const inKept = await seedTenant(tenantA, kept);
-      await withTenantContextRaw(database, tenantA, (client) =>
-        client.query("delete from projects where id = $1", [doomed]),
+  it("all monitor rows go with the deleted Project while another Project keeps its graph", async () => {
+    const doomed = randomUUID();
+    const kept = randomUUID();
+    for (const projectId of [doomed, kept]) {
+      await owner.query(
+        `insert into projects (id, tenant_id, name, slug) values ($1, $2, 'X', $3)`,
+        [projectId, tenantA, `x-${projectId.slice(0, 8)}`],
       );
-      expect(await ownerCount(table, [inDoomed.monitorId])).toBe(0);
-      expect(await ownerCount(table, [inKept.monitorId])).toBe(1);
-    },
-  );
+    }
+    const inDoomed = await seedTenant(tenantA, doomed);
+    const inKept = await seedTenant(tenantA, kept);
+    for (const table of MONITOR_TABLES) {
+      expect(
+        await ownerCount(table, [inDoomed.monitorId]),
+        `${table} doomed before delete`,
+      ).toBe(1);
+      expect(
+        await ownerCount(table, [inKept.monitorId]),
+        `${table} kept before delete`,
+      ).toBe(1);
+    }
+    await withTenantContextRaw(database, tenantA, (client) =>
+      client.query("delete from projects where id = $1", [doomed]),
+    );
+    for (const table of MONITOR_TABLES) {
+      expect
+        .soft(
+          await ownerCount(table, [inDoomed.monitorId]),
+          `${table} doomed after delete`,
+        )
+        .toBe(0);
+      expect
+        .soft(
+          await ownerCount(table, [inKept.monitorId]),
+          `${table} kept after delete`,
+        )
+        .toBe(1);
+    }
+  });
 
   it("rejects a monitor whose Project belongs to another Organization", async () => {
     await expect(
