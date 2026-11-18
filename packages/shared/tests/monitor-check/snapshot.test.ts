@@ -948,7 +948,6 @@ describe("URL encodings other than encodeURIComponent", () => {
 
   const cases: [string, string][] = [
     ["tok 123", "tok+123"],
-    ["tok 123", form("tok 123")],
     ["a!b'c(d)e*f~g", form("a!b'c(d)e*f~g")],
     ["a!b'c(d)e*f~g", strict("a!b'c(d)e*f~g")],
     ["a!b'c(d)e*f~g", encodeURIComponent("a!b'c(d)e*f~g")],

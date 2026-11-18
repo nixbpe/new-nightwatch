@@ -89,29 +89,16 @@ const PUBLIC_V6 = [
 ];
 
 describe("isForbiddenAddress", () => {
-  it.each(FORBIDDEN_V4)(
-    "blocks IPv4 %s at both ends",
+  it.each([...FORBIDDEN_V4, ...FORBIDDEN_V6])(
+    "blocks %s at both ends",
     (_range, first, last) => {
       expect(isForbiddenAddress(first)).toBe(true);
       expect(isForbiddenAddress(last)).toBe(true);
     },
   );
 
-  it.each(FORBIDDEN_V6)(
-    "blocks IPv6 %s at both ends",
-    (_range, first, last) => {
-      expect(isForbiddenAddress(first)).toBe(true);
-      expect(isForbiddenAddress(last)).toBe(true);
-    },
-  );
-
-  it("allows addresses just outside each IPv4 range", () => {
-    for (const address of PUBLIC_V4)
-      expect(isForbiddenAddress(address), address).toBe(false);
-  });
-
-  it("allows addresses just outside each IPv6 range", () => {
-    for (const address of PUBLIC_V6)
+  it("allows addresses just outside each blocked range", () => {
+    for (const address of [...PUBLIC_V4, ...PUBLIC_V6])
       expect(isForbiddenAddress(address), address).toBe(false);
   });
 

@@ -28,22 +28,6 @@ describe("validateOutboundUrl", () => {
     expect(reason(url)).toBe("blocked_address");
   });
 
-  it("accepts public hosts and public literals", () => {
-    expect(reason("https://example.com/path?q=1")).toBe("ok");
-    expect(reason("http://8.8.8.8/")).toBe("ok");
-    expect(reason("https://[2606:4700:4700::1111]/")).toBe("ok");
-  });
-
-  it("rejects userinfo", () => {
-    expect(reason("https://user:pw@example.com/")).toBe("userinfo_not_allowed");
-    expect(reason("https://user@example.com/")).toBe("userinfo_not_allowed");
-  });
-
-  it("rejects schemes other than http and https", () => {
-    expect(reason("ftp://example.com/")).toBe("unsupported_scheme");
-    expect(reason("file:///etc/passwd")).toBe("unsupported_scheme");
-  });
-
   it("accepts a 2048 character URL and rejects 2049", () => {
     const base = "https://example.com/";
     expect(reason(base + "a".repeat(2048 - base.length))).toBe("ok");
@@ -51,6 +35,14 @@ describe("validateOutboundUrl", () => {
   });
 
   it.each([
+    ["https://example.com/path?q=1", "ok"],
+    ["http://8.8.8.8/", "ok"],
+    ["https://[2606:4700:4700::1111]/", "ok"],
+    ["https://user:pw@example.com/", "userinfo_not_allowed"],
+    ["https://user@example.com/", "userinfo_not_allowed"],
+    ["ftp://example.com/", "unsupported_scheme"],
+    ["file:///etc/passwd", "unsupported_scheme"],
+    ["not a url", "invalid_url"],
     ["http://example.com:80/", "ok"],
     ["https://example.com:443/", "ok"],
     ["https://example.com:1024/", "ok"],
@@ -60,29 +52,19 @@ describe("validateOutboundUrl", () => {
     ["https://example.com:8080/", "ok"],
     ["http://example.com:443/", "ok"],
     ["https://example.com:65536/", "invalid_url"],
-  ])("port check %s is %s", (url, expected) => {
+  ])("classifies %s as %s", (url, expected) => {
     expect(reason(url)).toBe(expected);
-  });
-
-  it("rejects text that is not a URL", () => {
-    expect(reason("not a url")).toBe("invalid_url");
   });
 });
 
 describe("maskUrl", () => {
-  it("masks values, keeps keys, and replaces a bare pair whole", () => {
+  it("masks query values while preserving keys, pair order and encoded structure", () => {
     expect(maskUrl("https://example.com/p?token=abc&x=1&rawtoken")).toBe(
       "https://example.com/p?token=•••&x=•••&•••",
     );
-  });
-
-  it("masks an empty value and repeated names, keeping pair order and count", () => {
     expect(maskUrl("https://example.com/?a=&a=1&b=2&a=3&&c")).toBe(
       "https://example.com/?a=•••&a=•••&b=•••&a=•••&&•••",
     );
-  });
-
-  it("masks encoded values and bare pairs without decoding them", () => {
     expect(maskUrl("https://example.com/?q=%73ecret%26x&%72aw%3Dtoken")).toBe(
       "https://example.com/?q=•••&•••",
     );
