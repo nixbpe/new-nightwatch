@@ -16,3 +16,11 @@ Keep as is, never reword for readability: headings that other files cite, rule a
 | Chat residue ("หวังว่าจะเป็นประโยชน์", "Let me know")                                     | Remove it                                                     |
 
 Do not add facts, sources, owners or dates while tightening prose. If a sentence needs a missing detail, ask or report it as open.
+
+## Documentation and comments
+
+- Keep one canonical explanation. Link it instead of repeating rules, code walkthroughs or status in several files.
+- Add docs for public contracts, operational steps and decisions or constraints the code cannot explain. Update existing docs when those contracts change. Routine refactors need no new README, plan, report or copied playbook.
+- Prefer names, types, direct code and tests over explanatory comments. Keep non-obvious rationale, public API contracts, legal notices, functional compiler/lint directives and unavoidable dependency or protocol constraints. Remove narration, commented-out code and comments that restate the implementation within the assigned scope.
+- Fix unclear code before writing a workaround explanation. Reuse existing enforcement for recurring mistakes; add a tool only when its saved work justifies its maintenance.
+- Keep ordinary progress and final replies short. Give the result, relevant checks, real limits and commit when applicable; link details only when needed.

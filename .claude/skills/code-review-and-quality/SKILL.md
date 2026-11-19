@@ -7,7 +7,7 @@ description: Review source, tests, and author evidence for correctness, readabil
 
 ## Overview
 
-Review code edits before merge. Non-code changes need no code review under repository instructions.
+Review one coherent code batch before merge or at its assigned risk checkpoint, not every edit or commit. Reuse a review that still covers the final source; inspect uncovered changes. Non-code changes need no code review.
 
 Keep the review static. Read source, tests, and author evidence; never run the app, tests, builds, profilers, or benchmarks. For runtime-dependent judgments, cite measured author evidence or report the gap. Never estimate latency, query plans, or bundle size.
 
@@ -23,7 +23,7 @@ Compare the change with its criteria, boundary and failure behavior, tests, and 
 
 Check names, control flow, grouping, and module boundaries. Reject no-op variables, compatibility debris, and comments that narrate removed code. Question `temp`, `data`, `result`, `_unused`, and `// removed` without context.
 
-Prefer a complete shorter solution; 1000 lines where 100 suffice is a failure. Do not generalize before the third use case. Repeated conditionals on one shape suggest a missing model or dispatcher. Keep new policy out of unrelated flows.
+Prefer fewer concepts and direct code. Judge helpers by actual duplication and reader effort removed, including imports, types, fixtures and callers. Fewer formatted lines are not evidence of simpler code. Keep new policy out of unrelated flows.
 
 ### 3. Architecture
 
@@ -62,7 +62,7 @@ Prefer the remedy that removes concepts rather than redistributing them.
 
 ## Change Sizing
 
-Flag changes over ~300 lines, mixed refactoring and behavior, or growth beyond ~1000 lines without decomposition. Propose a stack or cohesive horizontal or vertical split. Complete deletions and automated refactors can be larger.
+Split unrelated behaviors, risks or ownership boundaries. Do not force mechanical batches into micro-PRs to meet a LOC quota. Flag scope that cannot be reviewed reliably and name a coherent split.
 
 ## Review Process
 
@@ -114,4 +114,4 @@ Treat structural regressions as presumptive blockers under assigned severity rul
 
 ## Simplification
 
-Understand source history and tests before suggesting removal. Preserve behavior exactly. Apply and test simplifications one at a time through the authorized owner; revert changes that alter behavior or make review harder.
+Read affected source and tests; consult history only for an unresolved contract. Preserve behavior and independent regression oracles. Verify a related simplification batch through its owner; require targeted before/after or fault evidence when ordinary checks cannot establish preservation. Reject relocation, formatting-only LOC gains and changes that make reasoning harder.

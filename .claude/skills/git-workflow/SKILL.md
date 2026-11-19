@@ -33,7 +33,7 @@ Separate formatting, refactoring, and features. Include a small related cleanup 
 
 ### 5. Size Your Changes
 
-Target ~100 lines per commit or PR. Split changes over ~1000 into independently reviewable units.
+Size commits by coherent behavior and reviewability, not a LOC quota. Keep related mechanical changes together; split independent risks or ownership boundaries.
 
 ## Branching Strategy
 
@@ -47,16 +47,17 @@ Isolate parallel writers in separate worktrees instead of switching a shared dir
 - Restore only owned paths or hunks after confirming no later writer touched them. Stop and coordinate when ownership is unclear.
 - Prefer isolated worktrees for experiments. Save changes before removing their workspace; do not assume cleanup preserves uncommitted work.
 - Before an authorized commit, stage owned paths and inspect `git diff --cached --name-only` and `git diff --cached --check`.
-- Regenerate or reconcile the candidate manifest so staged bytes and deletions match the accepted worktree binding. Unexpected, ambient, or mismatched staged content blocks the commit.
+- For an explicitly bound candidate, reconcile staged bytes and deletions with its manifest. Routine commits need no manifest or binding ledger. Unexpected or unrelated staged content still blocks any commit.
+- Keep source metrics separate from publication identity. An authorized commit that only advances HEAD does not change source bytes; reuse source evidence where its conditions still hold. Explicitly bound merge or release work retains its binding requirements.
 - Treat commit, push, PR creation, deploy, force-push, and history rewrite as separate permissions. Never force-push a shared branch without authorization.
 
 ## Change Summaries
 
-Report CHANGES MADE, THINGS I DIDN'T TOUCH (intentionally), and POTENTIAL CONCERNS. Use exact paths and concrete effects. Omit empty sections rather than retelling the work.
+Report changed paths, applicable checks, commit SHA and real concerns. Do not produce an untouched-files inventory or repeat the work log.
 
 ## Pre-Commit Hygiene
 
-Run applicable repository checks before reporting changed source complete. Documentation-only changes do not require application gates; check their formatting and references.
+Reuse applicable passing checks for unchanged source. Documentation-only changes need formatting, references and applicable configuration checks, not application gates or code review.
 
 ## Handling Generated Files
 

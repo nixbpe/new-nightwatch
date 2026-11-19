@@ -2,7 +2,6 @@
 
 ## Claude Code
 
-- Orchestrated delivery (`/implement-issue`, `/review-pr`) runs in a main session started with `claude --agent tech-lead`. Workers have no `Agent` tool in `tools`, so only that session dispatches.
-- Agents live in `.claude/agents/`, skills and slash commands in `.claude/skills/`, checklists in `.claude/references/`.
-- Worker agents and leaf skills name neither skills nor agents. Commands (skills with `argument-hint`) and the Technical Lead playbook `task-delegation` wire them together, and `agent:check` enforces this.
-- `bun run agent:check` validates agent, skill and reference wiring under `.claude`.
+- Use the direct workflow in `AGENTS.md` for routine work. Start `claude --agent tech-lead` for orchestrated delivery (`/implement-issue`, `/review-pr`); role permissions still apply.
+- Agents, skills and checklists live in `.claude/agents/`, `.claude/skills/` and `.claude/references/`. Commands and the Technical Lead wire them together; workers do not dispatch.
+- `bun run agent:check` validates this wiring. Documentation-only rule changes need wiring and formatting checks, not application tests or an agent review.
