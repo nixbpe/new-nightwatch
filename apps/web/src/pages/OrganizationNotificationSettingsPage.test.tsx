@@ -183,88 +183,45 @@ describe("OrganizationNotificationSettingsPage", () => {
     ).toHaveTextContent("org-a");
   });
 
-  it("sends the loaded version with a changed owner setting", async () => {
-    fetchSettingsMock
-      .mockResolvedValueOnce({
-        organizationId: ORG_A,
-        settingsChangedEnabled: true,
-        monitorAlertsEnabled: true,
-        version: 4,
-      })
-      .mockResolvedValue({
-        organizationId: ORG_A,
-        settingsChangedEnabled: false,
-        monitorAlertsEnabled: true,
-        version: 5,
-      });
-    updateSettingsMock.mockResolvedValue({
-      organizationId: ORG_A,
-      settingsChangedEnabled: false,
-      monitorAlertsEnabled: true,
-      version: 5,
-    });
-    const user = userEvent.setup();
-    renderPage();
-
-    const toggle = await screen.findByTestId(
+  it.each([
+    [
+      "sends the loaded version with a changed owner setting",
       "organization-notifications-settings-changed",
-    );
-    await user.click(toggle);
-    await user.click(screen.getByTestId("organization-notifications-save"));
-
-    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
-      settingsChangedEnabled: false,
-      expectedVersion: 4,
-    });
-    expect(
-      await screen.findByTestId("organization-notifications-settings-changed"),
-    ).not.toBeChecked();
-    expect(
-      await screen.findByTestId("organization-notifications-success"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the monitor alerts checkbox and saves only that toggle", async () => {
+      4,
+      { settingsChangedEnabled: false, monitorAlertsEnabled: true, version: 5 },
+      { settingsChangedEnabled: false, expectedVersion: 4 },
+    ],
+    [
+      "shows the monitor alerts checkbox and saves only that toggle",
+      "organization-notifications-monitor-alerts",
+      6,
+      { settingsChangedEnabled: true, monitorAlertsEnabled: false, version: 7 },
+      { monitorAlertsEnabled: false, expectedVersion: 6 },
+    ],
+  ] as const)("%s", async (_label, testId, version, saved, expectedPatch) => {
     fetchSettingsMock
       .mockResolvedValueOnce({
         organizationId: ORG_A,
         settingsChangedEnabled: true,
         monitorAlertsEnabled: true,
-        version: 6,
+        version,
       })
-      .mockResolvedValue({
-        organizationId: ORG_A,
-        settingsChangedEnabled: true,
-        monitorAlertsEnabled: false,
-        version: 7,
-      });
-    updateSettingsMock.mockResolvedValue({
-      organizationId: ORG_A,
-      settingsChangedEnabled: true,
-      monitorAlertsEnabled: false,
-      version: 7,
-    });
+      .mockResolvedValue({ organizationId: ORG_A, ...saved });
+    updateSettingsMock.mockResolvedValue({ organizationId: ORG_A, ...saved });
     const user = userEvent.setup();
     renderPage();
 
-    const monitorToggle = await screen.findByTestId(
-      "organization-notifications-monitor-alerts",
-    );
-    expect(monitorToggle).toBeChecked();
+    const toggle = await screen.findByTestId(testId);
+    expect(toggle).toBeChecked();
     expect(
       screen.getByTestId("organization-notifications-save"),
     ).toBeDisabled();
 
-    await user.click(monitorToggle);
+    await user.click(toggle);
     await user.click(screen.getByTestId("organization-notifications-save"));
 
-    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
-      monitorAlertsEnabled: false,
-      expectedVersion: 6,
-    });
-    expect(
-      await screen.findByTestId("organization-notifications-monitor-alerts"),
-    ).not.toBeChecked();
+    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, expectedPatch);
+    expect(await screen.findByTestId(testId)).not.toBeChecked();
     expect(
       await screen.findByTestId("organization-notifications-success"),
     ).toBeInTheDocument();
