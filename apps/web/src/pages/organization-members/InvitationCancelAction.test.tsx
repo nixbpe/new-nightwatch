@@ -119,11 +119,10 @@ describe("invitation cancel", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    expect(
-      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-
-    const row = screen.getByTestId(`pending-invitation-row-${publicId(1)}`);
+    const row = await screen.findByTestId(
+      `pending-invitation-row-${publicId(1)}`,
+    );
+    expect(row).toHaveTextContent(emailOf(1));
     expect(
       within(row).getByTestId("pending-invitation-sent-at"),
     ).toHaveAttribute("datetime", invitation(1).sentAt);
@@ -235,9 +234,6 @@ describe("invitation cancel", () => {
       screen.getByTestId("pending-invitations-cancel-success"),
     ).toHaveTextContent(emailOf(2));
     expect(sectionStatus()).toHaveTextContent(emailOf(2));
-    expect(
-      screen.getByTestId("pending-invitations-cancel-success"),
-    ).toBeVisible();
     expect(
       screen.queryByTestId(`pending-invitation-row-${publicId(2)}`),
     ).toBeNull();
@@ -480,44 +476,27 @@ describe("invitation cancel", () => {
       page: { limit: 50, offset: 0, total: 2 },
     });
     renderSection();
+    const ownerRow = await screen.findByTestId(
+      `pending-invitation-row-${publicId(1)}`,
+    );
+    expect(ownerRow).toHaveTextContent(emailOf(1));
     expect(
-      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-      ).getByTestId("pending-invitation-role-owner"),
+      within(ownerRow).getByTestId("pending-invitation-role-owner"),
     ).toBeVisible();
+    expect(within(ownerRow).getByTestId("invitation-owner-only")).toBeVisible();
     expect(
-      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-      ).getByTestId("invitation-owner-only"),
-    ).toBeVisible();
-    expect(
-      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-      ).queryAllByTestId(/^invitation-(cancel|resend)-/),
+      within(ownerRow).queryAllByTestId(/^invitation-(cancel|resend)-/),
     ).toHaveLength(0);
+    const manageableRow = screen.getByTestId(
+      `pending-invitation-row-${publicId(2)}`,
+    );
     expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
-      ).getByTestId(`invitation-cancel-${publicId(2)}`),
+      within(manageableRow).getByTestId(`invitation-cancel-${publicId(2)}`),
     ).toBeVisible();
     expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
-      ).getByTestId(`invitation-resend-${publicId(2)}`),
+      within(manageableRow).getByTestId(`invitation-resend-${publicId(2)}`),
     ).toBeVisible();
-    expect(
-      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
-    ).toHaveTextContent(emailOf(2));
+    expect(manageableRow).toHaveTextContent(emailOf(2));
   });
 
   it("shows the 404 message without an email, refreshes once, never replays and focuses the heading when the row is gone", async () => {
@@ -541,9 +520,6 @@ describe("invitation cancel", () => {
 
     expect(
       await screen.findByTestId("pending-invitations-cancel-error"),
-    ).toBeVisible();
-    expect(
-      screen.getByTestId("pending-invitations-cancel-error"),
     ).toBeVisible();
     expect(sectionStatus()).not.toHaveTextContent("@");
     expect(

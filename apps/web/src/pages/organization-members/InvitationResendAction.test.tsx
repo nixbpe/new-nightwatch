@@ -144,11 +144,10 @@ describe("invitation resend", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    expect(
-      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-
-    const row = screen.getByTestId(`pending-invitation-row-${publicId(1)}`);
+    const row = await screen.findByTestId(
+      `pending-invitation-row-${publicId(1)}`,
+    );
+    expect(row).toHaveTextContent(emailOf(1));
     expect(
       within(row).getByTestId("pending-invitation-sent-at"),
     ).toHaveAttribute("datetime", invitation(1).sentAt);
@@ -254,9 +253,6 @@ describe("invitation resend", () => {
     });
     expect(
       await screen.findByTestId("pending-invitations-resend-success"),
-    ).toBeVisible();
-    expect(
-      screen.getByTestId("pending-invitations-resend-success"),
     ).toBeVisible();
     expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
       "3",
@@ -446,23 +442,11 @@ describe("invitation resend", () => {
   });
 
   it.each([
-    [
-      new ApiError("INVITATION_LIMIT_REACHED", "full", 409),
-      "องค์กรมีคำเชิญที่รอดำเนินการครบ 100 รายการแล้ว",
-    ],
-    [new ApiError("INVITATION_NOT_FOUND", "gone", 404), "ไม่พบคำเชิญนี้แล้ว"],
-    [
-      new ApiError("USER_ALREADY_MEMBER", "member", 409),
-      "ผู้รับเป็นสมาชิกแล้ว",
-    ],
-    [
-      new ApiError("INVITATION_ALREADY_PENDING", "dup", 409),
-      "มีคำเชิญที่ยังใช้ได้สำหรับอีเมลนี้แล้ว",
-    ],
-    [
-      new ApiError("INTERNAL_ERROR", "boom", 500),
-      "ส่งคำเชิญซ้ำไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-    ],
+    new ApiError("INVITATION_LIMIT_REACHED", "full", 409),
+    new ApiError("INVITATION_NOT_FOUND", "gone", 404),
+    new ApiError("USER_ALREADY_MEMBER", "member", 409),
+    new ApiError("INVITATION_ALREADY_PENDING", "dup", 409),
+    new ApiError("INTERNAL_ERROR", "boom", 500),
   ])(
     "shows one message without an email, refreshes and never shows success for %o",
     async (failure) => {
