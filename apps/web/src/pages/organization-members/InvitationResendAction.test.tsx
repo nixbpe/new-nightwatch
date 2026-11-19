@@ -633,45 +633,6 @@ describe("invitation resend", () => {
     },
   );
 
-  it("shows no resend button for a row the actor cannot manage", async () => {
-    fetchList.mockResolvedValue({
-      organizationId: A,
-      invitations: [
-        invitation(1, { role: "owner", manageable: false }),
-        invitation(2),
-      ],
-      activeCount: 2,
-      activeLimit: 100,
-      page: { limit: 50, offset: 0, total: 2 },
-    });
-    renderSection();
-    expect(
-      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-      ).queryAllByTestId(/^invitation-(cancel|resend)-/),
-    ).toHaveLength(0);
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-      ).getByTestId("invitation-owner-only"),
-    ).toBeVisible();
-    expect(
-      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
-    ).toHaveTextContent(emailOf(1));
-    expect(
-      within(
-        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
-      ).getByTestId(`invitation-resend-${publicId(2)}`),
-    ).toBeVisible();
-    expect(
-      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
-    ).toHaveTextContent(emailOf(2));
-  });
-
   async function cancelThenResend(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByTestId(`invitation-cancel-${publicId(3)}`));
     await user.click(

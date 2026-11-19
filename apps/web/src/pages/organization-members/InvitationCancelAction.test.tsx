@@ -511,6 +511,11 @@ describe("invitation cancel", () => {
       ).getByTestId(`invitation-cancel-${publicId(2)}`),
     ).toBeVisible();
     expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+      ).getByTestId(`invitation-resend-${publicId(2)}`),
+    ).toBeVisible();
+    expect(
       screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
     ).toHaveTextContent(emailOf(2));
   });
