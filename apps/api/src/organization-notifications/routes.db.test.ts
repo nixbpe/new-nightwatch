@@ -1152,12 +1152,20 @@ describe("organization monitor alerts setting HTTP contract", () => {
     expect(await current()).toEqual(state);
 
     // Same value: no version bump and no audit.
+    const intentsBeforeNoop = await changedIntents();
     const noop = await ownerClient("PATCH", settingsPath, {
       monitorAlertsEnabled: false,
       expectedVersion: state.version,
     });
     expect(noop.status).toBe(200);
-    expect(noop.json).toMatchObject({ version: state.version });
+    expect(noop.json).toEqual({
+      organizationId: settingsOrganizationId,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: false,
+      version: state.version,
+    });
+    expect(await current()).toEqual(state);
+    expect(await changedIntents()).toBe(intentsBeforeNoop);
     expect(await alertAudits()).toHaveLength(1);
 
     // Admin may edit it back; second audit line names the admin.
