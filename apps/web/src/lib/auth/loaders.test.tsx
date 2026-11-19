@@ -201,6 +201,16 @@ const meContext: MeContextResponse = {
   lastActiveTenantId: null,
 };
 
+function viewerContext(organizationId: string): MeContextResponse {
+  return {
+    ...meContext,
+    organizations: [
+      { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+    ],
+    lastActiveTenantId: organizationId,
+  };
+}
+
 const invitation: InvitationResponse = {
   invitation: {
     id: "inv-5",
@@ -1036,13 +1046,7 @@ describe("monitorsOverviewLoader", () => {
 
   it("stages the first list page in the identity client for a member", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     fetchMonitorListMock.mockResolvedValue(emptyList);
     renderAt(
       [route],
@@ -1101,13 +1105,7 @@ describe("projectOverviewLoader", () => {
 
   it("stages list and recent events for a member", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     fetchMonitorListMock.mockResolvedValue(emptyList);
     vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
     renderAt(
@@ -1170,13 +1168,7 @@ describe("projectsLoader", () => {
 
   it("stages the project list in the identity client for a member", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     fetchProjectListMock.mockResolvedValue({ projects: [] });
     renderAt([route], `/organizations/${organizationId}/projects`);
 
@@ -1221,13 +1213,7 @@ describe("projectMembersLoader", () => {
 
   it("stages the project and its members in the identity client for a member", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     fetchProjectDetailMock.mockResolvedValue({
       id: projectId,
       name: "Payments",
@@ -1286,13 +1272,7 @@ describe("monitorDetailLoader", () => {
 
   it("stages the monitor in the identity client for a member", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     const response = { monitor: detail() };
     fetchMonitorDetailMock.mockResolvedValue(response);
     renderAt([route], path);
@@ -1321,13 +1301,7 @@ describe("monitorDetailLoader", () => {
 
   it("still renders the page when the prefetch fails, so the page shows its own state", async () => {
     sessionState.data = { user: VERIFIED };
-    fetchMeContextMock.mockResolvedValue({
-      ...meContext,
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
-      ],
-      lastActiveTenantId: organizationId,
-    });
+    fetchMeContextMock.mockResolvedValue(viewerContext(organizationId));
     fetchMonitorDetailMock.mockRejectedValue(new Error("404"));
     renderAt([route], path);
 
