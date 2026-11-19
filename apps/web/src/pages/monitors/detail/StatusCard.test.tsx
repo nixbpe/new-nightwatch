@@ -123,22 +123,11 @@ describe("uptime caption (AC-75, AC-14)", () => {
 });
 
 describe("data-as-of dot (AC-81)", () => {
-  it("exposes fresh data with the actual as-of time", () => {
-    render(<StatusCard monitor={detail()} fresh />);
+  it.each([true, false])("shows as-of data with fresh=%s", (fresh) => {
+    render(<StatusCard monitor={detail()} fresh={fresh} />);
     const { dot, line, time } = dotOf();
     expect(dot).toHaveAttribute("aria-hidden", "true");
-    expect(dot).toHaveAttribute("data-fresh", "true");
-    expectAsOf(time);
-    expect(line).toHaveTextContent(
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-    );
-  });
-
-  it("keeps the actual as-of time once the last refresh failed", () => {
-    render(<StatusCard monitor={detail()} fresh={false} />);
-    const { line, dot, time } = dotOf();
-    expect(dot).toHaveAttribute("aria-hidden", "true");
-    expect(dot).toHaveAttribute("data-fresh", "false");
+    expect(dot).toHaveAttribute("data-fresh", String(fresh));
     expectAsOf(time);
     expect(line).toHaveTextContent(
       Intl.DateTimeFormat().resolvedOptions().timeZone,
