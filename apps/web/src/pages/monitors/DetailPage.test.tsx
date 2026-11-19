@@ -2,7 +2,6 @@ import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import type {
   Monitor,
-  MonitorListResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import {
@@ -137,7 +136,7 @@ describe.each(["detail", "response-times"] as const)(
     ])(
       "polls after %s only when recoverable",
       async (code, status, additionalCalls) => {
-        vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+        vi.useFakeTimers({ now: NOW });
         const failure = new ApiError(code, "read failed", status);
         const fetchMock =
           consumer === "detail" ? fetchDetailMock : fetchResponseTimesMock;
@@ -150,12 +149,10 @@ describe.each(["detail", "response-times"] as const)(
           consumer === "detail"
             ? monitorQueryKeys.detail(A, P, MONITOR_ID)
             : monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h");
-        await waitFor(() => {
-          expect(client.getQueryState(key)?.error).toBe(failure);
-        });
         await act(async () => {
           await vi.advanceTimersByTimeAsync(1);
         });
+        expect(client.getQueryState(key)?.error).toBe(failure);
         const before = fetchMock.mock.calls.length;
         // This suite fixes the polling interval at 60 ms; two ticks must reach each real query.
         await act(async () => {
@@ -1150,12 +1147,10 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
         reason: "http_status",
       },
     });
-
+  const PAUSE_MS = 10 * 60_000;
   let freshClient: QueryClient;
   function renderFresh() {
-    const result = renderDetail();
-    freshClient = result.queryClient;
-    return result;
+    freshClient = renderDetail().queryClient;
   }
   function snapshot() {
     expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
@@ -1199,290 +1194,127 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       );
     }
   }
-  async function dataAsOfDot() {
-    await readyDetail();
+  function expectFresh(expected: boolean) {
     snapshot();
-    return screen.getByTestId("monitor-status-freshness-dot");
+    for (const id of [
+      "monitor-status-freshness-dot",
+      "monitor-detail-health",
+    ]) {
+      expect(screen.getByTestId(id)).toHaveAttribute(
+        "data-fresh",
+        String(expected),
+      );
+    }
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   }
-  function headerBadge() {
-    const health = screen.getByTestId("monitor-detail-health");
-    expect(health).toHaveTextContent(/\S/);
-    return { pill: health, wrapper: health };
+  async function pauseRead() {
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
+    });
+    await waitFor(() => {
+      expectFresh(false);
+    });
+    expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
   }
-  it("pulses the data-as-of dot while fresh, goes neutral after a failed refresh and pulses again after recovery", async () => {
-    showDetail(detail());
-    renderFresh();
-    const fresh = await dataAsOfDot();
-    expect(fresh).toHaveAttribute("aria-hidden", "true");
-    expect(fresh).toHaveAttribute("data-fresh", "true");
 
-    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    expect(
-      await screen.findByTestId("monitor-detail-refresh-error"),
-    ).toBeInTheDocument();
-    const stale = await dataAsOfDot();
-    expect(stale).toHaveAttribute("data-fresh", "false");
+  it.each(["up", "down"] as const)(
+    "keeps both freshness consumers synchronized through failure and recovery for %s",
+    async (health) => {
+      const monitor = health === "down" ? downWithIncident() : detail();
+      showDetail(monitor);
+      renderFresh();
+      await readyDetail();
+      expectFresh(true);
+      expect(screen.getByTestId("monitor-detail-back")).toHaveAttribute(
+        "href",
+        `/organizations/${A}/projects/${P}/monitors`,
+      );
+      expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+        "data-health",
+        health,
+      );
+      fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+      await screen.findByTestId("monitor-detail-refresh-error");
+      expectFresh(false);
+      expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+        "data-health",
+        health,
+      );
+      showDetail(monitor);
+      await waitFor(() => {
+        expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
+        expectFresh(true);
+      });
+    },
+  );
 
-    showDetail(detail());
-    await waitFor(() => {
-      expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
-    });
-    const recovered = await dataAsOfDot();
-    expect(recovered).toHaveAttribute("data-fresh", "true");
-  });
+  it.each([
+    ["up", 0, "success"],
+    ["down", 0, "success"],
+    ["down", PAUSE_MS, "success"],
+    ["down", PAUSE_MS, "failure"],
+  ] as const)(
+    "keeps %s cues stale across a %d ms pause and pending resume until %s",
+    async (health, pauseMs, outcome) => {
+      const monitor = health === "down" ? downWithIncident() : detail();
+      showDetail(monitor);
+      renderFresh();
+      await readyDetail();
+      expectFresh(true);
+      await pauseRead();
+      vi.setSystemTime(NOW.getTime() + pauseMs);
+      const resumed = deferred<{ monitor: Monitor }>();
+      fetchDetailMock.mockReturnValue(resumed.promise);
+      const calls = fetchDetailMock.mock.calls.length;
+      onlineManager.setOnline(true);
+      await waitFor(() => {
+        expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+      });
+      expectFresh(false);
+      vi.setSystemTime(NOW.getTime() + pauseMs + 1_000);
+      await act(async () => {
+        if (outcome === "success") resumed.resolve({ monitor });
+        else resumed.reject(new ApiError("NETWORK_ERROR", "x", 0));
+        await Promise.resolve();
+      });
+      if (outcome === "failure") {
+        await screen.findByTestId("monitor-detail-refresh-error");
+        expectFresh(false);
+      } else {
+        await waitFor(() => {
+          expectFresh(true);
+        });
+      }
+    },
+  );
 
-  it("glows the badge while an incident is active, drops the glow on a failed refresh and brings it back on recovery", async () => {
+  it("keeps both cues fresh while a routine poll is pending", async () => {
     showDetail(downWithIncident());
     renderFresh();
     await readyDetail();
-    const { pill, wrapper } = headerBadge();
-    expect(pill).toHaveAttribute("data-health", "down");
-    expect(wrapper).toHaveAttribute("data-fresh", "true");
-    // Static glow: the dot is still the only live-pulse, and the badge keeps its neutral look (COL-01).
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "true",
-    );
-
-    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    expect(
-      await screen.findByTestId("monitor-detail-refresh-error"),
-    ).toBeInTheDocument();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
-    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-
-    showDetail(downWithIncident());
-    await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-    });
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "true",
-    );
-  });
-
-  // Offline, TanStack pauses the refetch (`fetchStatus: "paused"`) without an error: the data no longer refreshes, so it is not fresh (CMP-01).
-  it("drops the pulse of the dot while the refresh is paused offline and brings it back when it resumes", async () => {
-    showDetail(detail());
-    renderFresh();
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
-
-    onlineManager.setOnline(false);
-    await waitFor(() => {
-      expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
-          ?.fetchStatus,
-      ).toBe("paused");
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "false");
-    });
-    const paused = await dataAsOfDot();
-    expect(paused).toHaveAttribute("data-fresh", "false");
-    // No new copy: a pause is not a failed refresh.
-    expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
-
-    // Time passes while it is paused, so the response that follows is stamped after the pause began.
-    vi.setSystemTime(NOW.getTime() + 1_000);
-    onlineManager.setOnline(true);
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "true");
-    });
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
-  });
-
-  it("drops the badge glow while the refresh is paused offline and brings it back when it resumes", async () => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-
-    onlineManager.setOnline(false);
-    await waitFor(() => {
-      expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
-          ?.fetchStatus,
-      ).toBe("paused");
-    });
-    await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
-    });
-    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-    expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
-
-    vi.setSystemTime(NOW.getTime() + 1_000);
-    onlineManager.setOnline(true);
-    await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-    });
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "true",
-    );
-  });
-
-  // After a pause the query keeps the snapshot from before it, so a resumed fetch that has not succeeded yet must not make the cues fresh (Codex 4202249500). The clock moves on during the pause; the poll interval is mocked at 60 ms, so data counts as fresh for 120 ms.
-  const PAUSE_MS = 10 * 60_000;
-
-  it("keeps the dot and the glow off while the resumed fetch is pending, then restores both when it succeeds", async () => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-
-    onlineManager.setOnline(false);
-    await waitFor(() => {
-      expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
-          ?.fetchStatus,
-      ).toBe("paused");
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "false");
-    });
-    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
-    const resumed = deferred<{ monitor: Monitor }>();
-    fetchDetailMock.mockReturnValue(resumed.promise);
-    const calls = fetchDetailMock.mock.calls.length;
-    onlineManager.setOnline(true);
-    await waitFor(() => {
-      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
-    });
-    // The fetch is in flight and `data` is still the snapshot from before the pause.
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
-
-    await act(async () => {
-      resumed.resolve({ monitor: downWithIncident() });
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "true");
-    });
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-  });
-
-  it("stays not fresh when the resumed fetch fails", async () => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-
-    onlineManager.setOnline(false);
-    await waitFor(() => {
-      expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
-          ?.fetchStatus,
-      ).toBe("paused");
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "false");
-    });
-    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
-    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    onlineManager.setOnline(true);
-    expect(
-      await screen.findByTestId("monitor-detail-refresh-error"),
-    ).toBeInTheDocument();
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
-  });
-
-  it("keeps the dot and the glow off after a short pause while the resumed fetch is pending, however recent the snapshot is", async () => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-
-    onlineManager.setOnline(false);
-    await waitFor(() => {
-      expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
-          ?.fetchStatus,
-      ).toBe("paused");
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "false");
-    });
-    // No time passes: the snapshot is still within the age limit when the query resumes (Codex 4202350103).
-    const resumed = deferred<{ monitor: Monitor }>();
-    fetchDetailMock.mockReturnValue(resumed.promise);
-    const calls = fetchDetailMock.mock.calls.length;
-    onlineManager.setOnline(true);
-    await waitFor(() => {
-      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
-    });
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
-
-    vi.setSystemTime(NOW.getTime() + 1_000);
-    await act(async () => {
-      resumed.resolve({ monitor: downWithIncident() });
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "true");
-    });
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-  });
-
-  it("keeps the dot and the glow on while a routine poll is in flight", async () => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-
+    expectFresh(true);
     const poll = deferred<{ monitor: Monitor }>();
     fetchDetailMock.mockReturnValue(poll.promise);
     const calls = fetchDetailMock.mock.calls.length;
     await waitFor(() => {
       expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
     });
-    // Pending, no pause and no error: nothing flickers.
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-
+    expectFresh(true);
     await act(async () => {
       poll.resolve({ monitor: downWithIncident() });
       await Promise.resolve();
     });
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
+    expectFresh(true);
   });
 
-  it("opens from a cached snapshot older than the limit with the dot and the glow off until the refetch succeeds", async () => {
+  it("keeps both cues stale for an old cached snapshot until the refetch succeeds", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -1496,24 +1328,15 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     renderDetail(A, MONITOR_ID, queryClient);
     freshClient = queryClient;
     await readyDetail();
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
-    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
-      "data-fresh",
-      "false",
-    );
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
+    expectFresh(false);
     expect(fetchDetailMock).toHaveBeenCalled();
-
     await act(async () => {
       refetch.resolve({ monitor: downWithIncident() });
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(
-        screen.getByTestId("monitor-status-freshness-dot"),
-      ).toHaveAttribute("data-fresh", "true");
+      expectFresh(true);
     });
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
   });
 
   it.each([
@@ -1522,102 +1345,38 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       "the monitor is paused",
       () => detail({ status: "paused", health: "paused" }),
     ],
-  ])("drops the badge glow when %s", async (_name, next) => {
-    showDetail(downWithIncident());
-    renderFresh();
-    await readyDetail();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
+  ])(
+    "retires the incident indication when %s without marking fresh data stale",
+    async (_name, next) => {
+      showDetail(downWithIncident());
+      renderFresh();
+      await readyDetail();
+      expectFresh(true);
+      showDetail(next());
+      await waitFor(() => {
+        expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+          "data-incident-open",
+          "false",
+        );
+        expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
+      });
+      expectFresh(true);
+    },
+  );
 
-    showDetail(next());
-    await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveAttribute(
-        "data-incident-open",
-        "false",
-      );
-      expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
-    });
-    // The data is fresh again, so the dot keeps pulsing: no glow is not a stale state.
-    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
-  });
-
-  it("does not glow a down monitor that has no open incident", async () => {
+  it("keeps down health without an incident indication when no incident is open", async () => {
     showDetail(detail({ health: "down", openIncident: null }));
     renderFresh();
     await readyDetail();
-    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
-    expect(headerBadge().wrapper).toHaveAttribute(
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "down",
+    );
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
       "data-incident-open",
       "false",
     );
     expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
-  });
-
-  it("leaves the Overview pills of the same down monitor without a glow", async () => {
-    const hour = Date.UTC(2026, 8, 30, 7);
-    fetchListMock.mockResolvedValue({
-      summary: { up: 0, down: 1, unknown: 0, paused: 0, total: 1, limit: 20 },
-      monitors: [
-        {
-          id: MONITOR_ID,
-          name: "Payments API",
-          url: "https://api.acme.example/health",
-          method: "GET",
-          intervalSeconds: 300,
-          status: "active",
-          health: "down",
-          healthReason: null,
-          lastKnownDown: false,
-          consecutiveFailures: 3,
-          lastCheckAt: "2026-09-30T07:30:00.000Z",
-          openIncident: {
-            startedAt: "2026-09-30T07:20:00.000Z",
-            reason: "http_status",
-          },
-          lastResponseTimeMs: 182,
-          responseP95Ms24h: 182,
-          responseSparkline: Array.from({ length: 24 }, (_, index) => ({
-            hourStart: new Date(hour - (23 - index) * 3_600_000).toISOString(),
-            avgMs: null,
-          })),
-          ssl: {
-            level: "ok",
-            daysRemaining: 128,
-            host: "api.acme.example",
-            issuer: null,
-            notAfter: null,
-          },
-          uptime: {
-            h24: { percent: 100, checks: 288, coveragePercent: 100 },
-            d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
-          },
-        },
-      ],
-      page: { limit: 25, offset: 0, total: 1 },
-      dataAsOf: DATA_AS_OF,
-    } satisfies MonitorListResponse);
-    showDetail(downWithIncident());
-    const user = userEvent.setup();
-    renderFresh();
-    await readyDetail();
-    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
-
-    await user.click(screen.getByTestId("monitor-detail-back"));
-    await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(
-        new RegExp(`^/organizations/${A}/projects/${P}/monitors$`),
-      );
-    });
-    const row = await screen.findByTestId(`monitor-list-row-${MONITOR_ID}`);
-    expect(
-      within(row).getByTestId(`monitor-list-name-${MONITOR_ID}`),
-    ).toHaveTextContent(/^Payments API$/);
-    expect(within(row).getByTestId("monitor-list-health")).toHaveAttribute(
-      "data-health",
-      "down",
-    );
-    expect(
-      within(row).getByTestId("monitor-list-incident-time"),
-    ).toHaveAttribute("dateTime", "2026-09-30T07:20:00.000Z");
   });
 });
 

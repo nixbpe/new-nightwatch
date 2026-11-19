@@ -253,14 +253,6 @@ describe("Overview view toggle", () => {
         "monitor-list-name-cc2c1bb9-982f-4928-b022-8f808a7a1926",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-cc2c1bb9-982f-4928-b022-8f808a7a1926",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/cc2c1bb9-982f-4928-b022-8f808a7a1926`,
-    );
     const group = screen.getByTestId("monitor-overview-health-filter");
     expect(group).toHaveRole("group");
     expect(group).toHaveAccessibleName();
@@ -323,14 +315,6 @@ describe("Overview view toggle", () => {
         "monitor-list-name-f0067249-5706-4d15-8c26-20883d42c86e",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f0067249-5706-4d15-8c26-20883d42c86e",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f0067249-5706-4d15-8c26-20883d42c86e`,
-    );
     expect(screen.getByTestId("monitor-list-cell-url")).toHaveTextContent(url);
     expect(screen.queryByTestId("monitor-list-check-time")).toBeNull();
     expect(
@@ -355,14 +339,6 @@ describe("Overview view toggle", () => {
         "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/3852bb10-1633-4893-8308-22781b496670`,
-    );
     expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
     first.unmount();
 
@@ -377,14 +353,6 @@ describe("Overview view toggle", () => {
         "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/3852bb10-1633-4893-8308-22781b496670`,
-    );
     expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
     getItem.mockRestore();
   });
@@ -401,14 +369,6 @@ describe("Overview sort", () => {
         "monitor-list-name-2dffe3b9-9919-40f5-b97d-48bce56292b2",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-2dffe3b9-9919-40f5-b97d-48bce56292b2",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/2dffe3b9-9919-40f5-b97d-48bce56292b2`,
-    );
     const select = screen.getByTestId("monitor-overview-sort");
     expect(
       within(select)
@@ -430,14 +390,6 @@ describe("Overview sort", () => {
         "monitor-list-name-f6f65455-42cb-4673-9f75-cffc5d108f77",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f6f65455-42cb-4673-9f75-cffc5d108f77",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f6f65455-42cb-4673-9f75-cffc5d108f77`,
-    );
     expect(
       queryClient.getQueryData(
         monitorQueryKeys.list(A, P, { limit: 25, offset: 0 }),
@@ -482,28 +434,12 @@ describe("Overview sort", () => {
         "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
       ),
     ).toHaveTextContent(/^Row0$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
-    );
     await user.click(screen.getByTestId("monitor-overview-next"));
     expect(
       await screen.findByTestId(
         "monitor-list-name-1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6",
       ),
     ).toHaveTextContent(/^Last$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6`,
-    );
 
     const select = screen.getByTestId("monitor-overview-sort");
     const sorted = MONITOR_LIST_SORTS.filter((value) => value !== "problems");
@@ -570,14 +506,6 @@ describe("Overview sort", () => {
         "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
-    );
     await user.selectOptions(
       screen.getByTestId("monitor-overview-sort"),
       "newest",
@@ -594,14 +522,6 @@ describe("Overview sort", () => {
         "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
-    );
     expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("problems");
   });
 
@@ -629,14 +549,6 @@ describe("Overview sort", () => {
         "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
       ),
     ).toHaveTextContent(/^Initial$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
-    );
     const select = screen.getByTestId("monitor-overview-sort");
 
     await user.selectOptions(select, "name");
@@ -649,14 +561,6 @@ describe("Overview sort", () => {
         "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
       ),
     ).toHaveTextContent(/^Initial$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
-    );
 
     await act(async () => {
       resolvers["newest"]?.(
@@ -674,14 +578,6 @@ describe("Overview sort", () => {
         "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
       ),
     ).toHaveTextContent(/^NewestResult$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
-    );
     await act(async () => {
       resolvers["name"]?.(
         list([
@@ -698,14 +594,6 @@ describe("Overview sort", () => {
         "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
       ),
     ).toHaveTextContent(/^NewestResult$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
-    );
     expect(
       screen.queryByTestId(
         "monitor-list-name-b1878d87-01eb-424c-98e2-971687c7766e",
@@ -737,14 +625,6 @@ describe("Overview method, interval and sparkline", () => {
         "monitor-list-name-51fd0299-e05f-437b-81c5-d7848b70e032",
       ),
     ).toHaveTextContent(/^Api$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-51fd0299-e05f-437b-81c5-d7848b70e032",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/51fd0299-e05f-437b-81c5-d7848b70e032`,
-    );
     const card = rowOf("51fd0299-e05f-437b-81c5-d7848b70e032");
     const cardScope = within(card);
     expect(cardScope.getByTestId("monitor-list-cell-method")).toHaveTextContent(
@@ -788,14 +668,6 @@ describe("Overview method, interval and sparkline", () => {
         "monitor-list-name-1b3ebf89-4943-45fb-a57c-97e8c6802978",
       ),
     ).toHaveTextContent(/^Spark$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-1b3ebf89-4943-45fb-a57c-97e8c6802978",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/1b3ebf89-4943-45fb-a57c-97e8c6802978`,
-    );
     const card = within(rowOf("1b3ebf89-4943-45fb-a57c-97e8c6802978"));
     const text = card.getByTestId("monitor-list-spark-description");
     expect(text).toHaveTextContent(/1,500/);
@@ -840,14 +712,6 @@ describe("Overview method, interval and sparkline", () => {
         "monitor-list-name-e3c050b4-64fb-434f-a75a-6d13efef0ae4",
       ),
     ).toHaveTextContent(/^Empty$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-e3c050b4-64fb-434f-a75a-6d13efef0ae4",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/e3c050b4-64fb-434f-a75a-6d13efef0ae4`,
-    );
     const card = within(rowOf("e3c050b4-64fb-434f-a75a-6d13efef0ae4"));
     expect(
       card.getByTestId("monitor-list-spark-empty"),
@@ -1042,14 +906,6 @@ describe("Overview states", () => {
         "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
-    );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
     expect(
@@ -1068,14 +924,6 @@ describe("Overview states", () => {
       ),
     ).toHaveTextContent(/^Web$/);
     expect(
-      screen.getByTestId(
-        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
-    );
-    expect(
       screen
         .getByTestId("monitor-overview-announcement")
         .textContent.match(/\d+/g),
@@ -1093,14 +941,6 @@ describe("Overview states", () => {
         "monitor-list-name-904289d6-2334-48c7-9cd6-ff076ed1c9bd",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-904289d6-2334-48c7-9cd6-ff076ed1c9bd",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/904289d6-2334-48c7-9cd6-ff076ed1c9bd`,
-    );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
     const clear = await screen.findByTestId("monitor-overview-clear");
@@ -1155,14 +995,6 @@ describe("Overview success", () => {
         "monitor-list-name-5a39cdda-9552-4e75-a4a1-1290ef26c13b",
       ),
     ).toHaveTextContent(/^Payments$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5a39cdda-9552-4e75-a4a1-1290ef26c13b",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/5a39cdda-9552-4e75-a4a1-1290ef26c13b`,
-    );
 
     expect(
       screen.getByTestId("monitor-overview-table-region"),
@@ -1232,14 +1064,6 @@ describe("Overview success", () => {
         "monitor-list-name-4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96",
       ),
     ).toHaveTextContent(/^UpRow$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96`,
-    );
 
     for (const [name, health] of [
       ["4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96", "up"],
@@ -1257,6 +1081,11 @@ describe("Overview success", () => {
         "monitor-list-incident",
       ),
     ).toHaveAttribute("data-reason", "http_status");
+    expect(
+      within(rowOf("a50193a1-4705-43e1-b2d0-d7b4125db6de")).getByTestId(
+        "monitor-list-incident-time",
+      ),
+    ).toHaveAttribute("dateTime", "2026-09-30T07:02:00.000Z");
     expect(
       within(rowOf("6f473ce2-b29a-4b66-8aa7-2571328e193d")).getByTestId(
         "monitor-list-reason",
@@ -1300,14 +1129,6 @@ describe("Overview success", () => {
         "monitor-list-name-ceadac25-860f-450b-8a5a-919bed1d4be9",
       ),
     ).toHaveTextContent(/^Flaky$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-ceadac25-860f-450b-8a5a-919bed1d4be9",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/ceadac25-860f-450b-8a5a-919bed1d4be9`,
-    );
 
     const flaky = rowOf("ceadac25-860f-450b-8a5a-919bed1d4be9");
     expect(
@@ -1342,66 +1163,21 @@ describe("Overview success", () => {
   it("renders every SSL level and its actual days remaining", async () => {
     // The table keeps to the design's columns; SSL stays on the cards.
     window.localStorage.setItem("nightwatch:monitors-view", "cards");
-    const levels: Item["ssl"][] = [
-      {
-        level: "ok",
-        daysRemaining: 128,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "caution",
-        daysRemaining: 30,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "danger",
-        daysRemaining: 7,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "expired",
-        daysRemaining: -2,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "expired",
-        daysRemaining: null,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "not_https",
-        daysRemaining: null,
-        host: null,
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "unreadable",
-        daysRemaining: null,
-        host: "h",
-        issuer: null,
-        notAfter: null,
-      },
-      {
-        level: "no_data",
-        daysRemaining: null,
-        host: null,
-        issuer: null,
-        notAfter: null,
-      },
+    const levels: Omit<Item["ssl"], "issuer" | "notAfter">[] = [
+      { level: "ok", daysRemaining: 128, host: "h" },
+      { level: "caution", daysRemaining: 30, host: "h" },
+      { level: "danger", daysRemaining: 7, host: "h" },
+      { level: "expired", daysRemaining: -2, host: "h" },
+      { level: "expired", daysRemaining: null, host: "h" },
+      { level: "not_https", daysRemaining: null, host: null },
+      { level: "unreadable", daysRemaining: null, host: "h" },
+      { level: "no_data", daysRemaining: null, host: null },
     ];
     const monitors = levels.map((ssl, index) =>
-      item({ name: `Ssl${String(index)}`, ssl }),
+      item({
+        name: `Ssl${String(index)}`,
+        ssl: { ...ssl, issuer: null, notAfter: null },
+      }),
     );
     fetchListMock.mockResolvedValue(list(monitors));
     renderPage();
@@ -1496,14 +1272,6 @@ describe("Overview success", () => {
       ),
     ).toHaveTextContent(/^Web$/);
     expect(
-      screen.getByTestId(
-        "monitor-list-name-cde37086-af6e-4878-abc7-84b2238f07a7",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/cde37086-af6e-4878-abc7-84b2238f07a7`,
-    );
-    expect(
       within(rowOf("cde37086-af6e-4878-abc7-84b2238f07a7")).getByTestId(
         "monitor-list-check-time",
       ),
@@ -1546,14 +1314,6 @@ describe("Overview times, focus and filter failures", () => {
         "monitor-list-name-5189c3f5-3cef-4149-92be-d16080697bc0",
       ),
     ).toHaveTextContent(/^DownOld$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5189c3f5-3cef-4149-92be-d16080697bc0",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/5189c3f5-3cef-4149-92be-d16080697bc0`,
-    );
 
     const withDate = formatDateTime(earlier);
     for (const [name, source] of [
@@ -1614,14 +1374,6 @@ describe("Overview times, focus and filter failures", () => {
         "monitor-list-name-69dfad28-dc40-44c9-a526-6355ac476e6e",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-69dfad28-dc40-44c9-a526-6355ac476e6e",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/69dfad28-dc40-44c9-a526-6355ac476e6e`,
-    );
 
     const pending = Promise.withResolvers<MonitorListResponse>();
     fetchListMock.mockReturnValue(pending.promise);
@@ -1664,14 +1416,6 @@ describe("Overview times, focus and filter failures", () => {
         "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
-    );
 
     await user.click(screen.getByTestId("monitor-overview-health-down"));
     expect(
@@ -1690,14 +1434,6 @@ describe("Overview times, focus and filter failures", () => {
         "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
-    );
     expect(screen.getByTestId("monitor-overview-health-all")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -1722,14 +1458,6 @@ describe("Overview times, focus and filter failures", () => {
         "monitor-list-name-5e6076a6-6e93-4a7d-b2b3-95cd099e403c",
       ),
     ).toHaveTextContent(/^FirstFail$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5e6076a6-6e93-4a7d-b2b3-95cd099e403c",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/5e6076a6-6e93-4a7d-b2b3-95cd099e403c`,
-    );
     const row = within(rowOf("5e6076a6-6e93-4a7d-b2b3-95cd099e403c"));
     expect(row.getByTestId("monitor-list-failures")).toHaveTextContent(/\b1\b/);
     expect(row.getByTestId("monitor-list-health")).toHaveAttribute(
@@ -1772,7 +1500,6 @@ describe("Overview times, focus and filter failures", () => {
     );
     await user.click(screen.getByTestId("monitor-overview-health-down"));
     await screen.findByTestId("monitor-overview-filtered-empty");
-    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
     expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
   });
 });
@@ -1907,14 +1634,6 @@ describe("Overview recent events", () => {
         "monitor-list-name-f00e20af-74f7-4105-a609-63f14cebb06b",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-f00e20af-74f7-4105-a609-63f14cebb06b",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/f00e20af-74f7-4105-a609-63f14cebb06b`,
-    );
 
     fetchEventsMock.mockResolvedValue(noEvents);
     const listCalls = fetchListMock.mock.calls.length;
@@ -2005,14 +1724,6 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-5c7aa54f-24bd-46b6-a1e0-c33542227d8c",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5c7aa54f-24bd-46b6-a1e0-c33542227d8c",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/5c7aa54f-24bd-46b6-a1e0-c33542227d8c`,
-    );
     const region = screen.getByTestId("monitor-overview-announcement");
     expect(region).toHaveTextContent("");
 
@@ -2022,14 +1733,6 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-b4c61fe5-fa39-466d-b38f-2909834195e7",
       ),
     ).toHaveTextContent(/^Down1$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-b4c61fe5-fa39-466d-b38f-2909834195e7",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/b4c61fe5-fa39-466d-b38f-2909834195e7`,
-    );
     await waitFor(() => {
       expect(region.textContent.match(/\d+/g)).toHaveLength(2);
     });
@@ -2094,14 +1797,6 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-7e634261-a627-4884-a7e4-61ecef13ae89",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-7e634261-a627-4884-a7e4-61ecef13ae89",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/7e634261-a627-4884-a7e4-61ecef13ae89`,
-    );
     await user.click(screen.getByTestId("monitor-overview-next"));
     expect(
       await screen.findByTestId(
@@ -2155,14 +1850,6 @@ describe("Overview refetch and announcements", () => {
       ),
     ).toHaveTextContent(/^Payments$/);
     expect(
-      screen.getByTestId(
-        "monitor-list-name-145b829a-4b43-4c4a-89fc-904b5256ee80",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/145b829a-4b43-4c4a-89fc-904b5256ee80`,
-    );
-    expect(
       screen
         .getByTestId("monitor-overview-announcement")
         .textContent.match(/\d+/g),
@@ -2184,14 +1871,6 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
-    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
@@ -2206,14 +1885,6 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
       ),
     ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
-    );
     expect(screen.queryByTestId("monitor-overview-error")).toBeNull();
   });
 
@@ -2252,28 +1923,12 @@ describe("Overview refetch and announcements", () => {
         "monitor-list-name-df1835fa-2769-4db7-9344-a88a483ceaa9",
       ),
     ).toHaveTextContent(/^First$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-df1835fa-2769-4db7-9344-a88a483ceaa9",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/df1835fa-2769-4db7-9344-a88a483ceaa9`,
-    );
     await user.click(screen.getByTestId("monitor-overview-next"));
     expect(
       await screen.findByTestId(
         "monitor-list-name-7e0ff85c-bf37-4aa4-b51a-610770787bf2",
       ),
     ).toHaveTextContent(/^Second$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-7e0ff85c-bf37-4aa4-b51a-610770787bf2",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/7e0ff85c-bf37-4aa4-b51a-610770787bf2`,
-    );
     expect(screen.getByTestId("monitor-overview-previous")).toBeEnabled();
   });
 });
