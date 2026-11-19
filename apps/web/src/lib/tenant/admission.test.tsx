@@ -1230,34 +1230,7 @@ it.each(["create", "edit"] as const)(
 );
 it("blocks conflict reload, settings invalidation and focus during resolver delay or failure until role-authorized confirmation", async () => {
   const c = client();
-  const router = createMemoryRouter(
-    [
-      {
-        element: (
-          <TenantProvider>
-            <MembershipRefreshProbe />
-            <AppShell />
-          </TenantProvider>
-        ),
-        children: [
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
-            element: <MonitorFormPage mode="edit" />,
-          },
-        ],
-      },
-    ],
-    {
-      initialEntries: [
-        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
-      ],
-    },
-  );
-  render(
-    <QueryClientProvider client={c}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
+  const router = renderPrivateRoute(c, "edit");
   const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "conflict draft" } });
   vi.mocked(updateMonitor).mockRejectedValueOnce(
@@ -1401,34 +1374,7 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
 });
 it("viewer confirmation preserves disabled edit draft/refusal and never restores administrator settings metadata or requests", async () => {
   const c = client();
-  const router = createMemoryRouter(
-    [
-      {
-        element: (
-          <TenantProvider>
-            <MembershipRefreshProbe />
-            <AppShell />
-          </TenantProvider>
-        ),
-        children: [
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
-            element: <MonitorFormPage mode="edit" />,
-          },
-        ],
-      },
-    ],
-    {
-      initialEntries: [
-        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
-      ],
-    },
-  );
-  render(
-    <QueryClientProvider client={c}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
+  const router = renderPrivateRoute(c, "edit");
   const input = await screen.findByTestId("monitor-form-name");
   await screen.findByTestId("monitor-form-org-alerts-disabled");
   fireEvent.change(input, { target: { value: "viewer keeps local draft" } });
