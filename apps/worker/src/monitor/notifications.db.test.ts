@@ -164,6 +164,32 @@ async function record(
   });
 }
 
+// Disabling inserts an absent organization row; enabling updates that disabled row.
+async function changeNotificationGate(
+  monitor: SeededMonitor,
+  gate: "organization" | "monitor-down" | "monitor-ssl",
+  enabled: boolean,
+): Promise<void> {
+  if (gate === "organization") {
+    await db.owner.sql.query(
+      enabled
+        ? "update notification_org_settings set monitor_alerts_enabled = true where tenant_id = $1"
+        : `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
+           values ($1, false)`,
+      [monitor.tenantId],
+    );
+  } else {
+    await updateMonitor(
+      db,
+      monitor,
+      gate === "monitor-down"
+        ? "update monitors set alert_down_enabled = $2 where id = $1"
+        : "update monitors set alert_ssl_enabled = $2 where id = $1",
+      [monitor.monitorId, enabled],
+    );
+  }
+}
+
 async function intentTypes(monitor: SeededMonitor): Promise<string[]> {
   const result = await db.owner.sql.query<{ event_type: string }>(
     `select event_type from notification_intents
@@ -381,54 +407,51 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     },
   );
 
-  it("per-monitor down toggle off at open and on at close sends neither down nor recovered", async () => {
+  it.each([
+    [
+      "per-monitor down toggle off at open and on at close sends neither down nor recovered",
+      "monitor-down",
+      false,
+      [],
+    ],
+    [
+      "per-monitor down toggle on at open and off at close sends down but no recovered",
+      "monitor-down",
+      true,
+      ["MONITOR_DOWN"],
+    ],
+    [
+      "alerts off at open and on at close sends neither down nor recovered",
+      "organization",
+      false,
+      [],
+    ],
+    [
+      "alerts on at open and off at close sends down but no recovered",
+      "organization",
+      true,
+      ["MONITOR_DOWN"],
+    ],
+  ] as const)("%s", async (_name, gate, enabledAtOpen, expectedIntents) => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
-    await updateMonitor(
-      db,
-      monitor,
-      "update monitors set alert_down_enabled = false where id = $1",
-      [monitor.monitorId],
-    );
+    if (!enabledAtOpen) await changeNotificationGate(monitor, gate, false);
     await record(monitor, httpResult("fail"));
     await record(monitor, httpResult("fail"));
-    await updateMonitor(
-      db,
-      monitor,
-      "update monitors set alert_down_enabled = true where id = $1",
-      [monitor.monitorId],
-    );
+    await changeNotificationGate(monitor, gate, !enabledAtOpen);
     await record(monitor, httpResult("pass"));
-    expect(await intentTypes(monitor)).toEqual([]);
-    const [incident] = await rows<{ down_notified: boolean }>(
+    expect(await intentTypes(monitor)).toEqual(expectedIntents);
+    const [incident] = await rows<{
+      down_notified: boolean;
+      ended_at: Date | null;
+    }>(
       db,
       monitor,
-      "select down_notified from monitor_incidents where monitor_id = $1",
+      "select down_notified, ended_at from monitor_incidents where monitor_id = $1",
       [monitor.monitorId],
     );
-    expect(incident?.down_notified).toBe(false);
-  });
-
-  it("per-monitor down toggle on at open and off at close sends down but no recovered", async () => {
-    const monitor = await seedMonitor(db);
-    await seedMembers(monitor);
-    await record(monitor, httpResult("fail"));
-    await record(monitor, httpResult("fail"));
-    await updateMonitor(
-      db,
-      monitor,
-      "update monitors set alert_down_enabled = false where id = $1",
-      [monitor.monitorId],
-    );
-    await record(monitor, httpResult("pass"));
-    expect(await intentTypes(monitor)).toEqual(["MONITOR_DOWN"]);
-    const [incident] = await rows<{ ended_at: Date | null }>(
-      db,
-      monitor,
-      "select ended_at from monitor_incidents where monitor_id = $1",
-      [monitor.monitorId],
-    );
-    expect(incident?.ended_at).not.toBeNull();
+    if (enabledAtOpen) expect(incident?.ended_at).not.toBeNull();
+    else expect(incident?.down_notified).toBe(false);
   });
 
   it("an admin demoted before materialize gets nothing", async () => {
@@ -566,52 +589,6 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     });
   });
 
-  it("alerts off at open and on at close sends neither down nor recovered", async () => {
-    const monitor = await seedMonitor(db);
-    await seedMembers(monitor);
-    await db.owner.sql.query(
-      `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
-       values ($1, false)`,
-      [monitor.tenantId],
-    );
-    await record(monitor, httpResult("fail"));
-    await record(monitor, httpResult("fail"));
-    await db.owner.sql.query(
-      "update notification_org_settings set monitor_alerts_enabled = true where tenant_id = $1",
-      [monitor.tenantId],
-    );
-    await record(monitor, httpResult("pass"));
-    expect(await intentTypes(monitor)).toEqual([]);
-    const [incident] = await rows<{ down_notified: boolean }>(
-      db,
-      monitor,
-      "select down_notified from monitor_incidents where monitor_id = $1",
-      [monitor.monitorId],
-    );
-    expect(incident?.down_notified).toBe(false);
-  });
-
-  it("alerts on at open and off at close sends down but no recovered", async () => {
-    const monitor = await seedMonitor(db);
-    await seedMembers(monitor);
-    await record(monitor, httpResult("fail"));
-    await record(monitor, httpResult("fail"));
-    await db.owner.sql.query(
-      `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
-       values ($1, false)`,
-      [monitor.tenantId],
-    );
-    await record(monitor, httpResult("pass"));
-    expect(await intentTypes(monitor)).toEqual(["MONITOR_DOWN"]);
-    const [incident] = await rows<{ ended_at: Date | null }>(
-      db,
-      monitor,
-      "select ended_at from monitor_incidents where monitor_id = $1",
-      [monitor.monitorId],
-    );
-    expect(incident?.ended_at).not.toBeNull();
-  });
-
   it("alerts on with an explicit settings row sends down and marks the incident", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
@@ -679,14 +656,19 @@ describe("SSL notifications (AC-36)", () => {
     ]);
   });
 
-  it("alerts off sends no SSL notification but advances the level, so re-enabling sends only a later, more severe one", async () => {
+  it.each([
+    [
+      "alerts off sends no SSL notification but advances the level, so re-enabling sends only a later, more severe one",
+      "organization",
+    ],
+    [
+      "records SSL danger without notifying while SSL alerts are off, then notifies only expiry after re-enabling",
+      "monitor-ssl",
+    ],
+  ] as const)("%s", async (_name, gate) => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
-    await db.owner.sql.query(
-      `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
-       values ($1, false)`,
-      [monitor.tenantId],
-    );
+    await changeNotificationGate(monitor, gate, false);
     await record(monitor, certResult(notAfter, daysBefore(30)));
     await record(monitor, certResult(notAfter, daysBefore(7)));
     expect(await intentTypes(monitor)).toEqual([]);
@@ -698,10 +680,7 @@ describe("SSL notifications (AC-36)", () => {
     );
     expect(advanced?.ssl_notified_level).toBe("danger");
 
-    await db.owner.sql.query(
-      "update notification_org_settings set monitor_alerts_enabled = true where tenant_id = $1",
-      [monitor.tenantId],
-    );
+    await changeNotificationGate(monitor, gate, true);
     await record(monitor, certResult(notAfter, daysBefore(6)));
     expect(await intentTypes(monitor)).toEqual([]);
     await record(monitor, expiredResult(daysBefore(0, 1_000)));
@@ -781,38 +760,6 @@ describe("SSL notifications (AC-36)", () => {
       );
     },
   );
-
-  it("records SSL danger without notifying while SSL alerts are off, then notifies only expiry after re-enabling", async () => {
-    const monitor = await seedMonitor(db);
-    await seedMembers(monitor);
-    await updateMonitor(
-      db,
-      monitor,
-      "update monitors set alert_ssl_enabled = false where id = $1",
-      [monitor.monitorId],
-    );
-    await record(monitor, certResult(notAfter, daysBefore(30)));
-    await record(monitor, certResult(notAfter, daysBefore(7)));
-    expect(await intentTypes(monitor)).toEqual([]);
-    const [advanced] = await rows<{ ssl_notified_level: string }>(
-      db,
-      monitor,
-      "select ssl_notified_level from monitors where id = $1",
-      [monitor.monitorId],
-    );
-    expect(advanced?.ssl_notified_level).toBe("danger");
-
-    await updateMonitor(
-      db,
-      monitor,
-      "update monitors set alert_ssl_enabled = true where id = $1",
-      [monitor.monitorId],
-    );
-    await record(monitor, certResult(notAfter, daysBefore(6)));
-    expect(await intentTypes(monitor)).toEqual([]);
-    await record(monitor, expiredResult(daysBefore(0, 1_000)));
-    expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_EXPIRED"]);
-  });
 
   describe("per-monitor caution days", () => {
     it("with a 14-day caution window, displays caution without notifying at 20 days, then notifies caution, danger, and expiry", async () => {
