@@ -4,12 +4,8 @@ import { createServer, Socket } from "node:net";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import {
-  createDatabase,
-  runMigrations,
-  withTenantContextRaw,
-  type Database,
-} from "@nightwatch/db";
+import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import { openTestPostgres, type TestPostgres } from "@nightwatch/db/testing";
 import {
   createLogger,
   encryptSecret,
@@ -36,16 +32,6 @@ import {
 import { MonitorScheduler } from "./scheduler";
 
 const run = randomUUID();
-const ownerPassword = `owner-${randomUUID()}`;
-const runtimePassword = `runtime-${randomUUID()}`;
-const postgresContainer = `nightwatch-monitor-sched-postgres-${run}`;
-const initRolesScript = fileURLToPath(
-  new URL("../../../../scripts/db/init/001-roles.sh", import.meta.url),
-);
-const migrationsDir = new URL(
-  "../../../../packages/db/migrations",
-  import.meta.url,
-).pathname;
 const workerEntry = fileURLToPath(new URL("../index.ts", import.meta.url));
 let redisPrefix = "";
 const redisUrl = process.env.REDIS_URL;
@@ -56,40 +42,10 @@ const silent = createLogger({ level: "silent", name: "monitor-sched-test" });
 let owner!: Database;
 let runtime!: Database;
 let runtimeUrl = "";
-let postgresStarted = false;
+let postgres: TestPostgres | undefined;
 const tenants: string[] = [];
 const queues: Queue<MonitorCheckJob>[] = [];
 const unreachable = new Set<Queue<MonitorCheckJob>>();
-
-type DockerResult = { exitCode: number; stdout: string; stderr: string };
-function docker(args: string[], allowFailure = false): Promise<DockerResult> {
-  const { promise, reject, resolve } = Promise.withResolvers<DockerResult>();
-  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
-  const stdout: Buffer[] = [];
-  const stderr: Buffer[] = [];
-  child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-  child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-  child.once("error", reject);
-  child.once("close", (exitCode) => {
-    const result = {
-      exitCode: exitCode ?? 1,
-      stdout: Buffer.concat(stdout).toString(),
-      stderr: Buffer.concat(stderr).toString(),
-    };
-    if (result.exitCode !== 0 && !allowFailure)
-      reject(new Error(result.stderr || result.stdout || "docker failed"));
-    else resolve(result);
-  });
-  return promise;
-}
-
-function databaseUrl(username: string, password: string, port: number): string {
-  const url = new URL("postgres://localhost/nightwatch");
-  url.username = username;
-  url.password = password;
-  url.port = String(port);
-  return url.toString();
-}
 
 async function closedPort(): Promise<number> {
   const server = createServer();
@@ -222,42 +178,11 @@ function captureLogger(): {
 }
 
 beforeAll(async () => {
-  postgresStarted = true;
-  await docker([
-    "run",
-    "--detach",
-    "--rm",
-    "--name",
-    postgresContainer,
-    "--publish",
-    "127.0.0.1::5432",
-    "--env",
-    "POSTGRES_USER=nightwatch_owner",
-    "--env",
-    `POSTGRES_PASSWORD=${ownerPassword}`,
-    "--env",
-    "POSTGRES_DB=nightwatch",
-    "--env",
-    `NW_DB_PASSWORD=${runtimePassword}`,
-    "--volume",
-    `${initRolesScript}:/docker-entrypoint-initdb.d/001-roles.sh:ro`,
-    "postgres:17.11-alpine",
-  ]);
-  await docker([
-    "exec",
-    postgresContainer,
-    "sh",
-    "-ceu",
-    `timeout 40 sh -ceu 'until pg_isready -h 127.0.0.1 -U nightwatch_owner -d nightwatch >/dev/null && psql -h 127.0.0.1 -U nightwatch_owner -d nightwatch -Atqc "select 1 from pg_roles where rolname = '"'"'nightwatch'"'"'" | grep -qx 1; do sleep 0.1; done'`,
-  ]);
-  const { stdout } = await docker(["port", postgresContainer, "5432/tcp"]);
-  const port = Number(/:(\d+)\s*$/.exec(stdout)?.[1]);
-  const ownerUrl = databaseUrl("nightwatch_owner", ownerPassword, port);
-  runtimeUrl = databaseUrl("nightwatch", runtimePassword, port);
-  await runMigrations({ url: ownerUrl, migrationsDir, log: () => undefined });
-  owner = createDatabase(ownerUrl);
-  runtime = createDatabase(runtimeUrl);
-}, 90_000);
+  postgres = await openTestPostgres("monitor-scheduler");
+  owner = postgres.owner;
+  runtime = postgres.runtime;
+  runtimeUrl = postgres.urls.runtimeUrl;
+}, 180_000);
 
 beforeEach(() => {
   // Every scenario gets its own key space so job counts are exact.
@@ -281,10 +206,7 @@ afterAll(async () => {
     await queue.obliterate({ force: true }).catch(() => undefined);
     await queue.close().catch(() => undefined);
   }
-  await runtime.close();
-  await owner.close();
-  if (postgresStarted)
-    await docker(["rm", "--force", "--volumes", postgresContainer], true);
+  await postgres?.close();
 }, 60_000);
 
 describe("monitor scheduler", () => {
