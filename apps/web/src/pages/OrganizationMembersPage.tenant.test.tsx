@@ -145,6 +145,25 @@ function TenantView() {
   );
 }
 
+function renderTenantDirectory(
+  queryClient: QueryClient,
+  organizationId: string,
+  republish: boolean,
+) {
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          {republish && <RepublishSameOrganization queryClient={queryClient} />}
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+}
+
 it("keeps the invitation pending and its draft after same-organization publication", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
   vi.mocked(createInvitation).mockReturnValue(post.promise);
@@ -155,16 +174,7 @@ it("keeps the invitation pending and its draft after same-organization publicati
   });
   bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <RepublishSameOrganization queryClient={queryClient} />
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  renderTenantDirectory(queryClient, A, true);
   expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
   expect(
     within(screen.getByTestId("member-row-member-1")).getByTestId(
@@ -207,16 +217,7 @@ it("keeps a bookmarked organization draft when another active organization is re
   });
   bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${B}/members`]}>
-          <RepublishSameOrganization queryClient={queryClient} />
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  renderTenantDirectory(queryClient, B, true);
   const email = await screen.findByTestId("members-invitation-email");
   await user.type(email, "bookmarked@example.test");
   await user.click(screen.getByTestId("test-members-republish-a"));
@@ -255,15 +256,7 @@ it("keeps the bookmarked invitation draft when its organization becomes active a
   });
   bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${B}/members`]}>
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  renderTenantDirectory(queryClient, B, false);
   expect(await screen.findByTestId("member-row-member-b")).toBeInTheDocument();
   expect(
     within(screen.getByTestId("member-row-member-b")).getByTestId(
@@ -324,15 +317,7 @@ it("retains the origin after denied switch and rejects its old completion after 
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  renderTenantDirectory(queryClient, A, false);
   expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
   expect(
     within(screen.getByTestId("member-row-member-1")).getByTestId(
@@ -397,15 +382,7 @@ it("retires the invitation after confirmed tenant change while the origin route 
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  renderTenantDirectory(queryClient, A, false);
   expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
   expect(
     within(screen.getByTestId("member-row-member-1")).getByTestId(
@@ -517,15 +494,7 @@ it.each([
     });
     bindQueryClientIdentity(queryClient, "user-1");
     const user = userEvent.setup();
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TenantProvider>
-          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-            <TenantView />
-          </MemoryRouter>
-        </TenantProvider>
-      </QueryClientProvider>,
-    );
+    renderTenantDirectory(queryClient, A, false);
     await user.click(
       await screen.findByTestId(
         "invitation-cancel-00000000-0000-4000-8000-000000000001",
@@ -648,15 +617,7 @@ it.each([
     });
     bindQueryClientIdentity(queryClient, "user-1");
     const user = userEvent.setup();
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TenantProvider>
-          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-            <TenantView />
-          </MemoryRouter>
-        </TenantProvider>
-      </QueryClientProvider>,
-    );
+    renderTenantDirectory(queryClient, A, false);
     await user.click(
       await screen.findByTestId(
         "invitation-resend-00000000-0000-4000-8000-000000000001",
