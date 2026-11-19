@@ -9,9 +9,23 @@ import {
   fetchNotifications,
   markAllNotificationsRead,
   openNotification,
+  type NotificationPage,
 } from "../lib/api/notifications";
 import { ApiError } from "../lib/api/client";
 import { NotificationRows, NotificationsPage } from "./NotificationsPage";
+
+function makeNotificationCounts(
+  values: Omit<NotificationPage["counts"], "window">,
+): NotificationPage["counts"] {
+  return {
+    ...values,
+    window: {
+      days: 7,
+      since: "2026-09-18T00:00:00.000Z",
+      until: "2026-09-25T00:00:00.000Z",
+    },
+  };
+}
 
 const P = "55555555-5555-4555-8555-555555555555";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
@@ -159,16 +173,7 @@ afterEach(() => {
 });
 
 describe("NotificationsPage", () => {
-  const counts = {
-    total: 8,
-    unread: 3,
-    recent: 5,
-    window: {
-      days: 7 as const,
-      since: "2026-09-18T00:00:00.000Z",
-      until: "2026-09-25T00:00:00.000Z",
-    },
-  };
+  const countValues = { total: 8, unread: 3, recent: 5 };
   it("switches status and category through search params, supports tab keyboard focus and distinguishes no matches", async () => {
     fetchNotificationsMock.mockImplementation((organizationId, filters) =>
       Promise.resolve({
@@ -176,7 +181,7 @@ describe("NotificationsPage", () => {
         items: filters?.category ? [] : [notification],
         nextCursor: null,
         unreadCount: 6,
-        counts,
+        counts: makeNotificationCounts(countValues),
       }),
     );
     const user = userEvent.setup();
@@ -250,7 +255,7 @@ describe("NotificationsPage", () => {
         items: [notification],
         nextCursor: null,
         unreadCount: 6,
-        counts,
+        counts: makeNotificationCounts(countValues),
       };
       fetchNotificationsMock.mockResolvedValue(response);
       const user = userEvent.setup();
@@ -330,7 +335,7 @@ describe("NotificationsPage", () => {
         items: filters?.category ? [] : [notification],
         nextCursor: null,
         unreadCount: 6,
-        counts,
+        counts: makeNotificationCounts(countValues),
       }),
     );
     const user = userEvent.setup();
@@ -395,7 +400,7 @@ describe("NotificationsPage", () => {
           ],
           nextCursor: "expired",
           unreadCount: 3,
-          counts,
+          counts: makeNotificationCounts(countValues),
         });
       });
       const user = userEvent.setup();
@@ -439,16 +444,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: monitorNotifications,
       nextCursor: null,
-      counts: {
-        total: 5,
-        unread: 5,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 5, unread: 5, recent: 0 }),
       unreadCount: 5,
     });
     renderPage();
@@ -497,16 +493,7 @@ describe("NotificationsPage", () => {
         },
       ],
       nextCursor: null,
-      counts: {
-        total: 1,
-        unread: 1,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
       unreadCount: 1,
     });
     renderPage();
@@ -524,16 +511,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: auditNotifications,
       nextCursor: null,
-      counts: {
-        total: 2,
-        unread: 2,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 2, unread: 2, recent: 0 }),
       unreadCount: 2,
     });
     renderPage();
@@ -558,16 +536,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [ready],
       nextCursor: null,
-      counts: {
-        total: 1,
-        unread: 1,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
       unreadCount: 1,
     });
     openNotificationMock.mockResolvedValue({
@@ -601,16 +570,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [down],
       nextCursor: null,
-      counts: {
-        total: 1,
-        unread: 1,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
       unreadCount: 1,
     });
     openNotificationMock.mockResolvedValue({
@@ -649,16 +609,11 @@ describe("NotificationsPage", () => {
         organizationId,
         items: organizationId === ORG_A ? [notification] : [],
         nextCursor: null,
-        counts: {
+        counts: makeNotificationCounts({
           total: organizationId === ORG_A ? 1 : 0,
           unread: organizationId === ORG_A ? 1 : 0,
           recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        }),
         unreadCount: organizationId === ORG_A ? 1 : 0,
       }),
     );
@@ -698,16 +653,11 @@ describe("NotificationsPage", () => {
         organizationId,
         items: organizationId === ORG_A ? [notification] : [],
         nextCursor: null,
-        counts: {
+        counts: makeNotificationCounts({
           total: organizationId === ORG_A ? 1 : 0,
           unread: organizationId === ORG_A ? 1 : 0,
           recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        }),
         unreadCount: organizationId === ORG_A ? 1 : 0,
       }),
     );
@@ -735,16 +685,7 @@ describe("NotificationsPage", () => {
       organizationId: null,
       items: [],
       nextCursor: null,
-      counts: {
-        total: 0,
-        unread: 0,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 0, unread: 0, recent: 0 }),
       unreadCount: 0,
     });
     openNotificationMock.mockRejectedValue(
@@ -802,16 +743,7 @@ describe("NotificationsPage", () => {
           organizationId,
           items: [pageTwoUnread],
           nextCursor: null,
-          counts: {
-            total: 1,
-            unread: 1,
-            recent: 0,
-            window: {
-              days: 7,
-              since: "2026-09-18T00:00:00.000Z",
-              until: "2026-09-25T00:00:00.000Z",
-            },
-          },
+          counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
           unreadCount: 1,
         });
       }
@@ -819,16 +751,7 @@ describe("NotificationsPage", () => {
         organizationId,
         items: firstPage,
         nextCursor: "cursor-1",
-        counts: {
-          total: 1,
-          unread: 1,
-          recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
         unreadCount: 1,
       });
     });
@@ -878,16 +801,11 @@ describe("NotificationsPage", () => {
               organizationId,
               items: [pageTwo],
               nextCursor: null,
-              counts: {
+              counts: makeNotificationCounts({
                 total: 0,
                 unread: 0,
                 recent: 0,
-                window: {
-                  days: 7,
-                  since: "2026-09-18T00:00:00.000Z",
-                  until: "2026-09-25T00:00:00.000Z",
-                },
-              },
+              }),
               unreadCount: 0,
             }
           : {
@@ -900,16 +818,11 @@ describe("NotificationsPage", () => {
                 },
               ],
               nextCursor: "cursor-1",
-              counts: {
+              counts: makeNotificationCounts({
                 total: 0,
                 unread: 0,
                 recent: 0,
-                window: {
-                  days: 7,
-                  since: "2026-09-18T00:00:00.000Z",
-                  until: "2026-09-25T00:00:00.000Z",
-                },
-              },
+              }),
               unreadCount: 0,
             },
       ),
@@ -953,16 +866,11 @@ describe("NotificationsPage", () => {
               organizationId,
               items: [pageTwo],
               nextCursor: null,
-              counts: {
+              counts: makeNotificationCounts({
                 total: 0,
                 unread: 0,
                 recent: 0,
-                window: {
-                  days: 7,
-                  since: "2026-09-18T00:00:00.000Z",
-                  until: "2026-09-25T00:00:00.000Z",
-                },
-              },
+              }),
               unreadCount: 0,
             });
       }
@@ -970,16 +878,7 @@ describe("NotificationsPage", () => {
         organizationId,
         items: [notification],
         nextCursor: "cursor-1",
-        counts: {
-          total: 0,
-          unread: 0,
-          recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        counts: makeNotificationCounts({ total: 0, unread: 0, recent: 0 }),
         unreadCount: 0,
       });
     });
@@ -1029,16 +928,11 @@ describe("NotificationsPage", () => {
         items: cursor?.cursor === "cursor-1" ? [pageTwo] : firstPage,
         nextCursor: cursor?.cursor === "cursor-1" ? null : "cursor-1",
         unreadCount,
-        counts: {
+        counts: makeNotificationCounts({
           total: 21,
           unread: unreadCount,
           recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        }),
       }),
     );
     markAllNotificationsReadMock.mockImplementation(() => {
@@ -1086,16 +980,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [notification],
       nextCursor: null,
-      counts: {
-        total: 1,
-        unread: 1,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
       unreadCount: 1,
     });
     markAllNotificationsReadMock.mockRejectedValue(
@@ -1117,16 +1002,7 @@ describe("NotificationsPage", () => {
       organizationId: ORG_A,
       items: [],
       nextCursor: null,
-      counts: {
-        total: 0,
-        unread: 0,
-        recent: 0,
-        window: {
-          days: 7,
-          since: "2026-09-18T00:00:00.000Z",
-          until: "2026-09-25T00:00:00.000Z",
-        },
-      },
+      counts: makeNotificationCounts({ total: 0, unread: 0, recent: 0 }),
       unreadCount: 0,
     });
     renderPage();
@@ -1164,16 +1040,7 @@ describe("NotificationsPage", () => {
         organizationId: ORG_A,
         items,
         nextCursor: null,
-        counts: {
-          total: 1,
-          unread: 1,
-          recent: 0,
-          window: {
-            days: 7,
-            since: "2026-09-18T00:00:00.000Z",
-            until: "2026-09-25T00:00:00.000Z",
-          },
-        },
+        counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
         unreadCount: 1,
       });
       renderPage();
