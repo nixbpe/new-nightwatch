@@ -42,7 +42,6 @@ import { MonitorTable } from "./MonitorTable";
 import { RecentEventsCard } from "./RecentEventsCard";
 
 const SEARCH_DEBOUNCE_MS = 300;
-// The status filter reads down first, as the design does; "unknown" follows the states the design names.
 const FILTER_ORDER = ["down", "up", "paused", "unknown"] as const;
 const VIEW_STORAGE_KEY = "nightwatch:monitors-view";
 const VIEW_OPTIONS = [

@@ -53,7 +53,6 @@ async function captureThemes(page: Page, state: string) {
     );
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("shell-account-menu")).toBeHidden();
-    // Document preference proof: the app applies the user's explicit theme.
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await shot(page, `project-overview-${state}-${theme}`);
   }

@@ -107,7 +107,6 @@ async function addProject(organizationId: string) {
   );
 }
 
-// ---- state snapshot ----------------------------------------------------------
 async function snapshot(organizationId: string, monitorId: string) {
   const q = async (sql: string, args: unknown[]) =>
     (await pool.query(sql, args)).rows[0];
@@ -136,7 +135,6 @@ async function snapshot(organizationId: string, monitorId: string) {
   });
 }
 
-// ---- setup -------------------------------------------------------------------
 const orgNames = { a: `Verify A ${run}`, b: `Verify B ${run}` };
 let orgA = "";
 let orgB = "";
@@ -204,7 +202,6 @@ async function createMonitor(
   return reply;
 }
 
-// ---- role x operation matrix ------------------------------------------------
 type Row = {
   role: string;
   op: string;
@@ -515,7 +512,6 @@ async function matrix() {
     }
   }
 
-  // Non-member answers must not reveal names, URLs or counts.
   const leak = await sessions.nonmember.request("GET", mp(orgA));
   const text = JSON.stringify(leak.body);
   check(
@@ -527,7 +523,6 @@ async function matrix() {
     text,
   );
 
-  // Three kinds of bad id answer alike, in every operation.
   const idKinds: [string, string][] = [
     ["missing uuid", randomUUID()],
     ["malformed", "not-a-uuid"],
@@ -568,7 +563,6 @@ async function matrix() {
   );
 }
 
-// ---- SSRF ------------------------------------------------------------
 async function ssrf() {
   const P = probe.port;
   const cases = [
@@ -638,7 +632,6 @@ async function ssrf() {
   );
   evidence.ssrf = rows;
 
-  // Redirect to a blocked address never reaches the second listener.
   const second = await acquireTarget();
   const viaRedirect = `/redirect?to=${encodeURIComponent(`http://localhost:${String(second.port)}/x`)}`;
   const rTest = await sessions.owner.request(
@@ -675,7 +668,6 @@ async function ssrf() {
   await second.close();
 }
 
-// ---- secrets -----------------------
 // `redis-cli MONITOR` records every command with its arguments, so the BullMQ
 // job payloads that are removed on completion are still scanned.
 let redisTrace = "";
@@ -836,7 +828,6 @@ async function secrets() {
     );
     created.push({ kind: k.kind, id: save.body.monitor.id, target: t, name });
   }
-  // Scheduled checks decrypt and send the stored values.
   for (const c of created) {
     const deadline = Date.now() + 100_000;
     let outcome = "";
@@ -867,7 +858,6 @@ async function secrets() {
     detail.body.monitor.secretSlots,
   );
 
-  // Edit: keep uses stored value; replace uses the new one; changing origin is refused.
   const bearer = created[0]!;
   const cur = (await sessions.owner.request("GET", mp(orgA, `/${bearer.id}`)))
     .body.monitor;
@@ -975,7 +965,6 @@ async function secrets() {
     [typeChange.status, slotsLeft.rows[0].n],
   );
 
-  // Reflecting endpoint: the secret is redacted from assertion actuals and errors.
   const reflectToken = mk();
   KNOWN_SECRETS.push(reflectToken);
   const reflect = await sessions.owner.request("POST", mp(orgA, "/test"), {
@@ -1049,7 +1038,6 @@ async function secrets() {
     hasIncident.rows[0].n,
   );
 
-  // Query and body values never reach results, incidents, notifications or logs.
   const queryValue = `qval-${run}`;
   const bodyValue = `bodyval-${run}`;
   HIDDEN_VALUES.push(queryValue, bodyValue);
@@ -1138,8 +1126,6 @@ async function secrets() {
     [del.status, gone.rows[0].n],
   );
 
-  // Audit events for the whole secret scenario keep
-  // the masked URL and secret slot names, never a value.
   const mutation = (
     await pool.query(
       "select t::text as text, action from audit_events t where tenant_id=$1 and occurred_at >= $2",
@@ -1178,7 +1164,6 @@ until cursor == "0"
 return out
 `;
 
-/** Known values must not sit in any monitor or notification table, nor in Redis. */
 async function scanStores() {
   const tables = [
     "monitors",
@@ -1241,7 +1226,6 @@ async function scanStores() {
   );
 }
 
-// ---- concurrency and late results ----------------------------
 async function concurrency() {
   const limitOrg = await createOrganization(pool, `Verify limit ${run}`);
   orgIds.push(limitOrg);
@@ -1374,7 +1358,6 @@ async function concurrency() {
   await slow.close();
 }
 
-// ---- Test rate limit and permission before limiter ----------
 async function rateLimit() {
   const org = await createOrganization(pool, `Verify rate ${run}`);
   orgIds.push(org);
@@ -1463,7 +1446,6 @@ async function rateLimit() {
   );
 }
 
-// ---- alerts setting, pause closing an incident, no recovery after a pause ---
 async function alerts() {
   const org = await createOrganization(pool, `Verify alerts ${run}`);
   orgIds.push(org);
@@ -1518,7 +1500,6 @@ async function alerts() {
     { incidentA, notifiedA },
   );
 
-  // Pause closes the open incident as paused_by_user and sends no recovery.
   await s.request("POST", mp(org, `/${a}/pause`));
   const closed = (
     await pool.query(
@@ -1532,7 +1513,6 @@ async function alerts() {
     closed,
   );
 
-  // Alerts off: an incident still opens but no notification is created.
   const settingsPath = `/api/organizations/${org}/notification-settings`;
   const current = (await s.request("GET", settingsPath)).body;
   const off = await s.request("PATCH", settingsPath, {

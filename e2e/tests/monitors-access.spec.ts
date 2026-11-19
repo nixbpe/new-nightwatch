@@ -26,9 +26,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// UI coverage of the role x screen table,
-// two sessions changing a role, keyboard flows in both themes, and reflow at a
-// 640 px viewport (200% of a 1280 px layout, LAY-02).
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -607,7 +604,6 @@ for (const theme of ["light", "dark"] as const) {
       await shot(page, `detail-${theme}`);
       expect(headings.h2).toBeGreaterThanOrEqual(6);
       expect(headings.h1).toBe(1);
-      // The chart's alternative is a real table opened from the keyboard.
       const toggle = page.getByTestId("monitor-response-toggle");
       await toggle.focus();
       await page.keyboard.press("Enter");

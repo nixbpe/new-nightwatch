@@ -1030,13 +1030,11 @@ describe("JSON escapes and nested encodings", () => {
     // Python json.dumps (ensure_ascii), Thai and é
     ["ลับ", "\\u0e25\\u0e31\\u0e1a", false],
     ["café", "caf\\u00e9", false],
-    // surrogate pair
     ["x😀y", "x\\ud83d\\ude00y", false],
     // PHP json_encode
     ["a/b", "a\\/b", false],
     // Go json.Marshal
     ["a&b<c>", "a\\u0026b\\u003cc\\u003e", false],
-    // JSON-escaped quote and backslash
     ['q"r\\s', 'q\\"r\\\\s', false],
     // percent encoded twice, partly encoded, UTF-8 next to raw non-ASCII
     ["tok 123", "tok%2520123", true],
@@ -1155,7 +1153,6 @@ describe("work limits", () => {
       ),
     );
     const values = snapshot.headers.map((header) => header.value);
-    // Earlier headers were scanned; once the budget ran out the rest are masked whole.
     expect(values[1]).not.toBe("•••");
     expect(values[values.length - 1]).toBe("•••");
     expect(snapshot.body).toMatchObject({

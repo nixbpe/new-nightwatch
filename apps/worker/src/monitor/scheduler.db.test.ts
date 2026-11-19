@@ -128,7 +128,6 @@ async function jobs(queue: Queue<MonitorCheckJob>) {
 }
 
 type QueryFn = (text: string, values?: unknown[]) => Promise<unknown>;
-/** Runtime database whose queries are counted and can be failed by SQL text. */
 function spyDatabase(
   hooks: { failWhen?: (text: string) => boolean; failConnect?: boolean } = {},
 ): {

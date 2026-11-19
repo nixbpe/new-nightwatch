@@ -555,7 +555,6 @@ describe("invitation resend", () => {
       screen.queryByTestId(/^pending-invitations-resend-(success|warning)$/),
     ).toBeNull();
     await waitFor(() => {
-      // The resent row is gone, so focus falls back to the heading.
       expect(heading()).toHaveFocus();
     });
   });

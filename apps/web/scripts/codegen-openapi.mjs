@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 /* global process, console */
 /**
- * Regenerate src/lib/api/openapi-types.gen.ts from the API's OpenAPI
- * document. Run via `bun run codegen` in apps/web.
  *
  * The spec is obtained from apps/api's `emit-openapi` script, which
  * composes the real Hono app in-process — no server, database, or SMTP

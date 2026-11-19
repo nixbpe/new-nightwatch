@@ -234,7 +234,6 @@ test("a bookmarked Project of another Organization, with many Projects, keeps th
   await signIn(page, people.owner);
   await page.goto(`/organizations/${other}/projects/${ids[0]}/members`);
 
-  // The Project in the URL is current, in its own Organization, and saved there.
   const button = page.getByTestId("shell-project-switch");
   await expect(button).toContainText(`Many 01 ${run}`);
   await expect(page.getByTestId("shell-breadcrumb")).toContainText(
@@ -265,7 +264,6 @@ test("a bookmarked Project of another Organization, with many Projects, keeps th
   await expect(page.getByTestId("shell-project-create")).toBeInViewport();
   await expect(page.getByTestId("shell-project-all")).toBeInViewport();
 
-  // From the search field, Up wraps through both links to the last Project, which scrolls into view.
   await page.keyboard.press("ArrowUp");
   await expect(page.getByTestId("shell-project-create")).toBeFocused();
   await page.keyboard.press("ArrowUp");

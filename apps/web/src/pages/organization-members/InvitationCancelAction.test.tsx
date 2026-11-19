@@ -191,7 +191,6 @@ describe("invitation cancel", () => {
         screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
       ).getByTestId("invitation-cancel-confirm"),
     ).toBeDisabled();
-    // One announcement while the dialog is open: the dialog's own region.
     expect(textStatusCount()).toBe(1);
     expect(cancelButton(1)).toBeDisabled();
     await user.keyboard("{Escape}");
@@ -312,7 +311,6 @@ describe("invitation cancel", () => {
     expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
       "100",
     );
-    // Focus goes to the next row's cancel button.
     await waitFor(() => {
       expect(cancelButton(2)).toHaveFocus();
     });
@@ -594,7 +592,6 @@ describe("invitation cancel", () => {
     ).toHaveTextContent(emailOf(1));
     expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 50, 50, 0]);
 
-    // Every row of the last page canceled elsewhere, nothing left at all.
     ids.clear();
     cancelRequest.mockRejectedValue(
       new ApiError("INVITATION_NOT_FOUND", "not found", 404),

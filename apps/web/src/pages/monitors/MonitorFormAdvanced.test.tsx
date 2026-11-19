@@ -124,7 +124,6 @@ describe("Advanced mode defaults and mode switch", () => {
         "monitor-form-header-name",
       ),
     ).toHaveValue("X-Team");
-    // The values still apply while the mode is basic.
     await user.click(screen.getByTestId("monitor-form-mode-basic"));
     await user.type(screen.getByTestId("monitor-form-name"), " 2");
     await user.click(screen.getByTestId("monitor-form-mode-advanced"));
@@ -452,7 +451,6 @@ describe("Rows", () => {
         "monitor-form-row-remove",
       ),
     );
-    // The former row 3 is now row 2 and takes the focus.
     expect(
       within(screen.getByTestId(thirdHeader)).getByTestId(
         "monitor-form-header-name",

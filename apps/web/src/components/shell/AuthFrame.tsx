@@ -3,8 +3,6 @@ import type { ReactNode } from "react";
 import { Card } from "../ui/card";
 import { ShieldIcon } from "./icons";
 
-// Bare-layout chrome shared by /login and the other pre-session routes: the 56 px
-// header with the wordmark, Canvas below it.
 export function AuthHeader({ children }: { children?: ReactNode }) {
   return (
     <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-foreground/10 px-4 sm:px-8">

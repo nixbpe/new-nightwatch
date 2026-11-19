@@ -21,7 +21,6 @@ const SSL_TONES: Record<SslLevelName, SslTone> = {
   no_data: "neutral",
 };
 
-/** Days as the certificate view words them: 21 days left, expires in 5 days, expired 2 days ago. */
 export function sslDaysText(
   level: SslLevelName,
   daysRemaining: number | null,

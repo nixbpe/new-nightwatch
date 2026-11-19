@@ -175,7 +175,6 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-// Real gate loaders and RootLayout wiring; only the page bodies are probes.
 const lifecycleRoutes: RouteObject[] = [
   {
     element: <RootLayout />,

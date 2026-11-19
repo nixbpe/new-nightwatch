@@ -98,11 +98,6 @@ async function closeIncident(
 }
 
 describe("GET /monitors/{monitorId}/events access", () => {
-  // Every role can read, a non-member is denied, and a missing/malformed/
-  // foreign id answers 404: read-detail.db.test.ts's "Detail, Checks and
-  // Incidents: access" suffixes loop covers this route too. The no-session
-  // case below has no equivalent there, so it stays.
-
   it("answers 401 without a session", async () => {
     const monitorId = await seedMonitor(ctx, org.id);
     expect((await feed(null, monitorId)).status).toBe(401);

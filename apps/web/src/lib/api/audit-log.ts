@@ -66,7 +66,6 @@ export const auditLogQueryKeys = {
     [...TENANT_QUERY_PREFIX, "audit-log", "exports", organizationId] as const,
 };
 
-/** True for any audit-log cache entry of this Organization (lists, details, actors, exports). */
 export function isAuditLogQueryOf(
   queryKey: readonly unknown[],
   organizationId: string,

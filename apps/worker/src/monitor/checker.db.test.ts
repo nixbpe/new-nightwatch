@@ -362,7 +362,6 @@ describe("checker records a result (transaction A then B)", () => {
         "discarded",
       ]);
       expect(untouchedOutcome).toBe("recorded");
-      // Only the monitor nobody touched reaches the event hook and opens an incident.
       expect(emitted).toEqual([`${untouched.monitorId}:incident_opened`]);
       expect((await countAll(untouched)).incidents).toBe(1);
       for (const monitor of [paused, edited]) {
@@ -837,7 +836,6 @@ describe("hourly rollup (AC-14)", () => {
         ["pass", "fail", "check_error", "pass"],
         hour + 60_000,
       );
-      // Next hour: a single failure.
       await runSteps(monitor, target, ["fail"], hour + 3_600_000 + 60_000);
 
       const hourly = await rows<{
@@ -1203,7 +1201,6 @@ describe("a failing check that reflects its secret leaks it nowhere (AC-43)", ()
         ).rows,
       ]);
       expect(lines.length).toBeGreaterThan(0);
-      // The reflected value did reach storage, as the mask.
       expect(haystack).toContain("Bearer •••");
       for (const form of forms) {
         expect(haystack).not.toContain(form);

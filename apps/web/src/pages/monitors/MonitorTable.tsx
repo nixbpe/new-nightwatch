@@ -99,7 +99,6 @@ export function StatusDetail({ row }: { row: Row }) {
   );
 }
 
-// The dash is the visible mark of a missing value; the sentence is for screen readers.
 export function NoData() {
   return (
     <span className="whitespace-nowrap">

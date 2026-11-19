@@ -148,7 +148,6 @@ function result(
 const span = (from: number, to: number) =>
   Array.from({ length: to - from }, (_, index) => from + index);
 
-/** One response of the checks API: the results numbered `numbers`, read at `offset` of `total`. */
 function chunk(
   numbers: number[],
   offset: number,
@@ -233,8 +232,6 @@ function historyRows(): HTMLElement[] {
     "monitor-check-row",
   );
 }
-
-// The count line of the page.
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -501,7 +498,6 @@ describe("Checks history offset drift", () => {
     expect(await waitCount([1, 95, 125])).toBeInTheDocument();
     const rows = historyRows();
     expect(rows).toHaveLength(95);
-    // Newest first and contiguous: results 0 to 94, once each.
     const times = rows.map((row) =>
       within(row).getByTestId("monitor-check-time").getAttribute("dateTime"),
     );
@@ -532,7 +528,6 @@ describe("Checks history offset drift", () => {
     await waitFor(() => {
       expect(announcementNumbers()).toEqual([0]);
     });
-    // Newer rows are left out: the order stays newest first and the count stays honest.
     expect(timesOf()).toEqual(span(0, 50).map(scheduled));
     expect(await waitCount([1, 50, 220])).toBeInTheDocument();
 
@@ -550,7 +545,6 @@ describe("Checks history offset drift", () => {
     await waitFor(() => {
       expect(announcementNumbers()).toEqual([50, 51, 100, 220]);
     });
-    // Contiguous and newest first: results 0 to 99 once each, none skipped.
     expect(timesOf()).toEqual(span(0, 100).map(scheduled));
     expect(fetchChecksMock.mock.calls.map((call) => call[3])).toEqual([
       { limit: 50, offset: 0 },
@@ -857,7 +851,6 @@ describe("Checks history URL changes", () => {
   });
 });
 
-// Wording of a saved result that the Detail last-result card used to show alone.
 describe("Checks history saved-result wording", () => {
   const reasonCell = (row: HTMLElement) =>
     within(row).getByTestId("monitor-check-cell-reason");
@@ -1141,7 +1134,6 @@ describe("Checks history refresh", () => {
       onlineManager.setOnline(false);
       onlineManager.setOnline(true);
     });
-    // Several intervals long.
     await sleep(300);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
     expect(historyRows()).toHaveLength(100);

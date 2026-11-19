@@ -15,9 +15,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web coverage of an owner adding Organization members to a Project, changing
-// roles, meets the last-admin rule and removes a member; a Project member sees
-// no controls; an Organization member outside the Project is sent back to the Project list with a notice.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -250,7 +247,6 @@ test.describe("other viewers", () => {
       page.getByTestId("projects-notice-role-changed"),
     ).toBeVisible();
     await expect(page.getByTestId("project-members-table")).toHaveCount(0);
-    // The lost Project is neither in the list nor anywhere on the page.
     await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
     await expect(page.getByText(`Payments ${run}`)).toHaveCount(0);
   });

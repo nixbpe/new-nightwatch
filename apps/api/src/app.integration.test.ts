@@ -52,7 +52,6 @@ function makeApp(options?: {
     mailer,
     ...options,
   });
-  // Test-only probes exercising the centralized error handler.
   app.get("/__test/app-error", () => {
     throw new AppError(403, "HELLO_FORBIDDEN", "greeting is not allowed", {
       reason: "test",
@@ -514,9 +513,6 @@ describe("auth boundary wiring", () => {
   });
 
   it("rejects an invalid member offset before opening a database connection", async () => {
-    // The schema's own boundaries (safe integer, decimal only) are covered by
-    // packages/api-contract/src/auth.test.ts; this proves the route never
-    // touches the database for a value that schema already rejects.
     const connect = vi.fn(() => {
       throw new Error("member list database access must not occur");
     });

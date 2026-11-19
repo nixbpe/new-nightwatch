@@ -155,7 +155,6 @@ it("blocks a second confirm and pagination while the DELETE is pending", async (
       /^(member-revoke-pending|confirmation-pending)$/,
     ),
   ).not.toHaveLength(0);
-  // The confirm button is disabled and relabelled while pending.
   const pendingConfirm = screen.getByTestId("member-revoke-confirm");
   expect(pendingConfirm).toBeDisabled();
   await user.click(pendingConfirm);
@@ -399,7 +398,6 @@ it.each(["success", "LAST_OWNER"] as const)(
         "member-name",
       ),
     ).toHaveTextContent(/^Bea$/);
-    // B is owned by the actor, so B's own control is live and idle.
     expect(revokeButton("member-b")).toBeEnabled();
     // Only the harness's own location output may carry status text; the invitation
     // section's region stays mounted and empty.

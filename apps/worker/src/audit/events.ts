@@ -13,7 +13,6 @@ import {
 
 import { FORMER_MEMBER_LABEL, type ExportEvent } from "./file";
 
-/** The connection a tenant transaction hands to its callback. */
 export type TenantClient = Parameters<
   Parameters<typeof withTenantUserContextRaw>[3]
 >[0];

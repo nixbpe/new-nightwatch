@@ -395,7 +395,6 @@ function refineMonitorConfig(
     ctx.addIssue({ code: "custom", path, message: reason, params: { reason } });
   };
 
-  // Every free-text field passes through here before the field's own rules.
   const badText = (path: (string | number)[], value: string): boolean => {
     if (isStorableText(value)) return false;
     add(path, "invalid_format");
@@ -548,7 +547,6 @@ export type MonitorSecretAction = (typeof MONITOR_SECRET_ACTIONS)[number];
 const SECRET_SLOT_INPUT =
   /^(auth\.(token|username|password|apiKey)|header\.[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
 
-/** The slot name as stored: the header id part is lowercase. */
 export function canonicalSecretSlot(slot: string): string {
   return slot.startsWith("header.") ? slot.toLowerCase() : slot;
 }
@@ -1039,7 +1037,6 @@ export const monitorListQuerySchema = z.object({
 });
 export type MonitorListQuery = z.output<typeof monitorListQuerySchema>;
 
-/** Check history and incidents. */
 export const monitorHistoryQuerySchema = z.object({
   limit: z.coerce
     .number()

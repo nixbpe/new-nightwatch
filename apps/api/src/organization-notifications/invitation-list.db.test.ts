@@ -311,7 +311,6 @@ describe("first-party pending invitation list", () => {
     expect(all.map((row) => row.publicId)).toEqual(
       expected.map((row) => row.publicId),
     );
-    // Small pages walk the same sequence.
     const walked: string[] = [];
     for (let offset = 0; offset < 51; offset += 7) {
       const part = await listOk(

@@ -155,7 +155,6 @@ function renderShell({
   lastFails?: boolean;
   /** Adds Org B, whose only Project is Delta; Org A stays the active one. */
   secondOrgRole?: "owner" | "viewer";
-  /** Holds every Project list fetch until it resolves. */
   listGate?: Promise<void>;
 } = {}) {
   fetchMeContextMock.mockResolvedValue(meContext(role, secondOrgRole));
@@ -384,7 +383,6 @@ describe("ProjectSwitcher", () => {
         membersPath(P_BRAVO),
       );
     });
-    // Landing on Alpha's page saved Alpha; landing on Bravo's saves Bravo.
     await waitFor(() => {
       expect(rememberLastProjectMock.mock.calls).toEqual([
         [ORG_A, P_ALPHA, expect.any(String)],
@@ -449,7 +447,6 @@ describe("ProjectSwitcher", () => {
         expect.any(String),
       );
     });
-    // Opening and closing the menu re-renders the shell; nothing is sent again.
     await openMenu(user);
     await user.keyboard("{Escape}");
     expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
@@ -652,7 +649,6 @@ describe("ProjectSwitcher", () => {
       await waitFor(() => {
         expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
       });
-      // The earlier reply does not take the cache from the newer Project.
       expect(cached(view)).not.toEqual({ projectId: P_ALPHA });
       saves[1]?.settle("ok");
       await waitFor(() => {
@@ -678,7 +674,6 @@ describe("ProjectSwitcher", () => {
             "Bravo",
           );
         });
-        // The save of Bravo is sent a minute after the landing on it.
         clock.mockReturnValue(Date.parse("2026-10-12T10:01:00.000Z"));
         saves[0]?.settle("ok");
         await waitFor(() => {
@@ -815,7 +810,6 @@ describe("ProjectSwitcher", () => {
       saves[0]?.settle("ok");
       await settled();
       expect(sentIds(saves)).toEqual([P_ALPHA]);
-      // Still the fetched "nothing remembered"; the retired instance wrote nothing.
       expect(cached(view)).toEqual({ projectId: null });
     });
 
@@ -1259,7 +1253,6 @@ describe("ProjectSwitcher", () => {
     renderShell({
       path: `/organizations/${ORG_C}/projects/${P_ALPHA}/members`,
     });
-    // The active Organization stays reachable through the empty state, which links to its projects page.
     const empty = await screen.findByTestId("shell-project-empty");
     expect(empty).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
     expect(screen.queryByTestId("shell-project-switch")).toBeNull();
@@ -1348,7 +1341,6 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/notifications",
       "shell-nav-/settings",
     ]);
-    // The Project's members page is current; the organization's Project list above it is not.
     expect(
       within(nav).getByTestId(
         "shell-nav-/organizations/:organizationId/projects/:projectId/members",

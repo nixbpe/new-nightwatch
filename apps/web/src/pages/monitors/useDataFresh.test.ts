@@ -34,7 +34,6 @@ describe("useDataFresh", () => {
     act(() => {
       vi.advanceTimersByTime(LIMIT_MS);
     });
-    // Exactly at the limit the data is still fresh.
     expect(result.current).toBe(true);
     act(() => {
       vi.advanceTimersByTime(2);
@@ -153,7 +152,6 @@ describe("useDataFresh after a pause", () => {
       expect(result.current).toBe(false);
       moveOn(4_000);
     }
-    // The snapshot itself never clears it, however long the toggling went on.
     expect(result.current).toBe(false);
     // `pausedAt` is the first pause: a success stamped after it, even before the later pauses, clears it.
     rerender({ input: state({ dataUpdatedAt: snapshot + 1_000 }) });
@@ -168,7 +166,6 @@ describe("useDataFresh after a pause", () => {
     rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
     expect(result.current).toBe(false);
     moveOn(1_000);
-    // The response lands, stamped after the pause began, and the query is no longer paused.
     rerender({ input: state({ dataUpdatedAt: Date.now() }) });
     expect(result.current).toBe(true);
   });
@@ -218,7 +215,6 @@ describe("useDataFresh after a pause", () => {
   });
 
   it("forgets the pause on a remount, so freshness falls back to the age rule", () => {
-    // Accepted: a remount during a pending resumed fetch loses the pause history.
     const { unmount } = setup(state({ isPaused: true }));
     unmount();
     const { result } = setup(state());

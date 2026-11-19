@@ -748,7 +748,6 @@ function incidentRows(count: number): MonitorIncidentsResponse["incidents"] {
   }));
 }
 
-// The pager shows only when there is another page to reach or a page to return from.
 describe("Pagination threshold of the feed and the incidents", () => {
   const cases = [
     [1, 1, false],

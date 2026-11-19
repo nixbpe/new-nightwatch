@@ -66,7 +66,6 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 
 const RATE_LIMITED_MESSAGE = "มีคำขอมากเกินไป กรุณาลองใหม่ภายหลัง";
 
-// Resolves better-auth errors to Thai copy by `code`, then rate-limit status, else the caller's fallback.
 // Never returns `error.message`: it is server English text.
 export function authErrorMessage(error: unknown, fallback: string): string {
   if (typeof error !== "object" || error === null) {

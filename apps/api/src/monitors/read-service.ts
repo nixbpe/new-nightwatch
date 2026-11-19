@@ -588,7 +588,6 @@ function compareBy(
   }
 }
 
-/** `direction` 1 sorts ascending, -1 descending; null goes last either way. */
 function nullsLast(
   left: number | null,
   right: number | null,

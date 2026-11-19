@@ -1,13 +1,9 @@
-# NightWatch CI — parallel blocking quality gates plus a dispatch-only
-# release-stage job. Every blocking job invokes the same root/package
-# commands as local development, so `bun run <script>` locally reproduces CI.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Release-stage job (e2e + container) runs only on manual dispatch.
   workflow_dispatch:
 
 permissions:
@@ -68,8 +64,6 @@ jobs:
       - run: bun run codegen:check
       - run: bun run typecheck
 
-  # Coverage is measured and uploaded on every run; thresholds fail the build
-  # because COVERAGE_GATE=1 is set (first domain feature: auth/onboarding).
   # The job runs against real PostgreSQL, Mailpit, and Redis transport
   # services with the least-privilege runtime role — no mocks for DB-backed
   # checks.
@@ -245,7 +239,6 @@ jobs:
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
       - run: bun run security:secrets
 
-  # Release-stage gate: e2e suite + API container build and scan.
   full:
     name: release-stage (e2e + container)
     if: github.event_name == 'workflow_dispatch'

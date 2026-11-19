@@ -137,7 +137,6 @@ describe("VerifyEmailPage", () => {
     await screen.findByTestId("verify-email-recipient");
     await userEvent.click(screen.getByTestId("verify-email-resend"));
 
-    // Generic confirmation; the invitation stays stored for the post-verification continuation.
     expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
     expect(readInvitation()).toBe("inv-123");
   });

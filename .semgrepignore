@@ -1,4 +1,3 @@
-# Semgrep ignore list — mirrors .gitignore/.prettierignore generated output.
 # Rulesets are registry packs (p/typescript, p/security-audit) passed via
 # the root security:sast script, so only paths are excluded here.
 node_modules/

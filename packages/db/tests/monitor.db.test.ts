@@ -80,7 +80,6 @@ async function insertSchedule(
   );
 }
 
-/** One row in every monitor table for the tenant, through the runtime role. */
 async function seedTenant(
   tenantId: string,
   projectId?: string,
@@ -1495,7 +1494,6 @@ describe("purge of monitor_last_responses", () => {
   it("purges last responses in the first run even when other tables expire past the limit", async () => {
     await drain();
     const owning = await seedLastResponse(0);
-    // Five expired events outnumber the limit of 2.
     for (let i = 0; i < 5; i += 1) {
       await owner.query(
         `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at)

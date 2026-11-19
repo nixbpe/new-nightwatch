@@ -1,10 +1,5 @@
 #!/usr/bin/env bun
 /**
- * Root `dev` entrypoint: computes this worktree's ports and runs the turbo
- * dev graph with WEB_PORT/API_PORT injected, so every worktree gets an
- * isolated stack without manual configuration.
- *
- * Environment resolution lives in scripts/dev-env.mjs.
  * Run `bun run db:up` before `bun run dev` for database-backed features.
  */
 import { spawn } from "node:child_process";

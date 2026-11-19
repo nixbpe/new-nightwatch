@@ -14,7 +14,6 @@ export function partitionSuffixesAhead(now: Date, count: number): string[] {
   return suffixes;
 }
 
-/** Read-only horizon check, ordered by parent then future UTC month. */
 export async function missingPartitionNames(
   database: Database,
   parents: readonly string[],

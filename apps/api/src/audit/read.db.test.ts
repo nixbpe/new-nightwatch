@@ -589,7 +589,6 @@ describe("detail (AC-12, AC-13)", () => {
     });
     expect((await get(live)).exportScope).toBeUndefined();
 
-    // The list carries the same target shape for the export event.
     const page = asList(await list(org.users.owner, org.id));
     expect(page.events.find((e) => e.id === exported)?.target).toEqual(
       exportEvent.target,

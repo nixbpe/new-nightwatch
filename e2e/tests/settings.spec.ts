@@ -3,8 +3,6 @@ import { createHmac } from "node:crypto";
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 /**
- * Personal settings (/settings/*).
- *
  * The public cases run everywhere. The credentialed cases need a real
  * database plus a dedicated QA account passed as E2E_EMAIL / E2E_PASSWORD;
  * E2E_REQUIRE_CREDENTIALS=1 makes their absence a module-setup failure.
@@ -158,7 +156,6 @@ test.describe("signed-in settings", () => {
       "page",
     );
     await expect(page.getByTestId("shell-breadcrumb-current")).toHaveText(/\S/);
-    // Account menu → settings; ⌘K → a tab.
     await page.goto("/workspace");
     await page.getByTestId("shell-account-open").click();
     await page.getByTestId("shell-account-settings").click();

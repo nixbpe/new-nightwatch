@@ -252,7 +252,6 @@ export const newPath = (organizationId = A) =>
 export const editPath = (organizationId = A, monitorId = MONITOR_ID) =>
   `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/edit`;
 
-/** A promise the test settles later, to hold a request open. */
 export function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;

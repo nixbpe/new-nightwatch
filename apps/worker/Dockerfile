@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-# Production image for @nightwatch/worker (BullMQ roles on Bun).
 # Build context MUST be the repo root (the monorepo lockfile and workspace
 # manifests live there):
 #   docker build -f apps/worker/Dockerfile -t nightwatch-worker .

@@ -62,8 +62,6 @@ export const projectDetailSchema = projectSummarySchema.extend({
 });
 export type ProjectDetail = z.infer<typeof projectDetailSchema>;
 
-// ---- Last Project ----------------------------------------------------
-
 /** `projectId` is parsed in the service: a malformed id answers 404 like a missing one. */
 export const lastProjectInputSchema = z.strictObject({
   organizationId: z.uuid(),
@@ -100,8 +98,6 @@ export const rememberedProjectResponseSchema = z.object({
 export type RememberedProjectResponse = z.infer<
   typeof rememberedProjectResponseSchema
 >;
-
-// ---- Members -----------------------------------------------------------------
 
 export const PROJECT_MEMBER_ADD_MAX = 100;
 export const PROJECT_MEMBER_CANDIDATE_LIMIT = 50;
@@ -159,7 +155,6 @@ export type ProjectMemberCandidatesResponse = z.infer<
   typeof projectMemberCandidatesResponseSchema
 >;
 
-/** `role` is required: the API never guesses between admin and member. */
 export const addProjectMembersRequestSchema = z.strictObject({
   userIds: z
     .array(z.string().min(1).max(200))
@@ -177,8 +172,6 @@ export const updateProjectMemberRequestSchema = z.strictObject({
 export type UpdateProjectMemberRequest = z.infer<
   typeof updateProjectMemberRequestSchema
 >;
-
-// ---- Route parameters and error envelopes ------------------------------------
 
 export const projectOrganizationParamsSchema = z.object({
   organizationId: z.uuid(),

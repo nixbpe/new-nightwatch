@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-# Production image for @nightwatch/api (Hono on Bun).
 # Build context MUST be the repo root (the monorepo lockfile and workspace
 # manifests live there):
 #   docker build -f apps/api/Dockerfile -t nightwatch-api .
@@ -44,8 +43,6 @@ RUN bun run build:migrate && test -f dist-migrate/migrate.js
 #                         real SMTP — no fallback sender exists
 # DATABASE_OWNER_URL is set only on migration/provisioning jobs
 # (owner-before-app rule); the app runtime never receives owner credentials.
-# PORT and LOG_LEVEL keep their defaults below.
-# ---------------------------------------------------------------------------
 FROM oven/bun:1.4.3-distroless@sha256:1aaa515018b0b37d95dbdebd55d1b7f37ad258a6289ba63e4bc3b9c9e3038697 AS runtime
 WORKDIR /app
 COPY --from=build --chown=1001:1001 /app/apps/api/dist ./dist

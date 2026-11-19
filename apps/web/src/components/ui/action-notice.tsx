@@ -22,7 +22,6 @@ function ActionNotice({
   "data-testid"?: string;
   children: ReactNode;
   actions?: ReactNode;
-  /** Renders the close button, named "ปิดข้อความ". */
   onClose?: () => void;
   /** Lets code move focus here (`tabindex="-1"` on the container). */
   focusable?: boolean;

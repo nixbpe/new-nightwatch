@@ -122,7 +122,6 @@ function secretHeaderRow() {
 
 type User = ReturnType<typeof userEvent.setup>;
 
-/** Lets every pending promise continuation and effect run inside act. */
 async function flush() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -201,7 +200,6 @@ describe("a route Organization that is not the server-active one", () => {
     expect(screen.getByTestId("monitor-form-name")).toHaveValue(
       "Payments API typed",
     );
-    // The stored secret is still shown as set.
     expect(
       screen.getByTestId("monitor-secret-auth.token-stored"),
     ).not.toBeEmptyDOMElement();

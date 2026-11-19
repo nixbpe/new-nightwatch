@@ -14,7 +14,6 @@ export async function openIsolatedDatabase(): Promise<{
   };
 }
 
-/** Creates the `audit_events` partition that holds `at`, if it does not exist. */
 export async function ensureAuditPartitionFor(
   owner: Database,
   at: Date,

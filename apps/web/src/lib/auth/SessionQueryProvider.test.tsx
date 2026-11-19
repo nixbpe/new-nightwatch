@@ -86,7 +86,6 @@ describe("SessionQueryProvider identity boundaries", () => {
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
     );
-    // Cache hit on the staged prefetch: the tree never re-fetched.
     expect(transport).not.toHaveBeenCalled();
   });
 
@@ -108,7 +107,6 @@ describe("SessionQueryProvider identity boundaries", () => {
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
     );
-    // B's tree consumed the staged prefetch instead of fetching again.
     expect(transport).toHaveBeenCalledTimes(1);
   });
 
@@ -122,17 +120,14 @@ describe("SessionQueryProvider identity boundaries", () => {
 
     render(<Harness userId="user-b" pending={false} />);
 
-    // (a) B's tree never receives A's cached payload — not even one frame.
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
     );
     expect(commitLog).not.toContain("Org A");
-    // (b) The mismatched client is retired through the cancel-then-clear path.
     await waitFor(() => {
       expect(cancelSpy).toHaveBeenCalled();
       expect(clearSpy).toHaveBeenCalled();
     });
-    // (c) The registry never serves A's client as B's, and A's staged slot is gone.
     const activeForB = resolveQueryClientForIdentity("user-b");
     expect(activeForB).not.toBe(stagedClient);
     expect(activeForB.getQueryData(["me", "context"])).toEqual({
@@ -152,14 +147,12 @@ describe("SessionQueryProvider identity boundaries", () => {
     const tree = render(<Harness userId={null} pending={true} />);
     expect(screen.getByTestId("view")).toHaveTextContent("loading");
 
-    // The session resolves to a user: initial hydration, not a switch.
     tree.rerender(<Harness userId="user-a" pending={false} />);
 
     first.resolve({ org: "Org A" });
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
     );
-    // The mounted query was never re-issued across hydration.
     expect(transport).toHaveBeenCalledTimes(1);
   });
 
@@ -172,7 +165,6 @@ describe("SessionQueryProvider identity boundaries", () => {
     const tree = render(<Harness userId="user-a" pending={false} />);
     expect(screen.getByTestId("view")).toHaveTextContent("loading");
 
-    // A logs out, B logs in — before A's response arrives.
     tree.rerender(<Harness userId={null} pending={false} />);
     tree.rerender(<Harness userId="user-b" pending={false} />);
 
@@ -180,7 +172,6 @@ describe("SessionQueryProvider identity boundaries", () => {
       expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
     );
 
-    // A's response finally lands; B's view must not flinch.
     await act(async () => {
       staleA.resolve({ org: "Org A" });
       await staleA.promise;

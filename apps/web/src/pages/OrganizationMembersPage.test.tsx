@@ -226,11 +226,6 @@ const getStatus = () => {
 const findStatus = () => waitFor(getStatus);
 
 describe("OrganizationMembersPage", () => {
-  // The outcome messages (pre-insert failure, SMTP accepted, SMTP failed) are
-  // each asserted by InvitationPanel.test.tsx; this page-level test only
-  // needs one outcome to exercise the behavior unique to it, which is
-  // outcome-independent: the draft survives a background member-list
-  // refetch and pagination while the create is still pending.
   it("keeps the organization invitation mounted across refetch and pagination", async () => {
     const post = Promise.withResolvers<InvitationCreateResponse>();
     const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
@@ -1222,8 +1217,6 @@ describe("OrganizationMembersPage", () => {
       screen.queryByTestId("members-admission-alert"),
     ).not.toBeInTheDocument();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
-    // The retry after a confirmed, unchanged membership requests the same
-    // organization and page, not a reset.
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       1,

@@ -296,7 +296,6 @@ describe("MonitorScheduler stop", () => {
 
     expect(claims).toBe(1);
     expect(added).toHaveLength(10);
-    // A later round is a no-op too.
     await scheduler.round();
     expect(claims).toBe(1);
   });

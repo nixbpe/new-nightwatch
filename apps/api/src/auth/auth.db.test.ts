@@ -21,8 +21,6 @@ import type { Mailer, OutboundMail } from "./mailer";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
 import { withAccountNotificationOrigins } from "./auth-origin-intents";
-// Integration project only; assertions are observable HTTP or SQL outcomes,
-// never hook internals.
 
 // Throws at module load so a misconfigured run fails instead of skipping or
 // borrowing runtime grants.
@@ -1899,7 +1897,6 @@ describe("MFA re-enrollment guard", () => {
     );
     expect(await mfaCredentialSnapshot(userId)).toEqual(before);
 
-    // The original authenticator still answers a real sign-in challenge.
     const challenger = client();
     const challenge = await challenger("POST", "/api/auth/sign-in/email", {
       email,
@@ -2206,10 +2203,6 @@ describe("native organization membership mutation guard", () => {
         leaverId,
       ),
     ).toEqual(before);
-    // Role PATCH, revoke, leave and the LAST_OWNER guard through the
-    // first-party routes are covered by organization-notifications/routes.db.test.ts
-    // ("organization member HTTP mutations", "organization member revoke HTTP
-    // contract", "organization member self-leave HTTP contract").
   }, 120_000);
 
   it("denies the 9 hotfix paths in the Better Auth hook when the first-layer guard is bypassed", async () => {

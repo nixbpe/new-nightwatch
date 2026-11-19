@@ -13,10 +13,8 @@ export const AUDIT_EXPORT_PURGE_LIMIT = 500;
 /** The log warns when fewer months than this are ready after the current one. */
 export const AUDIT_PARTITION_MONTHS_AHEAD_MIN = 2;
 
-/** Batches one run may drain before it stops and leaves the rest to the next hour. */
 export const AUDIT_PURGE_MAX_BATCHES_PER_RUN = 100;
 
-/** Calls `purge` until a batch is smaller than `limit`, up to the guard. */
 async function drain(
   logger: Logger,
   what: string,

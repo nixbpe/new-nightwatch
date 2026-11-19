@@ -46,7 +46,6 @@ export function RequestSection({
   base,
 }: SectionProps & { base: EditBase | null }) {
   const stored = storedSet(base);
-  // Set when Add is pressed at the row limit; cleared when a row is removed.
   const [limit, setLimit] = useState<Rows | null>(null);
 
   function addRow(kind: Rows) {
@@ -77,7 +76,6 @@ export function RequestSection({
       kind,
     );
     setLimit(null);
-    // The row that moved into this position, else the Add button.
     focusAfterRender(
       rows[index] !== undefined
         ? fieldId(`${kind}.${String(index)}.name`)

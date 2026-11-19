@@ -1095,7 +1095,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
     });
     expect(await alertAudits()).toHaveLength(0);
 
-    // At least one toggle is required.
     state = await current();
     const empty = await ownerClient("PATCH", settingsPath, {
       expectedVersion: state.version,
@@ -1103,7 +1102,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
     expect(empty.status).toBe(400);
     expect(empty.json).toMatchObject({ error: { code: "INVALID_INPUT" } });
 
-    // Owner changes only the monitor toggle: settings-changed rule applies, audit line follows.
     const intentsBefore = await changedIntents();
     const changed = await ownerClient("PATCH", settingsPath, {
       monitorAlertsEnabled: false,
@@ -1131,7 +1129,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
       ],
     });
 
-    // Stale version: 409, no write, no audit.
     const conflict = await ownerClient("PATCH", settingsPath, {
       monitorAlertsEnabled: true,
       expectedVersion: state.version,
@@ -1141,7 +1138,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
       error: { code: "SETTINGS_VERSION_CONFLICT" },
     });
 
-    // Viewer: 403, no write, no audit.
     state = await current();
     const denied = await viewerClient("PATCH", settingsPath, {
       monitorAlertsEnabled: true,
@@ -1151,7 +1147,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
     expect(denied.json).toMatchObject({ error: { code: "PERMISSION_DENIED" } });
     expect(await current()).toEqual(state);
 
-    // Same value: no version bump and no audit.
     const intentsBeforeNoop = await changedIntents();
     const noop = await ownerClient("PATCH", settingsPath, {
       monitorAlertsEnabled: false,
@@ -1168,7 +1163,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
     expect(await changedIntents()).toBe(intentsBeforeNoop);
     expect(await alertAudits()).toHaveLength(1);
 
-    // Admin may edit it back; second audit line names the admin.
     const restored = await adminClient("PATCH", settingsPath, {
       monitorAlertsEnabled: true,
       expectedVersion: state.version,
@@ -1216,7 +1210,6 @@ describe("organization member revoke HTTP contract", () => {
         b,
       ],
     );
-    // Second session of the same user, signed in independently.
     const targetSession2 = client();
     expect(
       (
@@ -1289,7 +1282,6 @@ describe("organization member revoke HTTP contract", () => {
       ).rows,
     ).toHaveLength(3);
 
-    // The owner revokes the target from A.
     const revoke = await ownerClient(
       "DELETE",
       `/api/organizations/${a}/members/${memberIds.revokeTarget}`,
@@ -1354,7 +1346,6 @@ describe("organization member revoke HTTP contract", () => {
       expect(body.organizations.map((org) => org.id)).toEqual([b]);
       expect(body.lastActiveTenantId).toBeNull();
       expect(JSON.stringify(body)).not.toContain(a);
-      // The session survives.
       expect((await session("GET", "/api/auth/get-session")).status).toBe(200);
     }
     // A missing Organization gets the same denial as the one the session left.
@@ -1404,7 +1395,6 @@ describe("organization member revoke HTTP contract", () => {
         })
       ).status,
     ).toBe(200);
-    // The denied A mutations changed nothing.
     expect(
       (
         await owner.sql.query<{ id: string; role: string }>(

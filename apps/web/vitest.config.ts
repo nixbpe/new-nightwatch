@@ -1,6 +1,5 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
-// Coverage is always measured; thresholds gate only when COVERAGE_GATE=1.
 const gate = process.env.COVERAGE_GATE === "1";
 export default defineConfig({
   plugins: [react()],

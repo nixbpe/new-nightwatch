@@ -109,7 +109,6 @@ export function isAuthSlot(slot: string): boolean {
   return slot.startsWith("auth.");
 }
 
-/** Slots the current configuration needs a value for: the auth type's and every secret header's. */
 export function requiredSlots(
   values: Pick<FormValues, "auth" | "headers">,
 ): RequiredSlot[] {
@@ -135,7 +134,6 @@ export function storedSet(base: EditBase | null): Set<string> {
   return new Set(base?.secretSlots.map(canonicalSecretSlot) ?? []);
 }
 
-/** A slot takes a typed value when nothing is stored for it or the user chose to replace it. */
 export function slotTakesValue(
   slot: string,
   base: EditBase | null,
@@ -144,7 +142,6 @@ export function slotTakesValue(
   return !storedSet(base).has(slot) || values.replacing.includes(slot);
 }
 
-/** Stored slots the current configuration still uses and the user is not replacing. */
 export function keptSlots(
   values: Pick<FormValues, "auth" | "headers" | "replacing">,
   base: EditBase | null,

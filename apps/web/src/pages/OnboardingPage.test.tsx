@@ -101,7 +101,6 @@ describe("OnboardingPage transitions", () => {
   });
 
   it("holds the callback while the token verifies, then routes to explicit acceptance", async () => {
-    // No redirect may happen while verifyEmail/refetch are pending.
     const pending = Promise.withResolvers<{ error: null }>();
     verifyEmailMock.mockReturnValue(pending.promise);
     sessionState.refetch.mockResolvedValue(undefined);
@@ -121,7 +120,6 @@ describe("OnboardingPage transitions", () => {
   });
 
   it("an unsuccessful token renders a retry-safe error instead of redirecting", async () => {
-    // A network/API failure stays on this page with recovery actions.
     verifyEmailMock.mockResolvedValue({
       error: { message: "ลิงก์ยืนยันหมดอายุแล้ว" },
     });

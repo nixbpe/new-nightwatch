@@ -76,7 +76,6 @@ export function ProjectFormDialog({
   onStale,
 }: {
   organizationId: string;
-  /** Present when editing. */
   project?: ProjectSummary;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
@@ -120,7 +119,6 @@ export function ProjectFormDialog({
     }
     switch (error.code) {
       case "PROJECT_SLUG_TAKEN":
-        // Every field keeps its value; only the slug is marked.
         setErrors({ slug: SLUG_TAKEN_MESSAGE });
         setSlugFocusToken((token) => token + 1);
         return;

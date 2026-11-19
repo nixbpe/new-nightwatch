@@ -5,13 +5,9 @@
  * once per environment to create the first organization and send its
  * owner an invitation — invitation-only, no positional args, no password.
  *
- *   bun run provision:organization -- \
- *     --name "Acme" --slug acme --owner-email admin@example.com
- *
  * Environment resolution lives in scripts/dev-env.mjs. The operator writes
  * pre-tenant identity/membership rows as the owner role and sends mail through
  * configured SMTP, so DATABASE_OWNER_URL (or DATABASE_URL) and SMTP_* must resolve.
- * All arguments are forwarded explicitly to the CLI; nothing is fabricated.
  */
 import { spawn } from "node:child_process";
 

@@ -74,7 +74,6 @@ export class MonitorScheduler {
     return running;
   }
 
-  /** Resolves once the in-flight round, if any, has finished. */
   async idle(): Promise<void> {
     await this.#running;
   }

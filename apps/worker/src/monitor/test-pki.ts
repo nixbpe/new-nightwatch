@@ -1,4 +1,3 @@
-// Throwaway CA and leaf certificates (openssl CLI) for HTTPS check targets.
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,

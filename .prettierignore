@@ -2,7 +2,6 @@ docs/
 .claude/
 AGENTS.md
 
-# Lockfile and generated output.
 bun.lock
 apps/web/src/lib/api/openapi-types.gen.ts
 node_modules/

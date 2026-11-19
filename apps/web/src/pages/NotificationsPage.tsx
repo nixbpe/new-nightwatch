@@ -87,7 +87,6 @@ function itemTitle(item: NotificationItem) {
     return "เปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
   return "ปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
 }
-// Scope and category, rendered as two parts rather than one dotted string.
 function itemContext(
   item: NotificationItem,
   organizationName = "องค์กร",
@@ -137,7 +136,6 @@ function downReason(reason: string) {
 function monitorPath(item: MonitorNotificationItem) {
   return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/monitors/${item.subject.monitorId}`;
 }
-/** Export results link to the section where the requester's files are listed. */
 function auditExportPath(organizationId: string) {
   return `/organizations/${organizationId}/audit-log#my-exports`;
 }
@@ -167,7 +165,6 @@ function MonitorFacts({
     </span>
   );
 }
-// Absolute times follow the time zone and hour cycle chosen on /settings/display.
 function itemTime(value: string, preferences: Preferences) {
   return formatDateTime(new Date(value), preferences);
 }

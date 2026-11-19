@@ -40,7 +40,6 @@ export function formatTimeWithSeconds(iso: string): string {
   return timeWithSecondsFormat.format(new Date(iso));
 }
 
-/** Day, short month and year, for dates such as a certificate expiry. */
 export function formatDate(iso: string): string {
   return dateFormat.format(new Date(iso));
 }

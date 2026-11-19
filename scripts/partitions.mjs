@@ -16,9 +16,6 @@
  * partitions; its partitions are dropped once their whole range is older than
  * 366 days. A missing audit partition makes every audited mutation fail.
  *
- * Environment: same resolution as `db:migrate` (scripts/dev-env.mjs).
- *   PARTITION_MONTHS_AHEAD  optional, integer 0..12, default 3
- *   PARTITION_LOCK_TIMEOUT_MS  optional, integer 1..30000, default 5000
  */
 import { SQL } from "bun";
 
@@ -72,7 +69,6 @@ try {
         rows.map((r) => r.name).join(", "),
     );
   } catch (error) {
-    // Partitions are already committed; only the listing failed.
     console.warn(
       `[partitions] partitions committed; listing skipped: ${error instanceof Error ? error.message : String(error)}`,
     );

@@ -2026,7 +2026,6 @@ describe("Overview one-time notice", () => {
     expect(
       await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
-    // The history entry no longer carries it, so a reload or a back navigation shows nothing.
     await waitFor(() => {
       expect(screen.getByTestId("state")).toHaveTextContent(/^null$/);
     });
@@ -2143,7 +2142,6 @@ describe("Project monitor list", () => {
     expect(screen.getByTestId("monitor-overview-down")).toHaveTextContent(
       "ล่ม 1",
     );
-    // Mixed intervals: the shortest one is named as the fastest pace.
     expect(screen.getByTestId("monitor-overview-interval")).toHaveTextContent(
       /ตรวจถี่สุดทุก 1 นาที/,
     );

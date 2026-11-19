@@ -164,7 +164,6 @@ async function exportRow(id: string) {
   return row;
 }
 
-/** Waits until some session of the test database is blocked on a lock. */
 async function waitUntilBlocked(): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -321,11 +320,8 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
     expect(ttlHours).toBeCloseTo(24, 1);
 
     const text = await contentOf(id);
-    // The preamble and header row layout is covered by file.test.ts:79; here
-    // only the two event rows that follow it matter.
     const rows = parseCsv(text.slice(1));
     const [newest, oldest] = [rows[6], rows[7]];
-    // Newest first, like the page.
     expect(newest?.[1]).toBe(invitationEvent);
     expect(oldest?.[1]).toBe(monitorEvent);
     expect(newest?.slice(2)).toEqual([
@@ -351,7 +347,6 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
     expect(oldest?.[8]).toContain("secret (auth.token): - → ตั้งค่าแล้ว");
     expect(oldest?.[8]).toContain("queryParam (token): ••• → •••");
     expect(text).not.toContain(SECRET_VALUE);
-    // The formula never starts a cell.
     expect(text).not.toMatch(/(^|,)=HYPERLINK/m);
     expect(text).not.toContain("@example.test");
     expect(text).not.toContain(requester);
@@ -453,7 +448,6 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
       [ids.young, ids.edge].sort(),
     );
 
-    // A recording start newer than the events hides them, whatever `from` says.
     await sql(
       "update organization set audit_recording_started_at = now() - interval '100 days' where id = $1",
       [org],
@@ -987,7 +981,6 @@ describe("races (AC-25)", () => {
       attempt_count: 1,
     });
     expect(await intentsFor(id)).toEqual([]);
-    // A stopped exporter claims nothing more.
     expect(await stopping.runOnce()).toBe(false);
 
     await sql(
@@ -1213,7 +1206,6 @@ describe("stale sweep by the scheduler (P-08)", () => {
     await expect(scheduler.dispatch()).resolves.toBeUndefined();
     expect((await exportRow(late)).state).toBe("queued");
     expect(lines.join("\n")).toContain("stale audit export sweep failed");
-    // The next healthy cycle catches up.
     await new NotificationDispatchScheduler(runtime, queue, logger).dispatch();
     expect((await exportRow(late)).state).toBe("failed");
   });

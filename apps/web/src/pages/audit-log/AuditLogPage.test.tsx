@@ -800,8 +800,6 @@ describe("AuditLogPage authorization", () => {
       screen.getByTestId("audit-denied-message").textContent.trim(),
     ).not.toBe("");
   });
-  // An auditor's read access and the absence of export controls are covered
-  // by AuditExport.test.tsx's "does not render the button..." case.
 });
 
 describe("AuditLogPage Organization scope", () => {

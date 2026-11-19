@@ -75,7 +75,6 @@ export function isJsonPrefix(text: string): boolean {
       state = "colon";
       continue;
     }
-    // state === "value".
     if (c === "{") {
       stack.push(true);
       state = "first";
@@ -187,7 +186,6 @@ export function indexContainers(text: string): Int32Array {
     else if (c === "}" || c === "]") ends[open.pop() ?? 0] = i + 1;
     i++;
   }
-  // A prefix can end inside a container: it "ends" past the text so callers see it is cut.
   for (const start of open) ends[start] = text.length + 1;
   return ends;
 }

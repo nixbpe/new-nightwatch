@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Inline result line under a card footer: success or pending, announced as a status.
 function Notice({
   tone,
   className,

@@ -922,10 +922,6 @@ describe("Edit: origin change", () => {
     });
   });
 
-  // Path, query and default-port equivalence are unit-tested directly against
-  // secretOriginChanged in form/secrets.test.tsx's "treats %s as %s" it.each;
-  // this one case confirms that logic also drives the UI (Save/Test enabled,
-  // no origin-changed description, a "keep" sent on save).
   it("keeps Save and Test on with a kept secret when only a path changes", async () => {
     const next = "https://api.acme.example/other";
     const user = await openEdit();
@@ -1260,7 +1256,6 @@ describe("Secret hygiene", () => {
     expect(rendered.queryClient.getMutationCache().getAll()).toHaveLength(0);
   };
 
-  /** Every place a value could linger: markup, query cache, storage and the console. */
   function findSecrets(rendered: Rendered, values: string[]): string[] {
     const consoleCalls = [
       ...vi.mocked(console.log).mock.calls,
@@ -1483,7 +1478,6 @@ describe("Secret hygiene", () => {
       });
       expect(passwordInputs()).toHaveLength(0);
       expect(document.documentElement.outerHTML).not.toContain(SECRET);
-      // The switch leaves for the Projects of B; the form is then opened again in one of them.
       await act(async () => {
         await openedRouter.navigate(newPath(B));
       });

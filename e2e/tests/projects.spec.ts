@@ -15,8 +15,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Web coverage of owner create, duplicate slug, edit and delete through the
-// dialogs, the viewer's empty state, the denied state, and both themes.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -212,7 +210,6 @@ test.describe("other roles", () => {
     await page.goto(projectsUrl(org));
     await expect(page.getByTestId("projects-denied-alert")).toBeVisible();
     await expect(page.getByTestId(`project-row-${secretId}`)).toHaveCount(0);
-    // Fixture name: no trace of the project may reach a non-member.
     await expect(page.getByText(`Secret ${run}`)).toHaveCount(0);
   });
 });
@@ -228,7 +225,6 @@ for (const theme of ["light", "dark"] as const) {
     test("list, create dialog and 320 px edit action", async ({ page }) => {
       await signIn(page, people.owner);
       await page.goto(projectsUrl(org));
-      // Document preference: the stored theme reaches the root element.
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const row = page.getByTestId(`project-row-${secretId}`);
       await expect(row.getByTestId("project-name")).toHaveText(`Secret ${run}`);

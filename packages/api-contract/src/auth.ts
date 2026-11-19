@@ -170,10 +170,6 @@ export const meContextOrganizationSchema = z.object({
 
 export type MeContextOrganization = z.infer<typeof meContextOrganizationSchema>;
 
-/**
- * Authenticated context for tenant selection (served by the OrgAccess
- * slice; the schema lives here so UI and API share one contract).
- */
 export const meContextResponseSchema = z.object({
   user: z.object({
     id: z.string().min(1),
@@ -188,7 +184,6 @@ export const meContextResponseSchema = z.object({
 
 export type MeContextResponse = z.infer<typeof meContextResponseSchema>;
 
-/** Input for switching the active organization. */
 export const activeOrganizationInputSchema = z.object({
   organizationId: z.uuid(),
 });

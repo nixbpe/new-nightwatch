@@ -64,7 +64,6 @@ function valueText(value: AuditValue | null): string {
   }
 }
 
-/** `field: ก่อน → หลัง`, with the name of a header, query parameter or secret slot. */
 export function changeText(change: AuditChange): string {
   const label = change.key ? `${change.field} (${change.key})` : change.field;
   return `${label}: ${valueText(change.before)} → ${valueText(change.after)}`;

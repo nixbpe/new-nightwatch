@@ -22,7 +22,6 @@ function point(time: string, ms: number | null) {
   return { at: T(time), endAt: null, avgMs: ms, maxMs: ms, checks: 1 };
 }
 
-/** Three checks, a gap, a pause, then one more check: six selectable steps. */
 function props24h(overrides: Partial<ResponseTimeChartProps> = {}) {
   return {
     range: "24h",
@@ -624,7 +623,6 @@ describe("24 h window clipped to creation", () => {
       from: Date.parse(T("10:00")),
       to: Date.parse(window.to),
     });
-    // Without a creation time the same results leave a long leading gap.
     expect(
       buildSeries({ ...props, createdAt: undefined }).map((e) => e.kind),
     ).toEqual(["gap", "value", "value"]);

@@ -65,7 +65,6 @@ async function events(): Promise<EventRow[]> {
       [organizationId],
     )
   ).rows;
-  // Whatever the services wrote must be readable by the read API contract.
   for (const row of rows) auditChangeSchema.array().parse(row.changes);
   return rows;
 }
@@ -74,7 +73,6 @@ async function eventCount(): Promise<number> {
   return (await events()).length;
 }
 
-/** Returns the events written while `work` ran. */
 async function written(work: () => Promise<unknown>): Promise<EventRow[]> {
   const before = await eventCount();
   await work();

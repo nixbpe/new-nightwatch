@@ -26,8 +26,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-// Browser evidence for the scope, state and concurrency rows that need no long
-// schedule wait.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -200,7 +198,6 @@ test.describe("Overview states", () => {
       await route.continue();
     });
     await page.goto(overview());
-    // A failed load is an error with a retry, never an empty list.
     await expect(page.getByTestId("monitor-overview-error")).toBeVisible();
     await expect(page.getByTestId("monitor-overview-error")).toHaveText(/\S/);
     await expect(page.getByTestId("monitor-overview-empty")).toHaveCount(0);
@@ -222,7 +219,6 @@ test.describe("Overview states", () => {
       page.getByTestId(`monitor-list-name-${monitorId}`),
     ).toBeVisible();
 
-    // Loading: a slow list shows the loading state first.
     delayMs = 6000;
     // "commit" returns before the dev server finishes loading modules, which can
     // outlast the delay and hide the loading state.
@@ -240,7 +236,6 @@ test.describe("Overview states", () => {
       timeout: 15_000,
     });
 
-    // Stale: a refresh that fails keeps the data and warns.
     delayMs = 0;
     failList = true;
     await page.getByTestId("monitor-overview-refresh").click();
@@ -649,7 +644,6 @@ test.describe("secrets in the browser", () => {
     expect(await page.content()).not.toContain(token);
 
     await shot(page, "edit-secret-set");
-    // Replace with nothing typed is refused beside the field.
     await page.getByTestId("monitor-secret-auth.token-replace").click();
     await shot(page, "edit-secret-replace-open");
     await page.getByTestId("monitor-form-save").click();
@@ -664,7 +658,6 @@ test.describe("secrets in the browser", () => {
     ).toHaveAccessibleDescription(/\S/);
     await page.getByTestId("monitor-secret-auth.token-cancel").click();
 
-    // Changing the type says the old value is dropped before saving.
     await page.getByTestId("monitor-form-auth-type").selectOption("basic");
     await expect(
       page.getByTestId("monitor-auth-secret-dropped"),
@@ -872,7 +865,6 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       await expect(card.getByTestId("monitor-response-table")).toBeVisible();
       const backToChart = card.getByTestId("monitor-response-toggle");
       await expect(backToChart).toBeFocused();
-      // The view does not change the range.
       await expect(radio).toBeChecked();
       await shot(page, `57-known-${range}-${theme}`);
       await page.keyboard.press("Enter");
@@ -1158,7 +1150,6 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
   await expect(page.getByTestId("monitor-detail-title")).toHaveText(
     "issue85-history",
   );
-  // Detail holds no history table of its own.
   await expect(page.getByTestId("monitor-checks-table")).toHaveCount(0);
   // A document load after this point means a link reloaded the page instead of navigating on the client.
   let documentLoads = 0;

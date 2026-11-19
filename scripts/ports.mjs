@@ -1,15 +1,9 @@
 /**
- * Per-worktree port allocation. Single source of truth for the API and web
- * dev servers and the e2e suite, giving each git worktree a stable default
- * port pair on one machine.
- *
  * - Primary checkout (`.git` is a directory): slot 0 → 3000/4000.
  * - Linked worktree (`.git` is a file): stable slot 1–99 hashed from the
  *   worktree path → 3000+slot / 4000+slot. Hash collisions between worktrees
  *   are possible; dev servers use strict ports and fail loudly — override
  *   with `WEB_PORT`/`API_PORT` in that case.
- *
- * - `WEB_PORT` / `API_PORT` always win (CI, containers, manual override).
  *
  * The same slot drives the local dependency stack (scripts/db.mjs,
  * compose.yaml): PostgreSQL on 5400+slot and Mailpit on 7400+slot (SMTP) /

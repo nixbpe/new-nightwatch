@@ -213,7 +213,6 @@ describe("Create", () => {
       expectedStatus: "200-299, 301",
       secretSlots: [],
     });
-    // Edit display data comes back as typed.
     expect(monitor.assertions[0]).toEqual({
       kind: "jsonPathEquals",
       path: "$.a['b'][0]",
@@ -478,7 +477,6 @@ describe("Edit header ids and URL trimming", () => {
       check_config_version: 1,
     });
 
-    // Repeating the same id-less request changes nothing.
     const again = await edit(
       saved,
       { ...configOf(saved), headers: [{ name: "X-Secret", secret: true }] },
@@ -1008,7 +1006,6 @@ describe("Edit", () => {
       timeout_seconds: 3,
     });
 
-    // Resume makes it due immediately.
     expect((await action(monitor, "resume")).status).toBe(200);
     const resumed = await scheduleRow(monitor.id);
     expect(resumed.due).toBe(true);

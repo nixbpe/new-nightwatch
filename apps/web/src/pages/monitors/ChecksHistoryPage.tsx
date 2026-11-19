@@ -45,7 +45,6 @@ type Row = { check: Check; urlChanged: boolean };
 type ChecksKey = ReturnType<typeof monitorQueryKeys.checksHistory>;
 type ChecksQuery = UseInfiniteQueryResult<InfiniteData<MonitorChecksResponse>>;
 
-// Same outline as the page titles of the audit log (AuditLogPage.tsx).
 const TITLE_FOCUS_CLASS =
   "outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 

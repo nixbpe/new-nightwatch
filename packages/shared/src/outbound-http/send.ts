@@ -478,8 +478,6 @@ export function sameDestination(from: URL, to: URL): boolean {
 }
 
 /**
- * Sends one request through the SSRF policy.
- *
  * `failure.reason` includes `invalid_request` for a URL, method or header that
  * the policy rejects before any connection. Callers pre-validate with
  * `validateOutboundUrl` and `findInvalidHeader`; the check executor maps this

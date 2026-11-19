@@ -33,7 +33,6 @@ import {
 import { isDenied } from "../useMonitorAccess";
 import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
 
-// d3 loads only when the Detail page shows a chart.
 const ResponseTimeChart = lazy(() =>
   import("../../../components/ui/response-time-chart").then((module) => ({
     default: module.ResponseTimeChart,

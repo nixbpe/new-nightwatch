@@ -319,8 +319,6 @@ export function testSnapshot(
   return { ...configInput(values), secretShape: secretShape(entries) };
 }
 
-// ---- Errors -------------------------------------------------------------------
-
 /** Field path (`headers.2.name`) to the message shown beside that field. */
 export type FieldErrors = Record<string, string>;
 
@@ -499,7 +497,6 @@ function issuesToErrors(
   return errors;
 }
 
-/** What the secret checks read: the stored slots and the values typed so far. */
 export type SecretContext = {
   base: EditBase | null;
   get: (slot: string) => string;

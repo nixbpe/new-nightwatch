@@ -119,7 +119,6 @@ export const organization = pgTable("organization", {
   logo: text("logo"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }),
-  // When audit events started being recorded for this Organization.
   auditRecordingStartedAt: timestamp("audit_recording_started_at", {
     mode: "date",
     withTimezone: true,

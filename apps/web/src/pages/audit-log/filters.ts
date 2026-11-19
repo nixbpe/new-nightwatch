@@ -22,7 +22,6 @@ export function hasActiveFilters(filters: AuditFilters): boolean {
   );
 }
 
-/** The same filters on page 1; this is what a changed filter resets to. */
 export function filterIdentity(filters: AuditFilters): string {
   return serializeAuditFilters({ ...filters, page: 1 }).toString();
 }

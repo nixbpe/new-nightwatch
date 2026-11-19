@@ -185,7 +185,6 @@ try {
   );
   target.setDelay(8000);
 
-  // A restarted Worker resumes without back-filling or duplicating.
   seen = target.hits.length;
   w = startWorker("resume");
   workers.push(w);
@@ -201,7 +200,6 @@ try {
     { before, after: rows.length },
   );
 
-  // kill -9 in the middle of the next check.
   seen = target.hits.length;
   check("next round started", await inFlight(seen, 150_000));
   w.kill("SIGKILL");
@@ -240,7 +238,6 @@ try {
     incidents2,
   );
 
-  // Two Workers at once: one result per round.
   const w2 = startWorker("replica");
   workers.push(w2);
   const from = Date.now();

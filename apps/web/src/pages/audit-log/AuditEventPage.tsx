@@ -93,7 +93,6 @@ function AuditEventForOrganization({
     report(actors.error);
   }, [actors.error, report]);
 
-  // Opening a detail page puts focus on its h1.
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
@@ -402,7 +401,6 @@ function TargetValue({
       </Link>
     );
   }
-  // A Project member event names the Project too, and links to its members page.
   if (target.type === "member" && target.project !== undefined) {
     const { project } = target;
     if (

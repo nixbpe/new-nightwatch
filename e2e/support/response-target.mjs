@@ -6,14 +6,6 @@ import { createServer } from "node:http";
  * hostname in OUTBOUND_TEST_ALLOWED_HOSTS. Use one target per monitor so the
  * hit counter of /probe belongs to that monitor's checks alone.
  *
- * Routes (any method):
- *   /probe    answers by the script entry for this hit (the last entry repeats):
- *             { status } or { hang: true } (never answers, so the check times out)
- *   /json     200 JSON while `hang` is false, else never answers; `setHang` flips it
- *   /long     200 text/plain, one line of `longBodyChars` characters without spaces
- *   /reflect  200 text/plain; charset=iso-8859-1, echoing request headers, query and
- *             body into the response headers (x-echo-*) and the body
- *
  * Every request is recorded in `hits`, including the body, so a test can
  * prove the secret really reached the target. Values stay in memory only.
  *

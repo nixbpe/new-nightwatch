@@ -256,8 +256,6 @@ describe("List: filters", () => {
 
 describe("List: SSL level", () => {
   const DAY = 86_400;
-  // The full boundary matrix is the unit source of truth (health.test.ts,
-  // computeSsl); these two rows only prove the route wires it through.
   it.each([
     ["30 d exactly", 30 * DAY, "caution", 30],
     ["expired 1 s ago", -1, "expired", 0],
@@ -365,21 +363,6 @@ describe("List: uptime", () => {
   });
 });
 
-// ---- sort (#59) -------------------------------------------------------------
-
-/**
- * Six monitors with distinct values per sort key, a null on both the uptime and
- * response keys, and a tie on each key. Names are read back in the expected
- * orders below.
- *
- *   name      created  uptime h24  last response
- *   Alpha     50 d     100         100
- *   bravo     40 d      50         900
- *   Charlie   10 d     null        null
- *   delta      1 d     100         500
- *   echo      30 d     null        null
- *   foxtrot   30 d     100         500   (created_at equal to echo)
- */
 async function seedSortOrganization(label: string) {
   const org = await ctx.createOrganization(label);
   const DAY = 86_400;
@@ -558,7 +541,6 @@ describe("List: sort", () => {
     const race = await seedSortOrganization("read-sort-race");
     const first = await list(race.org, "?sort=response_time&limit=2&offset=0");
     expect(namesOf(first)).toEqual(["bravo", "delta"]);
-    // A newer slow result for Alpha lands between the two requests.
     await seedResults(ctx, race.org.id, race.ids.Alpha, [1], {
       responseTimeMs: 2000,
     });
@@ -694,7 +676,6 @@ describe("List: response sparkline", () => {
     expect(avgAt(points, seededHour - 23 * HOUR)).toBe(
       shift === 0 ? 40 : undefined,
     );
-    // The row 24 hours back never enters the window.
     expect(points.map((point) => point.avgMs)).not.toContain(999);
     expect(points.filter((point) => point.avgMs !== null)).toHaveLength(
       3 - shift,
@@ -771,7 +752,6 @@ describe("Recent events", () => {
       sslState: "ok",
       lastCheckAgoSeconds: 20,
     });
-    // Older than 30 days: outside the window.
     const old = await seedMonitor(ctx, events.id, { name: "old" });
     await seedIncident(ctx, events.id, old, {
       startedAgoSeconds: 40 * 86_400,

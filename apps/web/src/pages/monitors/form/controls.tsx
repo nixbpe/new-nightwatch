@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { errorId, fieldId, type FieldErrors, type FormValues } from "./model";
 import type { SecretAccess } from "./secrets";
 
-/** What each form section gets: the values, the errors placed beside its fields and how to change them. */
 export type SectionProps = {
   values: FormValues;
   errors: FieldErrors;
@@ -286,7 +285,6 @@ export function RowShell({
   );
 }
 
-/** Add button with its limit message beside it. */
 export function AddRowButton({
   "data-testid": testId,
   id,

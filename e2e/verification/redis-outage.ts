@@ -133,7 +133,6 @@ try {
   const id = (created.body as { monitor: { id: string } }).monitor.id;
   check("monitor created", created.status === 201, created.body);
 
-  // Part A: first failure recorded with Redis up, then Redis stops during the second check.
   const firstFail = await waitFor(
     async () => (await counts(id)).results >= 1,
     90_000,
@@ -175,7 +174,6 @@ try {
     ready1,
   );
 
-  // Part C, stopped Redis: Test and write requests.
   const probeHits = probe.hits.length;
   const t0 = Date.now();
   const testDown = await session.request(
@@ -241,7 +239,6 @@ try {
     settled,
   );
 
-  // Part B: Redis stops and returns while the incident stays open.
   docker("stop", container);
   await sleep(45_000);
   const midOutage = await counts(id);
@@ -279,7 +276,6 @@ try {
     final,
   );
 
-  // Part C, frozen Redis: the limiter times out at 2 s.
   docker("pause", container);
   const hits2 = probe.hits.length;
   const t1 = Date.now();

@@ -77,7 +77,6 @@ export function ExportDialog({
   };
 
   const submit = async () => {
-    // Pressing again while a request is out changes nothing (M-3).
     if (inFlight.current || tooLarge) return;
     inFlight.current = true;
     setSubmitting(true);

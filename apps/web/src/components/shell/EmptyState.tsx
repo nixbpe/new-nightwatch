@@ -3,8 +3,6 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { IconTile } from "../ui/icon-tile";
 
-// One composition for every empty view: icon tile, one title, one line, one
-// action. `first-run` gives the overview's first visit more room to breathe.
 export function EmptyState({
   icon,
   title,

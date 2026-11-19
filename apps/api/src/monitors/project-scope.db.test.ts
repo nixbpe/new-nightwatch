@@ -76,7 +76,6 @@ type Route = {
   name: string;
   method: "DELETE" | "GET" | "PATCH" | "POST";
   suffix: string;
-  /** Needs a monitor in the path. */
   monitor: boolean;
   body?: unknown;
 };

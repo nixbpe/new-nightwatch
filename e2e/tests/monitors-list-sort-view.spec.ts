@@ -17,9 +17,6 @@ import {
   type Person,
 } from "../support/monitor-fixtures";
 
-// Issue #59 browser evidence: server-side sort, method / interval columns, the
-// Cards sparkline, the Detail SSL issuer, and the layout at 640 px.
-// Covers P59-02, P59-03, P59-04, P59-05, P59-06, P59-10 (NODE-59-03).
 //
 // Rows are written straight into the run's own organization. No monitor_schedule
 // row exists, so the Worker never checks them and the seeded health stays put.
@@ -203,7 +200,6 @@ test.afterAll(async () => {
   }
 });
 
-/** Monitor names in the order their rows (or cards) appear. */
 async function orderOf(rows: Locator): Promise<string[]> {
   const texts = await rows.allInnerTexts();
   return texts.map((text) => {
@@ -234,7 +230,6 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await signIn(page, owner);
   await page.goto(overview());
 
-  // Default view is the table, default sort is "ปัญหาก่อน" (down first, then by name).
   await expect(page.getByTestId("monitor-overview-view-table")).toBeChecked();
   const sort = page.getByTestId("monitor-overview-sort");
   await expect(sort).toHaveValue("problems");
@@ -245,7 +240,6 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await expect(
     page.getByTestId("monitor-overview-table-region"),
   ).toHaveAccessibleName(/\S/);
-  // Name with URL, status, p95 and availability over 24 h, last check.
   for (const key of ["name", "health", "p95", "h24", "lastCheck"]) {
     await expect(
       table.getByTestId(`monitor-list-heading-${key}`),
@@ -283,7 +277,6 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
       /\S/,
     );
   }
-  // "ชื่อ A-Z" reorders by name and announces the sort with the result count.
   const sortedResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === monitorPath(orgId, projectId) &&
@@ -312,7 +305,6 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   ).toHaveAttribute("role", "status");
   await expect.poll(async () => orderOf(tableRows(page))).toEqual(NAME_ORDER);
 
-  // Cards carry method, interval and the sparkline text alternative.
   await page.getByTestId("monitor-overview-view-cards").click();
   await expect(cardItems(page)).toHaveCount(3);
   for (const seed of SEEDS) {
@@ -385,7 +377,6 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
     await page.evaluate(() => localStorage.getItem("nightwatch:monitors-view")),
   ).toBe("cards");
 
-  // Reload: the view is remembered, the sort is not.
   await page.reload();
   await expect(page.getByTestId("monitor-overview-view-cards")).toBeChecked();
   await expect(page.getByTestId("monitor-overview-sort")).toHaveValue(

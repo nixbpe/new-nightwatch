@@ -577,7 +577,6 @@ describe("monitor-checker process", () => {
     expect(answering.requests).toHaveLength(1);
     expect(await resultCount(monitor)).toBe(0);
     expect(log).not.toContain(monitor.claimToken);
-    // The failed record left the monitor exactly as the claim left it.
     const [state] = await rows<{
       claim_token: string | null;
       consecutive_failures: number;

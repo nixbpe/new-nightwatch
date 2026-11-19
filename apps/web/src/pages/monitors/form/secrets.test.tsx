@@ -37,7 +37,6 @@ describe("what the Test panel keeps of the secrets", () => {
       ["auth.password", "replace"],
     ]);
     expect(secretShape(entries)).toBe(snapshot.secretShape);
-    // The only additions to the plain config are the shape string.
     expect(Object.keys(snapshot)).toContain("secretShape");
     expect(Object.keys(snapshot)).not.toContain("secrets");
   });

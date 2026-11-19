@@ -113,7 +113,6 @@ describe("provisionOrganization against real PostgreSQL", () => {
       provision(args),
     ]);
 
-    // One transaction created, the other re-sent with a rotated id.
     expect([first.resent, second.resent].filter(Boolean)).toHaveLength(1);
     const resentOutcome = first.resent ? first : second;
     const createdOutcome = first.resent ? second : first;
@@ -134,7 +133,6 @@ describe("provisionOrganization against real PostgreSQL", () => {
     // Only the id of the transaction that committed last is live.
     expect(live[0]?.id).toBe(resentOutcome.invitationId);
 
-    // Concurrent retries while it is live re-send it, never add another.
     const [retryA, retryB] = await Promise.all([
       provision(args),
       provision(args),

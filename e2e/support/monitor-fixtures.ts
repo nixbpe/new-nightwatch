@@ -90,7 +90,6 @@ export async function addMember(
   return id;
 }
 
-/** A Project of the Organization; monitors live under one. */
 export async function createProject(
   pool: Pool,
   organizationId: string,

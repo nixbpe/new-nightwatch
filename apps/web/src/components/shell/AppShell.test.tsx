@@ -412,7 +412,6 @@ describe("AppShell", () => {
       within(breadcrumb).getByTestId("shell-breadcrumb-current"),
     ).toHaveAttribute("aria-current", "page");
 
-    // A labelled section, not an accordion: no expandable control.
     const nav = screen.getByTestId("shell-navigation");
     expect(within(nav).queryByTestId("shell-nav-/workspace")).toBeNull();
     expect(within(nav).getByTestId("shell-nav-/notifications")).toHaveAttribute(
@@ -431,7 +430,6 @@ describe("AppShell", () => {
         "shell-nav-/organizations/:organizationId/notification-settings",
       ),
     ).toHaveAttribute("href", `/organizations/${ORG_A}/notification-settings`);
-    // Palette-only sub-destinations never become sidebar rows.
     expect(
       within(nav).queryByTestId("shell-nav-/settings/sessions"),
     ).toBeNull();
@@ -476,8 +474,6 @@ describe("AppShell", () => {
   });
 
   it("an organization-scoped route names its own organization even when another one is active", async () => {
-    // A bookmarked URL for Org B while Org A is active: the page acts on B, so the crumb says B
-    // and the sidebar's org leaf (linking to A) is not current.
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, { ...viewerOrg, role: "owner" as const }], ORG_A),
     );

@@ -21,7 +21,6 @@ export function BasicSection({
   advanced,
   urlNote,
 }: SectionProps & {
-  /** Advanced mode shows the timeout field; basic mode states the values that apply. */
   advanced: boolean;
   /** Beside the URL: why Save and Test are off (a kept secret and a new origin). */
   urlNote: string | null;

@@ -355,7 +355,6 @@ export function monitorAuditChanges(
   return [...changes, ...secretChanges(previous, next, secrets)];
 }
 
-// Secret slots a request wrote or removed, by name.
 function secretChanges(
   previous: AuditConfig,
   next: AuditConfig,
@@ -395,7 +394,6 @@ export function editAuditAction(
     : "organization.monitor.secret.set";
 }
 
-/** The audit target of a monitor event: the monitor and the Project it belongs to. */
 export function monitorTarget(monitorId: string, projectId: string) {
   return {
     type: "monitor" as const,

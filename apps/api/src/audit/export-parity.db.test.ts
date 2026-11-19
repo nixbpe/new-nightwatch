@@ -10,9 +10,6 @@ import {
 } from "../monitors/test-support";
 import { AUDIT_ACTION_CATEGORIES, type AuditAction } from "./record";
 
-// The export reads events through readAuditEventBatch; the page through the
-// list API. Both build their filter from packages/db, and this proves that for
-// the same filters they select the same events in the same order.
 let ctx: MonitorTestContext;
 let org: TestOrganization;
 let monitorId: string;

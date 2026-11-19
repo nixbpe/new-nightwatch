@@ -49,7 +49,6 @@ const authResponses = {
   401: jsonError("No valid session", unauthenticatedErrorResponseSchema),
   403: jsonError(
     "Email is unverified, membership is denied, or permission is denied",
-    // Typed as a union through the shared helper's schemas.
     emailNotVerifiedErrorResponseSchema
       .or(membershipDeniedErrorResponseSchema)
       .or(permissionDeniedErrorResponseSchema),

@@ -259,7 +259,6 @@ function AuditLogForOrganization({
     void actors.refetch();
   };
 
-  // Coming back from a detail page puts focus on that row's link, else on the table heading.
   const returnedTo = returnState?.eventId;
   const restoredFocus = useRef(false);
   useEffect(() => {

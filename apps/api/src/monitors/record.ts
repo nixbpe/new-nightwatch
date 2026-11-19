@@ -51,7 +51,6 @@ export type MonitorRow = {
   updatedAt: Date;
 };
 
-/** The columns Create and Edit write, in the forms the database stores. */
 export type StoredConfig = {
   name: string;
   url: string;

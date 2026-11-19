@@ -109,7 +109,6 @@ describe("ConfirmDialog", () => {
     const link = screen.getByTestId("confirmation-details");
     const input = screen.getByTestId("confirmation-reason");
     const confirm = screen.getByTestId("confirmation-confirm");
-    // DOM order is link, input, Cancel, confirm; initial focus is Cancel.
     expect(screen.getByTestId("confirmation-cancel")).toHaveFocus();
     await user.tab();
     expect(confirm).toHaveFocus();
@@ -117,7 +116,6 @@ describe("ConfirmDialog", () => {
     expect(link).toHaveFocus();
     await user.tab();
     expect(input).toHaveFocus();
-    // Shift+Tab from the first focusable wraps to the last.
     link.focus();
     await user.tab({ shift: true });
     expect(confirm).toHaveFocus();

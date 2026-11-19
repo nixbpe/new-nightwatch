@@ -9,7 +9,6 @@
  *   mailpit   127.0.0.1:7400+slot   SMTP capture
  *   mailpit   127.0.0.1:7500+slot   web UI (verification/reset/invite mail)
  *
- * Root aliases (package.json): db:up / db:down / db:logs / db:psql / db:mail.
  * Schema migrations are AuthServer-owned: `bun run db:migrate`.
  *
  * Generated development secrets are written once to .env.compose.local

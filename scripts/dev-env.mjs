@@ -5,10 +5,6 @@ import { readEnvFile } from "./env-file.mjs";
 import { repoRoot, resolvePorts } from "./ports.mjs";
 
 /**
- * Shared development-environment resolution for the root workflow commands
- * (`dev`, `db:migrate`, operator provisioning). Every consumer gets the same
- * convention, so no command invents a subtly different environment:
- *
  *   1. Explicitly exported shell variables always win (blank values count
  *      as unset, so a copied `.env.example` cannot shadow real config).
  *   2. Generated development secrets come from the gitignored

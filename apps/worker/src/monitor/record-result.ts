@@ -8,7 +8,6 @@ import {
 
 import { writeMonitorNotification } from "./notifications";
 
-/** The transaction handle of `withTenantContextRaw`. */
 export type TenantClient = Parameters<
   Parameters<typeof withTenantContextRaw>[2]
 >[0];

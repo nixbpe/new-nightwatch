@@ -193,7 +193,6 @@ describe("LoginPage", () => {
   });
 
   it("invalid credentials keep the entered form and show the error", async () => {
-    // A failed attempt must not wipe the form or navigate away.
     signInEmailMock.mockResolvedValue({
       data: null,
       error: {
@@ -232,7 +231,6 @@ describe("LoginPage", () => {
     ],
     ["a 403 without a code", { message: "Forbidden", status: 403 }],
   ] as const)(
-    // Each of these is recoverable: the error links to the anonymous-safe resend hub.
     "offers the resend page instead of a dead end for %s",
     async (_label, error) => {
       signInEmailMock.mockResolvedValue({ data: null, error });

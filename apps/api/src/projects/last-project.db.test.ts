@@ -126,7 +126,6 @@ describe("PUT /api/me/last-project", () => {
     expect(await stored(org, user)).toBe(second);
     expect(await resolved(user, org.id)).toBe(second);
 
-    // A save made after the stored landing still wins.
     const after = await put(user, org.id, first, at(10_000));
     expect(after.json).toEqual({ projectId: first });
     expect(await stored(org, user)).toBe(first);

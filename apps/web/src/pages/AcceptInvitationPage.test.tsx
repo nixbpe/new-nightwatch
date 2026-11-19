@@ -199,7 +199,6 @@ describe("AcceptInvitationPage", () => {
     );
     await userEvent.click(screen.getByTestId("invitation-signup-submit"));
 
-    // Signup routes to the resend hub with the invitation remembered for post-verification acceptance.
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );

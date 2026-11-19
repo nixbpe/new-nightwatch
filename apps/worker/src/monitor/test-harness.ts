@@ -179,7 +179,6 @@ export type Target = {
   connections(): number;
   /** Accepted connections the client side has since closed. */
   closedConnections(): number;
-  /** Replaces the response behavior for later requests. */
   setHandler(handler: TargetHandler): void;
   requests: {
     method: string;

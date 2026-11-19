@@ -153,7 +153,6 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** Avatars are the one circular mark: inset fill, strong edge, Text initials in mono. */
 function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
   const initials = initialsOf(name);
   return (

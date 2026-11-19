@@ -132,7 +132,6 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                       /^\/organizations\/([^/]+)\/(members|audit-log(?:\/[^/]+)?)$/.exec(
                         location.pathname,
                       );
-                    // Choosing the Organization the URL already names changes nothing on the page.
                     const section = match?.[2];
                     if (
                       !switched ||

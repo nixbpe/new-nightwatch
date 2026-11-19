@@ -245,7 +245,6 @@ export function useSelfLeave({
 
 export type SelfLeave = ReturnType<typeof useSelfLeave>;
 
-/** Page-header action that opens the leave confirmation; shown to every role. */
 export function SelfLeaveButton({
   selfLeave,
   disabled,
@@ -270,7 +269,6 @@ export function SelfLeaveButton({
   );
 }
 
-/** Result notice and confirmation dialog; the entry button sits in the page header. */
 export function SelfLeaveSection({
   selfLeave,
   organization,

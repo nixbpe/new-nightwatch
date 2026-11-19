@@ -89,7 +89,6 @@ const pillFor = (memberId: string) =>
   within(screen.getByTestId(`member-row-${memberId}`)).getByTestId(
     "member-current-role",
   );
-// The submit finishes after its refresh branch: pending text gone, control enabled.
 const submitSettled = (memberId: string) =>
   waitFor(() => {
     expect(screen.queryByTestId("member-role-pending")).toBeNull();
@@ -118,9 +117,7 @@ it("saves a non-owner change directly, without a dialog, and reports success onl
     "auditor",
   );
   expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "auditor");
-  // Initial load plus the post-PATCH refetch.
   expect(listCalls).toEqual([A, A]);
-  // Keyboard focus returns to the same member's control after the list reloads.
   await waitFor(() => expect(roleSelect("member-ann")).toHaveFocus());
 });
 
@@ -143,7 +140,6 @@ it("asks owners to confirm owner-involved changes, and cancel sends no request",
   expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
   expect(listCalls).toEqual([A]);
 
-  // Demoting an owner also needs confirmation; Escape cancels.
   await user.selectOptions(roleSelect("member-boss"), "admin");
   await user.click(save("member-boss"));
   expect(
@@ -240,7 +236,6 @@ it("explains LAST_OWNER, refreshes the latest roles and shows no success", async
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   expect(listCalls).toEqual([A, A]);
   expect(pillFor("member-boss")).toHaveAttribute("data-member-role", "owner");
-  // Focus stays on the member's own controls (opener or its select).
   await waitFor(() => {
     expect(
       screen

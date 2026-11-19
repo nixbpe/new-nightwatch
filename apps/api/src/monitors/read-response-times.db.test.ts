@@ -320,10 +320,6 @@ describe("Response times: access", () => {
     id = await seedMonitor(ctx, org.id, { name: "Secret Name" });
   });
 
-  // Every role can read, a non-member is denied like a missing Organization,
-  // and a missing/malformed/foreign id answers 404: read-detail.db.test.ts's
-  // "Detail, Checks and Incidents: access" suffixes loop covers this route too.
-
   it("rejects an unknown range", async () => {
     const response = await ctx.call(
       org.users.viewer,

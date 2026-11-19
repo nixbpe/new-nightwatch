@@ -6,7 +6,6 @@ export const MOCKUP_NOTICE = "ตัวอย่าง · ยังไม่เ�
 
 const ISSUES_URL = "https://github.com/nixbpe/new-nightwatch/issues";
 
-/** The CMP-06 notice line: what the region is, and the issue that will back it. */
 export function MockupNotice({
   issue,
   issueUrl,

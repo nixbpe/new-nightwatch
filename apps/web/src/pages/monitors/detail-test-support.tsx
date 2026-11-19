@@ -203,7 +203,6 @@ export const noResponseTimes: Extract<
   configChanges: [],
 };
 
-/** A healthy, checked, https monitor; tests override only what they exercise. */
 export function detail(overrides: Partial<Monitor> = {}): Monitor {
   return {
     id: MONITOR_ID,

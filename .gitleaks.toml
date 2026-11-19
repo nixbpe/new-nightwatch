@@ -1,4 +1,3 @@
-# NightWatch gitleaks baseline.
 # Default ruleset extended; leaks or scanner errors exit non-zero
 # (root script: security:secrets → gitleaks git --exit-code 1).
 

@@ -176,7 +176,6 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   await expect(page.getByTestId("monitor-test-http-status")).toContainText(
     /\b503\b/,
   );
-  // A Test never creates a monitor and does not block saving.
   expect(await monitorCount(orgA)).toBe(before);
 
   target.setMode("up");
@@ -330,7 +329,6 @@ test("viewer reads Overview and Detail and sees no action", async ({
     "member",
   );
 
-  // Direct routes and requests are refused, and nothing reaches the target.
   const hits = flapTarget.hits.length;
   await page.goto(`/organizations/${orgA}/projects/${projA}/monitors/new`);
   await expect(page.getByTestId("monitor-form-save")).toHaveCount(0);
@@ -503,7 +501,6 @@ test("a target that goes down and comes back reaches the inbox once each", async
       .getByTestId("notification-title"),
   ).not.toHaveText(downTitle);
 
-  // The Organization's Owner and the Project's member each get one item per event, never two.
   const counts = await pool.query<{
     recipient_user_id: string;
     event_type: string;

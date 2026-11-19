@@ -5,15 +5,6 @@ import { createServer } from "node:http";
  * 127.0.0.1 only; the app reaches it through the hostname listed in
  * OUTBOUND_TEST_ALLOWED_HOSTS (the SSRF helper blocks loopback otherwise).
  *
- * Routes (any method):
- *   /health          200 JSON while `mode` is "up", 503 while "down", after `delayMs`
- *   /status/:code    that status
- *   /slow?ms=N       200 after N ms
- *   /creds           200 only when every header in `credentials` matches, else 401
- *   /reflect         200 JSON echoing the request headers (secret redaction checks)
- *   /redirect?to=URL 302 to URL
- *   /json            200 {"status":"ok","data":{"count":3}}
- *
  * `hits` records every request so a test can prove that a denied operation
  * sent nothing out. Header values stay in memory and are never printed.
  *

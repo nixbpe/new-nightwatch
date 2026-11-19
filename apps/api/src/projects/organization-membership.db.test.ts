@@ -7,7 +7,6 @@ import {
   type TestOrganization,
 } from "../monitors/test-support";
 
-// Project access follows the Organization role and membership.
 let ctx: MonitorTestContext;
 
 beforeAll(async () => {

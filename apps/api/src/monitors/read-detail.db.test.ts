@@ -383,8 +383,6 @@ describe("Resume compares database times", () => {
 
 describe("SSL level in Detail", () => {
   const DAY = 86_400;
-  // The full boundary matrix is the unit source of truth (health.test.ts,
-  // computeSsl); these two rows only prove the route wires it through.
   it.each([
     ["30 d exactly", 30 * DAY, "caution", 30],
     ["expired 1 s ago", -1, "expired", 0],
@@ -816,7 +814,6 @@ describe("Incidents", () => {
     ]);
     expect(body.incidents[1]?.durationSeconds).toBe(10_000);
     expect(body.incidents[2]?.durationSeconds).toBe(3600);
-    // The open incident lasts until now.
     expect(body.incidents[0]?.durationSeconds).toBeGreaterThanOrEqual(600);
     expect(body.incidents[0]?.durationSeconds).toBeLessThan(700);
 

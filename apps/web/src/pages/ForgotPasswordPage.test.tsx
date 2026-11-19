@@ -72,7 +72,6 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("a failed request keeps the form with a retryable error", async () => {
-    // A failure must not swallow the entered email; a retry can succeed.
     requestPasswordResetMock.mockResolvedValueOnce({
       data: null,
       error: { message: "Failed to send email" },

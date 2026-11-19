@@ -58,7 +58,6 @@ type Snapshot = {
   sessions: Record<string, string | null>;
 };
 
-// Membership, user mirror and session mirror rows for every fixture user.
 async function snapshot(): Promise<Snapshot> {
   const userIds = everyone.map((entry) => entry.user);
   const memberships = await owner.query<{
@@ -158,7 +157,6 @@ async function reset(withSecondOwner = true) {
   }
 }
 
-// Expected snapshot after `targetUser` leaves from A and nothing else changes.
 function afterLeave(before: Snapshot, targetUser: string): Snapshot {
   const target = everyone.find((entry) => entry.user === targetUser);
   return {

@@ -10,7 +10,6 @@ export const PROJECT_ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
   member: "ดูและทำงานในโปรเจกต์ จัดการสมาชิกไม่ได้",
 };
 
-// Shown under the add dialog's role picker.
 export const PROJECT_ROLE_HINTS: Record<ProjectRole, string> = {
   admin:
     "ผู้ดูแลเพิ่มและนำสมาชิกออก เปลี่ยนบทบาท และแก้ไขการตั้งค่าโปรเจกต์ได้",

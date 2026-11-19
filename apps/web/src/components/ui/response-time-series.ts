@@ -43,7 +43,6 @@ export type ResponseTimeChartProps = {
 };
 
 const HOUR_MS = 3_600_000;
-/** Maps the API's two shapes (24 h points and gaps, 7 d and 30 d hourly buckets) to chart props. */
 export function toChartProps(
   response: MonitorResponseTimesResponse,
   context: { intervalSeconds: number; createdAt?: string },
@@ -100,7 +99,6 @@ export function toChartProps(
   };
 }
 
-/** The window the chart spans: the range, but never earlier than the monitor's creation. */
 export function chartWindow(props: ResponseTimeChartProps): Span | undefined {
   if (props.window === undefined) return undefined;
   const created =
@@ -194,7 +192,6 @@ function coveredBy(
   return spans.some((span) => span.from <= at && span.to + slack >= end);
 }
 
-/** The parts of `span` that no blocker covers. */
 function subtract(span: Span, blockers: readonly Span[]): Span[] {
   let pieces = [span];
   for (const blocker of blockers) {
@@ -326,7 +323,6 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
   }
   entries.sort((a, b) => a.at - b.at || a.end - b.end);
   const series = mergeAdjacent(entries);
-  // A change belongs to the last step that started at or before it.
   for (const change of props.configChanges) {
     const at = Date.parse(change.at);
     let owner = series[0];
@@ -358,7 +354,6 @@ export function pausedThroughout(props: ResponseTimeChartProps): boolean {
     return false;
   }
   const tolerance = (props.intervalSeconds ?? 30) * 2 * 1000;
-  // Only a sliver at the window's edge is tolerated; an uncovered stretch between pauses is real activity.
   return subtract(window, pauses).every(
     (piece) =>
       piece.to - piece.from <= tolerance &&

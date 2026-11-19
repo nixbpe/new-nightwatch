@@ -308,7 +308,6 @@ export async function updateProjectMember(
         input.userId,
       );
       const after = input.input.role;
-      // The same role again leaves the row and the audit log as they were.
       if (before !== after) {
         if (before === "admin") {
           await assertAnotherAdmin(client, input, projectId, input.userId);

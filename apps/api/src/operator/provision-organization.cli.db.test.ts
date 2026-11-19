@@ -348,7 +348,6 @@ describe("bun run provision:organization against an existing organization", () =
     expect(rows[0]?.status).toBe("pending");
     leaksNoIdentifier(result.stdout + result.stderr, [rows[0]?.id ?? ""]);
 
-    // The re-run re-sends with a fresh id.
     const rerun = await cli(aSlug, address("smtpfail"));
     expect(rerun.code).toBe(0);
     expect(rerun.stdout).toContain("Re-sent the pending owner invitation");

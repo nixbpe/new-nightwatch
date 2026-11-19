@@ -72,7 +72,6 @@ function Sparkline({ points }: { points: Row["responseSparkline"] }) {
   );
 }
 
-// Cards view of the same list page as the table: two columns on a hairline grid.
 // The name stays its own link so its accessible name is the monitor name.
 export function MonitorCards({
   organizationId,

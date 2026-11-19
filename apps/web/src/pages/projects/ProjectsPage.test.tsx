@@ -1059,7 +1059,6 @@ describe("stale list", () => {
     expect(row(old.id)).toBeInTheDocument();
     expect(screen.queryByTestId("projects-notice-saved")).toBeNull();
 
-    // A later reload that succeeds must not bring back the old notice.
     fetchListMock.mockResolvedValue({ projects: [old, fresh] });
     await queryClients.at(-1)?.invalidateQueries();
     expect(

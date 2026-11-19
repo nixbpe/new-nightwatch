@@ -9,7 +9,6 @@ export type ProjectAccess =
   | { kind: "member"; role: ProjectRole }
   | { kind: "none" };
 
-// Only the actions that have a route today; later features add their own.
 export type ProjectAction =
   | "project.read"
   | "project.update"
@@ -58,8 +57,6 @@ const PROJECT_PERMISSIONS: Record<
     projectAdmin: "allow",
     projectMember: "deny",
   },
-  // Monitors read by any Project member; changed (create, edit, pause, resume,
-  // delete, test) by Project admins and Owner/Admin.
   "monitor.read": {
     orgAdmin: "allow",
     projectAdmin: "allow",

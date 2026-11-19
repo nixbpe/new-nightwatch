@@ -37,8 +37,6 @@ export type PageScope = {
   tag?: ReactNode;
 };
 
-// Same marks as the sidebar: an organization is solid Primary with On primary
-// initials; a person is the inset avatar with a strong edge.
 function ScopeMark({ name, shape }: { name: string; shape: "org" | "person" }) {
   const initials = initialsOf(name);
   return (
@@ -57,7 +55,6 @@ function ScopeMark({ name, shape }: { name: string; shape: "org" | "person" }) {
   );
 }
 
-// TYP-04: eyebrow is a Latin route code such as `// overview`.
 // Labels stay Thai sans without tracking; callers wrap status values in `font-mono`.
 export function PageHeader({
   eyebrow,

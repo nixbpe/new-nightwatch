@@ -42,8 +42,6 @@ const appUrl = "http://localhost:5173";
 type Role = "owner" | "admin" | "viewer" | "auditor";
 type Reply = { status: number; json: unknown; headers: Headers };
 
-// ---- Target servers -----------------------------------------------------------
-
 type Listener = {
   port: number;
   /** TCP connections accepted since the last reset. */
@@ -58,7 +56,6 @@ type Listener = {
 
 type ListenerRedirects = { httpPort?: () => number };
 
-// One handler serves every scenario, chosen by path.
 function targetHandler(
   redirects: ListenerRedirects,
   onHeldClose: () => void,
@@ -152,8 +149,6 @@ async function listen(
   };
 }
 
-// ---- Redis fault injection -------------------------------------------------------
-
 async function startReplyDelayProxy(ms: number) {
   const target = new URL(redisUrl as string);
   const sockets: net.Socket[] = [];
@@ -177,8 +172,6 @@ async function startReplyDelayProxy(ms: number) {
     },
   };
 }
-
-// ---- Harness ----------------------------------------------------------------------
 
 const run = crypto.randomUUID().slice(0, 8);
 const logLines: string[] = [];
@@ -447,7 +440,6 @@ function resultOf(reply: Reply): MonitorTestResult {
   expect(reply.status).toBe(200);
   const body = (reply.json ?? {}) as { result?: unknown };
   expect(Object.keys(body)).toEqual(["result"]);
-  // Strict: fields outside the Test contract fail the parse.
   return monitorTestResultSchema.strict().parse(body.result);
 }
 
@@ -561,8 +553,6 @@ function resetCounters(): void {
 
 const outboundSeen = () =>
   http1.connections() + https1.connections() + httpsExpired.connections();
-
-// ---- Tests ------------------------------------------------------------------------
 
 describe("role x operation", () => {
   const table: string[] = [];
@@ -1441,7 +1431,6 @@ describe("client disconnect", () => {
     while (http1.heldClosed() === 0 && Date.now() < closeDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    // The target sees its socket closed long before the 30 s timeout.
     expect(http1.heldClosed()).toBe(1);
   }, 20_000);
 });

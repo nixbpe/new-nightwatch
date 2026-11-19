@@ -83,7 +83,6 @@ describe("ResetPasswordPage", () => {
       token: "spent-tok",
     });
     expect(screen.getByTestId("reset-password-submit")).toBeEnabled();
-    // Retry-safe: still on the page, inputs preserved, request-new-link shown.
     expect(screen.queryByTestId("location")).toBeNull();
     expect(screen.getByTestId("reset-password-password")).toHaveValue(
       "another-pass-22",
@@ -96,7 +95,6 @@ describe("ResetPasswordPage", () => {
   it("a link without a token offers a safe path to request a new one", () => {
     renderAt("/reset-password");
 
-    // No password form to submit against a missing token.
     expect(screen.getByTestId("reset-password-invalid-link")).toBeVisible();
     expect(resetPasswordMock).not.toHaveBeenCalled();
     expect(

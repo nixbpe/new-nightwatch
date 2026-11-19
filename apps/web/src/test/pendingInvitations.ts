@@ -1,6 +1,5 @@
 import type { PendingInvitationListResponse } from "@nightwatch/api-contract";
 
-/** Default list stub for page tests that do not exercise the invitation section. */
 export function emptyPendingInvitationList(
   organizationId: string,
 ): PendingInvitationListResponse {

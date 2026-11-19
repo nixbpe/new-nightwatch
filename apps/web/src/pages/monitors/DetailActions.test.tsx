@@ -133,7 +133,6 @@ describe("Pause and Resume", () => {
   it("pauses a monitor that is down, keeps the same button focused and swaps its label", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: down() });
     pauseMock.mockImplementation(() => {
-      // The Detail read after the write shows the paused state.
       fetchDetailMock.mockResolvedValue({
         monitor: detail({ status: "paused", health: "paused" }),
       });
@@ -378,7 +377,6 @@ describe("Delete", () => {
     expect(invalidate).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ["tenant", "monitors", A, P] }),
     );
-    // The deleted monitor is not read again on the way out.
     expect(fetchDetailMock).toHaveBeenCalledTimes(1);
   });
 

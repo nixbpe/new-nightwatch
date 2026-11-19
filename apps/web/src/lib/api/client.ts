@@ -232,7 +232,6 @@ type FileOperation<P extends keyof paths> = Exclude<
   undefined
 >;
 
-// Only GET paths whose success body is a file (`text/csv`) qualify.
 type FilePaths = {
   [P in keyof paths]: FileOperation<P> extends {
     responses: { 200: { content: { "text/csv": string } } };

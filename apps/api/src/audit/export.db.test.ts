@@ -79,7 +79,6 @@ const counts = async (organizationId: string) => {
 const asCreate = (r: ApiResponse) => r.json as AuditExportCreateResponse;
 const asList = (r: ApiResponse) => r.json as AuditExportListResponse;
 
-/** An export of the user in the given state, written as the owner role. */
 async function seedExport(
   organizationId: string,
   userId: string,
@@ -182,7 +181,6 @@ describe("POST exports", () => {
         q: "member",
       },
     });
-    // The admin (a second user) exports JSON in the same Organization.
     const second = await requestExport(
       org.users.admin,
       org.id,
@@ -262,7 +260,6 @@ describe("POST exports", () => {
       expect(await counts(org.id)).toEqual({ exports: 0, jobs: 0, events: 0 });
     }
     expect((await requestExport(null, empty.id)).status).toBe(401);
-    // Owner and admin do get the sizes.
     expect(
       (await requestExport(empty.users.owner, empty.id)).json,
     ).toMatchObject({ error: { code: "AUDIT_EXPORT_EMPTY" } });
@@ -315,7 +312,6 @@ describe("POST exports", () => {
     // The same user in another Organization is not blocked (OD-20).
     expect((await requestExport(bothOwner, orgA.id)).status).toBe(201);
     expect((await requestExport(bothOwner, orgB.id)).status).toBe(201);
-    // Another user of the same Organization is not blocked either.
     expect((await requestExport(org.users.admin, org.id)).status).toBe(201);
   });
 
@@ -572,7 +568,6 @@ describe("GET exports", () => {
       status: "failed",
       failureCode: "EXPORT_FAILED",
     });
-    // A second listing finds it already failed and adds nothing.
     await listExports(org.users.owner, org.id);
 
     const viaPost = await seedExport(org.id, org.users.admin, "running", {

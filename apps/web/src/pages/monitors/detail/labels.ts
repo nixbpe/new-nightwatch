@@ -47,7 +47,6 @@ export function failureText(
   return incidentReasonLabel(result.failureReason);
 }
 
-/** A truncated body was evaluated from its start. */
 export const EVALUATED_FROM_PREFIX_TEXT = "ประเมินจากส่วนต้นของ response";
 
 const ASSERTION_REASON_LABELS: Record<
@@ -102,7 +101,6 @@ export const OUTCOME_LABELS: Record<CheckResultView["outcome"], string> = {
   check_error: "ตรวจไม่ได้",
 };
 
-/** Row wording for a whole check: "ไม่ผ่าน 1/3", "ไม่ได้ประเมิน 3/3" or "ผ่าน 3/3". */
 export function assertionSummary(
   assertions: readonly CheckAssertionResult[],
 ): string | null {

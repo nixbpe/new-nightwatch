@@ -60,8 +60,6 @@ const KNOWN_SECRETS = [
   NEW_TOKEN,
 ];
 
-// ---- Target servers -----------------------------------------------------------
-
 type Seen = { path: string; headers: http.IncomingHttpHeaders };
 type Target = {
   port: number;
@@ -116,8 +114,6 @@ async function listen(
       }),
   };
 }
-
-// ---- Fixtures -------------------------------------------------------------------
 
 // The rollback case creates a trigger on audit_events, which deadlocks with other
 // suites that write events, so this file has a database of its own.
@@ -387,8 +383,6 @@ function invalidFields(json: unknown): { field: string; reason: string }[] {
   ).error.details.fields;
 }
 
-// ---- Create ---------------------------------------------------------------------
-
 describe("Create with secrets (AC-25, AC-56)", () => {
   it.each([
     ["bearer", bearer, ["auth.token"]],
@@ -585,8 +579,6 @@ describe("Create with secrets (AC-25, AC-56)", () => {
     expect(after.rows).toEqual(before.rows);
   });
 });
-
-// ---- Edit -----------------------------------------------------------------------
 
 describe("Edit secrets (AC-26, AC-46)", () => {
   it("keeps the stored value and changes nothing when the form is unchanged", async () => {
@@ -795,8 +787,6 @@ describe("Edit secrets (AC-26, AC-46)", () => {
   });
 });
 
-// ---- Origin change ------------------------------------------------------------
-
 describe("Origin change with a kept secret (AC-44)", () => {
   it.each([
     ["scheme", `https://${STUB_HOSTS.allowed}:PORT/reflect`],
@@ -846,8 +836,6 @@ describe("Origin change with a kept secret (AC-44)", () => {
     expect(replaced.url).toBe(url);
   });
 });
-
-// ---- Test --------------------------------------------------------------
 
 const REFLECT = [
   {
@@ -937,7 +925,6 @@ describe("Test in Edit with stored and replaced secrets (AC-45)", () => {
         path === "/redirect-other-port" ? other.seen : target.seen.slice(1);
       expect(hops.length).toBeGreaterThan(0);
       for (const hop of hops) expect(hop.headers.authorization).toBeUndefined();
-      // The first hop carried the value.
       expect(target.seen[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
     }
   });
@@ -1310,8 +1297,6 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
   });
 });
 
-// ---- Credentials unavailable ----------------------------------------------------------
-
 describe("An app built without the credential env", () => {
   it("answers 503 only for a request that stores a secret", async () => {
     const organization = await bare.createOrganization("bare");
@@ -1406,8 +1391,6 @@ describe("An app built without the credential env", () => {
     expect(after.rows).toEqual([{ version: 1 }]);
   });
 });
-
-// ---- Leak scan ----------------------------------------------------------
 
 const SCANNED_TABLES = [
   "monitors",

@@ -28,9 +28,6 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  // The bundled build (build:migrate) cannot resolve ../migrations via
-  // import.meta.url, so the image/operator may point at the directory
-  // explicitly; source runs keep the default next to the package.
   const migrationsDir =
     process.env.MIGRATIONS_DIR ??
     fileURLToPath(new URL("../migrations", import.meta.url));

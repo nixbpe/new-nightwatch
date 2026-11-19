@@ -52,7 +52,6 @@ export function computeHealth(facts: HealthFacts): Health {
 
   const { latest } = facts;
   if (latest === null) return unknown("never_checked");
-  // A result of an older config does not describe the current one.
   if (latest.configVersion !== facts.checkConfigVersion) {
     return unknown("awaiting_new_config");
   }

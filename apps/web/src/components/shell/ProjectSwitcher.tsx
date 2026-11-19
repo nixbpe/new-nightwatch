@@ -275,7 +275,6 @@ export function ProjectSwitcher({
             aria-label="สลับโปรเจกต์"
             className="flex min-h-0 flex-col"
           >
-            {/* Only the Project list scrolls; the search field and the links below stay in view. */}
             <div
               role="none"
               data-testid="shell-project-list"

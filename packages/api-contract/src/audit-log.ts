@@ -210,8 +210,6 @@ export const auditChangeSchema = z.object({
 });
 export type AuditChange = z.infer<typeof auditChangeSchema>;
 
-// ---- Requests --------------------------------------------------------------
-
 export const auditLogOrganizationParamsSchema = z.object({
   organizationId: z.uuid(),
 });
@@ -264,8 +262,6 @@ export const auditLogListQuerySchema = z
     { message: "from is after to" },
   );
 export type AuditLogListQuery = z.output<typeof auditLogListQuerySchema>;
-
-// ---- Responses -------------------------------------------------------------
 
 export const auditEventSummarySchema = z.object({
   id: z.uuid(),
@@ -336,8 +332,6 @@ export const auditValidationErrorResponseSchema =
 export const auditEventNotFoundErrorResponseSchema = auditErrorSchema(
   "AUDIT_EVENT_NOT_FOUND",
 );
-
-// ---- Export ----------------------------------------------------------------
 
 export const AUDIT_EXPORT_MAX_EVENTS = 50_000;
 export const AUDIT_EXPORT_MAX_BYTES = 25 * 1024 * 1024;
@@ -462,7 +456,6 @@ export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
   "AUDIT_EXPORT_EXPIRED",
 );
 
-/** The note on the page, in the export dialog and in every file. */
 export function auditScopeNote(recordingStartedOn: string): string {
   return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
 }

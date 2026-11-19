@@ -274,7 +274,6 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
   ).toHaveText("HTTP/1.1 200 OK");
   await adminContext.close();
 
-  // A viewer sees the role note and the browser never asks for the response.
   const viewerContext = await browser.newContext();
   const viewerPage = await viewerContext.newPage();
   const asked: string[] = [];
@@ -297,7 +296,6 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
   expect(denied.status).toBe(403);
   await viewerContext.close();
 
-  // From here the target stops answering so the next round times out.
   targetOf.panel.setHang(true);
 });
 
@@ -364,7 +362,6 @@ test("P58-10: a 16 KiB body on one unbroken line does not scroll the page at 375
     document.documentElement.style.fontSize = "";
   });
 
-  // Tab order reaches the body without a pointer.
   await page.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
@@ -427,7 +424,6 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
     )
     .toBe(3);
 
-  // Header secrets on a GET without query: stored, masked.
   const header = monitorLastResponseResponseSchema.parse(
     (await lastResponseApi("echoHeader")).body,
   );
@@ -438,7 +434,6 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
   if (header.response?.body?.kind === "text")
     expect(header.response.body.text).toContain("•••");
 
-  // Request values echoed back: nothing but version and status stored.
   for (const key of ["echoQuery", "echoBody"] as const) {
     const reply = monitorLastResponseResponseSchema.parse(
       (await lastResponseApi(key)).body,
@@ -470,7 +465,6 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
   expect(await page.content()).not.toContain(headerSecret);
   await shot(page, "p58-05-panel-redacted");
 
-  // Scan every API reply and table row for every form a secret can take.
   // Query and body values are plain configuration (OD-58-11): the monitor's own
   // config surfaces return them, so only secrets are scanned there.
   const secretNeedles = needleForms([bearerToken, headerSecret]);

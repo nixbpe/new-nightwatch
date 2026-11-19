@@ -551,7 +551,6 @@ describe("after the request is accepted", () => {
     const user = userEvent.setup();
     const view = open();
     const dialog = await openDialog(user);
-    // C6-02: the page's live region is there before the request, empty.
     const region = screen.getByTestId("audit-export-announcement");
     expect(region).toHaveAttribute("role", "status");
     expect(region).toBeEmptyDOMElement();
@@ -858,7 +857,6 @@ describe("my exports section", () => {
         },
         asOf: now.toISOString(),
       });
-      // N-1: no dialog and no second notice; focus stays on the (now aria-disabled) button.
       expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
       expect(screen.queryByTestId("audit-export-requested-notice")).toBeNull();
       await waitFor(() => {
@@ -949,7 +947,6 @@ describe("my exports section", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["tenant", "notifications"],
     });
-    // Nothing is generating any more, so the polling stops.
     await act(() => vi.advanceTimersByTimeAsync(15_000));
     expect(exportsMock.mock.calls.length).toBe(callsBefore + 1);
   });
@@ -1120,7 +1117,6 @@ describe("403 during export", () => {
     expect(screen.queryByTestId("audit-export-open")).toBeNull();
     expect(screen.queryByTestId("audit-export-jobs-title")).toBeNull();
     expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
-    // The list stays readable and the exports stop being asked.
     expect(screen.getByTestId("audit-events-region")).toBeInTheDocument();
     expect(
       queryClient.getQueryData(["tenant", "audit-log", "exports", ORG_A]),

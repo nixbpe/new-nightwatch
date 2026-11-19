@@ -21,7 +21,6 @@ export function SectionHeader({
   title: ReactNode;
   code?: string;
   meta?: ReactNode;
-  /** A line under the heading, in the left column. */
   note?: ReactNode;
   /** For a heading that takes programmatic focus. */
   headingRef?: Ref<HTMLHeadingElement>;

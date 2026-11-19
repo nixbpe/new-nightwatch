@@ -41,7 +41,6 @@ export function DataTable<Row>({
   columnHeaderTestId?: (column: DataTableColumn<Row>) => string;
   /** Trailing cell reserved for row actions (role changes, revoke). */
   rowActions?: (row: Row) => ReactNode;
-  /** Shown as one full-width row when `rows` is empty. */
   empty?: ReactNode;
   className?: string;
 }) {
@@ -132,7 +131,6 @@ export function DataTable<Row>({
   );
 }
 
-// "Showing a–b of n" plus quiet previous/next; the page supplies the words.
 export function DataTablePagination({
   "data-testid": testId,
   ariaLabel,

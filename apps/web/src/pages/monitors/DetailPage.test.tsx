@@ -1971,7 +1971,6 @@ describe("Detail response-time chart", () => {
     const button = await screen.findByTestId("monitor-response-toggle");
     await user.click(button);
     const rows = records();
-    // Two results, then the gap from the last one to now (and one before the first).
     expect(rows).toEqual([
       record("gap", inWindow(0), inWindow(60), 0, "–", null, true),
       record("value", inWindow(60), inWindow(60), 1, "150"),
@@ -2027,7 +2026,6 @@ describe("Detail response-time chart", () => {
     const group = await screen.findByTestId("monitor-response-chart");
     expectNoStateAttributes(toggle);
     noTable();
-    // The keyboard hint stays off the accessibility tree and the polite region stays.
     expect(screen.getByTestId("monitor-response-readout")).toHaveAttribute(
       "aria-hidden",
       "true",
@@ -2065,7 +2063,6 @@ describe("Detail response-time chart", () => {
     expect(toggle.textContent).not.toBe(chartAction);
     expect(toggle).toHaveFocus();
     expectNoStateAttributes(toggle);
-    // The inactive view is unmounted, not hidden.
     noChart();
     expect(screen.queryByTestId("monitor-response-readout")).toBeNull();
     expect(document.body.innerHTML).not.toContain("data-chart-part=");
@@ -3075,12 +3072,10 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
       "monitor-response-toggle",
     );
 
-    // 24 h: chart first, then the table.
     const steps24 = await chartSteps(user, 5);
     await user.click(toggle);
     expectSameSteps(steps24, tableSteps(), false);
 
-    // The view does not follow the range: 7 d opens in the table the user chose.
     await user.click(responseElement("range-7d"));
     expect(
       await responseScope().findByTestId("monitor-response-toggle"),
@@ -3096,7 +3091,6 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     await user.click(responseElement("toggle"));
     expectSameSteps(await chartSteps(user, 3), rows7, true);
 
-    // The range does not follow the view: 30 d opens in the chart.
     await user.click(responseElement("range-30d"));
     expect(
       await responseScope().findByTestId("monitor-response-chart"),
@@ -3111,7 +3105,6 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     expectSameSteps(steps30, tableSteps(), true);
     expect(responseElement("range-30d")).toBeChecked();
 
-    // Back to 24 h from the table: the range changes, the view stays.
     await user.click(responseElement("range-24h"));
     expect(
       await responseScope().findByTestId("monitor-response-toggle"),

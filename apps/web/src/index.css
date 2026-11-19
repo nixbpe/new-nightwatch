@@ -91,12 +91,6 @@
  * Default follows prefers-color-scheme; an explicit choice (the account
  * menu's theme toggle, src/lib/theme.ts) sets data-theme on <html> and
  * overrides it — same token values either way.
- * After the ten roles each block adds the derived values the doc defines:
- * On danger (COL-05), Primary tint (Tokens), Danger tint (COL-06), the
- * modal scrim and shadow (LAY-07), and the status glows primary-glow,
- * danger-glow and caution-glow (Tokens, COL-07). canvas-deep (LAY-08) is
- * the one exact, non-derived addition: dark #07080a, light unchanged.
- * grid-line (LAY-09, below) is a utility, not a themed variable.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both
@@ -222,7 +216,6 @@
      no --color-* mapping: a glow is never a Tailwind fill/border/text
      utility; `live-pulse` and the `glow-*` utilities read them directly as
      `var(--*-glow)`. */
-  /* shadcn/ui semantic roles -> NightWatch tokens */
   --color-card: var(--surface);
   --color-card-foreground: var(--foreground);
   --color-popover: var(--surface);
