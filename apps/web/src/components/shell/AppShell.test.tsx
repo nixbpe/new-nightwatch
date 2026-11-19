@@ -173,6 +173,17 @@ const viewerOrg = {
   role: "viewer" as const,
 };
 
+const accountNotificationItem: Readonly<NotificationItem> = {
+  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  scope: "account",
+  organizationId: null,
+  eventType: "PASSWORD_CHANGED",
+  occurredAt: "2026-09-25T03:00:00.000Z",
+  readAt: null,
+  actor: null,
+  category: null,
+};
+
 function meContext(
   organizations: MeContextResponse["organizations"],
   lastActiveTenantId: string | null = null,
@@ -1311,16 +1322,7 @@ describe("AppShell", () => {
   });
 
   it("ignores further popover row clicks while an open is pending", async () => {
-    const first: NotificationItem = {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      scope: "account",
-      organizationId: null,
-      eventType: "PASSWORD_CHANGED",
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: null,
-    };
+    const first: NotificationItem = { ...accountNotificationItem };
     const second: NotificationItem = {
       ...first,
       id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -1391,16 +1393,7 @@ describe("AppShell", () => {
   });
 
   it("opens a selected popover notification in the center with its persisted read state", async () => {
-    const notification: NotificationItem = {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      scope: "account",
-      organizationId: null,
-      eventType: "PASSWORD_CHANGED",
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: null,
-    };
+    const notification: NotificationItem = { ...accountNotificationItem };
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
     fetchNotificationsMock.mockResolvedValue({
@@ -1441,16 +1434,7 @@ describe("AppShell", () => {
   });
 
   it("shows a popover open failure while keeping the list for retry", async () => {
-    const notification: NotificationItem = {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      scope: "account",
-      organizationId: null,
-      eventType: "PASSWORD_CHANGED",
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: null,
-    };
+    const notification: NotificationItem = { ...accountNotificationItem };
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
     fetchNotificationsMock.mockResolvedValue({
@@ -1837,14 +1821,7 @@ describe("AppShell", () => {
       fetchNotificationsMock.mockResolvedValue({
         items: [
           {
-            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            scope: "account",
-            organizationId: null,
-            eventType: "PASSWORD_CHANGED",
-            occurredAt: "2026-09-25T03:00:00.000Z",
-            readAt: null,
-            actor: null,
-            category: null,
+            ...accountNotificationItem,
           },
         ],
         nextCursor: null,
@@ -1942,16 +1919,7 @@ describe("AppShell", () => {
   it.each(["same-scope-generation", "retirement"] as const)(
     "late popover open after %s cannot invalidate or navigate under updated hook callbacks",
     async (transition) => {
-      const item: NotificationItem = {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        scope: "account",
-        organizationId: null,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: "2026-09-25T03:00:00.000Z",
-        readAt: null,
-        actor: null,
-        category: null,
-      };
+      const item: NotificationItem = { ...accountNotificationItem };
       fetchMeContextMock.mockResolvedValue(meContext([], null));
       fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
       fetchNotificationsMock.mockResolvedValue({
@@ -2004,16 +1972,7 @@ describe("AppShell", () => {
     },
   );
   it("keeps completion ownership on the latest popover open after reset and consecutive requests", async () => {
-    const first: NotificationItem = {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      scope: "account",
-      organizationId: null,
-      eventType: "PASSWORD_CHANGED",
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: null,
-    };
+    const first: NotificationItem = { ...accountNotificationItem };
     const second: NotificationItem = {
       ...first,
       id: first.id,
@@ -2073,16 +2032,7 @@ describe("AppShell", () => {
     queryClient.clear();
   });
   it("keeps open pending during invalidation and rejects navigation when required resolution supersedes it", async () => {
-    const item: NotificationItem = {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      scope: "account",
-      organizationId: null,
-      eventType: "PASSWORD_CHANGED",
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: null,
-    };
+    const item: NotificationItem = { ...accountNotificationItem };
     fetchMeContextMock.mockResolvedValue(meContext([], null));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
     fetchNotificationsMock.mockResolvedValue({
@@ -2142,16 +2092,7 @@ describe("AppShell", () => {
   it.each(["open", "read-all"] as const)(
     "resolves and publishes server scope after a current native %s scope error",
     async (operation) => {
-      const item: NotificationItem = {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        scope: "account",
-        organizationId: null,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: "2026-09-25T03:00:00.000Z",
-        readAt: null,
-        actor: null,
-        category: null,
-      };
+      const item: NotificationItem = { ...accountNotificationItem };
       fetchMeContextMock
         .mockResolvedValueOnce(meContext([ownerOrg, viewerOrg], ORG_A))
         .mockResolvedValue(meContext([ownerOrg, viewerOrg], ORG_B));
@@ -2209,16 +2150,7 @@ describe("AppShell", () => {
   it.each(["open", "read-all"] as const)(
     "ignores late native %s scope errors after a newer same-generation publication",
     async (operation) => {
-      const item: NotificationItem = {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        scope: "account",
-        organizationId: null,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: "2026-09-25T03:00:00.000Z",
-        readAt: null,
-        actor: null,
-        category: null,
-      };
+      const item: NotificationItem = { ...accountNotificationItem };
       fetchMeContextMock.mockResolvedValue(
         meContext([ownerOrg, viewerOrg], ORG_A),
       );
