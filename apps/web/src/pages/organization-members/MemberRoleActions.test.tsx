@@ -1,20 +1,9 @@
-import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
-  OrganizationMemberListResponse,
   OrganizationMemberRoleUpdateResponse,
   OrganizationRole,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-} from "react-router";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
@@ -23,8 +12,14 @@ import {
   fetchOrganizationMembers,
   updateOrganizationMemberRole,
 } from "../../lib/api/members";
-import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
-import { OrganizationMembersPage } from "../OrganizationMembersPage";
+import {
+  A,
+  B,
+  ME,
+  contextFor,
+  MemberDirectory,
+  mountMembersPage,
+} from "./member-action-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -45,91 +40,20 @@ vi.mock("../../lib/api/members", async (importOriginal) => ({
   updateOrganizationMemberRole: vi.fn(),
 }));
 
-const A = "11111111-1111-4111-8111-111111111111";
-const B = "22222222-2222-4222-8222-222222222222";
-const ME = "user-me";
-
-function contextFor(role: OrganizationRole): MeContextResponse {
-  return {
-    user: {
-      id: ME,
-      name: "Me",
-      email: "me@example.test",
-      emailVerified: true,
-      twoFactorEnabled: false,
-    },
-    organizations: [
-      { id: A, name: "Acme", slug: "acme", role },
-      { id: B, name: "Beta", slug: "beta", role: "owner" },
-    ],
-    lastActiveTenantId: A,
-  };
-}
-
-// Server-side member roles the mocked list and PATCH share.
-let roles: Record<string, OrganizationRole>;
+let directory: MemberDirectory;
 let listCalls: string[];
-
-function listFor(
-  organizationId: string,
-  total = 3,
-): OrganizationMemberListResponse {
-  if (organizationId === B) {
-    return {
-      organizationId: B,
-      members: [
-        {
-          id: "member-b",
-          userId: "user-b",
-          name: "Bea",
-          email: "bea@example.test",
-          role: "viewer",
-        },
-      ],
-      page: { limit: 50, offset: 0, total: 1 },
-      memberLimit: 1000,
-    };
-  }
-  return {
-    organizationId: A,
-    members: [
-      {
-        id: "member-me",
-        userId: ME,
-        name: "Me",
-        email: "me@example.test",
-        role: roles["member-me"] ?? "owner",
-      },
-      {
-        id: "member-ann",
-        userId: "user-ann",
-        name: "Ann",
-        email: "ann@example.test",
-        role: roles["member-ann"] ?? "viewer",
-      },
-      {
-        id: "member-boss",
-        userId: "user-boss",
-        name: "Boss",
-        email: "boss@example.test",
-        role: roles["member-boss"] ?? "owner",
-      },
-    ],
-    page: { limit: 50, offset: 0, total },
-    memberLimit: 1000,
-  };
-}
+let mounted: ReturnType<typeof mountMembersPage> | undefined;
 
 beforeEach(() => {
-  roles = {};
+  directory = new MemberDirectory();
   listCalls = [];
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    return Promise.resolve(listFor(id));
+    return Promise.resolve(directory.list(id));
   });
   vi.mocked(updateOrganizationMemberRole).mockImplementation(
     (_org, memberId, role) => {
-      roles[memberId] = role;
+      directory.setRole(memberId, role);
       return Promise.resolve({
         member: {
           id: memberId,
@@ -141,54 +65,15 @@ beforeEach(() => {
     },
   );
 });
-afterEach(() => vi.resetAllMocks());
-
-function Harness() {
-  const { switchOrg } = useTenant();
-  const navigate = useNavigate();
-  return (
-    <>
-      <button
-        data-testid="test-member-navigate"
-        type="button"
-        onClick={() => void navigate(`/organizations/${B}/members`)}
-      >
-        navigate B
-      </button>
-      <button
-        data-testid="test-member-switch"
-        type="button"
-        onClick={() => void switchOrg(B)}
-      >
-        confirm B
-      </button>
-      <output data-testid="location">{useLocation().pathname}</output>
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/members"
-          element={<OrganizationMembersPage />}
-        />
-      </Routes>
-    </>
-  );
-}
+afterEach(() => {
+  mounted?.dispose();
+  mounted = undefined;
+  vi.resetAllMocks();
+});
 
 async function renderAs(role: OrganizationRole) {
   vi.mocked(fetchMeContext).mockResolvedValue(contextFor(role));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  bindQueryClientIdentity(queryClient, ME);
-  const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <Harness />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  mounted = mountMembersPage();
   expect(await screen.findByTestId("member-row-member-ann")).toHaveTextContent(
     "Ann",
   );
@@ -197,7 +82,7 @@ async function renderAs(role: OrganizationRole) {
       "member-name",
     ),
   ).toHaveTextContent(/^Ann$/);
-  return user;
+  return mounted.user;
 }
 
 const pillFor = (memberId: string) =>
@@ -312,7 +197,7 @@ it("blocks duplicate submits and pagination while a role save is pending", async
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    return Promise.resolve(listFor(id, 120));
+    return Promise.resolve(directory.list(id, 120));
   });
   const user = await renderAs("owner");
   expect(screen.getByTestId("members-next")).toBeEnabled();
@@ -327,7 +212,7 @@ it("blocks duplicate submits and pagination while a role save is pending", async
   expect(screen.getByTestId("members-next")).toBeDisabled();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await act(async () => {
-    roles["member-ann"] = "auditor";
+    directory.setRole("member-ann", "auditor");
     pending.resolve({
       member: {
         id: "member-ann",
@@ -375,7 +260,7 @@ it("reports a persisted role that differs from the requested one instead of succ
   vi.mocked(updateOrganizationMemberRole).mockImplementation(
     (_org, memberId) => {
       // Another actor wins the race after our PATCH.
-      roles[memberId] = "admin";
+      directory.setRole(memberId, "admin");
       return Promise.resolve({
         member: {
           id: memberId,
@@ -518,7 +403,7 @@ it("ignores Escape while a confirmed change is pending", async () => {
   ).toHaveFocus();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await act(async () => {
-    roles["member-ann"] = "owner";
+    directory.setRole("member-ann", "owner");
     pending.resolve({
       member: {
         id: "member-ann",
@@ -540,7 +425,7 @@ it("reenables pagination after a confirmed switch retires the origin operation w
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    return Promise.resolve(listFor(id, 120));
+    return Promise.resolve(directory.list(id, 120));
   });
   vi.mocked(updateActiveOrganization).mockResolvedValue({
     ...contextFor("owner"),
@@ -580,7 +465,7 @@ it("keeps the origin role change pending and applies its result when the organiz
   });
   expect(save("member-ann")).toBeDisabled();
   await act(async () => {
-    roles["member-ann"] = "auditor";
+    directory.setRole("member-ann", "auditor");
     pending.resolve({
       member: {
         id: "member-ann",
@@ -599,10 +484,10 @@ it.each([
   [
     "a member missing from the refetched list",
     () => {
-      roles["member-ann"] = "auditor";
+      directory.setRole("member-ann", "auditor");
       vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
         listCalls.push(id);
-        const list = listFor(id);
+        const list = directory.list(id);
         return Promise.resolve({
           ...list,
           members: list.members.filter((item) => item.id !== "member-ann"),
@@ -637,7 +522,7 @@ it.each([
 it("does not refresh membership context when another member changes on a page without the actor", async () => {
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    const list = listFor(id);
+    const list = directory.list(id);
     return Promise.resolve({
       ...list,
       members: list.members.filter((item) => item.userId !== ME),
@@ -656,7 +541,7 @@ it("refreshes membership context when another member changes and the actor's lis
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
   // Another session demoted the actor; the refetched list shows the new role.
-  roles["member-me"] = "admin";
+  directory.setRole("member-me", "admin");
   await user.selectOptions(roleSelect("member-ann"), "auditor");
   await user.click(save("member-ann"));
   await waitFor(() => {
@@ -756,7 +641,7 @@ it("shows a retryable error, not a restricted state, when the context refresh fa
 async function saveAnnAsAuditorWithActorOffPage(failure: Error) {
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    const list = listFor(id);
+    const list = directory.list(id);
     return Promise.resolve({
       ...list,
       members: list.members.filter((item) => item.userId !== ME),

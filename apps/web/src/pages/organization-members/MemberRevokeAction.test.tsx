@@ -1,20 +1,8 @@
-import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
-  MeContextResponse,
-  OrganizationMemberListResponse,
   OrganizationMemberRoleUpdateResponse,
   OrganizationRole,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-} from "react-router";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
@@ -23,8 +11,13 @@ import {
   fetchOrganizationMembers,
   revokeOrganizationMember,
 } from "../../lib/api/members";
-import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
-import { OrganizationMembersPage } from "../OrganizationMembersPage";
+import {
+  A,
+  B,
+  contextFor,
+  MemberDirectory,
+  mountMembersPage,
+} from "./member-action-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -45,70 +38,9 @@ vi.mock("../../lib/api/members", async (importOriginal) => ({
   revokeOrganizationMember: vi.fn(),
 }));
 
-const A = "11111111-1111-4111-8111-111111111111";
-const B = "22222222-2222-4222-8222-222222222222";
-const ME = "user-me";
-
-function contextFor(
-  role: OrganizationRole,
-  organizations: MeContextResponse["organizations"] = [
-    { id: A, name: "Acme", slug: "acme", role },
-    { id: B, name: "Beta", slug: "beta", role: "owner" },
-  ],
-): MeContextResponse {
-  return {
-    user: {
-      id: ME,
-      name: "Me",
-      email: "me@example.test",
-      emailVerified: true,
-      twoFactorEnabled: false,
-    },
-    organizations,
-    lastActiveTenantId: organizations[0]?.id ?? null,
-  };
-}
-
-const MEMBERS = [
-  { id: "member-me", userId: ME, name: "Me", role: "owner" },
-  { id: "member-ann", userId: "user-ann", name: "Ann", role: "viewer" },
-  { id: "member-boss", userId: "user-boss", name: "Boss", role: "owner" },
-] as const;
-
-// Server-side membership shared by the mocked list and DELETE.
-let removed: Set<string>;
+let directory: MemberDirectory;
 let listCalls: string[];
-
-function listFor(organizationId: string): OrganizationMemberListResponse {
-  if (organizationId === B) {
-    return {
-      organizationId: B,
-      members: [
-        {
-          id: "member-b",
-          userId: "user-b",
-          name: "Bea",
-          email: "bea@example.test",
-          role: "viewer",
-        },
-      ],
-      page: { limit: 50, offset: 0, total: 1 },
-      memberLimit: 1000,
-    };
-  }
-  const members = MEMBERS.filter((member) => !removed.has(member.id)).map(
-    (member) => ({
-      ...member,
-      email: `${member.name.toLowerCase()}@example.test`,
-    }),
-  );
-  return {
-    organizationId: A,
-    members,
-    page: { limit: 50, offset: 0, total: members.length },
-    memberLimit: 1000,
-  };
-}
+let mounted: ReturnType<typeof mountMembersPage> | undefined;
 
 const revoked = (memberId: string, userId = "u") =>
   ({
@@ -116,65 +48,26 @@ const revoked = (memberId: string, userId = "u") =>
   }) satisfies OrganizationMemberRoleUpdateResponse;
 
 beforeEach(() => {
-  removed = new Set();
+  directory = new MemberDirectory();
   listCalls = [];
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    return Promise.resolve(listFor(id));
+    return Promise.resolve(directory.list(id));
   });
   vi.mocked(revokeOrganizationMember).mockImplementation((_org, memberId) => {
-    removed.add(memberId);
+    directory.remove(memberId);
     return Promise.resolve(revoked(memberId));
   });
 });
-afterEach(() => vi.resetAllMocks());
-
-function Harness() {
-  const { switchOrg } = useTenant();
-  const navigate = useNavigate();
-  return (
-    <>
-      <button
-        data-testid="test-member-navigate"
-        type="button"
-        onClick={() => void navigate(`/organizations/${B}/members`)}
-      >
-        navigate B
-      </button>
-      <button
-        data-testid="test-member-switch"
-        type="button"
-        onClick={() => void switchOrg(B)}
-      >
-        confirm B
-      </button>
-      <output data-testid="location">{useLocation().pathname}</output>
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/members"
-          element={<OrganizationMembersPage />}
-        />
-      </Routes>
-    </>
-  );
-}
+afterEach(() => {
+  mounted?.dispose();
+  mounted = undefined;
+  vi.resetAllMocks();
+});
 
 async function renderAs(role: OrganizationRole) {
   vi.mocked(fetchMeContext).mockResolvedValue(contextFor(role));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  bindQueryClientIdentity(queryClient, ME);
-  const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <Harness />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
+  mounted = mountMembersPage();
   expect(await screen.findByTestId("member-row-member-ann")).toHaveTextContent(
     "Ann",
   );
@@ -183,7 +76,7 @@ async function renderAs(role: OrganizationRole) {
       "member-name",
     ),
   ).toHaveTextContent(/^Ann$/);
-  return user;
+  return mounted.user;
 }
 
 const revokeButton = (memberId: string) =>
@@ -250,7 +143,7 @@ it("blocks a second confirm and pagination while the DELETE is pending", async (
   vi.mocked(revokeOrganizationMember).mockReturnValue(pending.promise);
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
-    const list = listFor(id);
+    const list = directory.list(id);
     return Promise.resolve({ ...list, page: { ...list.page, total: 60 } });
   });
   const user = await renderAs("owner");
@@ -275,7 +168,7 @@ it("blocks a second confirm and pagination while the DELETE is pending", async (
   expect(revokeButton("member-boss")).toBeDisabled();
   expect(revokeOrganizationMember).toHaveBeenCalledTimes(1);
   await act(async () => {
-    removed.add("member-ann");
+    directory.remove("member-ann");
     pending.resolve(revoked("member-ann"));
     await pending.promise;
   });
@@ -414,7 +307,7 @@ it("refreshes context and redirects when the server denies the actor's revoke", 
     listCalls.push(id);
     return id === A
       ? Promise.reject(new ApiError("MEMBERSHIP_DENIED", "denied", 403))
-      : Promise.resolve(listFor(id));
+      : Promise.resolve(directory.list(id));
   });
   // The revoked session's mirror was cleared, so the server confirms no active
   // Organization and the page falls back to a remaining readable one.
@@ -448,7 +341,7 @@ it("applies the late revoke result to the origin when the organization switch is
     expect(updateActiveOrganization).toHaveBeenCalled();
   });
   await act(async () => {
-    removed.add("member-ann");
+    directory.remove("member-ann");
     pending.resolve(revoked("member-ann"));
     await pending.promise;
   });
