@@ -12,14 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
   fetchMonitorDetail,
   fetchMonitorIncidents,
-  fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
   updateMonitor,
@@ -29,7 +27,6 @@ import {
   noIncidents,
   noResponseTimes,
   P,
-  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -43,6 +40,8 @@ import {
   newPath,
   record,
   renderForm,
+  setFormAccessDefaults,
+  formNotificationSettings,
 } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -92,24 +91,14 @@ function threeOrgs(active: string) {
 const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
-  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
-  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
-    organizationId: A,
-    version: 1,
-    settingsChangedEnabled: true,
-    monitorAlertsEnabled: false,
-  });
-  meMock.mockResolvedValue(context());
+  setFormAccessDefaults();
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue(
+    formNotificationSettings(),
+  );
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
-  vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
-    monitors: [],
-    page: { limit: 25, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  });
   detailMock.mockResolvedValue({ monitor: detail() });
   createMock.mockResolvedValue({ monitor: record() });
   updateMock.mockResolvedValue({ monitor: record({ version: 4 }) });

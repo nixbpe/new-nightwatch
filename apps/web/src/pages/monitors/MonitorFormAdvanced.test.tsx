@@ -1,32 +1,21 @@
-import {
-  noChecks,
-  noIncidents,
-  noResponseTimes,
-  projectDetail,
-} from "./detail-test-support";
+import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchMeContext } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
+import { createMonitor, fetchMonitorDetail } from "../../lib/api/monitors";
 import {
-  createMonitor,
-  fetchMonitorDetail,
-  fetchMonitorList,
-} from "../../lib/api/monitors";
-import {
-  A,
   addFormRow,
-  context,
   detail,
   newPath,
   expectInvalid,
   record,
   renderForm,
+  setFormAccessDefaults,
+  formNotificationSettings,
 } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -59,20 +48,10 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
 const createMock = vi.mocked(createMonitor);
 
 beforeEach(() => {
-  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
-  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
-    organizationId: A,
-    version: 1,
-    settingsChangedEnabled: true,
-    monitorAlertsEnabled: false,
-  });
-  vi.mocked(fetchMeContext).mockResolvedValue(context());
-  vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
-    monitors: [],
-    page: { limit: 25, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  });
+  setFormAccessDefaults();
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue(
+    formNotificationSettings(),
+  );
   vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
   createMock.mockResolvedValue({ monitor: record() });
 });

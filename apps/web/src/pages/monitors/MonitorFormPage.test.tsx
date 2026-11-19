@@ -17,7 +17,6 @@ import {
   fetchMonitorChecks,
   fetchMonitorDetail,
   fetchMonitorIncidents,
-  fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
   updateMonitor,
@@ -34,6 +33,8 @@ import {
   newPath,
   record,
   renderForm,
+  setFormAccessDefaults,
+  formNotificationSettings,
   P,
   projectDetail,
 } from "./form-test-support";
@@ -73,17 +74,12 @@ const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 const createMock = vi.mocked(createMonitor);
 const updateMock = vi.mocked(updateMonitor);
 const fetchDetailMock = vi.mocked(fetchMonitorDetail);
-const fetchListMock = vi.mocked(fetchMonitorList);
 
 beforeEach(() => {
-  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
-  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
-    organizationId: A,
-    version: 1,
-    settingsChangedEnabled: true,
-    monitorAlertsEnabled: false,
-  });
-  fetchMeContextMock.mockResolvedValue(context());
+  setFormAccessDefaults();
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue(
+    formNotificationSettings(),
+  );
   vi.mocked(fetchMonitorEvents).mockResolvedValue({
     events: [],
     page: { limit: 20, offset: 0, total: 0 },
@@ -93,12 +89,6 @@ beforeEach(() => {
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
-  fetchListMock.mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
-    monitors: [],
-    page: { limit: 25, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  });
 });
 
 afterEach(() => {

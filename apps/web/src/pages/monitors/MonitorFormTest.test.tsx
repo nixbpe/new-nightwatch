@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -21,7 +20,6 @@ import {
   fetchMonitorEvents,
   fetchMonitorIncidents,
   fetchMonitorLastResponse,
-  fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
   testMonitorDraft,
@@ -32,7 +30,6 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
-  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -46,6 +43,7 @@ import {
   monitorTestResult as result,
   record,
   renderForm,
+  setFormAccessDefaults,
 } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -81,14 +79,7 @@ const editTestMock = vi.mocked(testMonitorEdit);
 const createMock = vi.mocked(createMonitor);
 
 beforeEach(() => {
-  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
-  vi.mocked(fetchMeContext).mockResolvedValue(context());
-  vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
-    monitors: [],
-    page: { limit: 25, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  });
+  setFormAccessDefaults();
   vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);

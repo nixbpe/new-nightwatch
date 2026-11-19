@@ -10,15 +10,13 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
+import { updateActiveOrganization } from "../../lib/api/me";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
   fetchMonitorDetail,
   fetchMonitorIncidents,
-  fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
   testMonitorDraft,
@@ -30,7 +28,6 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
-  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -47,6 +44,8 @@ import {
   monitorTestResult,
   record,
   renderForm,
+  setFormAccessDefaults,
+  formNotificationSettings,
 } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -95,24 +94,14 @@ const OTHER_SECRET = `n3w-${crypto.randomUUID()}`;
 const testResult = monitorTestResult();
 
 beforeEach(() => {
-  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
-  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
-    organizationId: A,
-    version: 1,
-    settingsChangedEnabled: true,
-    monitorAlertsEnabled: false,
-  });
-  vi.mocked(fetchMeContext).mockResolvedValue(context());
+  setFormAccessDefaults();
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue(
+    formNotificationSettings(),
+  );
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
-  vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
-    monitors: [],
-    page: { limit: 25, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  });
   detailMock.mockResolvedValue({ monitor: detail() });
   createMock.mockResolvedValue({ monitor: record() });
   updateMock.mockResolvedValue({ monitor: record({ version: 4 }) });

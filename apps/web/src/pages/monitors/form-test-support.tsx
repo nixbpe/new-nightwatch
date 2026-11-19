@@ -1,4 +1,4 @@
-import { afterEach, expect } from "vitest";
+import { afterEach, expect, vi } from "vitest";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MonitorRecord,
@@ -17,7 +17,17 @@ import {
 
 import { OrgSwitcher } from "../../components/shell/OrgSwitcher";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
-import { A, MONITOR_ID, P, must } from "./detail-test-support";
+import {
+  A,
+  MONITOR_ID,
+  P,
+  must,
+  context,
+  projectDetail,
+} from "./detail-test-support";
+import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
+import { fetchMonitorList } from "../../lib/api/monitors";
 import { DetailPage } from "./DetailPage";
 import { MonitorFormPage } from "./MonitorFormPage";
 import { OverviewPage } from "./OverviewPage";
@@ -45,6 +55,26 @@ export {
   detail,
   projectDetail,
 } from "./detail-test-support";
+
+export function setFormAccessDefaults() {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
+  vi.mocked(fetchMeContext).mockResolvedValue(context());
+  vi.mocked(fetchMonitorList).mockResolvedValue({
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
+    monitors: [],
+    page: { limit: 25, offset: 0, total: 0 },
+    dataAsOf: "2026-09-30T07:32:05.000Z",
+  });
+}
+
+export function formNotificationSettings() {
+  return {
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  };
+}
 
 /** The record a write returns: the Detail fixture without its computed state. */
 export function record(overrides: Partial<MonitorRecord> = {}): MonitorRecord {
