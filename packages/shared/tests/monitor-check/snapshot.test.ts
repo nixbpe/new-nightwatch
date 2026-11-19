@@ -69,6 +69,32 @@ const secretHeader = (id: string, name: string) => ({
   secret: true,
 });
 
+async function redirectUrl(rawLocation: string, secret: string) {
+  let requests = 0;
+  const server = await startRawServer({
+    onRequest: ({ socket }) => {
+      requests++;
+      socket.end(
+        requests === 1
+          ? response({
+              line: "HTTP/1.1 302 Found",
+              headers: [["Location", rawLocation]],
+            })
+          : response({}),
+      );
+    },
+  });
+  servers.push(server);
+  const result = await runCheck(
+    configFor("http", server.port, {
+      headers: [secretHeader("h1", "X-Own")],
+    }),
+    { "header.h1": secret },
+    deps(),
+  );
+  return result.responseSnapshot?.url;
+}
+
 describe("status line", () => {
   it("keeps HTTP/1.0 and the reason phrase", async () => {
     const snapshot = await check(
@@ -774,30 +800,6 @@ describe("percent-encoding case echoed by the target", () => {
 describe("secrets that hold percent escapes", () => {
   const own = { headers: [secretHeader("h1", "X-Own")] };
 
-  async function redirectUrl(echoed: string, secret: string) {
-    let requests = 0;
-    const server = await startRawServer({
-      onRequest: ({ socket }) => {
-        requests++;
-        socket.end(
-          requests === 1
-            ? response({
-                line: "HTTP/1.1 302 Found",
-                headers: [["Location", `/cb/${echoed}`]],
-              })
-            : response({}),
-        );
-      },
-    });
-    servers.push(server);
-    const result = await runCheck(
-      configFor("http", server.port, own),
-      { "header.h1": secret },
-      deps(),
-    );
-    return result.responseSnapshot?.url;
-  }
-
   it.each(["a%2fb%2fc", "a%2Fb%2Fc", "a%2Fb%2fc", "a%2fb%2Fc"])(
     "masks a secret holding percent escapes echoed as %s in a body and a redirect URL",
     async (echoed) => {
@@ -810,7 +812,9 @@ describe("secrets that hold percent escapes", () => {
         { "header.h1": "a%2fb%2fc" },
       );
       expect(snapshot.body).toMatchObject({ text: "x=•••" });
-      expect(await redirectUrl(echoed, "a%2fb%2fc")).toContain("/cb/•••");
+      expect(await redirectUrl(`/cb/${echoed}`, "a%2fb%2fc")).toContain(
+        "/cb/•••",
+      );
     },
   );
 
@@ -863,28 +867,9 @@ describe("fold depends on the characters around a secret", () => {
   });
 
   it("masks such a secret in a redirect URL", async () => {
-    let requests = 0;
-    const server = await startRawServer({
-      onRequest: ({ socket }) => {
-        requests++;
-        socket.end(
-          requests === 1
-            ? response({
-                line: "HTTP/1.1 302 Found",
-                headers: [["Location", "/cb/x%deadbeef1234"]],
-              })
-            : response({}),
-        );
-      },
-    });
-    servers.push(server);
-    const result = await runCheck(
-      configFor("http", server.port, own),
-      { "header.h1": "deadbeef1234" },
-      deps(),
-    );
-    expect(result.responseSnapshot?.url).toContain("/cb/x%•••");
-    expect(result.responseSnapshot?.url).not.toContain("deadbeef");
+    const url = await redirectUrl("/cb/x%deadbeef1234", "deadbeef1234");
+    expect(url).toContain("/cb/x%•••");
+    expect(url).not.toContain("deadbeef");
   });
 });
 
@@ -974,27 +959,8 @@ describe("URL encodings other than encodeURIComponent", () => {
       "v=•••",
     );
 
-    let requests = 0;
-    const server = await startRawServer({
-      onRequest: ({ socket }) => {
-        requests++;
-        socket.end(
-          requests === 1
-            ? response({
-                line: "HTTP/1.1 302 Found",
-                headers: [["Location", `/cb/${echoed}`]],
-              })
-            : response({}),
-        );
-      },
-    });
-    servers.push(server);
-    const result = await runCheck(
-      configFor("http", server.port, own),
-      { "header.h1": secret },
-      deps(),
-    );
-    expect(result.responseSnapshot?.url).toContain("/cb/•••");
+    const url = await redirectUrl(`/cb/${echoed}`, secret);
+    expect(url).toContain("/cb/•••");
   });
 });
 
@@ -1031,27 +997,8 @@ describe("secrets echoed in any URL encoding", () => {
     );
     expect(snapshot.statusLine?.reasonPhrase).toBe("r-•••");
 
-    let requests = 0;
-    const server = await startRawServer({
-      onRequest: ({ socket }) => {
-        requests++;
-        socket.end(
-          requests === 1
-            ? response({
-                line: "HTTP/1.1 302 Found",
-                headers: [["Location", `/cb/${wire(echoed)}`]],
-              })
-            : response({}),
-        );
-      },
-    });
-    servers.push(server);
-    const result = await runCheck(
-      configFor("http", server.port, own),
-      { "header.h1": secret },
-      deps(),
-    );
-    expect(result.responseSnapshot?.url).toContain("/cb/•••");
+    const url = await redirectUrl(`/cb/${wire(echoed)}`, secret);
+    expect(url).toContain("/cb/•••");
   });
 
   it("keeps text that holds no secret unchanged", async () => {
@@ -1122,27 +1069,8 @@ describe("JSON escapes and nested encodings", () => {
       expect(snapshot.statusLine?.reasonPhrase).toBe("r-•••");
       if (!inUrl) return;
 
-      let requests = 0;
-      const server = await startRawServer({
-        onRequest: ({ socket }) => {
-          requests++;
-          socket.end(
-            requests === 1
-              ? response({
-                  line: "HTTP/1.1 302 Found",
-                  headers: [["Location", `/cb/${wire(echoed)}`]],
-                })
-              : response({}),
-          );
-        },
-      });
-      servers.push(server);
-      const result = await runCheck(
-        configFor("http", server.port, own),
-        { "header.h1": secret },
-        deps(),
-      );
-      expect(result.responseSnapshot?.url).toContain("/cb/•••");
+      const url = await redirectUrl(`/cb/${wire(echoed)}`, secret);
+      expect(url).toContain("/cb/•••");
     },
   );
 
