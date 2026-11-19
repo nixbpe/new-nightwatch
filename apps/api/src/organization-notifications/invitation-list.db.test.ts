@@ -3,14 +3,12 @@ import {
   type PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations } from "@nightwatch/db";
-import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApp } from "../app";
-import type { Auth, AuthSession } from "../auth";
 import type { Mailer, OutboundMail } from "../auth/mailer";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
+import { createInvitationTestApp } from "./invitation-test-app";
 
 const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
 const runtime = createDatabase(runtimeUrl);
@@ -28,18 +26,6 @@ const actorIds = Object.fromEntries(
     (role) => [role, crypto.randomUUID()],
   ),
 ) as Record<string, string>;
-const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
-const authEnv: AuthEnv = {
-  DATABASE_URL: runtimeUrl,
-  BETTER_AUTH_SECRET: `list-${run}`,
-  APP_URL: "http://localhost:5173",
-  BETTER_AUTH_URL: "http://localhost:4000",
-  CORS_ORIGIN: "http://localhost:5173",
-  SMTP_HOST: "127.0.0.1",
-  SMTP_PORT: 1025,
-  SMTP_SECURE: false,
-  SMTP_FROM: "Invitation <invite@example.test>",
-};
 const mail: OutboundMail[] = [];
 const mailer: Mailer = {
   send: (message) => {
@@ -48,45 +34,14 @@ const mailer: Mailer = {
   },
   verify: () => Promise.resolve(),
 };
-const auth: Auth = {
-  handler: () => Promise.resolve(new Response("native auth route not used")),
-  getSession: (headers) => {
-    const actor = headers.get("x-test-actor");
-    const id = actor ? actorIds[actor] : undefined;
-    return Promise.resolve(
-      actor && id
-        ? ({
-            user: {
-              id,
-              email: `${actor}-${run}@example.test`,
-              name: id,
-              emailVerified: true,
-            },
-            session: {
-              id,
-              token: "test-session",
-              expiresAt: new Date(Date.now() + 60_000),
-            },
-          } satisfies AuthSession)
-        : null,
-    );
-  },
-};
-const logs: string[] = [];
-const app = createApp({
-  env,
-  authEnv,
-  auth,
+const { app, logs } = createInvitationTestApp({
   database: runtime,
+  runtimeUrl,
+  secret: `list-${run}`,
+  actorIds,
+  actorEmail: (actor) => `${actor}-${run}@example.test`,
+  loggerName: "invitation-list-db-test",
   mailer,
-  logger: createLogger(
-    { level: "info", name: "invitation-list-db-test" },
-    {
-      write: (line: string) => {
-        logs.push(line);
-      },
-    },
-  ),
 });
 const migrationsDir = fileURLToPath(
   new URL("../../../../packages/db/migrations", import.meta.url),
