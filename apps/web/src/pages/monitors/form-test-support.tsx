@@ -1,8 +1,12 @@
 import { afterEach, expect } from "vitest";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
-import type { MonitorRecord } from "@nightwatch/api-contract";
+import type {
+  MonitorRecord,
+  MonitorTestResult,
+} from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import { Fragment, StrictMode } from "react";
 import {
   createMemoryRouter,
@@ -72,6 +76,52 @@ export function record(overrides: Partial<MonitorRecord> = {}): MonitorRecord {
   };
 }
 
+export function monitorTestResult(overrides: Partial<MonitorTestResult> = {}): {
+  result: MonitorTestResult;
+} {
+  return {
+    result: {
+      checkedAt: "2026-09-30T07:30:00.000Z",
+      outcome: "pass",
+      httpStatus: 200,
+      responseTimeMs: 182,
+      diagnostics:
+        overrides.httpStatus === null
+          ? {
+              redirects: null,
+              dnsMs: null,
+              connectMs: null,
+              tlsMs: null,
+              ttfbMs: null,
+              remoteAddress: null,
+              reasonPhrase: null,
+            }
+          : {
+              redirects: 0,
+              dnsMs: 2,
+              connectMs: 3,
+              tlsMs: 37,
+              ttfbMs: 140,
+              remoteAddress: "203.0.113.5",
+              reasonPhrase: "OK",
+            },
+      failureReason: null,
+      tlsReason: null,
+      assertions: [],
+      url: "https://api.acme.example/health",
+      evaluatedFromPrefix: false,
+      ssl: {
+        level: "ok",
+        daysRemaining: 128,
+        host: "api.acme.example",
+        issuer: "Example CA",
+        notAfter: "2027-02-05T00:00:00.000Z",
+      },
+      ...overrides,
+    },
+  };
+}
+
 function Routing() {
   return (
     <>
@@ -132,6 +182,30 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
       </Wrapper>,
     ),
   };
+}
+
+export async function addFormRow(
+  user: UserEvent,
+  kind: "header" | "query" | "assertion",
+): Promise<string> {
+  const rowPattern = new RegExp(`^monitor-form-${kind}-row-`);
+  const before = new Set(
+    screen
+      .queryAllByTestId(rowPattern)
+      .map((row) => row.getAttribute("data-testid")),
+  );
+  await user.click(screen.getByTestId(`monitor-form-add-${kind}`));
+  const added = screen
+    .getAllByTestId(rowPattern)
+    .filter((row) => !before.has(row.getAttribute("data-testid")));
+  expect(added).toHaveLength(1);
+  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
+}
+
+export function expectSavedFormName(): HTMLElement {
+  const field = screen.getByTestId("monitor-form-name");
+  expect(field).toHaveValue("Payments API");
+  return field;
 }
 
 export function expectInvalid(field: HTMLElement) {

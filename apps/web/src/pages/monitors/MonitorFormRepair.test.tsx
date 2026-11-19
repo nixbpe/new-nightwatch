@@ -38,6 +38,7 @@ import {
   deferred,
   detail,
   editPath,
+  expectSavedFormName,
   MONITOR_ID,
   newPath,
   record,
@@ -170,11 +171,7 @@ describe("a route Organization that is not the server-active one", () => {
     detailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     detailMock.mockResolvedValue({
       monitor: detail({ name: "Payments API 2", version: 4 }),
     });
@@ -202,11 +199,7 @@ describe("a route Organization that is not the server-active one", () => {
     });
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     await user.type(name, " typed");
     await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(screen.getByTestId(`shell-organization-${A}`));
@@ -321,11 +314,7 @@ describe("a route Organization that is not the server-active one", () => {
     updateMock.mockReturnValue(pending.promise);
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(screen.getByTestId("monitor-form-save"));
     await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(screen.getByTestId(`shell-organization-${C}`));
@@ -373,11 +362,7 @@ describe("refusals with no control of their own", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(

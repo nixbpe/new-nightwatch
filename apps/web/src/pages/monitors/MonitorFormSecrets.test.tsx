@@ -1,6 +1,5 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import type { MonitorTestResult } from "@nightwatch/api-contract";
 import {
   act,
   fireEvent,
@@ -36,13 +35,16 @@ import {
 import {
   A,
   B,
+  addFormRow,
   context,
   detail,
   editPath,
+  expectSavedFormName,
   expectInvalid,
   MONITOR_ID,
   P,
   newPath,
+  monitorTestResult,
   record,
   renderForm,
 } from "./form-test-support";
@@ -90,35 +92,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SECRET = `s3cr3t-${crypto.randomUUID()}`;
 const OTHER_SECRET = `n3w-${crypto.randomUUID()}`;
 
-const testResult: { result: MonitorTestResult } = {
-  result: {
-    checkedAt: "2026-09-30T07:30:00.000Z",
-    outcome: "pass",
-    httpStatus: 200,
-    responseTimeMs: 182,
-    diagnostics: {
-      redirects: 0,
-      dnsMs: 2,
-      connectMs: 3,
-      tlsMs: 37,
-      ttfbMs: 140,
-      remoteAddress: "203.0.113.5",
-      reasonPhrase: "OK",
-    },
-    failureReason: null,
-    tlsReason: null,
-    assertions: [],
-    url: "https://api.acme.example/health",
-    evaluatedFromPrefix: false,
-    ssl: {
-      level: "ok",
-      daysRemaining: 128,
-      host: "api.acme.example",
-      issuer: "Example CA",
-      notAfter: "2027-02-05T00:00:00.000Z",
-    },
-  },
-};
+const testResult = monitorTestResult();
 
 beforeEach(() => {
   vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
@@ -184,11 +158,7 @@ async function openEdit(monitor = storedBearer()): Promise<User> {
   detailMock.mockResolvedValue({ monitor });
   const user = userEvent.setup();
   renderForm(editPath());
-  await waitFor(() => {
-    const field = screen.getByTestId("monitor-form-name");
-    expect(field).toHaveValue("Payments API");
-    return field;
-  });
+  await waitFor(expectSavedFormName);
   return user;
 }
 
@@ -411,17 +381,7 @@ describe("Create: auth section and secret entries", () => {
 
 describe("Create: secret headers", () => {
   async function addHeader(user: User, name: string) {
-    const before = new Set(
-      screen
-        .queryAllByTestId(/^monitor-form-header-row-/)
-        .map((row) => row.getAttribute("data-testid")),
-    );
-    await user.click(screen.getByTestId("monitor-form-add-header"));
-    const added = screen
-      .getAllByTestId(/^monitor-form-header-row-/)
-      .filter((row) => !before.has(row.getAttribute("data-testid")));
-    expect(added).toHaveLength(1);
-    const id = must(must(added.pop()).getAttribute("data-testid") ?? undefined);
+    const id = await addFormRow(user, "header");
     await user.type(
       within(screen.getByTestId(id)).getByTestId("monitor-form-header-name"),
       name,
@@ -1410,11 +1370,7 @@ describe("Secret hygiene", () => {
     detailMock.mockResolvedValue({ monitor: storedBearer() });
     const user = userEvent.setup();
     const rendered = renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(screen.getByTestId("monitor-secret-auth.token-replace"));
     await user.type(
       screen.getByTestId("monitor-secret-auth.token-value"),

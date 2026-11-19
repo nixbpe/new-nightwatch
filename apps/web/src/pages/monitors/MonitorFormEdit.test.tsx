@@ -32,6 +32,7 @@ import {
   deferred,
   detail,
   editPath,
+  expectSavedFormName,
   MONITOR_ID,
   P,
   newPath,
@@ -115,11 +116,7 @@ describe("Edit opens with the saved configuration", () => {
       }),
     });
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     expect(screen.getByTestId("monitor-form-mode-advanced")).toBeChecked();
     expect(screen.getByTestId("monitor-form-method")).toHaveValue("POST");
     expect(screen.getByTestId("monitor-form-timeout")).toHaveValue("5");
@@ -160,11 +157,7 @@ describe("Edit opens with the saved configuration", () => {
 
   it("opens in basic mode when nothing advanced is set", async () => {
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     expect(screen.getByTestId("monitor-form-mode-basic")).toBeChecked();
     expect(screen.queryByTestId("monitor-form-advanced-summary")).toBeNull();
   });
@@ -177,13 +170,7 @@ describe("Edit opens with the saved configuration", () => {
       await screen.findByTestId("monitor-form-load-error"),
     ).toBeInTheDocument();
     await user.click(screen.getByTestId("monitor-form-load-retry"));
-    expect(
-      await waitFor(() => {
-        const field = screen.getByTestId("monitor-form-name");
-        expect(field).toHaveValue("Payments API");
-        return field;
-      }),
-    ).toBeInTheDocument();
+    expect(await waitFor(expectSavedFormName)).toBeInTheDocument();
   });
 
   it("renders MONITOR_NOT_FOUND safely without a form or retry", async () => {
@@ -215,11 +202,7 @@ describe("Edit save", () => {
     updateMock.mockReturnValue(pending.promise);
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(saveEdit());
     await user.click(saveEdit());
     await user.keyboard("{Enter}");
@@ -254,11 +237,7 @@ describe("Edit save", () => {
     });
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     expect(screen.getByTestId("monitor-form-alert-threshold")).toHaveValue("3");
     expect(screen.getByTestId("monitor-form-alert-down")).not.toBeChecked();
     expect(screen.getByTestId("monitor-form-alert-ssl")).not.toBeChecked();
@@ -289,11 +268,7 @@ describe("Edit save", () => {
     });
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(saveEdit());
     await waitFor(() => {
       expect(
@@ -318,11 +293,7 @@ describe("Edit save", () => {
     updateMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "d", 403));
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     await user.type(name, " mine");
     vi.mocked(fetchMeContext).mockResolvedValue(context("auditor"));
     await user.click(saveEdit());
@@ -343,11 +314,7 @@ describe("Edit save", () => {
     updateMock.mockRejectedValue(new ApiError("MEMBERSHIP_DENIED", "d", 403));
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     vi.mocked(fetchMeContext).mockResolvedValue(
       context("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
     );

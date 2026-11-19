@@ -29,6 +29,7 @@ import {
   deferred,
   detail,
   editPath,
+  expectSavedFormName,
   MONITOR_ID,
   newPath,
   record,
@@ -365,11 +366,7 @@ describe("Organization switch", () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await switchToB(user);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
@@ -470,11 +467,7 @@ describe("Edit", () => {
     updateMock.mockResolvedValue(written({ version: 4 }));
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     expect(screen.getByTestId("monitor-form-url")).toHaveValue(
       "https://api.acme.example/health",
     );
@@ -507,11 +500,7 @@ describe("Edit", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     await user.type(name, " mine");
     await user.click(screen.getByTestId("monitor-form-save"));
     expect(
@@ -531,11 +520,7 @@ describe("Edit", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    const name = await waitFor(expectSavedFormName);
     await user.type(name, " mine");
     await user.click(screen.getByTestId("monitor-form-save"));
     await screen.findByTestId("monitor-form-conflict");
@@ -563,11 +548,7 @@ describe("Edit", () => {
     updateMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(screen.getByTestId("monitor-form-save"));
     expect(
       await screen.findByTestId("monitor-form-not-found"),

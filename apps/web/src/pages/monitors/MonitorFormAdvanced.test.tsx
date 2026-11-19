@@ -1,5 +1,4 @@
 import {
-  must,
   noChecks,
   noIncidents,
   noResponseTimes,
@@ -21,6 +20,7 @@ import {
 } from "../../lib/api/monitors";
 import {
   A,
+  addFormRow,
   context,
   detail,
   newPath,
@@ -99,48 +99,6 @@ async function fillBasic(user: User) {
   );
 }
 
-async function addHeaderRow(user: User) {
-  const before = new Set(
-    screen
-      .queryAllByTestId(/^monitor-form-header-row-/)
-      .map((row) => row.getAttribute("data-testid")),
-  );
-  await user.click(screen.getByTestId("monitor-form-add-header"));
-  const added = screen
-    .getAllByTestId(/^monitor-form-header-row-/)
-    .filter((row) => !before.has(row.getAttribute("data-testid")));
-  expect(added).toHaveLength(1);
-  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
-}
-
-async function addQueryRow(user: User) {
-  const before = new Set(
-    screen
-      .queryAllByTestId(/^monitor-form-query-row-/)
-      .map((row) => row.getAttribute("data-testid")),
-  );
-  await user.click(screen.getByTestId("monitor-form-add-query"));
-  const added = screen
-    .getAllByTestId(/^monitor-form-query-row-/)
-    .filter((row) => !before.has(row.getAttribute("data-testid")));
-  expect(added).toHaveLength(1);
-  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
-}
-
-async function addAssertionRow(user: User) {
-  const before = new Set(
-    screen
-      .queryAllByTestId(/^monitor-form-assertion-row-/)
-      .map((row) => row.getAttribute("data-testid")),
-  );
-  await user.click(screen.getByTestId("monitor-form-add-assertion"));
-  const added = screen
-    .getAllByTestId(/^monitor-form-assertion-row-/)
-    .filter((row) => !before.has(row.getAttribute("data-testid")));
-  expect(added).toHaveLength(1);
-  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
-}
-
 const save = () => screen.getByTestId("monitor-form-save");
 const setValue = (element: HTMLElement, value: string) => {
   fireEvent.change(element, { target: { value } });
@@ -160,7 +118,7 @@ describe("Advanced mode defaults and mode switch", () => {
     const user = await openAdvanced();
     await fillBasic(user);
     await user.selectOptions(screen.getByTestId("monitor-form-method"), "POST");
-    const header = await addHeaderRow(user);
+    const header = await addFormRow(user, "header");
     await user.type(
       within(screen.getByTestId(header)).getByTestId(
         "monitor-form-header-name",
@@ -173,7 +131,7 @@ describe("Advanced mode defaults and mode switch", () => {
       ),
       "core",
     );
-    const query = await addQueryRow(user);
+    const query = await addFormRow(user, "query");
     await user.click(screen.getByTestId("monitor-form-mode-basic"));
     expect(screen.getByTestId("monitor-form-advanced-summary")).toHaveAttribute(
       "data-advanced-count",
@@ -212,7 +170,7 @@ describe("Advanced mode defaults and mode switch", () => {
     setValue(screen.getByTestId("monitor-form-timeout"), "5");
     setValue(screen.getByTestId("monitor-form-expected-status"), "200-299,301");
     await user.selectOptions(screen.getByTestId("monitor-form-method"), "POST");
-    const query = await addQueryRow(user);
+    const query = await addFormRow(user, "query");
     await user.type(
       within(screen.getByTestId(query)).getByTestId("monitor-form-query-name"),
       "page",
@@ -222,7 +180,7 @@ describe("Advanced mode defaults and mode switch", () => {
       "2",
     );
     setValue(screen.getByTestId("monitor-form-body-content"), '{"a":1}');
-    const jsonAssertion = await addAssertionRow(user);
+    const jsonAssertion = await addFormRow(user, "assertion");
     await user.type(
       within(screen.getByTestId(jsonAssertion)).getByTestId(
         "monitor-form-assertion-path",
@@ -235,7 +193,7 @@ describe("Advanced mode defaults and mode switch", () => {
       ),
       '"ok"',
     );
-    const bodyAssertion = await addAssertionRow(user);
+    const bodyAssertion = await addFormRow(user, "assertion");
     await user.selectOptions(
       within(screen.getByTestId(bodyAssertion)).getByTestId(
         "monitor-form-assertion-kind",
@@ -248,7 +206,7 @@ describe("Advanced mode defaults and mode switch", () => {
       ),
       "ready",
     );
-    const timeAssertion = await addAssertionRow(user);
+    const timeAssertion = await addFormRow(user, "assertion");
     await user.selectOptions(
       within(screen.getByTestId(timeAssertion)).getByTestId(
         "monitor-form-assertion-kind",
@@ -305,9 +263,9 @@ describe("Advanced validation beside the field", () => {
   it("rejects a forbidden header name, a duplicate and a bad name beside their rows", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    const forbiddenHeader = await addHeaderRow(user);
-    const duplicateSourceHeader = await addHeaderRow(user);
-    const duplicateHeader = await addHeaderRow(user);
+    const forbiddenHeader = await addFormRow(user, "header");
+    const duplicateSourceHeader = await addFormRow(user, "header");
+    const duplicateHeader = await addFormRow(user, "header");
     setValue(
       within(screen.getByTestId(forbiddenHeader)).getByTestId(
         "monitor-form-header-name",
@@ -392,7 +350,7 @@ describe("Advanced validation beside the field", () => {
     expectInvalid(screen.getByTestId("monitor-form-body-content"));
     setValue(screen.getByTestId("monitor-form-body-content"), "");
     await user.selectOptions(screen.getByTestId("monitor-form-method"), "HEAD");
-    const assertion = await addAssertionRow(user);
+    const assertion = await addFormRow(user, "assertion");
     await user.selectOptions(
       within(screen.getByTestId(assertion)).getByTestId(
         "monitor-form-assertion-kind",
@@ -416,7 +374,7 @@ describe("Advanced validation beside the field", () => {
   it("rejects a JSONPath with a filter, wildcard or recursive descent", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    const assertion = await addAssertionRow(user);
+    const assertion = await addFormRow(user, "assertion");
     await user.type(
       within(screen.getByTestId(assertion)).getByTestId(
         "monitor-form-assertion-expected",
@@ -450,7 +408,7 @@ describe("Advanced validation beside the field", () => {
     await fillBasic(user);
     setValue(screen.getByTestId("monitor-form-expected-status"), "700");
     setValue(screen.getByTestId("monitor-form-timeout"), "31");
-    const assertion = await addAssertionRow(user);
+    const assertion = await addFormRow(user, "assertion");
     await user.selectOptions(
       within(screen.getByTestId(assertion)).getByTestId(
         "monitor-form-assertion-kind",
@@ -491,14 +449,14 @@ describe("Rows", () => {
   it("names each row, focuses the new row and moves focus after a removal", async () => {
     const user = await openAdvanced();
     const add = screen.getByTestId("monitor-form-add-header");
-    const firstHeader = await addHeaderRow(user);
+    const firstHeader = await addFormRow(user, "header");
     expect(
       within(screen.getByTestId(firstHeader)).getByTestId(
         "monitor-form-header-name",
       ),
     ).toHaveFocus();
-    const secondHeader = await addHeaderRow(user);
-    const thirdHeader = await addHeaderRow(user);
+    const secondHeader = await addFormRow(user, "header");
+    const thirdHeader = await addFormRow(user, "header");
     expect(
       within(screen.getByTestId(thirdHeader)).getByTestId(
         "monitor-form-header-name",

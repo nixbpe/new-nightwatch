@@ -1,6 +1,5 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import type { MonitorTestResult } from "@nightwatch/api-contract";
 import {
   act,
   fireEvent,
@@ -41,8 +40,10 @@ import {
   deferred,
   detail,
   editPath,
+  expectSavedFormName,
   expectInvalid,
   newPath,
+  monitorTestResult as result,
   record,
   renderForm,
 } from "./form-test-support";
@@ -105,52 +106,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.resetAllMocks();
 });
-
-function result(overrides: Partial<MonitorTestResult> = {}): {
-  result: MonitorTestResult;
-} {
-  return {
-    result: {
-      checkedAt: "2026-09-30T07:30:00.000Z",
-      outcome: "pass",
-      httpStatus: 200,
-      responseTimeMs: 182,
-      diagnostics:
-        overrides.httpStatus === null
-          ? {
-              redirects: null,
-              dnsMs: null,
-              connectMs: null,
-              tlsMs: null,
-              ttfbMs: null,
-              remoteAddress: null,
-              reasonPhrase: null,
-            }
-          : {
-              redirects: 0,
-              dnsMs: 2,
-              connectMs: 3,
-              tlsMs: 37,
-              ttfbMs: 140,
-              remoteAddress: "203.0.113.5",
-              reasonPhrase: "OK",
-            },
-      failureReason: null,
-      tlsReason: null,
-      assertions: [],
-      url: "https://api.acme.example/health",
-      evaluatedFromPrefix: false,
-      ssl: {
-        level: "ok",
-        daysRemaining: 128,
-        host: "api.acme.example",
-        issuer: "Example CA",
-        notAfter: "2027-02-05T00:00:00.000Z",
-      },
-      ...overrides,
-    },
-  };
-}
 
 function assertionRecords() {
   return within(screen.getByTestId("monitor-test-assertions"))
@@ -939,11 +894,7 @@ describe("Edit test", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(testButton());
     await waitFor(() => {
       expectInvalid(screen.getByTestId("monitor-form-url"));
@@ -957,11 +908,7 @@ describe("Edit test", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    await waitFor(() => {
-      const field = screen.getByTestId("monitor-form-name");
-      expect(field).toHaveValue("Payments API");
-      return field;
-    });
+    await waitFor(expectSavedFormName);
     await user.click(testButton());
     expect(
       await screen.findByTestId("monitor-form-not-found"),
