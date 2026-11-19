@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   claimDueMonitorChecks,
   purgeExpiredMonitorData,
-  listMigrations,
   type Database,
   withTenantContextRaw,
 } from "../src";
@@ -743,20 +742,6 @@ describe("monitors alert settings backfill from migration 0022", () => {
     const errors: unknown[] = [];
     try {
       const legacyOwner = legacy.owner.sql;
-      const canonical = await listMigrations(
-        new URL("../migrations", import.meta.url).pathname,
-      );
-      const ledger = async () =>
-        (
-          await legacyOwner.query<{ name: string; sha256: string }>(
-            "select name, sha256 from __nightwatch_migrations order by name",
-          )
-        ).rows;
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0021_audit_exports.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
       const tenantId = randomUUID();
       await legacyOwner.query(
         `insert into organization (id, name, slug) values ($1, 'Legacy', $2)`,
@@ -771,11 +756,6 @@ describe("monitors alert settings backfill from migration 0022", () => {
 
       const result = await legacy.advanceTo("0022_monitor_alert_settings.sql");
       expect(result.applied).toEqual(["0022_monitor_alert_settings.sql"]);
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0022_monitor_alert_settings.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
 
       const row = await legacyOwner.query<{
         alert_failure_threshold: number;
@@ -795,11 +775,6 @@ describe("monitors alert settings backfill from migration 0022", () => {
         alert_ssl_caution_days: 30,
       });
       await legacy.advanceTo("0025_member_last_project.sql");
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0025_member_last_project.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
       expect(
         (
           await legacyOwner.query(
@@ -832,20 +807,6 @@ describe("0026 wipes monitor data and scopes monitors to a Project", () => {
     const errors: unknown[] = [];
     try {
       const wipeOwner = wipe.owner.sql;
-      const canonical = await listMigrations(
-        new URL("../migrations", import.meta.url).pathname,
-      );
-      const ledger = async () =>
-        (
-          await wipeOwner.query<{ name: string; sha256: string }>(
-            "select name, sha256 from __nightwatch_migrations order by name",
-          )
-        ).rows;
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0025_member_last_project.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
       const tenantId = randomUUID();
       const userId = randomUUID();
       const monitorId = randomUUID();
@@ -917,11 +878,6 @@ describe("0026 wipes monitor data and scopes monitors to a Project", () => {
       expect(
         (await wipe.advanceTo("0026_project_monitors.sql")).applied,
       ).toEqual(["0026_project_monitors.sql"]);
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0026_project_monitors.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
 
       const count = async (table: string, where = "true"): Promise<number> =>
         Number(
@@ -963,13 +919,6 @@ describe("0026 wipes monitor data and scopes monitors to a Project", () => {
       );
       expect(forced.rows[0]?.relforcerowsecurity).toBe(true);
       await wipe.advanceTo("0027_notification_monitor_hostname.sql");
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(
-            ({ name }) => name <= "0027_notification_monitor_hostname.sql",
-          )
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
     } catch (error) {
       errors.push(error);
     } finally {

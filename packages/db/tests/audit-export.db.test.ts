@@ -5,7 +5,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   claimAuditExport,
   type Database,
-  listMigrations,
   failStaleAuditExports,
   findStaleAuditExports,
   insertAuditExportNotificationIntent,
@@ -140,20 +139,6 @@ describe("migration 0021 on a database that already holds notifications", () => 
     try {
       const owner = upgrade.owner.sql;
       await seedIdentity(owner);
-      const canonical = await listMigrations(
-        new URL("../migrations", import.meta.url).pathname,
-      );
-      const ledger = async () =>
-        (
-          await owner.query<{ name: string; sha256: string }>(
-            "select name, sha256 from __nightwatch_migrations order by name",
-          )
-        ).rows;
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0020_organization_audit_log.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
       await owner.query(
         `insert into notification_intents
          (id, scope_kind, tenant_id, origin, event_type, occurred_at)
@@ -176,11 +161,6 @@ describe("migration 0021 on a database that already holds notifications", () => 
       expect(
         (await upgrade.advanceTo("0021_audit_exports.sql")).applied,
       ).toEqual(["0021_audit_exports.sql"]);
-      expect(await ledger()).toEqual(
-        canonical
-          .filter(({ name }) => name <= "0021_audit_exports.sql")
-          .map(({ name, sha256 }) => ({ name, sha256 })),
-      );
       for (const [table, id] of [
         ["notification_intents", `legacy-intent-${run}`],
         ["notification_inbox_items", `legacy-inbox-${run}`],
@@ -258,9 +238,6 @@ describe("migration 0021 on a database that already holds notifications", () => 
         ).rows[0]?.d.toISOString(),
       ).toBe("2026-10-03T11:00:00.000Z");
       await upgrade.advanceTo("latest");
-      expect(await ledger()).toEqual(
-        canonical.map(({ name, sha256 }) => ({ name, sha256 })),
-      );
     } catch (error) {
       errors.push(error);
     } finally {

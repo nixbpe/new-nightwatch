@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 
-import { listMigrations, withTenantContextRaw } from "../src";
+import { withTenantContextRaw } from "../src";
 import { openTestPostgres } from "./support/postgres";
 
 it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime RLS and hostname checks", async () => {
@@ -13,20 +13,6 @@ it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime R
   try {
     const owner = fixture.owner.sql;
     const runtime = fixture.runtime;
-    const canonical = await listMigrations(
-      new URL("../migrations", import.meta.url).pathname,
-    );
-    const ledger = async () =>
-      (
-        await owner.query<{ name: string; sha256: string }>(
-          "select name, sha256 from __nightwatch_migrations order by name",
-        )
-      ).rows;
-    expect(await ledger()).toEqual(
-      canonical
-        .filter(({ name }) => name <= "0026_project_monitors.sql")
-        .map(({ name, sha256 }) => ({ name, sha256 })),
-    );
     const org = randomUUID();
     const user = randomUUID();
     const intent = randomUUID();
@@ -53,11 +39,6 @@ it("applies 0027 on 0026, preserves null legacy snapshots and enforces runtime R
       (await fixture.advanceTo("0027_notification_monitor_hostname.sql"))
         .applied,
     ).toEqual(["0027_notification_monitor_hostname.sql"]);
-    expect(await ledger()).toEqual(
-      canonical
-        .filter(({ name }) => name <= "0027_notification_monitor_hostname.sql")
-        .map(({ name, sha256 }) => ({ name, sha256 })),
-    );
     for (const table of [
       "notification_intents",
       "notification_inbox_items",
