@@ -1,26 +1,23 @@
 import { invitationCreateResponseSchema } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations } from "@nightwatch/db";
-import { fileURLToPath } from "node:url";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { Mailer, OutboundMail } from "../auth/mailer";
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { createInvitationTestApp } from "./invitation-test-app";
+import { createInvitationFixture } from "./invitation-test-support";
 
-const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-const runtime = createDatabase(runtimeUrl);
-const owner = createDatabase(ownerUrl);
-const run = crypto.randomUUID();
 const orgA = crypto.randomUUID();
 const orgB = crypto.randomUUID();
 const absentOrg = crypto.randomUUID();
-const actorIds = Object.fromEntries(
-  ["owner", "admin", "viewer", "auditor", "other", "both"].map((role) => [
-    role,
-    crypto.randomUUID(),
-  ]),
-) as Record<string, string>;
+const fixture = createInvitationFixture([
+  "owner",
+  "admin",
+  "viewer",
+  "auditor",
+  "other",
+  "both",
+]);
+const { runtimeUrl, runtime, owner, run, actorIds, email } = fixture;
 const mail: OutboundMail[] = [];
 let failMail = false;
 const mailer: Mailer = {
@@ -37,13 +34,10 @@ const { app, logs } = createInvitationTestApp({
   runtimeUrl,
   secret: `invite-${run}`,
   actorIds,
-  actorEmail: (actor) => `${actor}-${run}@example.test`,
+  actorEmail: email,
   loggerName: "invitation-db-test",
   mailer,
 });
-const migrationsDir = fileURLToPath(
-  new URL("../../../../packages/db/migrations", import.meta.url),
-);
 
 async function request(
   actor: string,
@@ -100,38 +94,26 @@ async function waitForInvitationLocks(
 }
 
 beforeAll(async () => {
-  await runMigrations({ url: ownerUrl, migrationsDir });
-  await owner.sql.query(
-    "insert into organization (id, name, slug) values ($1, 'Invite A', $2), ($3, 'Invite B', $4)",
-    [orgA, `invite-a-${run}`, orgB, `invite-b-${run}`],
-  );
-  for (const [role, id] of Object.entries(actorIds)) {
-    await owner.sql.query(
-      `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, $2, $3, true, now(), now())`,
-      [id, role, `${role}-${run}@example.test`],
-    );
-    if (role !== "other")
-      await owner.sql.query(
-        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
-        [crypto.randomUUID(), orgA, id, role === "both" ? "owner" : role],
-      );
-  }
-  await owner.sql.query(
-    "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
-    [crypto.randomUUID(), orgB, actorIds.both],
+  await fixture.initialize(
+    [
+      [orgA, "Invite A", `invite-a-${run}`],
+      [orgB, "Invite B", `invite-b-${run}`],
+    ],
+    [
+      ...["owner", "admin", "viewer", "auditor", "both"].map(
+        (role): [string, string, string] => [
+          orgA,
+          role,
+          role === "both" ? "owner" : role,
+        ],
+      ),
+      [orgB, "both", "admin"],
+    ],
   );
 }, 120_000);
 
 afterAll(async () => {
-  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
-    [orgA, orgB],
-  ]);
-  await owner.sql.query('delete from "user" where id = any($1::text[])', [
-    Object.values(actorIds),
-  ]);
-  await owner.close();
-  await runtime.close();
+  await fixture.close([orgA, orgB]);
 });
 
 describe("first-party invitation create", () => {

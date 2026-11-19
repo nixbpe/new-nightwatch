@@ -2,18 +2,15 @@ import {
   pendingInvitationListResponseSchema,
   type PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations } from "@nightwatch/db";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { Mailer, OutboundMail } from "../auth/mailer";
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { createInvitationTestApp } from "./invitation-test-app";
+import {
+  createInvitationFixture,
+  invitationSeed,
+} from "./invitation-test-support";
 
-const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-const runtime = createDatabase(runtimeUrl);
-const owner = createDatabase(ownerUrl);
-const run = crypto.randomUUID();
 const orgA = crypto.randomUUID();
 const orgB = crypto.randomUUID();
 const orgEmpty = crypto.randomUUID();
@@ -21,11 +18,16 @@ const orgPage = crypto.randomUUID();
 const orgCreate = crypto.randomUUID();
 const absentOrg = crypto.randomUUID();
 const allOrgs = [orgA, orgB, orgEmpty, orgPage, orgCreate];
-const actorIds = Object.fromEntries(
-  ["owner", "admin", "viewer", "auditor", "other", "both", "bOnly"].map(
-    (role) => [role, crypto.randomUUID()],
-  ),
-) as Record<string, string>;
+const fixture = createInvitationFixture([
+  "owner",
+  "admin",
+  "viewer",
+  "auditor",
+  "other",
+  "both",
+  "bOnly",
+]);
+const { runtimeUrl, runtime, owner, run, actorIds, email } = fixture;
 const mail: OutboundMail[] = [];
 const mailer: Mailer = {
   send: (message) => {
@@ -39,14 +41,10 @@ const { app, logs } = createInvitationTestApp({
   runtimeUrl,
   secret: `list-${run}`,
   actorIds,
-  actorEmail: (actor) => `${actor}-${run}@example.test`,
+  actorEmail: email,
   loggerName: "invitation-list-db-test",
   mailer,
 });
-const migrationsDir = fileURLToPath(
-  new URL("../../../../packages/db/migrations", import.meta.url),
-);
-const email = (label: string) => `${label}-${run}@example.test`;
 
 async function list(actor: string, org: string, query = "") {
   const response = await app.request(
@@ -82,39 +80,10 @@ async function create(
   };
 }
 // expiresIn / sentAgo are SQL interval literals relative to clock_timestamp().
-async function seed(
-  org: string,
-  address: string,
-  options: {
-    role?: string;
-    status?: string;
-    expiresIn?: string | null;
-    sentAgo?: string;
-  } = {},
-) {
-  const id = crypto.randomUUID();
-  const expiresIn =
-    options.expiresIn === undefined ? "1 day" : options.expiresIn;
-  const result = await owner.sql.query<{ publicId: string }>(
-    `insert into invitation
-       (id, organization_id, email, role, status, inviter_id, expires_at, created_at, sent_at)
-     values ($1, $2, $3, $4, $5, $6,
-       case when $7::text is null then null else clock_timestamp() + $7::interval end,
-       clock_timestamp() - $8::interval, clock_timestamp() - $8::interval)
-     returning public_id as "publicId"`,
-    [
-      id,
-      org,
-      address,
-      options.role ?? "viewer",
-      options.status ?? "pending",
-      actorIds.owner,
-      expiresIn,
-      options.sentAgo ?? "0 seconds",
-    ],
-  );
-  return { id, publicId: result.rows[0]?.publicId ?? "" };
-}
+const seed = invitationSeed(owner, actorIds.owner, {
+  sentAgo: "0 seconds",
+  backdateCreated: true,
+});
 async function statusesOf(org: string, address: string) {
   return (
     await owner.sql.query<{ status: string }>(
@@ -129,69 +98,33 @@ async function previewStatus(invitationId: string) {
 }
 
 beforeAll(async () => {
-  await runMigrations({ url: ownerUrl, migrationsDir });
-  await owner.sql.query(
-    `insert into organization (id, name, slug) values
-       ($1, 'List A', $2), ($3, 'List B', $4), ($5, 'List Empty', $6),
-       ($7, 'List Page', $8), ($9, 'List Create', $10)`,
+  await fixture.initialize(
     [
-      orgA,
-      `list-a-${run}`,
-      orgB,
-      `list-b-${run}`,
-      orgEmpty,
-      `list-e-${run}`,
-      orgPage,
-      `list-p-${run}`,
-      orgCreate,
-      `list-c-${run}`,
+      [orgA, "List A", `list-a-${run}`],
+      [orgB, "List B", `list-b-${run}`],
+      [orgEmpty, "List Empty", `list-e-${run}`],
+      [orgPage, "List Page", `list-p-${run}`],
+      [orgCreate, "List Create", `list-c-${run}`],
     ],
-  );
-  for (const [role, id] of Object.entries(actorIds)) {
-    await owner.sql.query(
-      `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, $2, $3, true, now(), now())`,
-      [id, role, email(role)],
-    );
-    if (role === "other" || role === "bOnly") continue;
-    for (const org of [orgA, orgEmpty]) {
-      await owner.sql.query(
-        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
-        [crypto.randomUUID(), org, id, role === "both" ? "owner" : role],
-      );
-    }
-  }
-  for (const org of [orgPage, orgCreate]) {
-    await owner.sql.query(
-      "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'owner'), ($4, $2, $5, 'viewer')",
-      [
-        crypto.randomUUID(),
-        org,
-        actorIds.owner,
-        crypto.randomUUID(),
-        actorIds.viewer,
-      ],
-    );
-  }
-  await owner.sql.query(
-    "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
-    [crypto.randomUUID(), orgB, actorIds.both],
-  );
-  await owner.sql.query(
-    "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
-    [crypto.randomUUID(), orgB, actorIds.bOnly],
+    [
+      ...["owner", "admin", "viewer", "auditor", "both"].flatMap(
+        (role): [string, string, string][] => [
+          [orgA, role, role === "both" ? "owner" : role],
+          [orgEmpty, role, role === "both" ? "owner" : role],
+        ],
+      ),
+      [orgPage, "owner", "owner"],
+      [orgPage, "viewer", "viewer"],
+      [orgCreate, "owner", "owner"],
+      [orgCreate, "viewer", "viewer"],
+      [orgB, "both", "admin"],
+      [orgB, "bOnly", "admin"],
+    ],
   );
 }, 120_000);
 
 afterAll(async () => {
-  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
-    allOrgs,
-  ]);
-  await owner.sql.query('delete from "user" where id = any($1::text[])', [
-    Object.values(actorIds),
-  ]);
-  await owner.close();
-  await runtime.close();
+  await fixture.close(allOrgs);
 });
 
 describe("first-party pending invitation list", () => {

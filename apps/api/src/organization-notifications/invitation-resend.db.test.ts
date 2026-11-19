@@ -1,6 +1,3 @@
-import { createDatabase, runMigrations } from "@nightwatch/db";
-import { Client } from "pg";
-import { fileURLToPath } from "node:url";
 import {
   afterAll,
   afterEach,
@@ -12,13 +9,13 @@ import {
 } from "vitest";
 
 import type { Mailer, OutboundMail } from "../auth/mailer";
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { createInvitationTestApp } from "./invitation-test-app";
+import {
+  createInvitationFixture,
+  invitationSeed,
+  invitationLocks,
+} from "./invitation-test-support";
 
-const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-const runtime = createDatabase(runtimeUrl);
-const owner = createDatabase(ownerUrl);
-const run = crypto.randomUUID();
 const orgA = crypto.randomUUID();
 const orgB = crypto.randomUUID();
 const orgFull = crypto.randomUUID();
@@ -35,9 +32,8 @@ const actorNames = [
   "joined",
   "fullOwner",
 ];
-const actorIds = Object.fromEntries(
-  actorNames.map((name) => [name, crypto.randomUUID()]),
-) as Record<string, string>;
+const fixture = createInvitationFixture(actorNames);
+const { runtimeUrl, ownerUrl, runtime, owner, run, actorIds, email } = fixture;
 const mail: OutboundMail[] = [];
 let attempts = 0;
 let smtpFails = false;
@@ -60,7 +56,6 @@ const mailer: Mailer = {
   },
   verify: () => Promise.resolve(),
 };
-const email = (label: string) => `${label}-${run}@example.test`;
 const { app, logs } = createInvitationTestApp({
   database: runtime,
   runtimeUrl,
@@ -70,9 +65,6 @@ const { app, logs } = createInvitationTestApp({
   loggerName: "invitation-resend-db-test",
   mailer,
 });
-const migrationsDir = fileURLToPath(
-  new URL("../../../../packages/db/migrations", import.meta.url),
-);
 
 type Result = { status: number; body: Record<string, unknown> };
 
@@ -133,39 +125,7 @@ async function previewStatus(invitationId: string) {
   return (await app.request(`/api/onboarding/invitations/${invitationId}`))
     .status;
 }
-async function seed(
-  org: string,
-  address: string,
-  options: {
-    role?: string;
-    status?: string;
-    expiresIn?: string | null;
-    sentAgo?: string;
-  } = {},
-) {
-  const id = crypto.randomUUID();
-  const expiresIn =
-    options.expiresIn === undefined ? "1 day" : options.expiresIn;
-  const result = await owner.sql.query<{ publicId: string }>(
-    `insert into invitation
-       (id, organization_id, email, role, status, inviter_id, expires_at, created_at, sent_at)
-     values ($1, $2, $3, $4, $5, $6,
-       case when $7::text is null then null else clock_timestamp() + $7::interval end,
-       clock_timestamp(), clock_timestamp() - $8::interval)
-     returning public_id as "publicId"`,
-    [
-      id,
-      org,
-      address,
-      options.role ?? "viewer",
-      options.status ?? "pending",
-      actorIds.ownerA,
-      expiresIn,
-      options.sentAgo ?? "301 seconds",
-    ],
-  );
-  return { id, publicId: result.rows[0]?.publicId ?? "" };
-}
+const seed = invitationSeed(owner, actorIds.ownerA, { sentAgo: "301 seconds" });
 type RowState = {
   id: string;
   status: string;
@@ -204,87 +164,28 @@ async function isMember(org: string, actor: string) {
   return result.rows.length > 0;
 }
 
-// Holds a transaction that owns the organization row lock, the first lock of
-// create, accept, cancel and every role or revoke change.
 const openHolders: (() => Promise<void>)[] = [];
-async function holdOrganizationLock(org: string) {
-  const holder = new Client({ connectionString: ownerUrl });
-  await holder.connect();
-  const pid = (
-    await holder.query<{ pid: number }>("select pg_backend_pid() as pid")
-  ).rows[0]?.pid;
-  if (pid === undefined) throw new Error("no backend pid");
-  await holder.query("begin");
-  await holder.query("select id from organization where id = $1 for update", [
-    org,
-  ]);
-  let released = false;
-  const release = async (action: "commit" | "rollback" = "commit") => {
-    if (released) return;
-    released = true;
-    await holder.query(action);
-    await holder.end();
-  };
-  openHolders.push(() => release("rollback"));
-  return { holder, pid, release };
-}
-// Waits until `count` backends are blocked, directly or through an earlier
-// waiter, by this holder's transaction. A second waiter queues behind the first
-// waiter's tuple lock, so the chain is followed from the holder; sessions of
-// other tests are never part of it.
-async function waitUntilQueued(holderPid: number, count: number) {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const waiting = await owner.sql.query<{ waiting: number }>(
-      `with recursive chain(pid) as (
-         select pid from pg_stat_activity where $1::int = any(pg_blocking_pids(pid))
-         union
-         select a.pid from pg_stat_activity a
-         join chain c on c.pid = any(pg_blocking_pids(a.pid))
-       ) select count(*)::int as waiting from chain`,
-      [holderPid],
-    );
-    if ((waiting.rows[0]?.waiting ?? 0) >= count) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error("requests never queued behind the holder's lock");
-}
+const { holdOrganizationLock, waitUntilQueued } = invitationLocks(
+  owner,
+  ownerUrl,
+  openHolders,
+);
 
 beforeAll(async () => {
-  await runMigrations({ url: ownerUrl, migrationsDir });
-  await owner.sql.query(
-    `insert into organization (id, name, slug) values
-       ($1, 'Resend A', $2), ($3, 'Resend B', $4), ($5, 'Resend Full', $6)`,
+  await fixture.initialize(
     [
-      orgA,
-      `resend-a-${run}`,
-      orgB,
-      `resend-b-${run}`,
-      orgFull,
-      `resend-f-${run}`,
+      [orgA, "Resend A", `resend-a-${run}`],
+      [orgB, "Resend B", `resend-b-${run}`],
+      [orgFull, "Resend Full", `resend-f-${run}`],
     ],
-  );
-  for (const [name, id] of Object.entries(actorIds)) {
-    await owner.sql.query(
-      `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, $2, $3, true, now(), now())`,
-      [id, name, email(name.toLowerCase())],
-    );
-  }
-  for (const role of roles) {
-    for (const [org, suffix] of [
-      [orgA, "A"],
-      [orgB, "B"],
-    ] as const) {
-      await owner.sql.query(
-        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
-        [crypto.randomUUID(), org, actorIds[`${role}${suffix}`], role],
-      );
-    }
-  }
-  await owner.sql.query(
-    "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
-    [crypto.randomUUID(), orgFull, actorIds.fullOwner],
+    [
+      ...roles.flatMap((role): [string, string, string][] => [
+        [orgA, `${role}A`, role],
+        [orgB, `${role}B`, role],
+      ]),
+      [orgFull, "fullOwner", "owner"],
+    ],
+    (name) => email(name.toLowerCase()),
   );
 }, 120_000);
 
@@ -301,14 +202,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
-    [orgA, orgB, orgFull],
-  ]);
-  await owner.sql.query('delete from "user" where id = any($1::text[])', [
-    Object.values(actorIds),
-  ]);
-  await owner.close();
-  await runtime.close();
+  await fixture.close([orgA, orgB, orgFull]);
 });
 
 const ownerRowEmail = (label: string) => email(`owner-${label}`);
