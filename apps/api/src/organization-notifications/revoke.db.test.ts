@@ -18,26 +18,17 @@ const users = Object.fromEntries(
 const members = Object.fromEntries(
   roles.map((role) => [role, `revoke-member-${role}-${run}`]),
 ) as Record<Role, string>;
-const secondOwner = {
-  user: `revoke-user-owner2-${run}`,
-  member: `revoke-member-owner2-${run}`,
-};
 // A second holder of every role, so the matrix never targets the actor itself.
-const peers = {
-  owner: secondOwner,
-  admin: {
-    user: `revoke-user-admin2-${run}`,
-    member: `revoke-member-admin2-${run}`,
-  },
-  viewer: {
-    user: `revoke-user-viewer2-${run}`,
-    member: `revoke-member-viewer2-${run}`,
-  },
-  auditor: {
-    user: `revoke-user-auditor2-${run}`,
-    member: `revoke-member-auditor2-${run}`,
-  },
-} satisfies Record<Role, { user: string; member: string }>;
+const peers = Object.fromEntries(
+  roles.map((role) => [
+    role,
+    {
+      user: `revoke-user-${role}2-${run}`,
+      member: `revoke-member-${role}2-${run}`,
+    },
+  ]),
+) as Record<Role, { user: string; member: string }>;
+const secondOwner = peers.owner;
 const everyone = [
   ...roles.map((role) => ({
     user: users[role],
