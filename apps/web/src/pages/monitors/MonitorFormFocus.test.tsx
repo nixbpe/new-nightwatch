@@ -37,7 +37,6 @@ import {
   getContextPublicationSnapshot,
   publishActiveQueryClient,
   resetQueryClientRegistry,
-  subscribeToContextPublication,
 } from "../../lib/queryClient";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import {
@@ -388,21 +387,6 @@ it.each(["create", "edit"] as const)(
       client = await openForm(mode, true);
     const { router } = must(resources.at(-1));
     const navigate = vi.spyOn(router, "navigate");
-    const timeline: {
-      location: string;
-      navigation: string;
-      destination: string | null;
-      admission: string;
-    }[] = [];
-    const observe = () =>
-      timeline.push({
-        location: router.state.location.pathname,
-        navigation: router.state.navigation.state,
-        destination: router.state.navigation.location?.pathname ?? null,
-        admission: getContextPublicationSnapshot(client).admission.kind,
-      });
-    const stopRouter = router.subscribe(observe),
-      stopPublication = subscribeToContextPublication(client, observe);
     const pending = Promise.withResolvers<MeContextResponse>();
     const switchedContext = { ...context(), lastActiveTenantId: B };
     vi.mocked(updateActiveOrganization).mockResolvedValueOnce(switchedContext);
@@ -410,38 +394,26 @@ it.each(["create", "edit"] as const)(
     vi.mocked(fetchMeContext)
       .mockReturnValueOnce(pending.promise)
       .mockReturnValue(new Promise<MeContextResponse>(() => {}));
-    try {
-      await user.click(screen.getByTestId("shell-organization-switch"));
-      await user.click(screen.getByTestId(`shell-organization-${B}`));
-      await waitFor(() => {
-        expect(getContextPublicationSnapshot(client).admission.kind).toBe(
-          "confirming",
-        );
-      });
-      expect(navigate).toHaveBeenCalledTimes(1);
-      withdrawn();
-      await act(async () => {
-        pending.resolve(switchedContext);
-        await pending.promise;
-      });
-      expect(navigate).toHaveBeenCalledTimes(1);
-      expect(
-        await screen.findByTestId("test-monitor-scope-overview"),
-      ).toHaveTextContent(/^Scope overview$/);
-      expect(router.state.location.pathname).toBe(
-        `/organizations/${B}/projects`,
+    await user.click(screen.getByTestId("shell-organization-switch"));
+    await user.click(screen.getByTestId(`shell-organization-${B}`));
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(client).admission.kind).toBe(
+        "confirming",
       );
-      expect(fetchMeContext).toHaveBeenCalledTimes(2);
-      expect(screen.queryByTestId("monitor-form-name")).toBeNull();
-    } finally {
-      stopRouter();
-      stopPublication();
-      console.log(
-        "CR88-R3 navigation metadata",
-        mode,
-        JSON.stringify(timeline),
-      );
-    }
+    });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    withdrawn();
+    await act(async () => {
+      pending.resolve(switchedContext);
+      await pending.promise;
+    });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByTestId("test-monitor-scope-overview"),
+    ).toHaveTextContent(/^Scope overview$/);
+    expect(router.state.location.pathname).toBe(`/organizations/${B}/projects`);
+    expect(fetchMeContext).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   },
 );
 
