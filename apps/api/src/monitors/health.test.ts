@@ -30,163 +30,149 @@ const latest = (
 ) => ({ outcome, configVersion, ageSeconds, predatesResume });
 
 describe("computeHealth, in the order of the seven steps", () => {
-  it("1: a paused monitor is paused whatever its results say", () => {
-    expect(
-      computeHealth(
-        facts({ status: "paused", hasOpenIncident: true, latest: null }),
-      ),
-    ).toEqual({ health: "paused", healthReason: null, lastKnownDown: false });
-  });
-
-  it("2: no result at all is never_checked", () => {
-    expect(computeHealth(facts({ latest: null }))).toEqual({
-      health: "unknown",
-      healthReason: "never_checked",
-      lastKnownDown: false,
-    });
-  });
-
-  it("2: only results of an older config is awaiting_new_config, with lastKnownDown while an incident is open", () => {
-    const edited = facts({
-      checkConfigVersion: 2,
-      lastPassedConfigVersion: 1,
-      latest: latest("fail", 10, 1),
-    });
-    expect(computeHealth(edited)).toEqual({
-      health: "unknown",
-      healthReason: "awaiting_new_config",
-      lastKnownDown: false,
-    });
-    expect(computeHealth({ ...edited, hasOpenIncident: true })).toEqual({
-      health: "unknown",
-      healthReason: "awaiting_new_config",
-      lastKnownDown: true,
-    });
-  });
-
-  it("3: a result exactly 2 x interval old is still fresh, 1 s older is stale", () => {
-    expect(
-      computeHealth(facts({ latest: latest("pass", 2 * INTERVAL) })).health,
-    ).toBe("up");
-    expect(
-      computeHealth(facts({ latest: latest("pass", 2 * INTERVAL + 1) })),
-    ).toEqual({
-      health: "unknown",
-      healthReason: "stale",
-      lastKnownDown: false,
-    });
-  });
-
-  it("3: a fresh pass from before the last Resume is unknown until a newer result", () => {
-    expect(
-      computeHealth(facts({ latest: latest("pass", 10, 1, true) })),
-    ).toEqual({
-      health: "unknown",
-      healthReason: "stale",
-      lastKnownDown: false,
-    });
-    expect(
-      computeHealth(facts({ latest: latest("pass", 10, 1, false) })).health,
-    ).toBe("up");
-  });
-
-  it("3: a config awaiting its first result outranks the Resume rule", () => {
-    expect(
-      computeHealth(
-        facts({ checkConfigVersion: 2, latest: latest("pass", 10, 1, true) }),
-      ).healthReason,
-    ).toBe("awaiting_new_config");
-  });
-
-  it("3: stale with an open incident keeps lastKnownDown", () => {
-    expect(
-      computeHealth(
-        facts({
-          hasOpenIncident: true,
-          latest: latest("fail", 2 * INTERVAL + 1),
-        }),
-      ),
-    ).toEqual({
-      health: "unknown",
-      healthReason: "stale",
-      lastKnownDown: true,
-    });
-    expect(
-      computeHealth(
-        facts({ hasOpenIncident: true, latest: latest("fail", 2 * INTERVAL) }),
-      ).health,
-    ).toBe("down");
-  });
-
-  it("4: a check_error latest is unknown even with an open incident", () => {
-    expect(computeHealth(facts({ latest: latest("check_error") }))).toEqual({
-      health: "unknown",
-      healthReason: "check_error",
-      lastKnownDown: false,
-    });
-    expect(
-      computeHealth(
-        facts({ hasOpenIncident: true, latest: latest("check_error") }),
-      ),
-    ).toMatchObject({ healthReason: "check_error", lastKnownDown: true });
-  });
-
-  it("5: an open incident with a fresh fail is down", () => {
-    expect(
-      computeHealth(
-        facts({
-          hasOpenIncident: true,
-          consecutiveFailures: 2,
-          latest: latest("fail"),
-        }),
-      ),
-    ).toEqual({ health: "down", healthReason: null, lastKnownDown: false });
-  });
-
-  it("6: a passing latest is up", () => {
-    expect(computeHealth(facts())).toEqual({
-      health: "up",
-      healthReason: null,
-      lastKnownDown: false,
-    });
-  });
-
-  it("6: one failure after a pass in the current config is still up", () => {
-    expect(
-      computeHealth(facts({ consecutiveFailures: 1, latest: latest("fail") }))
-        .health,
-    ).toBe("up");
-  });
-
-  it("7: the first failure of a new config is unknown (no reason)", () => {
-    expect(
-      computeHealth(
-        facts({
-          checkConfigVersion: 2,
-          lastPassedConfigVersion: 1,
-          consecutiveFailures: 1,
-          latest: latest("fail", 10, 2),
-        }),
-      ),
-    ).toEqual({ health: "unknown", healthReason: null, lastKnownDown: false });
-  });
-
-  it("7: two failures without an incident row is still up", () => {
-    expect(
-      computeHealth(facts({ consecutiveFailures: 2, latest: latest("fail") }))
-        .health,
-    ).toBe("up");
-    expect(
-      computeHealth(facts({ consecutiveFailures: 50, latest: latest("fail") }))
-        .health,
-    ).toBe("up");
-  });
-
-  it("an Edit that changes the failure threshold never flips health to unknown on its own (P60-06)", () => {
-    expect(
-      computeHealth(facts({ consecutiveFailures: 3, latest: latest("fail") }))
-        .health,
-    ).toBe("up");
+  it.each<
+    [
+      label: string,
+      overrides: Partial<HealthFacts>,
+      expected: ReturnType<typeof computeHealth>,
+    ]
+  >([
+    [
+      "1: a paused monitor is paused whatever its results say",
+      { status: "paused", hasOpenIncident: true, latest: null },
+      { health: "paused", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "2: no result at all is never_checked",
+      { latest: null },
+      {
+        health: "unknown",
+        healthReason: "never_checked",
+        lastKnownDown: false,
+      },
+    ],
+    [
+      "2: only results of an older config is awaiting_new_config, with lastKnownDown while an incident is open [hasOpenIncident=false]",
+      {
+        checkConfigVersion: 2,
+        lastPassedConfigVersion: 1,
+        latest: latest("fail", 10, 1),
+      },
+      {
+        health: "unknown",
+        healthReason: "awaiting_new_config",
+        lastKnownDown: false,
+      },
+    ],
+    [
+      "2: only results of an older config is awaiting_new_config, with lastKnownDown while an incident is open [hasOpenIncident=true]",
+      {
+        checkConfigVersion: 2,
+        lastPassedConfigVersion: 1,
+        hasOpenIncident: true,
+        latest: latest("fail", 10, 1),
+      },
+      {
+        health: "unknown",
+        healthReason: "awaiting_new_config",
+        lastKnownDown: true,
+      },
+    ],
+    [
+      "3: a result exactly 2 x interval old is still fresh, 1 s older is stale [ageSeconds=600]",
+      { latest: latest("pass", 2 * INTERVAL) },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "3: a result exactly 2 x interval old is still fresh, 1 s older is stale [ageSeconds=601]",
+      { latest: latest("pass", 2 * INTERVAL + 1) },
+      { health: "unknown", healthReason: "stale", lastKnownDown: false },
+    ],
+    [
+      "3: a fresh pass from before the last Resume is unknown until a newer result [predatesResume=true]",
+      { latest: latest("pass", 10, 1, true) },
+      { health: "unknown", healthReason: "stale", lastKnownDown: false },
+    ],
+    [
+      "3: a fresh pass from before the last Resume is unknown until a newer result [predatesResume=false]",
+      { latest: latest("pass", 10, 1, false) },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "3: a config awaiting its first result outranks the Resume rule",
+      { checkConfigVersion: 2, latest: latest("pass", 10, 1, true) },
+      {
+        health: "unknown",
+        healthReason: "awaiting_new_config",
+        lastKnownDown: false,
+      },
+    ],
+    [
+      "3: stale with an open incident keeps lastKnownDown [ageSeconds=601]",
+      { hasOpenIncident: true, latest: latest("fail", 2 * INTERVAL + 1) },
+      { health: "unknown", healthReason: "stale", lastKnownDown: true },
+    ],
+    [
+      "3: stale with an open incident keeps lastKnownDown [ageSeconds=600]",
+      { hasOpenIncident: true, latest: latest("fail", 2 * INTERVAL) },
+      { health: "down", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "4: a check_error latest is unknown even with an open incident [hasOpenIncident=false]",
+      { latest: latest("check_error") },
+      { health: "unknown", healthReason: "check_error", lastKnownDown: false },
+    ],
+    [
+      "4: a check_error latest is unknown even with an open incident [hasOpenIncident=true]",
+      { hasOpenIncident: true, latest: latest("check_error") },
+      { health: "unknown", healthReason: "check_error", lastKnownDown: true },
+    ],
+    [
+      "5: an open incident with a fresh fail is down",
+      {
+        hasOpenIncident: true,
+        consecutiveFailures: 2,
+        latest: latest("fail"),
+      },
+      { health: "down", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "6: a passing latest is up",
+      {},
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "6: one failure after a pass in the current config is still up",
+      { consecutiveFailures: 1, latest: latest("fail") },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "7: the first failure of a new config is unknown (no reason)",
+      {
+        checkConfigVersion: 2,
+        lastPassedConfigVersion: 1,
+        consecutiveFailures: 1,
+        latest: latest("fail", 10, 2),
+      },
+      { health: "unknown", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "7: two failures without an incident row is still up [consecutiveFailures=2]",
+      { consecutiveFailures: 2, latest: latest("fail") },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "7: two failures without an incident row is still up [consecutiveFailures=50]",
+      { consecutiveFailures: 50, latest: latest("fail") },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+    [
+      "an Edit that changes the failure threshold never flips health to unknown on its own (P60-06)",
+      { consecutiveFailures: 3, latest: latest("fail") },
+      { health: "up", healthReason: null, lastKnownDown: false },
+    ],
+  ])("%s", (_label, overrides, expected) => {
+    expect(computeHealth(facts(overrides))).toEqual(expected);
   });
 });
 
