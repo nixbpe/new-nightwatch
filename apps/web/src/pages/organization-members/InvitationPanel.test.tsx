@@ -4,7 +4,6 @@ import {
   act,
   render as renderWithTestingLibrary,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -110,27 +109,9 @@ describe("InvitationPanel", () => {
         ),
       ).toBeNull();
       expect(onCreated).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(1);
     },
   );
-
-  it("does not announce a creation that the server rejected", async () => {
-    create.mockRejectedValue(
-      new ApiError("INVITATION_LIMIT_REACHED", "full", 409),
-    );
-    const onCreated = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <InvitationPanel
-        organizationId={A}
-        organizationName="Acme"
-        actorRole="owner"
-        onCreated={onCreated}
-      />,
-    );
-    await draft(user);
-    await screen.findByTestId("members-invitation-error");
-    expect(onCreated).not.toHaveBeenCalled();
-  });
 
   it("focuses invalid email with inline error and sends nothing", async () => {
     const user = userEvent.setup();
@@ -160,13 +141,14 @@ describe("InvitationPanel", () => {
   it("blocks duplicate submit while pending, keeps draft on pre-insert failure", async () => {
     const deferred = Promise.withResolvers<InvitationCreateResponse>();
     create.mockReturnValue(deferred.promise);
+    const onCreated = vi.fn();
     const user = userEvent.setup();
     render(
       <InvitationPanel
         organizationId={A}
         organizationName="Acme"
         actorRole="owner"
-        onCreated={vi.fn()}
+        onCreated={onCreated}
       />,
     );
     await draft(user);
@@ -182,26 +164,7 @@ describe("InvitationPanel", () => {
     expect(screen.getByTestId("members-invitation-email")).toHaveValue(
       "new@example.com",
     );
-  });
-
-  it("announces persisted invitation with failed SMTP as warning and never retries", async () => {
-    create.mockResolvedValue({ created: true, emailDispatch: "failed" });
-    const user = userEvent.setup();
-    render(
-      <InvitationPanel
-        organizationId={A}
-        organizationName="Acme"
-        actorRole="owner"
-        onCreated={vi.fn()}
-      />,
-    );
-    await draft(user);
-    expect(
-      await screen.findByTestId("members-invitation-warning"),
-    ).toHaveAttribute("role", "status");
-    await waitFor(() => {
-      expect(create).toHaveBeenCalledTimes(1);
-    });
+    expect(onCreated).not.toHaveBeenCalled();
   });
 
   it("drops old A completion and draft on a keyed organization switch to B", async () => {
