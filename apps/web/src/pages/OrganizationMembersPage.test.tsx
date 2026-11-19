@@ -162,6 +162,41 @@ function renderPage() {
   };
 }
 
+type RecoveryDirectoryOptions = {
+  workspaceRoute: "present" | "absent";
+};
+
+function RecoveryLocationProbe() {
+  return <output data-testid="location">{useLocation().pathname}</output>;
+}
+
+function renderRecoveryDirectory(options: RecoveryDirectoryOptions): void {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemberDataRouter
+        initialEntries={[`/organizations/${organizationId}/members`]}
+      >
+        <RecoveryLocationProbe />
+        <Routes>
+          <Route
+            path="/organizations/:organizationId/members"
+            element={<OrganizationMembersPage />}
+          />
+          {options.workspaceRoute === "present" && (
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
+          )}
+        </Routes>
+      </MemberDataRouter>
+    </QueryClientProvider>,
+  );
+}
+
 afterEach(() => {
   vi.resetAllMocks();
   tenant = {
@@ -793,32 +828,7 @@ describe("OrganizationMembersPage", () => {
       );
     const user = userEvent.setup();
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-            <Route
-              path="/workspace"
-              element={<p data-testid="test-members-workspace">workspace</p>}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "present" });
 
     expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
     await user.click(screen.getByTestId("members-list-retry"));
@@ -1133,32 +1143,7 @@ describe("OrganizationMembersPage", () => {
       )
       .mockResolvedValueOnce(bPage);
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-            <Route
-              path="/workspace"
-              element={<p data-testid="test-members-workspace">workspace</p>}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "present" });
 
     expect(
       await screen.findByTestId("members-admission-retry"),
@@ -1287,32 +1272,7 @@ describe("OrganizationMembersPage", () => {
         new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       );
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-            <Route
-              path="/workspace"
-              element={<p data-testid="test-members-workspace">workspace</p>}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "present" });
 
     expect(
       await screen.findByTestId("test-members-workspace"),
@@ -1491,32 +1451,7 @@ describe("OrganizationMembersPage", () => {
       );
     const user = userEvent.setup();
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-            <Route
-              path="/workspace"
-              element={<p data-testid="test-members-workspace">workspace</p>}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "present" });
 
     expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
     await user.click(screen.getByTestId("members-list-retry"));
@@ -1568,28 +1503,7 @@ describe("OrganizationMembersPage", () => {
       )
       .mockResolvedValueOnce(bPage);
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "absent" });
 
     expect(
       await screen.findByTestId("member-row-member-b"),
@@ -1653,32 +1567,7 @@ describe("OrganizationMembersPage", () => {
       new ApiError("PERMISSION_DENIED", "role downgraded", 403),
     );
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-            <Route
-              path="/workspace"
-              element={<p data-testid="test-members-workspace">workspace</p>}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "present" });
 
     expect(
       await screen.findByTestId("test-members-workspace"),
@@ -1731,28 +1620,7 @@ describe("OrganizationMembersPage", () => {
       )
       .mockResolvedValueOnce(bPage);
 
-    function LocationProbe() {
-      return <output data-testid="location">{useLocation().pathname}</output>;
-    }
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemberDataRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <LocationProbe />
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-          </Routes>
-        </MemberDataRouter>
-      </QueryClientProvider>,
-    );
+    renderRecoveryDirectory({ workspaceRoute: "absent" });
 
     expect(
       await screen.findByTestId("member-row-member-b"),
