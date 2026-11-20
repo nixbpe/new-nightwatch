@@ -24,6 +24,8 @@ import pkg from "../package.json";
 import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerAuditLogReadRoutes } from "./audit/routes";
+import type { AwsDeps } from "./aws/organization";
+import { registerOrganizationAwsRoutes } from "./aws/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -37,7 +39,7 @@ import {
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
 import { registerProjectRoutes } from "./projects/routes";
-import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
+import { createRateLimiter, RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 
 export type AppDeps = {
   env: Env;
@@ -51,6 +53,7 @@ export type AppDeps = {
   // checks Redis only when a client is injected.
   redis?: Redis;
   outbound?: OutboundDeps;
+  aws?: Pick<AwsDeps, "sts" | "principalArn">;
   // Secret values are encrypted and decrypted with these keys. Optional so
   // route tests and OpenAPI emission need no keys; only secret operations fail.
   credentialEnv?: CredentialEnv;
@@ -484,6 +487,18 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       auth,
       database,
       logger: deps.logger,
+    });
+    registerOrganizationAwsRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+      ...deps.aws,
+      ...(deps.redis && {
+        rateLimiter: createRateLimiter({
+          redis: deps.redis,
+          logger: deps.logger,
+        }),
+      }),
     });
     registerProjectRoutes(app, {
       auth,

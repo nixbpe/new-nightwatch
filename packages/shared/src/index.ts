@@ -28,3 +28,10 @@ export {
 export * from "./outbound-http";
 export * from "./monitor-check";
 export * from "./audit-export";
+export {
+  createStsVerifier,
+  STS_DEFAULT_REGION,
+  STS_REGIONS,
+  StsError,
+  type StsVerifier,
+} from "./aws/sts";
