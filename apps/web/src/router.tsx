@@ -48,6 +48,7 @@ import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
+import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -206,6 +207,10 @@ export const routes: RouteObject[] = [
             path: "/notifications",
             loader: notificationsLoader,
             element: <NotificationsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/aws",
+            element: <OrganizationAwsPage />,
           },
           {
             path: "/organizations/:organizationId/notification-settings",
