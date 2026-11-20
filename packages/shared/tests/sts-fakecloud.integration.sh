@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+for tool in docker curl jq aws bun; do
+  command -v "$tool" >/dev/null || { printf 'fakecloud fixture requires %s\n' "$tool" >&2; exit 1; }
+done
+
 # Local-only emulator. In v0.52.0 the strict front gate lacks the ExternalId
 # context needed by cross-account role trust; the STS handler has that context
 # and still rejects bad ExternalIds in soft mode. Keep SigV4 enabled.

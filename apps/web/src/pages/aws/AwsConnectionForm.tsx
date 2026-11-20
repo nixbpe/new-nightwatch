@@ -108,7 +108,7 @@ export function AwsConnectionForm({
   });
   const [state, setState] = useState<State>({ phase: "idle" });
   const [opener, setOpener] = useState<HTMLButtonElement | null>(null);
-  const fallback = useRef<HTMLInputElement>(null);
+  const fallback = useRef<HTMLDivElement>(null);
   const flight = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
@@ -144,12 +144,12 @@ export function AwsConnectionForm({
     try {
       if (action === "disconnect") {
         await disconnect(abort.signal);
+        if (!abort.signal.aborted) await changed();
         if (abort.signal.aborted) return;
         setOpener(null);
         setRoleArn("");
         setKeyDraft({ ...keyDraft, accessKeyId: "", secretAccessKey: "" });
         setState({ phase: "idle" });
-        await changed();
       } else {
         const result = await (access
           ? access.check(keyDraft, action === "save", abort.signal)
@@ -169,7 +169,12 @@ export function AwsConnectionForm({
     }
   }
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      tabIndex={-1}
+      ref={fallback}
+      aria-label="ตั้งค่าการเชื่อมต่อ AWS"
+    >
       {access ? (
         (
           [
@@ -181,7 +186,6 @@ export function AwsConnectionForm({
           <label className="block" key={field}>
             {label}
             <Input
-              ref={field === "accessKeyId" ? fallback : undefined}
               type={field === "secretAccessKey" ? "password" : "text"}
               data-testid={`aws-${field}`}
               autoComplete="off"
@@ -200,7 +204,6 @@ export function AwsConnectionForm({
           <label className="block">
             Role ARN
             <Input
-              ref={fallback}
               value={roleArn}
               disabled={busy || !canTest}
               spellCheck={false}
@@ -231,7 +234,7 @@ export function AwsConnectionForm({
             {failures[state.result.code]}
           </Alert>
         ))}
-      {state.phase === "error" && (
+      {state.phase === "error" && !opener && (
         <Alert tone="error" role="alert">
           {state.message}
         </Alert>
@@ -275,7 +278,16 @@ export function AwsConnectionForm({
       {opener && (
         <ConfirmDialog
           title="ยกเลิกการเชื่อมต่อ AWS"
-          description={affected}
+          description={
+            <>
+              {affected}
+              {state.phase === "error" && (
+                <Alert tone="error" role="alert">
+                  {state.message}
+                </Alert>
+              )}
+            </>
+          }
           confirmLabel="ยืนยันการยกเลิก"
           confirmVariant="destructive"
           pendingLabel="กำลังยกเลิก…"

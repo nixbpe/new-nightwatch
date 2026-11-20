@@ -21,7 +21,7 @@ const owner = createDatabase(ownerUrl);
 const organizationId = randomUUID();
 const actorUserId = randomUUID();
 const viewer = randomUUID();
-const input = { organizationId, actorUserId };
+const input = { organizationId, actorUserId, requestId: randomUUID() };
 const roleArn = "arn:aws:iam::123456789012:role/Hub";
 const identity = {
   accountId: "123456789012",
@@ -53,7 +53,7 @@ beforeAll(async () => {
     [organizationId, `aws-${organizationId}`],
   );
   for (const [user, role] of [
-    [actorUserId, "owner"],
+    [actorUserId, "admin,viewer"],
     [viewer, "viewer"],
   ] as const) {
     await owner.sql.query(
@@ -119,13 +119,14 @@ it("keeps drafts separate from the saved hub and redacts audit metadata", async 
   });
   const audit = await withTenantContextRaw(database, organizationId, (client) =>
     client.query(
-      "select action, target_attributes, changes from audit_events where tenant_id = $1 order by occurred_at",
+      "select action, request_id, target_attributes, changes from audit_events where tenant_id = $1 order by occurred_at",
       [organizationId],
     ),
   );
   expect(audit.rows).toEqual(
     ["test", "update", "test", "delete"].map((action) => ({
       action: `organization.aws_connection.${action}`,
+      request_id: input.requestId,
       target_attributes: {},
       changes: [],
     })),

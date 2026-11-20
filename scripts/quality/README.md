@@ -190,6 +190,8 @@ Architecture requirements remain WEB-01 and WEB-02.
 
 ## Playwright E2E
 
+The Playwright API launcher starts a disposable [fakecloud](https://github.com/faiscadev/fakecloud) container for AWS integration, including filtered runs. Install Docker, `curl`, `jq`, and AWS CLI v2, and allow pulling the pinned image from `ghcr.io`. The fixture binds to loopback, uses only emulator credentials, and stops its own container on shutdown. Do not provide real AWS credentials.
+
 ```sh
 bun install --cwd e2e --frozen-lockfile
 (cd e2e && bun x playwright install chromium)

@@ -9,12 +9,14 @@ import {
 import type { PoolClient } from "pg";
 
 import { recordAuditEvent, type AuditAction } from "../audit/record";
+import { normalizeOrganizationRole } from "../me/service";
 import { assertMemberBeforeTenantContext } from "../organization-notifications/service";
 import type { RateLimiter } from "../rate-limit";
 
 export type OrganizationIdentity = {
   organizationId: string;
   actorUserId: string;
+  requestId?: string;
 };
 export type AwsDeps = {
   database: Database;
@@ -144,14 +146,15 @@ async function withOwner<T>(
         [input.organizationId, input.actorUserId],
       );
       const membership = rows[0];
-      if (membership?.role !== "owner" && membership?.role !== "admin") {
+      const role = membership && normalizeOrganizationRole(membership.role);
+      if (!membership || (role !== "owner" && role !== "admin")) {
         throw new AppError(
           403,
           "PERMISSION_DENIED",
           "คุณไม่มีสิทธิ์จัดการการเชื่อมต่อ AWS ขององค์กร",
         );
       }
-      return work(client, membership.role, membership.slug);
+      return work(client, role, membership.slug);
     },
   );
 }

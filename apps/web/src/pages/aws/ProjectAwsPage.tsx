@@ -12,6 +12,7 @@ import {
   disconnectProjectAws,
   fetchProjectAws,
 } from "../../lib/api/aws";
+import { useTenant } from "../../lib/tenant/TenantProvider";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import {
   AwsConnectionForm,
@@ -26,6 +27,7 @@ function useAwsProject({ organizationId, projectId }: Scope, enabled: boolean) {
     queryFn: ({ signal }) => fetchProjectAws(organizationId, projectId, signal),
     enabled,
     retry: false,
+    refetchOnMount: "always",
   });
 }
 
@@ -67,7 +69,11 @@ export function ProjectAwsCard({ organizationId, projectId }: Scope) {
         <p role="alert">{awsRequestError(query.error)}</p>
       ) : (
         <>
-          <AwsProjectStatus connection={query.data} />
+          {query.isFetching ? (
+            <p role="status">กำลังตรวจสอบสถานะ…</p>
+          ) : (
+            <AwsProjectStatus connection={query.data} />
+          )}
           <Link
             to={`/organizations/${organizationId}/projects/${projectId}/aws`}
           >
@@ -96,6 +102,8 @@ export function ProjectAwsPage() {
 function ProjectAws({ organizationId, projectId }: Scope) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const queryClient = useQueryClient();
+  const { me } = useTenant();
+  const role = me?.organizations.find((org) => org.id === organizationId)?.role;
   const [selectedMethod, setSelectedMethod] = useState<
     "assume_role" | "access_key" | null
   >(null);
@@ -122,16 +130,22 @@ function ProjectAws({ organizationId, projectId }: Scope) {
       ) : (
         connection && (
           <div className="space-y-6">
-            <AwsProjectStatus connection={connection} />
+            {query.isFetching ? (
+              <p role="status">กำลังตรวจสอบสถานะ…</p>
+            ) : (
+              <AwsProjectStatus connection={connection} />
+            )}
             {settings && (
               <>
                 <p>
                   {settings.hubConnected
                     ? "เชื่อมบัญชีกลางขององค์กรแล้ว"
                     : "ให้ Owner หรือ Admin ตั้งค่าบัญชีกลางขององค์กรก่อน"}{" "}
-                  <Link to={`/organizations/${organizationId}/aws`}>
-                    การเชื่อมต่อขององค์กร
-                  </Link>
+                  {(role === "owner" || role === "admin") && (
+                    <Link to={`/organizations/${organizationId}/aws`}>
+                      การเชื่อมต่อขององค์กร
+                    </Link>
+                  )}
                 </p>
                 <div
                   className="flex flex-wrap gap-2"

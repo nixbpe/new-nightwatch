@@ -48,6 +48,7 @@ import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
+import { awsLoader } from "./lib/auth/loaders/aws";
 import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
 import { ProjectAwsPage } from "./pages/aws/ProjectAwsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
@@ -176,6 +177,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/aws",
+            loader: awsLoader,
             element: <ProjectAwsPage />,
           },
           {
@@ -215,6 +217,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/organizations/:organizationId/aws",
+            loader: awsLoader,
             element: <OrganizationAwsPage />,
           },
           {

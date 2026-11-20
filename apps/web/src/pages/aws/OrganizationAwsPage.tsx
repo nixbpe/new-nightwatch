@@ -10,6 +10,7 @@ import {
   disconnectOrganizationAws,
   fetchOrganizationAws,
 } from "../../lib/api/aws";
+import { useTenant } from "../../lib/tenant/TenantProvider";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import {
   AwsConnectionForm,
@@ -28,10 +29,13 @@ export function OrganizationAwsPage() {
 function OrganizationAws({ organizationId }: { organizationId: string }) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const queryClient = useQueryClient();
+  const { me, mePending } = useTenant();
+  const role = me?.organizations.find((org) => org.id === organizationId)?.role;
+  const canManage = role === "owner" || role === "admin";
   const query = useQuery({
     queryKey: awsKeys.organization(organizationId),
     queryFn: ({ signal }) => fetchOrganizationAws(organizationId, signal),
-    enabled: !switched,
+    enabled: !switched && canManage,
     retry: false,
   });
   if (switched) return null;
@@ -39,7 +43,13 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
   return (
     <Page>
       <PageHeader title="การเชื่อมต่อ AWS ขององค์กร" />
-      {query.isPending ? (
+      {mePending ? (
+        <p role="status">กำลังตรวจสอบสิทธิ์…</p>
+      ) : !canManage ? (
+        <Alert tone="error" role="alert">
+          คุณเข้าถึงการเชื่อมต่อนี้ไม่ได้
+        </Alert>
+      ) : query.isPending ? (
         <p role="status">กำลังโหลดการเชื่อมต่อ AWS…</p>
       ) : query.isError ? (
         <Alert tone="error" role="alert">

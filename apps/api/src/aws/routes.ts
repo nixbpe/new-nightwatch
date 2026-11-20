@@ -17,6 +17,7 @@ import {
   disconnectOrganizationAws,
   getOrganizationAws,
   type AwsDeps,
+  type OrganizationIdentity,
 } from "./organization";
 import {
   checkProjectAws,
@@ -63,14 +64,12 @@ export function registerAwsRoutes(
     headers: Headers,
     organizationId: string,
     action: string,
-    operation: (input: {
-      organizationId: string;
-      actorUserId: string;
-    }) => Promise<T>,
+    operation: (input: OrganizationIdentity) => Promise<T>,
+    requestId: string,
   ) => {
     const session = await requireVerifiedSession(deps.auth, headers);
     return auditDenials(deps.logger, session.user.id, action, () =>
-      operation({ organizationId, actorUserId: session.user.id }),
+      operation({ organizationId, actorUserId: session.user.id, requestId }),
     );
   };
   app.openapi(
@@ -94,6 +93,7 @@ export function registerAwsRoutes(
           c.req.valid("param").organizationId,
           "organization.aws_connection.read",
           (input) => getOrganizationAws(deps, input),
+          c.get("requestId"),
         ),
         200,
       ),
@@ -120,6 +120,7 @@ export function registerAwsRoutes(
             c.req.valid("json").roleArn,
             method === "put",
           ),
+        c.get("requestId"),
       );
       if ("retryAfterSeconds" in result)
         return c.json(
@@ -149,6 +150,7 @@ export function registerAwsRoutes(
         c.req.valid("param").organizationId,
         "organization.aws_connection.delete",
         (input) => disconnectOrganizationAws(deps, input),
+        c.get("requestId"),
       );
       return c.body(null, 204);
     },
@@ -176,6 +178,7 @@ export function registerAwsRoutes(
           organizationId,
           "organization.project.aws_connection.read",
           (input) => getProjectAws(deps, { ...input, projectId }),
+          c.get("requestId"),
         ),
         200,
       );
@@ -213,6 +216,7 @@ export function registerAwsRoutes(
               c.req.valid("json"),
               method === "put",
             ),
+          c.get("requestId"),
         );
         if ("retryAfterSeconds" in result)
           return c.json(
@@ -244,6 +248,7 @@ export function registerAwsRoutes(
         organizationId,
         "organization.project.aws_connection.delete",
         (input) => disconnectProjectAws(deps, { ...input, projectId }),
+        c.get("requestId"),
       );
       return c.body(null, 204);
     },

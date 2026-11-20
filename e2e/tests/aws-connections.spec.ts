@@ -91,6 +91,16 @@ test("owner connects a hub and a Project with both STS methods; Project member c
       "333333333333",
     );
 
+    const secondSession = await signInApi(owner);
+    expect(
+      (await secondSession.request("DELETE", `/api${org}/aws-connection`))
+        .status,
+    ).toBe(204);
+    await page.getByTestId("project-aws-card").getByRole("link").click();
+    await expect(page.getByTestId("aws-connection-status")).toContainText(
+      "ต้องทดสอบใหม่",
+    );
+
     const fixtureFile = process.env.NIGHTWATCH_E2E_STS_FIXTURE;
     if (!fixtureFile) throw new Error("Missing fakecloud fixture");
     const credentials = fixtureKeysSchema.parse(
