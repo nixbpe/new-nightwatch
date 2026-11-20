@@ -114,6 +114,15 @@ vi.mock("../api/me", async (importOriginal) => {
   return { ...original, fetchMeContext: vi.fn(() => transport()) };
 });
 
+vi.mock("../api/aws", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  fetchProjectAws: vi.fn().mockResolvedValue({
+    state: "disconnected",
+    method: null,
+    accountId: null,
+    lastTestAt: null,
+  }),
+}));
 vi.mock("../api/monitors", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchMonitorList: vi.fn(),

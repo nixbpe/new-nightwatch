@@ -1487,12 +1487,14 @@ describe("ProjectSwitcher", () => {
     expect(scoped("project")).toEqual([
       "shell-nav-/organizations/:organizationId/projects/:projectId/overview",
       "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
+      "shell-nav-/organizations/:organizationId/projects/:projectId/aws",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);
     expect(scoped("organization")).toEqual([
       "shell-nav-/organizations/:organizationId/projects",
       "shell-nav-/organizations/:organizationId/members",
       "shell-nav-/organizations/:organizationId/notification-settings",
+      "shell-nav-/organizations/:organizationId/aws",
       "shell-nav-/organizations/:organizationId/audit-log",
     ]);
     const topLevel = within(nav)
