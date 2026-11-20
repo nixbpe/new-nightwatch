@@ -7,6 +7,7 @@ set -euo pipefail
 image=ghcr.io/faiscadev/fakecloud@sha256:9be41fb9274d792dcd1de6914177021edb5d5fea168ceceb28793543ffeede2a
 cid=$(docker run -d --rm -e FAKECLOUD_IAM=soft -e FAKECLOUD_VERIFY_SIGV4=true -p 127.0.0.1::4566 "$image")
 trap 'docker stop "$cid" >/dev/null' EXIT
+trap 'exit 143' TERM INT
 endpoint=http://$(docker port "$cid" 4566/tcp)
 
 admin() {
@@ -45,12 +46,23 @@ project_arn=$(iam "$project_keys" create-role --role-name Project \
 iam "$hub_keys" put-role-policy --role-name Hub --policy-name AssumeProject \
   --policy-document "$(jq -nc --arg arn "$project_arn" '{Version:"2012-10-17",Statement:[{Effect:"Allow",Action:"sts:AssumeRole",Resource:$arn}]}')"
 
+if [ "${1:-}" = "--serve" ]; then
+  fixture_user=browser-project
+  fixture_admin=$(admin 444444444444 "$fixture_user")
+  TEST_BROWSER_KEYS=$(iam "$fixture_admin" create-access-key --user-name "$fixture_user" --output json | jq -c '.AccessKey | {accessKeyId:.AccessKeyId,secretAccessKey:.SecretAccessKey}')
+  export TEST_ENDPOINT=$endpoint TEST_SOURCE_KEYS=$source_keys TEST_BROWSER_KEYS
+  bun run ../../e2e/support/aws-api.ts &
+  server=$!
+  trap 'kill -TERM "$server" 2>/dev/null || true; wait "$server" || true; exit 143' TERM INT
+  wait "$server"
+  exit
+fi
+
 cd "$(dirname "$0")/.."
 TEST_ENDPOINT=$endpoint TEST_SOURCE_KEYS=$source_keys TEST_PROJECT_KEYS=$project_keys \
   TEST_HUB_ARN=$hub_arn TEST_PROJECT_ARN=$project_arn bun -e '
   import { strict as assert } from "node:assert";
-  import { STS } from "@aws-sdk/client-sts";
-  import { createStsVerifier } from "./src/aws/sts";
+  import { fakecloudVerifier } from "./tests/fakecloud-sts";
 
   const { TEST_ENDPOINT: endpoint, TEST_SOURCE_KEYS, TEST_PROJECT_KEYS, TEST_HUB_ARN, TEST_PROJECT_ARN } = process.env;
   assert.match(endpoint ?? "", /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -59,13 +71,7 @@ TEST_ENDPOINT=$endpoint TEST_SOURCE_KEYS=$source_keys TEST_PROJECT_KEYS=$project
     const { accessKeyId, secretAccessKey } = JSON.parse(value);
     return { accessKeyId, secretAccessKey };
   };
-  const source = new STS({ endpoint, region: "us-east-1", credentials: keys(TEST_SOURCE_KEYS), maxAttempts: 1 });
-  const verifier = createStsVerifier(async (abortSignal) => {
-    const result = await source.getSessionToken({}, { abortSignal });
-    const { AccessKeyId, SecretAccessKey, SessionToken } = result.Credentials ?? {};
-    assert.ok(AccessKeyId && SecretAccessKey && SessionToken);
-    return { accessKeyId: AccessKeyId, secretAccessKey: SecretAccessKey, sessionToken: SessionToken };
-  }, (region, credentials) => new STS({ endpoint, region, credentials, maxAttempts: 1 }));
+  const verifier = fakecloudVerifier(endpoint, TEST_SOURCE_KEYS);
   const hub = { roleArn: TEST_HUB_ARN, externalId: "nw-org-fixture" };
   const project = { roleArn: TEST_PROJECT_ARN, externalId: "nw-project-fixture" };
   assert.equal((await verifier.organization(hub)).arn,
