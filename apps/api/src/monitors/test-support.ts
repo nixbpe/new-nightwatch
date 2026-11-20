@@ -5,6 +5,7 @@ import {
   loadMonitorEnv,
   type AuthEnv,
   type Env,
+  type StsVerifier,
 } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import { fileURLToPath } from "node:url";
@@ -92,6 +93,9 @@ export async function openMonitorTestContext(options?: {
    * `seedMonitor` use by default. Off for suites that count Projects.
    */
   defaultProject?: boolean;
+  /** STS seam of the AWS connection routes. */
+  awsSts?: StsVerifier;
+  awsPrincipalArn?: string;
 }) {
   const { runtimeUrl, ownerUrl } =
     options?.urls ?? requireIntegrationDatabaseUrls();
@@ -182,6 +186,10 @@ export async function openMonitorTestContext(options?: {
       },
       logger,
       ...(options?.redis ? { redis: options.redis } : {}),
+      ...(options?.awsSts ? { awsSts: options.awsSts } : {}),
+      ...(options?.awsPrincipalArn
+        ? { awsPrincipalArn: options.awsPrincipalArn }
+        : {}),
       credentialEnv: options?.withoutCredentials
         ? undefined
         : loadMonitorEnv({ NODE_ENV: "test", REDIS_URL: "redis://unused" }),

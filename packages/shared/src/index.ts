@@ -28,3 +28,9 @@ export {
 export * from "./outbound-http";
 export * from "./monitor-check";
 export * from "./audit-export";
+export {
+  createStsVerifier,
+  StsError,
+  type StsErrorCode,
+  type StsVerifier,
+} from "./aws/sts";

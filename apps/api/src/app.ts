@@ -13,6 +13,7 @@ import {
   type Logger,
   type CredentialEnv,
   type OutboundDeps,
+  type StsVerifier,
 } from "@nightwatch/shared";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -24,6 +25,7 @@ import pkg from "../package.json";
 import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerAuditLogReadRoutes } from "./audit/routes";
+import { registerAwsConnectionRoutes } from "./aws-connection/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -37,7 +39,7 @@ import {
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
 import { registerProjectRoutes } from "./projects/routes";
-import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
+import { createRateLimiter, RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 
 export type AppDeps = {
   env: Env;
@@ -54,6 +56,12 @@ export type AppDeps = {
   // Secret values are encrypted and decrypted with these keys. Optional so
   // route tests and OpenAPI emission need no keys; only secret operations fail.
   credentialEnv?: CredentialEnv;
+  // The one STS seam: production passes the real verifier, tests a fake. Optional
+  // so OpenAPI emission and unrelated route tests need no AWS; the AWS routes are
+  // registered either way and Test/PUT fail without it.
+  awsSts?: StsVerifier;
+  /** NIGHTWATCH_AWS_PRINCIPAL_ARN; absent or null shows "setup incomplete" (AC-02). */
+  awsPrincipalArn?: string | null;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
@@ -64,6 +72,7 @@ const notificationSettingsSegment = "notification-settings";
 const monitorsSegment = "monitors";
 const auditLogSegment = "audit-log";
 const projectsSegment = "projects";
+const awsConnectionSegment = "aws-connection";
 // `test` and `recent-events` are routes, not monitor ids, so they stay static.
 const monitorStaticSegments = new Set(["test", "recent-events"]);
 const monitorActionSegments = new Set([
@@ -171,6 +180,7 @@ function logSafeOrganizationPath(path: string): string {
     | "audit-events"
     | "audit-exports"
     | "audit-export-route"
+    | "aws-connection"
     | "other" = "organization";
   const safeSegments = path
     .slice(namespaceEnd)
@@ -212,6 +222,14 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "projects") {
         state = "project-route";
         return ":projectId";
+      }
+      if (state === "organization-route" && segment === awsConnectionSegment) {
+        state = "aws-connection";
+        return awsConnectionSegment;
+      }
+      if (state === "aws-connection" && segment === "test") {
+        state = "other";
+        return segment;
       }
       if (state === "organization-route" && segment === auditLogSegment) {
         state = "audit-log";
@@ -489,6 +507,21 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       auth,
       database,
       logger: deps.logger,
+    });
+    registerAwsConnectionRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+      principalArn: deps.awsPrincipalArn ?? null,
+      ...(deps.awsSts ? { sts: deps.awsSts } : {}),
+      ...(deps.redis
+        ? {
+            rateLimiter: createRateLimiter({
+              redis: deps.redis,
+              logger: deps.logger,
+            }),
+          }
+        : {}),
     });
   }
 

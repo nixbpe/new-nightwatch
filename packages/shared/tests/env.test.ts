@@ -23,6 +23,23 @@ describe("loadEnv", () => {
     }
   });
 
+  it("accepts an IAM principal ARN and rejects any other value", () => {
+    const arn = "arn:aws:iam::123456789012:role/NightWatch";
+    expect(loadEnv({ NIGHTWATCH_AWS_PRINCIPAL_ARN: arn })).toMatchObject({
+      NIGHTWATCH_AWS_PRINCIPAL_ARN: arn,
+    });
+    for (const value of [
+      "",
+      "arn:aws:sts::123456789012:assumed-role/x/y",
+      "arn:aws:iam::123:role/x",
+      "secret-access-key",
+    ]) {
+      expect(() => loadEnv({ NIGHTWATCH_AWS_PRINCIPAL_ARN: value })).toThrow(
+        EnvValidationError,
+      );
+    }
+  });
+
   it("coerces PORT from a string", () => {
     expect(loadEnv({ PORT: "8080" }).PORT).toBe(8080);
   });
