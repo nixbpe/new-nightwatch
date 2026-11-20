@@ -20,11 +20,11 @@
 
 ## Sidebar ตาม Project และตัวสลับ Project
 
-[Shell](../apps/web/src/components/shell/), [Project switcher](../apps/web/src/components/shell/ProjectSwitcher.tsx), [nav-config](../apps/web/src/components/shell/nav-config.ts), [API last Project](../apps/api/src/projects/service.ts), [Project ล่าสุด migration](../packages/db/migrations/0025_member_last_project.sql), [พฤติกรรม shell](ref/shell-structure.md).
+[Shell](../apps/web/src/components/shell/), [Project switcher](../apps/web/src/components/shell/ProjectSwitcher.tsx), [nav-config](../apps/web/src/components/shell/nav-config.ts), [API last Project](../apps/api/src/projects/service.ts), [Project ล่าสุด migration](../packages/db/migrations/0025_member_last_project.sql).
 
 ## Shell และการตั้งค่าบัญชี
 
-[Shell components](../apps/web/src/components/shell/), [settings pages](../apps/web/src/pages/settings/).
+[Shell components](../apps/web/src/components/shell/), [settings pages](../apps/web/src/pages/settings/), [Shell tests](../apps/web/src/components/shell/AppShell.test.tsx), [navigation tests](../apps/web/src/components/shell/nav-config.test.ts), [Project switcher tests](../apps/web/src/components/shell/ProjectSwitcher.test.tsx), [settings reflow tests](../e2e/tests/settings.spec.ts).
 
 ## ภาพรวมของ Project
 

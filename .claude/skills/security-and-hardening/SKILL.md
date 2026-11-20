@@ -49,7 +49,7 @@ Bind query values and constrain command arguments at the boundary. Apply DB-02.
 
 ### Broken Authentication
 
-Use the existing auth library and session policy in file:`../../../docs/ref/authentication.md`. Never add a separate password or session implementation from an example.
+Use the existing auth library and session policy in file:`../../../docs/architecture.md` (Sign-in and choosing an organization). Never add a separate password or session implementation from an example.
 
 ### Cross-Site Scripting (XSS)
 

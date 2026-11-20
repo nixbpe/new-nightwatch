@@ -13,7 +13,7 @@ Follow the applicable reference, including its verification requirements. Keep d
 | Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md#check-routing) |
 | Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                               |
 | Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md)            |
-| App shell layout, navigation and overlays       | [App shell](docs/ref/shell-structure.md)                   |
+| App shell layout, navigation and overlays       | [Design system: App shell](docs/design-system.md#app-shell)                   |
 | Finding contract sources and code entry points  | [Code index](docs/features.md)                             |
 
 Search the owning module first, then expand to relevant consumers and shared contracts. Include generated output, lockfiles and historical logs when the question needs them; keep them available for drift, dependency and evidence checks. Do not add blanket ignore rules to reduce context.

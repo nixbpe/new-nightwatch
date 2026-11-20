@@ -16,8 +16,8 @@ Detailed criteria and design belong to the current request or issue. The code in
 
 ## Operational and UI references
 
-- [Authentication behavior](ref/authentication.md) records browser error mapping and session policy.
-- [App shell](ref/shell-structure.md) records navigation, overlays and settings reflow.
+- [Architecture: Sign-in and choosing an organization](architecture.md#sign-in-and-choosing-an-organization) owns session and auth error policies.
+- [Design system: App shell](design-system.md#app-shell) owns shared navigation, overlay and settings UX constraints.
 - [Quality check routing](../scripts/quality/README.md#check-routing) locates focused checks, database wrappers, E2E isolation and OpenAPI drift checks.
 - [Uptime monitor operations](runbooks/uptime-monitor.md) records worker operation, partitions and credential-key rotation.
 

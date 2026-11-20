@@ -31,7 +31,7 @@ type DeniedState = {
 };
 
 // Page-level loading, error and denied views render inside the frame under
-// the page header, never as their own main region (docs/ref/shell-structure.md).
+// the page header, never as their own main region (docs/design-system.md#app-shell).
 export function PageState(
   props: (LoadingState | ErrorState | DeniedState) & {
     "data-testid"?: string;

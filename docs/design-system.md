@@ -70,6 +70,20 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - LAY-08 `canvas-deep` is an optional, deeper Canvas (dark `#07080a`; light unchanged) for a data-dense or live page section (for example the workspace overview); ordinary pages keep Canvas, and `canvas-deep` never applies to Surface.
 - LAY-09 The `grid-line` hairline texture is an alternative to the canvas grain, Canvas only, never Surface, and never both textures on the same view.
 
+## App shell
+
+The signed-in shell keeps navigation, Organization and Project context, and account controls available around a scrollable page. Public auth and onboarding flows use a bare layout; not-found stands outside both. Sidebar and header use Canvas with hairline edges; Surface is reserved for cards, fields and overlays.
+
+- Navigation lists only real destinations visible to the user's role and scope. Exactly one destination is current. Sidebar, command palette and settings tabs share destination definitions so they cannot disagree.
+- The Organization named by the route owns its breadcrumb and Project context, even when another Organization is active. Project selection follows the URL; workspace entry uses a server-confirmed readable destination and never guesses from cached client state.
+- The last Project is remembered per user and Organization on the server so it follows the user across browsers. Access is checked again on read. Switching Project preserves the page where possible; an item detail returns to its containing Project page.
+- Narrow screens retain keyboard-accessible navigation in a modal drawer. Menus restore trigger focus; Escape closes an inner menu before the drawer. The command palette is a modal search over available destinations.
+- Page-level loading and error states stay inside the page frame under its header so the shell remains usable. A page crash keeps navigation available, and a skip link reaches the main region.
+- Settings tabs retain full labels and wrap into rows without horizontal scrolling or clipping. MFA steps stack on narrow screens; footer actions keep secondary before primary and wrap within the viewport. These settings constraints are stricter than the tab-strip and step-indicator allowance in LAY-02.
+- System, light and dark themes share tokens. An explicit browser-persisted choice overrides the system preference before first paint; account and display controls share the same choice.
+
+Implementation details and regression tests are located through the [feature code index](features.md#shell-และการตั้งค่าบัญชี).
+
 ## Components
 
 **Principle.** Every pattern shows its real state and adds nothing the assigned flow does not need. One dominant action per group; destructive actions are marked by wording and consequence, not red alone. Tables keep clear headers, aligned values, visible sort and filter context, correct counts and ownership context on small screens.

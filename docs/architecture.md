@@ -48,7 +48,9 @@ Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app noti
 - AUTH-04 Auth library endpoints keep their own error format; application routes use REQ-03.
 - AUTH-05 Normalize a post-login "return to" address to a same-site absolute path before saving, redirecting and reading it from browser storage. Another site, `//`, a backslash or a control character (plain or percent-encoded) falls back to the default signed-in page.
 
-Current session policy and browser auth error decisions are recorded in [Authentication behavior](ref/authentication.md).
+Login uses persistent sessions without a remember-device choice or a logout requirement on browser close. Session expiry, refresh and trusted-device expiry follow Better Auth defaults, with no additional fixed maximum age from login. Trusting a device for MFA is separate from session persistence; TOTP and recovery codes remain available.
+
+Browser auth errors expose only mapped messages or the caller's generic fallback, never the server's raw message. Keep login failures generic and `USER_NOT_FOUND` unmapped to prevent account enumeration. Signup may map an existing-account error because it is invitation-only for an email the invitee already holds. Unmapped auth diagnostics are development-only.
 
 ## Background jobs
 
