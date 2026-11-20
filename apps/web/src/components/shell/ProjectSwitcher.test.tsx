@@ -1493,6 +1493,7 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/projects",
       "shell-nav-/organizations/:organizationId/members",
       "shell-nav-/organizations/:organizationId/notification-settings",
+      "shell-nav-/organizations/:organizationId/aws",
       "shell-nav-/organizations/:organizationId/audit-log",
     ]);
     const topLevel = within(nav)

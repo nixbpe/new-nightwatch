@@ -75,6 +75,12 @@ export const NAV_ITEMS: NavItem[] = [
         roles: ["owner", "admin"],
       },
       {
+        label: "การเชื่อมต่อ AWS",
+        icon: "cloud",
+        path: "/organizations/:organizationId/aws",
+        roles: ["owner", "admin"],
+      },
+      {
         label: "บันทึกกิจกรรม",
         icon: "history",
         path: "/organizations/:organizationId/audit-log",

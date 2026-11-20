@@ -25,6 +25,7 @@ import {
   projectOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
+  organizationAwsLoader,
   organizationMembersLoader,
   projectMembersLoader,
   projectsLoader,
@@ -52,6 +53,7 @@ import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
 import { OrganizationMembersPage } from "./pages/OrganizationMembersPage";
+import { OrganizationAwsPage } from "./pages/organization-aws/OrganizationAwsPage";
 import { ProjectMembersPage } from "./pages/projects/members/ProjectMembersPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { DisplayPage } from "./pages/settings/DisplayPage";
@@ -216,6 +218,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/members",
             loader: organizationMembersLoader,
             element: <OrganizationMembersPage />,
+          },
+          {
+            path: "/organizations/:organizationId/aws",
+            loader: organizationAwsLoader,
+            element: <OrganizationAwsPage />,
           },
           {
             path: "/organizations/:organizationId/projects",
