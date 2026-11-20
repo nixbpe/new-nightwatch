@@ -62,6 +62,8 @@ function targetLabel(row: AuditEventBatchRow): string {
           : "";
       return `คำเชิญ role ${role} (${row.targetId ?? ""})`;
     }
+    case "aws_connection":
+      return "การเชื่อมต่อ AWS";
     case "audit_export":
       return row.targetAttributes.format === "json"
         ? "ไฟล์ส่งออก JSON"

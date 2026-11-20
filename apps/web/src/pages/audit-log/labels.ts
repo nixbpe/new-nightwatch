@@ -56,6 +56,8 @@ export function targetText(target: AuditTarget): string {
       return "ตั้งค่าการแจ้งเตือน";
     case "audit_export":
       return exportTargetText(target.format);
+    case "aws_connection":
+      return "การเชื่อมต่อ AWS";
   }
 }
 
@@ -81,6 +83,7 @@ export const CHANGE_FIELD_LABELS: Record<AuditChangeField, string> = {
   alertDownEnabled: "แจ้งเมื่อล่มและกลับมาปกติ",
   alertSslEnabled: "แจ้งเมื่อ SSL ใกล้หมดอายุ",
   alertSslCautionDays: "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน)",
+  roleArn: "Role ARN",
 };
 
 const NO_VALUE = "—";

@@ -12,6 +12,7 @@ export const AUDIT_CATEGORIES = [
   "invitation",
   "audit_log",
   "project",
+  "aws_connection",
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 export const auditCategorySchema = z.enum(AUDIT_CATEGORIES);
@@ -39,6 +40,9 @@ export const AUDIT_ACTIONS = [
   "organization.project.member.add",
   "organization.project.member.role.update",
   "organization.project.member.remove",
+  "organization.aws_connection.tested",
+  "organization.aws_connection.updated",
+  "organization.aws_connection.disconnected",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
@@ -67,6 +71,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
   "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
   "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
+  "organization.aws_connection.tested": "ทดสอบการเชื่อมต่อ AWS",
+  "organization.aws_connection.updated": "ตั้งค่าการเชื่อมต่อ AWS",
+  "organization.aws_connection.disconnected": "ยกเลิกการเชื่อมต่อ AWS",
 };
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
@@ -76,6 +83,7 @@ export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   invitation: "คำเชิญ",
   audit_log: "บันทึกกิจกรรม",
   project: "โปรเจกต์",
+  aws_connection: "การเชื่อมต่อ AWS",
 };
 
 export const AUDIT_LIST_MAX_LIMIT = 50;
@@ -103,6 +111,7 @@ export const AUDIT_CHANGE_FIELDS = [
   "alertDownEnabled",
   "alertSslEnabled",
   "alertSslCautionDays",
+  "roleArn",
 ] as const;
 export type AuditChangeField = (typeof AUDIT_CHANGE_FIELDS)[number];
 
@@ -162,6 +171,15 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
     role: organizationRoleSchema,
   }),
   z.object({ type: z.literal("notification_settings") }),
+  /** The Organization AWS connection as the event recorded it; never a credential or AWS text. */
+  z.object({
+    type: z.literal("aws_connection"),
+    roleArn: z.string().nullable(),
+    accountId: z.string().nullable(),
+    result: z.enum(["passed", "failed"]).nullable(),
+    code: z.string().nullable(),
+    revision: z.number().int(),
+  }),
   z.object({
     type: z.literal("audit_export"),
     exportId: z.uuid(),
@@ -455,5 +473,5 @@ export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
 );
 
 export function auditScopeNote(recordingStartedOn: string): string {
-  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ การเชื่อมต่อ AWS ขององค์กร และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account ระดับโปรเจกต์, API key และ findings`;
 }

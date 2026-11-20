@@ -187,6 +187,21 @@ function targetOf(row: EventRow): AuditTarget {
       };
     case "notification_settings":
       return { type: "notification_settings" };
+    case "aws_connection": {
+      const text = (key: string) => {
+        const value = row.targetAttributes[key];
+        return typeof value === "string" ? value : null;
+      };
+      const result = row.targetAttributes.result;
+      return {
+        type: "aws_connection",
+        roleArn: text("roleArn"),
+        accountId: text("accountId"),
+        result: result === "passed" || result === "failed" ? result : null,
+        code: text("code"),
+        revision: Number(row.targetAttributes.revision),
+      };
+    }
     case "audit_export":
       return {
         type: "audit_export",
