@@ -73,7 +73,6 @@ const ORIGIN_BLOCK_NOTE =
 
 type Mode = "basic" | "advanced";
 
-// Nothing was created after these, so a fresh request id is safe once the user changes a value.
 const DEFINITIVE_REFUSALS: ReadonlySet<number> = new Set([400, 403, 409, 422]);
 
 // Errors of a Test that describe the form, its permission or its monitor; anything else is the service's.
@@ -203,7 +202,6 @@ export function MonitorForm({
   const switchedNow = useRef(false);
   switchedNow.current = useOrganizationSwitched(organizationId);
   const mounted = useRef(true);
-  /** The page is gone or the user switched Organization since the form opened. */
   const leftOrganization = () => {
     const admission = getContextPublicationSnapshot(queryClient).admission;
     const member =
@@ -225,7 +223,6 @@ export function MonitorForm({
     };
   }, []);
 
-  // Validation reruns on every render, so a fixed field loses its error at once.
   const clientErrors = useMemo(
     () =>
       showErrors ? validateValues(values, { base, get: secretStore.get }) : {},
@@ -346,7 +343,6 @@ export function MonitorForm({
     }
   }
 
-  /** Refusals that belong to the form; a service failure stays in the Test panel. */
   function handleTestError(error: unknown): boolean {
     if (!(error instanceof ApiError) || !FORM_ERROR_CODES.has(error.code)) {
       return false;

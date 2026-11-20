@@ -170,8 +170,6 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
 ]);
 export type AuditTarget = z.infer<typeof auditTargetSchema>;
 
-// `masked` renders as "•••", `secret_set` as "ตั้งค่าแล้ว", `changed` as "เปลี่ยนแล้ว".
-//
 // null is a value of the schemas below, but OpenAPI 3.0 cannot say "one of
 // these, or null" the way the generator expects: `nullable` on a union becomes
 // an empty `{nullable}` member, which the generated client types as `unknown`

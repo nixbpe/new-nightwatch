@@ -57,14 +57,11 @@ test.beforeAll(async () => {
     userIds.push(people[role].userId);
     await addMember(pool, org, people[role].userId, role);
   }
-  // Same Organization, never added to the Project.
   people.outsider = await createPerson(pool, "outsider", org);
   userIds.push(people.outsider.userId);
   await addMember(pool, org, people.outsider.userId, "viewer");
-  // A second Organization the owner can switch to from the shell.
   otherOrg = await createOrganization(pool, `E2E Project members other ${run}`);
   await addMember(pool, otherOrg, people.owner.userId, "owner");
-  // An Organization admin who is not in the Project.
   people.orgAdmin = await createPerson(pool, "orgadmin", org);
   userIds.push(people.orgAdmin.userId);
   await addMember(pool, org, people.orgAdmin.userId, "admin");
@@ -303,7 +300,6 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.getByTestId("project-members-add").click();
       await expect(page.getByTestId("add-member-dialog")).toBeVisible();
-      // The shot waits for the overlay enter animation to finish.
       await page
         .getByTestId("add-member-dialog")
         .evaluate((element) =>

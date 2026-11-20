@@ -154,7 +154,6 @@ describe("first-party pending invitation list", () => {
       status: 403,
       body: { error: { code: "MEMBERSHIP_DENIED" } },
     });
-    // A member of A who is not a member of B gets no rows of B.
     expect(await list("owner", orgB)).toMatchObject({
       status: 403,
       body: { error: { code: "MEMBERSHIP_DENIED" } },

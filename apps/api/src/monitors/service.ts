@@ -600,7 +600,6 @@ async function changeMonitorStatus(
     }
 
     const updated = await client.query<MonitorRow>(
-      // Resume restarts the failure streak.
       `update monitors set status = $3, version = version + 1,
          consecutive_failures = case when $3 = 'active' then 0
                                      else consecutive_failures end,

@@ -20,7 +20,6 @@ export type HealthFacts = {
     outcome: "pass" | "fail" | "check_error";
     configVersion: number;
     ageSeconds: number;
-    /** A `resumed` event is newer than this result. */
     predatesResume: boolean;
   } | null;
 };

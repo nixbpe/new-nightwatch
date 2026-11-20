@@ -15,7 +15,6 @@
  * audit_events gets the same previous, current and next N month
  * partitions; its partitions are dropped once their whole range is older than
  * 366 days. A missing audit partition makes every audited mutation fail.
- *
  */
 import { SQL } from "bun";
 

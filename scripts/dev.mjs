@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Run `bun run db:up` before `bun run dev` for database-backed features.
- */
 import { spawn } from "node:child_process";
 
 import { LOCAL_ENV_PATH, resolveDevEnv } from "./dev-env.mjs";

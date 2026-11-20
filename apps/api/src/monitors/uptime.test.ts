@@ -144,7 +144,6 @@ describe("computeUptime", () => {
   });
 
   it("uses the window start when the monitor is older than the window", () => {
-    // 24 h window, 288 checks of 300 s cover exactly 86,400 s.
     expect(
       computeUptime(
         { checks: 288, passed: 287, coveredSeconds: 288 * 300 },
@@ -217,7 +216,6 @@ describe("computeGaps", () => {
   });
 
   it("an interval increase from 60 s to 900 s is not a false gap", () => {
-    // Last 1-minute result, next 15-minute result 900 s later.
     expect(computeGaps([result(30, 60), result(15, 900)], [])).toEqual([]);
   });
 

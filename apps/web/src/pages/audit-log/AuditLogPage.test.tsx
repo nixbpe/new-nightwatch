@@ -220,7 +220,6 @@ describe("AuditLogPage table", () => {
   });
 
   it("shows the later of 365 days back and the recording start as the retained date", async () => {
-    // Recording began 40 days before the load, so the log is retained from there, not from 365 days back.
     listMock.mockResolvedValue(
       makeList([makeEvent(0)], 1, {
         retainedFrom: "2026-08-24T00:00:00.000Z",
@@ -459,7 +458,6 @@ describe("AuditLogPage custom range", () => {
     await waitFor(() => {
       expect(listMock.mock.calls.length).toBeGreaterThan(before);
     });
-    // Days are read in the preference zone: 2025-10-04 starts at 2025-10-03T17:00Z in Asia/Bangkok.
     expect(listMock.mock.calls.at(-1)?.[1].from).toBe(
       "2025-10-03T17:00:00.000Z",
     );
@@ -693,7 +691,6 @@ describe("AuditLogPage states", () => {
       expect(names()).toContain("มาลี ข.");
     });
     expect(actorsMock).toHaveBeenCalledTimes(1);
-    // user-2 was removed in the meantime: the server now lists them as a former member.
     actorsMock.mockResolvedValue({
       actors: [
         { userId: "user-1", displayName: "สมชาย ก.", membership: "current" },

@@ -38,7 +38,6 @@ const { sessionStore, signUpEmailMock, signInEmailMock } = vi.hoisted(() => {
     isPending: false,
   };
   return {
-    // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
     sessionStore: {
       get: () => snapshot,
       set(data: TestSessionData) {

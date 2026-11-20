@@ -315,7 +315,6 @@ async function createUser(label: string): Promise<string> {
   return id;
 }
 
-// The one Project of each fixture Organization; viewer and auditor are its members.
 const projectOf = new Map<string, string>();
 
 async function createOrganization(
@@ -855,7 +854,6 @@ describe("rate limit (AC-11)", () => {
     expect(limited.headers.get("retry-after")).toBe("50");
     expect(http1.requests()).toBe(seenBefore);
 
-    // The oldest entry leaves the window 50 s later: one slot frees.
     clock += 50_000;
     expect((await call(clockedApp, user, path, body)).status).toBe(200);
     expect((await call(clockedApp, user, path, body)).status).toBe(429);
@@ -877,7 +875,6 @@ describe("rate limit (AC-11)", () => {
     }
     const seen = http1.requests();
     expect(seen).toBe(30);
-    // The 31st request, from a fourth user with an untouched personal budget.
     clock += 100;
     const denied = await call(clockedApp, writers[3] as string, path, body);
     expect(denied.status).toBe(429);
@@ -958,7 +955,6 @@ describe("rate limit (AC-11)", () => {
   });
 
   it("answers 503 and sends nothing when Redis is down", async () => {
-    // Nothing listens on port 1.
     const app = buildClockedApp(
       createRateLimiter({ redis: trackedRedis("redis://127.0.0.1:1") }),
     );
@@ -1182,7 +1178,6 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       failureReason: "redirect_limit",
     });
     expectNoResponse(result);
-    // The original request plus 5 followed hops.
     expect(http1.requests()).toBe(6);
   });
 

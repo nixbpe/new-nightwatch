@@ -40,7 +40,6 @@ describe("isMemberUniquenessRace", () => {
     expect(
       isMemberUniquenessRace(drizzleWrapped(drizzleWrapped(RACE_ERROR))),
     ).toBe(true);
-    // Same SQLSTATE on another constraint (user_email_lower_key) is no race.
     expect(
       isMemberUniquenessRace({
         ...RACE_ERROR,
@@ -52,7 +51,6 @@ describe("isMemberUniquenessRace", () => {
         drizzleWrapped({ ...RACE_ERROR, constraint: "user_email_lower_key" }),
       ),
     ).toBe(false);
-    // A member-row failure that is not a uniqueness conflict stays visible.
     expect(isMemberUniquenessRace({ ...RACE_ERROR, code: "23503" })).toBe(
       false,
     );

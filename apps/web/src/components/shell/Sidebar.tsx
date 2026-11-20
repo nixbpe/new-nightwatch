@@ -162,7 +162,6 @@ function NavRow({
       // NavLink would mark every path prefix current, including the organization's Project list on a Project page.
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
-      // The 3 px bar sits on the sidebar edge (-8 px past the row's 8 px inset).
       className={`relative flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-100 ${
         active
           ? "bg-primary-tint font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-[3px] before:bg-primary"

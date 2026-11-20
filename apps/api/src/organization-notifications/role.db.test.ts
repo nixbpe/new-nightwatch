@@ -70,8 +70,6 @@ async function waitUntilBlocked(holderPid: number) {
   throw new Error("role request never blocked on the holder's lock");
 }
 
-// Holds the organization lock, queues a role request behind it, applies a
-// concurrent change, then releases.
 async function changeWhileBlocked(
   actorUserId: string,
   targetMemberId: string,
@@ -201,7 +199,6 @@ describe("locked organization member role mutations", () => {
       ).rejects.toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
     }
     expect(await state()).toEqual(before);
-    // Re-asserting owner is not a demotion.
     await expect(
       updateOrganizationMemberRole(database, {
         organizationId,

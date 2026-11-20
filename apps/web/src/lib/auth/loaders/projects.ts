@@ -50,7 +50,6 @@ export async function projectOverviewLoader({
   return null;
 }
 
-// Same membership check as the Overview loader; the whole project list is one request.
 export async function projectsLoader({
   params,
   request,

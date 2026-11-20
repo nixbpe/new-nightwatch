@@ -196,7 +196,6 @@ function ProjectsForOrganization({
     if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
       setDialog({ kind: "create", opener: null });
     }
-    // Only `create` goes; other parameters and the hash stay.
     const rest = new URLSearchParams(search);
     rest.delete(CREATE_PROJECT_PARAM);
     const restSearch = rest.toString();

@@ -126,7 +126,6 @@ function resultCount(monitor: SeededMonitor): Promise<number> {
   ).then((found) => found[0]?.count ?? 0);
 }
 
-/** A monitor as Create leaves it: due now, not claimed. */
 async function seedDue(
   url: string,
   options: { intervalSeconds?: number; timeoutSeconds?: number } = {},
@@ -300,7 +299,6 @@ describe("monitor-checker process", () => {
     );
     const createMs = Date.now() - created;
 
-    // Pause, then Resume as the API does: next_check_at null, then now().
     await updateMonitor(
       db,
       monitor,
@@ -324,7 +322,6 @@ describe("monitor-checker process", () => {
     );
     const resumeMs = Date.now() - resumed;
 
-    // One poll is 1 s here; a slot is never checked twice while paused.
     expect(createMs).toBeLessThan(5_000);
     expect(resumeMs).toBeLessThan(5_000);
     console.info(
@@ -422,7 +419,6 @@ describe("monitor-checker process", () => {
     await worker.exited;
     expect(await resultCount(monitor)).toBe(0);
 
-    // The lease of the killed check expires; a new Worker picks the claim up.
     release = true;
     await updateMonitor(
       db,

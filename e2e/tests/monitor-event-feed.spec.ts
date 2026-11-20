@@ -114,12 +114,10 @@ test.beforeAll(async () => {
   await addMember(pool, orgId, owner.userId, "owner");
   await addMember(pool, orgId, admin.userId, "admin");
   await addMember(pool, orgId, viewer.userId, "viewer");
-  // Monitors live in a Project; the viewer reads them as a Project member.
   projectId = await createProject(pool, orgId, `E2E Feed ${run}`);
   await addProjectMember(pool, orgId, projectId, viewer.userId, "member");
   ownerSession = await signInApi(owner);
 
-  // Pass, fail, fail, pass: the second failure opens the incident, the next pass closes it.
   await startTarget("feed", {
     probeScript: [
       { status: 200 },

@@ -96,7 +96,6 @@ export type SeededMonitor = {
   job(overrides?: Partial<MonitorCheckJob>): MonitorCheckJob;
 };
 
-/** Organization, monitor and a claimed schedule row (the state right after a claim). */
 export async function seedMonitor(
   db: TestDatabase,
   options: SeedOptions = {},
@@ -263,7 +262,6 @@ export async function rows<T extends Record<string, unknown>>(
   });
 }
 
-/** A loopback port with nothing listening on it. */
 export async function closedPort(): Promise<number> {
   const server = http.createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -191,7 +191,6 @@ describe("a route Organization that is not the server-active one", () => {
     await user.type(name, " typed");
     await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(screen.getByTestId(`shell-organization-${A}`));
-    // The switcher shows Acme once the switch has settled.
     await screen.findByTestId("shell-organization-switch");
     await flush();
     expect(screen.getByTestId("location")).toHaveTextContent(

@@ -18,8 +18,6 @@
 # needs no key variables here. Do not reuse this file, image or key for a shared
 # or production environment. OUTBOUND_TEST_ALLOWED_HOSTS is intentionally absent.
 x-worker: &worker
-  # Local development build only (accepts NODE_ENV=development); never the
-  # production artifact, which is tagged nightwatch-worker.
   image: nightwatch-worker:dev
   build:
     context: .

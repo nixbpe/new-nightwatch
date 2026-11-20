@@ -99,8 +99,6 @@ const ownerCount = async () =>
     )
   ).rows[0]?.count ?? 0;
 
-// Every user is a member of both organizations, last active in A, with one
-// session selecting A and one selecting B.
 async function reset(withSecondOwner = true) {
   await owner.query(
     "delete from member where organization_id = any($1::uuid[])",
@@ -172,8 +170,6 @@ async function waitUntilBlocked(holderPid: number) {
   throw new Error("revoke request never blocked on the holder's lock");
 }
 
-// Holds the organization lock, queues a revoke behind it, applies a concurrent
-// change, then releases.
 async function revokeWhileBlocked(
   actorUserId: string,
   targetMemberId: string,
@@ -258,7 +254,6 @@ describe("locked organization member revoke", () => {
             role: target,
           });
           expect(await snapshot()).toEqual(afterRevoke(before, targetUser));
-          // B membership and B session mirror of the revoked user survive.
           const after = await snapshot();
           expect(
             after.memberships.some(

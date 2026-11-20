@@ -141,7 +141,6 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                       return;
                     }
                     if (section.startsWith("audit-log")) {
-                      // OD-14: the audit log is for owner, admin and auditor; any other role lands on the workspace.
                       void navigate(
                         AUDIT_LOG_ROLES.includes(org.role)
                           ? `/organizations/${org.id}/audit-log`
@@ -180,7 +179,6 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** A system object, so the 4px corner rather than a circle; solid Primary with On primary initials. */
 function OrgMark({ name }: { name: string }) {
   const initials = initialsOf(name);
   return (

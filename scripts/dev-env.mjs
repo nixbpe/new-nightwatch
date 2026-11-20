@@ -75,8 +75,6 @@ export function resolveDevEnv(sourceEnv = process.env) {
 
   const env = { ...sourceEnv };
   for (const [key, value] of Object.entries(defaults)) {
-    // Blank assignments (e.g. from a copied .env.example) count as unset so
-    // they cannot shadow the generated development defaults.
     if (value !== undefined && (env[key] === undefined || env[key] === "")) {
       env[key] = value;
     }

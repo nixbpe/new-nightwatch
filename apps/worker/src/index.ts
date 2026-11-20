@@ -115,8 +115,6 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
   stopAuditMaintenance?.();
-  // Stops claiming and abandons the export in flight: its lease runs out and
-  // another claim redoes it.
   await auditExporter?.stop();
   if (auditExporter) logger.info({}, "audit exporter stopped");
   // Closes run together so the slowest one, not their sum, bounds shutdown.
@@ -197,7 +195,6 @@ function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
     }),
     signal: checkerShutdown.signal,
   };
-  // attempts is 1: a failed job is logged and never retried.
   const checker = new Worker<MonitorCheckJob>(
     MONITOR_CHECK_QUEUE,
     async (job) => {

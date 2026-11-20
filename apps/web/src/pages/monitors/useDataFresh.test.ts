@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MONITOR_REFETCH_INTERVAL_MS } from "../../lib/api/monitors";
 import { useDataFresh } from "./useDataFresh";
 
-// Every timer is faked here, so the limit is crossed by moving the clock: the poll interval is the real one.
 const LIMIT_MS = 2 * MONITOR_REFETCH_INTERVAL_MS;
 const START = Date.parse("2026-09-30T08:00:00.000Z");
 
@@ -110,7 +109,6 @@ describe("useDataFresh after a pause", () => {
       rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
       expect(result.current).toBe(false);
       moveOn(pauseMs);
-      // Online again: `fetching`, no longer paused, `data` still the snapshot.
       rerender({ input: state({ dataUpdatedAt: snapshot }) });
       expect(result.current).toBe(false);
       moveOn(1_000);
@@ -133,7 +131,6 @@ describe("useDataFresh after a pause", () => {
     rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
     expect(result.current).toBe(false);
     moveOn(3_000);
-    // Resumed again, retrying: not an error any more, still no success.
     rerender({ input: state({ dataUpdatedAt: snapshot }) });
     expect(result.current).toBe(false);
     moveOn(1_000);
@@ -159,7 +156,6 @@ describe("useDataFresh after a pause", () => {
   });
 
   it("clears on a success from a fetch started before the pause but landing after it began", () => {
-    // Intended: `dataUpdatedAt > pausedAt` is the rule, so a response that lands after the pause began counts as data newer than the pause.
     const { result, rerender } = setup();
     const snapshot = Date.now();
     moveOn(2_000);
@@ -175,7 +171,6 @@ describe("useDataFresh after a pause", () => {
     const seen: boolean[] = [];
     for (let poll = 0; poll < 5; poll += 1) {
       moveOn(MONITOR_REFETCH_INTERVAL_MS / 2);
-      // The poll is in flight: same data, no pause, no error.
       rerender({
         input: state({
           dataUpdatedAt: Date.now() - MONITOR_REFETCH_INTERVAL_MS / 2,

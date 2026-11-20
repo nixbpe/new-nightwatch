@@ -52,7 +52,6 @@ function invitation(
   };
 }
 
-/** Serves the rows still in `ids` (1-based), sliced like the API. */
 function serve(ids: Set<number>) {
   fetchList.mockImplementation((organizationId, limit, offset) => {
     const all = [...ids].sort((left, right) => left - right);
@@ -199,7 +198,6 @@ describe("invitation cancel", () => {
     ).toBeVisible();
     expect(cancelRequest).toHaveBeenCalledTimes(1);
 
-    // The list refetch is held: the server confirmed, the list has not.
     const refreshed = Promise.withResolvers<PendingInvitationListResponse>();
     ids.delete(2);
     fetchList.mockReturnValueOnce(refreshed.promise);
@@ -501,7 +499,6 @@ describe("invitation cancel", () => {
     const ids = range(2);
     serve(ids);
     cancelRequest.mockImplementation(() => {
-      // Another session canceled it first.
       ids.delete(1);
       return Promise.reject(
         new ApiError("INVITATION_NOT_FOUND", "not found", 404),

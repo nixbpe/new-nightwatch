@@ -350,8 +350,6 @@ async function eventKinds(id: string): Promise<string[]> {
   return result.rows.map((row) => row.kind);
 }
 
-// Audit events of one monitor, oldest first (written in the mutation's own
-// transaction).
 const auditActions = async (monitorId: string): Promise<string[]> =>
   (
     await ctx.owner.sql.query<{ action: string }>(

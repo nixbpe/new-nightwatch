@@ -309,7 +309,6 @@ describe("POST exports", () => {
       });
     }
     expect(await counts(org.id)).toEqual({ exports: 1, jobs: 1, events: 1 });
-    // The same user in another Organization is not blocked (OD-20).
     expect((await requestExport(bothOwner, orgA.id)).status).toBe(201);
     expect((await requestExport(bothOwner, orgB.id)).status).toBe(201);
     expect((await requestExport(org.users.admin, org.id)).status).toBe(201);
@@ -822,7 +821,6 @@ describe("GET download (AC-23)", () => {
       404,
       "AUDIT_EXPORT_NOT_FOUND",
     ]);
-    // Another Organization's export through this Organization's URL.
     expect(await status(org.users.owner, org.id, other)).toEqual([
       404,
       "AUDIT_EXPORT_NOT_FOUND",
@@ -855,7 +853,6 @@ describe("GET download (AC-23)", () => {
       410,
       "AUDIT_EXPORT_EXPIRED",
     ]);
-    // A removed member is denied as a non-member.
     await ctx.owner.sql.query(
       "delete from member where organization_id = $1 and user_id = $2",
       [org.id, org.users.owner],

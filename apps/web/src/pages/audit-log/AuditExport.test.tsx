@@ -708,7 +708,6 @@ describe("my exports section", () => {
   });
 
   it("shows the scope in the zone the request was made in and the request times in the viewer's zone", async () => {
-    // Bangkok is the viewer's preference (set in beforeEach); the request was made in New York.
     open({
       rows: [
         makeRecord({
@@ -808,7 +807,6 @@ describe("my exports section", () => {
       );
     });
     expect(screen.getByTestId("audit-filters-title")).toHaveFocus();
-    // The day range covers the row's instants: 2026-09-26 00:00 Bangkok is before 25 17:00Z.
     await waitFor(() => {
       expect(listMock.mock.calls.at(-1)?.[1]).toMatchObject({
         from: "2026-09-25T17:00:00.000Z",

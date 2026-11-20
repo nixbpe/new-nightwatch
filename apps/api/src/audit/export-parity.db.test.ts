@@ -287,7 +287,6 @@ describe("the export selects the events the list shows", () => {
 
   it("holds the cases above to a non-trivial result", async () => {
     const all = await viaExport({}, new Date(Date.now() + 1_000));
-    // 12 + monitor, deleted, member, invitation, old, settings.
     expect(all).toHaveLength(18);
     expect(
       await viaExport({ q: "100%_check" }, new Date(Date.now() + 1_000)),

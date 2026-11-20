@@ -120,7 +120,6 @@ export function useMemberRevoke({
     ]);
     if (!isCurrentScope()) return;
     setConfirmation(null);
-    // A refetch, not the DELETE response, decides what the notice says.
     const refreshed = await refetchList();
     if (!isCurrentScope()) return;
     const removed =

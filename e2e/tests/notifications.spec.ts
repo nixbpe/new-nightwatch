@@ -938,8 +938,6 @@ test("deferred notification responses cannot cross confirmed organization or ide
         alternateEmail: nextEmail,
         alternatePassword: nextPassword,
       }) => {
-        // This executes in the browser realm, where the Node test's static
-        // imports cannot access the application's reactive auth client.
         const { authClient } = await import("/src/lib/auth-client.ts");
         const signedOut = await authClient.signOut();
         if (signedOut.error !== null) return "sign-out";

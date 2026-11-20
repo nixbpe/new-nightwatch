@@ -55,7 +55,6 @@ type Members = {
   auditor: string;
 };
 
-/** An organization's members: owner, admin (composite role), viewer, auditor. */
 async function seedMembers(monitor: SeededMonitor): Promise<Members> {
   const members: Members = {
     owner: randomUUID(),
@@ -140,7 +139,6 @@ function unreadableResult(checkedAt: Date): CheckResult {
   return { ...expiredResult(checkedAt), tlsReason: "handshake_failed" };
 }
 
-/** One check recorded with the real notification writer and a fresh claim. */
 async function record(
   monitor: SeededMonitor,
   result: CheckResult,
@@ -164,7 +162,6 @@ async function record(
   });
 }
 
-// Disabling inserts an absent organization row; enabling updates that disabled row.
 async function changeNotificationGate(
   monitor: SeededMonitor,
   gate: "organization" | "monitor-down" | "monitor-ssl",
@@ -199,7 +196,6 @@ async function intentTypes(monitor: SeededMonitor): Promise<string[]> {
   return result.rows.map((row) => row.event_type);
 }
 
-/** What the dispatch scheduler and the materialize job do, without a queue. */
 async function materializeAll(): Promise<void> {
   const claimToken = randomUUID();
   const dependencies = createMaterializationDependencies(db.runtime);
@@ -639,7 +635,6 @@ describe("SSL notifications (AC-36)", () => {
     await record(monitor, certResult(notAfter, daysBefore(30)));
     await record(monitor, certResult(notAfter, daysBefore(8)));
     await record(monitor, certResult(notAfter, daysBefore(7)));
-    // Same level again, also after an unreadable handshake in between.
     await record(monitor, certResult(notAfter, daysBefore(6)));
     await record(monitor, unreadableResult(daysBefore(5)));
     await record(monitor, certResult(notAfter, daysBefore(4)));

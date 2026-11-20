@@ -465,7 +465,6 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
       [org],
     );
     const newest = await seedEvent({ at: "now() - interval '1 minute'" });
-    // One hour inside the window when generation starts.
     const nearBoundary = await seedEvent({
       at: "now() - interval '364 days 23 hours'",
     });
@@ -688,7 +687,6 @@ describe("races (AC-25)", () => {
 
     expect(await exporter().process(second)).toBe("ready");
     const stored = await contentOf(id);
-    // The stale holder finishes later (and would fail the request too): both lose.
     expect(await exporter().process(first)).toBe("discarded");
     expect(await exporter().process({ ...first, exhausted: true })).toBe(
       "discarded",
@@ -721,7 +719,6 @@ describe("races (AC-25)", () => {
     const late = await seedRequest({ age: "55 minutes" });
     const claim = await claimAuditExport(runtime);
     if (!claim) throw new Error("claim missing");
-    // Claimed before the deadline passes, then the 60 minutes run out.
     await sql(
       "update audit_exports set created_at = now() - interval '61 minutes' where id = $1",
       [late],
@@ -754,7 +751,6 @@ describe("races (AC-25)", () => {
       { event_type: "AUDIT_EXPORT_FAILED", recipient_user_id: requester },
     ]);
 
-    // Complete first: ready wins and the sweep finds nothing to fail.
     const early = await seedRequest({ user: colleague });
     const earlyClaim = await claimAuditExport(runtime);
     if (!earlyClaim) throw new Error("claim missing");

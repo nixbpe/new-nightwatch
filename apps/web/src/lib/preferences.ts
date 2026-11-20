@@ -227,7 +227,6 @@ export function zonedDayBoundary(
   let before = midnight - 36 * 3_600_000; // local day < target
   let after = midnight + 60 * 3_600_000; // local day > target
   if (boundary === "start") {
-    // Narrow to the earliest instant whose local day is the target or later.
     while (after - before > 1) {
       const mid = Math.floor((before + after) / 2);
       if (localDay(mid) >= target) after = mid;
@@ -235,7 +234,6 @@ export function zonedDayBoundary(
     }
     return new Date(after);
   }
-  // Narrow to the latest instant whose local day is the target or earlier.
   while (after - before > 1) {
     const mid = Math.floor((before + after) / 2);
     if (localDay(mid) <= target) before = mid;

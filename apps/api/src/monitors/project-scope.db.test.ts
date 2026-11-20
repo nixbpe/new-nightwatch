@@ -23,14 +23,10 @@ import {
 
 let ctx: MonitorTestContext;
 let org: TestOrganization;
-/** Organization viewer, member of the default Project only. */
 let member: string;
-/** Organization viewer who administers `adminProject` and is in no other Project. */
 let projectAdmin: string;
-/** Organization member who is in no Project. */
 let nobody: string;
 let outsider: string;
-/** Holds the monitor under test; `member` and `nobody` cannot see `hidden`. */
 let hidden: string;
 let adminProject: string;
 let monitorInHidden: string;
@@ -222,8 +218,6 @@ describe("a user without access to the Project (AC-02)", () => {
 });
 
 describe("a monitor of another Project (cross-Project IDOR)", () => {
-  // Project admin of `adminProject` can use it freely; the monitor lives in the
-  // default Project, which they cannot see, and in `hidden`, which they cannot either.
   it.each(ROUTES.filter((route) => route.monitor))(
     "$name through another Project's URL answers 404 MONITOR_NOT_FOUND",
     async (route) => {
@@ -518,7 +512,6 @@ describe("list p95 over 24 h (AC-04)", () => {
         responseTimeMs: 100 + index * 10,
       })),
     );
-    // A check without a response time and one older than 24 h change nothing.
     await seedResponseSamples(ctx, org.id, id, [
       {
         scheduledFor: new Date(now - 90_000).toISOString(),

@@ -348,7 +348,6 @@ describe("PUT /api/me/last-project", () => {
 
     expect(await stored(org, org.users.auditor)).toBeNull();
     expect(await stored(other, org.users.viewer)).toBeNull();
-    // The auditor has no choice, so gets the first Project by name, not viewer's.
     expect(await resolved(org.users.auditor, org.id)).not.toBe(mine);
   });
 });

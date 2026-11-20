@@ -638,7 +638,6 @@ describe("Overview method, interval and sparkline", () => {
     ).toHaveTextContent(/\b15\b/);
 
     await user.click(screen.getByTestId("monitor-overview-view-table"));
-    // The Project table is the design's five columns: the URL sits under the name, method and interval are on the monitor page.
     expect(screen.queryByTestId("monitor-list-heading-method")).toBeNull();
     expect(screen.queryByTestId("monitor-list-heading-interval")).toBeNull();
     const row = within(rowOf("51fd0299-e05f-437b-81c5-d7848b70e032"));
@@ -1161,7 +1160,6 @@ describe("Overview success", () => {
   });
 
   it("renders every SSL level and its actual days remaining", async () => {
-    // The table keeps to the design's columns; SSL stays on the cards.
     window.localStorage.setItem("nightwatch:monitors-view", "cards");
     const levels: Omit<Item["ssl"], "issuer" | "notAfter">[] = [
       { level: "ok", daysRemaining: 128, host: "h" },
@@ -1752,7 +1750,6 @@ describe("Overview refetch and announcements", () => {
       expect(calls).toBe(before + 2);
     });
     expect(region.textContent).toBe(announced);
-    // The visible count follows the data; only the live region stays put.
     expect(screen.getByTestId("monitor-overview-results")).toBeInTheDocument();
   });
 
@@ -1970,7 +1967,6 @@ describe("Overview Organization switch", () => {
       ),
     ).toBeNull();
     expect(document.body.textContent).not.toContain("AlphaMonitor");
-    // The new Organization's list is never requested for the old Project.
     expect(
       fetchListMock.mock.calls.every(
         ([organizationId]) => organizationId === A,

@@ -163,7 +163,6 @@ export function ProjectFormDialog({
       const saved = editing
         ? await updateProject(organizationId, project.id, { name, description })
         : await createProject(organizationId, { name, slug, description });
-      // The page reloads the list before the dialog closes.
       await onSaved(saved);
     } catch (error) {
       handleError(error);

@@ -301,7 +301,6 @@ it("refreshes context and redirects when the server denies the actor's revoke", 
     new ApiError("MEMBERSHIP_DENIED", "denied", 403),
   );
   const user = await renderAs("owner");
-  // Another session removed the actor from A.
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
     listCalls.push(id);
     return id === A

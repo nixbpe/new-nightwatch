@@ -30,7 +30,6 @@ export async function closeWithin(
   if (outcome === "timeout") void target.disconnect().catch(() => undefined);
 }
 
-/** Last resort for a shutdown that does not finish: log and exit non-zero. */
 export function armHardDeadline(
   ms: number,
   logger: Logger,

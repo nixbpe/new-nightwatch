@@ -33,7 +33,6 @@ export type PageScope = {
   /** Organizations are system objects (4 px corner); people get a circle (LAY-05). */
   markShape?: "org" | "person";
   label: ReactNode;
-  /** Role or context, shown as a neutral pill. */
   tag?: ReactNode;
 };
 

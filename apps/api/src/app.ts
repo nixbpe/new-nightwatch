@@ -50,7 +50,6 @@ export type AppDeps = {
   // Optional so route tests and OpenAPI emission need no Redis; readiness
   // checks Redis only when a client is injected.
   redis?: Redis;
-  // Save-time monitor checks: DNS resolver and OUTBOUND_TEST_ALLOWED_HOSTS.
   outbound?: OutboundDeps;
   // Secret values are encrypted and decrypted with these keys. Optional so
   // route tests and OpenAPI emission need no keys; only secret operations fail.

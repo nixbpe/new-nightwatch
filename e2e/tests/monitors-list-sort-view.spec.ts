@@ -17,7 +17,6 @@ import {
   type Person,
 } from "../support/monitor-fixtures";
 
-//
 // Rows are written straight into the run's own organization. No monitor_schedule
 // row exists, so the Worker never checks them and the seeded health stays put.
 // Results are re-inserted before each test so none turns stale (2 x interval).

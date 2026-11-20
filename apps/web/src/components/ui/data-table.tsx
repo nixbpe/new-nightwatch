@@ -39,7 +39,6 @@ export function DataTable<Row>({
   tableTestId?: string;
   cellTestId?: (column: DataTableColumn<Row>) => string;
   columnHeaderTestId?: (column: DataTableColumn<Row>) => string;
-  /** Trailing cell reserved for row actions (role changes, revoke). */
   rowActions?: (row: Row) => ReactNode;
   empty?: ReactNode;
   className?: string;

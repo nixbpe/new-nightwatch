@@ -130,7 +130,6 @@ describe("provisionOrganization against real PostgreSQL", () => {
     expect(live[0]?.status).toBe("pending");
     expect(live[0]?.inviter_id).toBe(INTERNAL_PROVISIONING_USER_ID);
     expect(Date.parse(live[0]?.expires_at ?? "")).toBeGreaterThan(Date.now());
-    // Only the id of the transaction that committed last is live.
     expect(live[0]?.id).toBe(resentOutcome.invitationId);
 
     const [retryA, retryB] = await Promise.all([

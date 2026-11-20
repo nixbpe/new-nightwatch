@@ -2,7 +2,6 @@
 /**
  * The @nightwatch/db CLI resolves DATABASE_OWNER_URL before DATABASE_URL
  * (owner-before-app). Fails fast when neither URL is available.
- * Run `bun run db:up` then `bun run db:migrate` for local development.
  */
 import { spawn } from "node:child_process";
 

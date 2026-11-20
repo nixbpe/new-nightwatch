@@ -25,7 +25,6 @@ function note(entry: SeriesEntry): string {
   return parts.join(", ");
 }
 
-/** The chart's data as a real table, read from the same series as the line (CMP-05). */
 export function ResponseTimeTable({
   range,
   series,

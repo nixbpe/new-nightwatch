@@ -151,7 +151,6 @@ export function evaluateAssertions(
     try {
       scanned = findSpans(body.text, assertion.pathSegments, ends, truncated);
     } catch (error) {
-      // Last line of defence: the validity check above should make this unreachable.
       if (error instanceof SyntaxError) return outcome("fail", "not_json");
       throw error;
     }

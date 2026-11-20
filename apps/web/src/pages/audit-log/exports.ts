@@ -147,7 +147,6 @@ export const FAILURE_TEXT: Record<AuditExportFailureCode, string> = {
     "สร้างไฟล์ไม่สำเร็จเพราะสิทธิ์ส่งออกของคุณเปลี่ยนระหว่างสร้าง",
 };
 
-/** Any other code reads as a system failure. */
 export function failureText(code: AuditExportFailureCode | null): string {
   return FAILURE_TEXT[code ?? "EXPORT_FAILED"];
 }

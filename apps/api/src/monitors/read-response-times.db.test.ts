@@ -61,7 +61,6 @@ async function currentHour(): Promise<number> {
 describe("24 h", () => {
   it("returns one point per check and one 600 s gap when the Worker was down for 10 minutes", async () => {
     const id = await seedMonitor(ctx, org.id, { intervalSeconds: 60 });
-    // Ages 3,600 s down to 1,800 s, then 1,200 s down to 60 s, every minute.
     await seedResults(
       ctx,
       org.id,
@@ -103,7 +102,6 @@ describe("24 h", () => {
     const id = await seedMonitor(ctx, org.id, { intervalSeconds: 60 });
     await seedEvent(ctx, org.id, id, "paused", 3000);
     await seedEvent(ctx, org.id, id, "resumed", 1200);
-    // Last check before the pause 3,060 s ago, first at Resume 1,200 s ago.
     await seedResults(
       ctx,
       org.id,

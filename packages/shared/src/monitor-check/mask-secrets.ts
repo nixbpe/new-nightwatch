@@ -97,7 +97,6 @@ class ViewBuilder {
   }
 }
 
-/** Lower-cases one UTF-16 unit when that keeps the length. */
 function lowerUnit(char: string): string {
   const lower = char.toLowerCase();
   return lower.length === 1 ? lower : char;

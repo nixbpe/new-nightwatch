@@ -86,7 +86,6 @@ function Kpi({
 const msText = (value: number | null) =>
   value === null ? "ไม่มีข้อมูล" : `${formatNumber(value)} ms`;
 
-// Caption segments read as one paragraph, the way the design canvas sets them.
 const SEPARATOR = " · ";
 
 const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {

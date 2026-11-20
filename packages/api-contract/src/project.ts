@@ -10,7 +10,6 @@ export const PROJECT_LIMIT_PER_ORGANIZATION = 50;
 
 const projectName = z.string().trim().min(1).max(80);
 const projectSlug = z.string().regex(/^[a-z0-9-]{3,40}$/);
-// An empty description is stored as no description.
 const projectDescription = z
   .string()
   .trim()

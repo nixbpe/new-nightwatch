@@ -11,7 +11,6 @@ export type SectionProps = {
   errors: FieldErrors;
   /** Merges a patch and clears the server errors under `clearPrefix`. */
   onChange: (patch: Partial<FormValues>, clearPrefix: string) => void;
-  /** Asks the form to focus an element once the change has rendered. */
   focusAfterRender: (id: string) => void;
   disabled: boolean;
   /** Secret values are read and written here, never through `values`. */

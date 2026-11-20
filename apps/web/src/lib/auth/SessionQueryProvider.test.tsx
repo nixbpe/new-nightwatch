@@ -35,7 +35,6 @@ vi.mock("better-auth/client/plugins", () => ({
 // against the old cache for one frame, which a post-hoc DOM assertion could miss.
 const commitLog: string[] = [];
 
-// Stands in for TenantProvider's /me query; reads only through the provider's QueryClient.
 function ContextProbe() {
   const query = useQuery<{ org: string }>({
     queryKey: ["me", "context"],
@@ -75,7 +74,6 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("adopts a loader-staged client on hydration so the prefetch survives (data mode)", async () => {
-    // A loader of the initial URL prefetched into the staged client before the first render.
     resolveQueryClientForIdentity("user-a").setQueryData(["me", "context"], {
       org: "Org A",
     });
@@ -90,7 +88,6 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("adopts a client staged by a loader running ahead of the identity swap", async () => {
-    // Login flow: B's loader prefetched before the provider committed B.
     transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));
     transport.mockImplementation(() => new Promise<{ org: string }>(() => {}));
 
@@ -111,7 +108,6 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("never relabels a loader-staged client when hydration resolves a different identity", async () => {
-    // Loader/session race: the initial loader staged A's prefetch but the session resolves to B.
     const stagedClient = resolveQueryClientForIdentity("user-a");
     stagedClient.setQueryData(["me", "context"], { org: "Org A" });
     const cancelSpy = vi.spyOn(stagedClient, "cancelQueries");
@@ -181,8 +177,6 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("never renders the previous account cache after a direct account switch", async () => {
-    // A→B flips in one step with no logged-out frame; only a commit observer can catch an
-    // effect-phase swap here.
     transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));
     transport.mockImplementation(() => Promise.resolve({ org: "Org B" }));
 
@@ -190,7 +184,6 @@ describe("SessionQueryProvider identity boundaries", () => {
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
     );
-    // Boundary between A's committed frames and whatever B commits.
     const aCommits = commitLog.length;
 
     tree.rerender(<Harness userId="user-b" pending={false} />);
@@ -198,8 +191,6 @@ describe("SessionQueryProvider identity boundaries", () => {
     await waitFor(() =>
       expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
     );
-    // B's very first committed frame was already served by B's own client:
-    // no frame after the switch ever showed A's data.
     expect(commitLog.slice(aCommits)).not.toContain("Org A");
     expect(commitLog.slice(aCommits)).toContain("loading");
   });

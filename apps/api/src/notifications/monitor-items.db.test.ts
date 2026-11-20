@@ -312,7 +312,6 @@ describe("monitor items follow Project access", () => {
         sslNotAfter: null,
       }),
     );
-    // A non-monitor item that every member keeps seeing.
     settingsIntent = crypto.randomUUID();
     await owner.query(
       `insert into notification_intents

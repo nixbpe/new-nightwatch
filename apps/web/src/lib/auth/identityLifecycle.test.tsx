@@ -60,7 +60,6 @@ const { sessionStore, transport } = vi.hoisted(() => {
   };
   let freshSession: TestSessionData = null;
   return {
-    // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
     sessionStore: {
       get: () => snapshot,
       getFresh: () => freshSession,
@@ -156,7 +155,6 @@ function meContextFor(user: SessionUser): MeContextResponse {
 // Records every committed frame; a post-hoc DOM assertion could miss a transient frame from the previous identity's cache.
 const commitLog: string[] = [];
 
-// Stands in for TenantProvider's /me query; reads only through the provider's QueryClient.
 function ContextProbe() {
   const query = useQuery<MeContextResponse>({
     queryKey: ME_CONTEXT_QUERY_KEY,
@@ -234,9 +232,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
       render(<RouterProvider router={router} />);
 
       expect(await screen.findByTestId("view")).toHaveTextContent("User A");
-      // The ONLY fetch so far is the loader's — the in-tree query hit cache.
       expect(fetchLog).toEqual(["user-a"]);
-      // Logout without navigation: revalidation bounces to the login gate.
       act(() => {
         sessionStore.set(null);
       });
@@ -244,7 +240,6 @@ describe("per-identity cache lifecycle across logout → login", () => {
       expect(await screen.findByTestId("login-page")).toBeInTheDocument();
       const commitsBeforeB = commitLog.length;
 
-      // Login as B without navigation: B's loader prefetch must land in the client B's tree consumes.
       act(() => {
         sessionStore.set({ user: USER_B });
       });
@@ -254,7 +249,6 @@ describe("per-identity cache lifecycle across logout → login", () => {
       // cache. Any "anonymous" entry is the bounce-window fetch above.
       expect(fetchLog.filter((id) => id === "user-a")).toHaveLength(1);
       expect(fetchLog.filter((id) => id === "user-b")).toHaveLength(1);
-      // No committed frame after the switch ever showed A's data.
       expect(commitLog.slice(commitsBeforeB)).toContain("User B");
       expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
     },

@@ -446,7 +446,6 @@ function DetailForMonitor({
   }
 
   const canWrite = access.canWrite;
-  // The last response is readable by whoever may write (Project admin, Organization Owner or Admin).
   const canReadResponse = canWrite;
   const paused = monitor.status === "paused";
   const busy = toggle.isPending;

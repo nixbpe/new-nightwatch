@@ -124,7 +124,6 @@ function recordOf(row: ExportRow): AuditExportRecord {
   };
 }
 
-// The client left (the page moved to another organization): nothing is written.
 function requestCancelled(): never {
   throw new AppError(499, "REQUEST_CANCELLED", "คำขอถูกยกเลิก");
 }

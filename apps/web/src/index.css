@@ -88,9 +88,6 @@
 
 /*
  * NightWatch design tokens (docs/design-system.md): semantic roles only.
- * Default follows prefers-color-scheme; an explicit choice (the account
- * menu's theme toggle, src/lib/theme.ts) sets data-theme on <html> and
- * overrides it — same token values either way.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both

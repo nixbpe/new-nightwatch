@@ -100,7 +100,6 @@ export function createRedactor(
         // Occurrences that start before end - length + 1 end inside this group.
         const from = Math.max(at + 1, end - needle.length + 1);
         const again = text.indexOf(needle, from);
-        // Characters this search scanned: up to the match, plus its length.
         remaining -=
           (again === -1 ? Math.max(0, text.length - from) : again - from) +
           needle.length;

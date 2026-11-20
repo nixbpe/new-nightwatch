@@ -9,7 +9,6 @@ import { resolvePorts } from "../../scripts/ports.mjs";
 const { webPort, apiPort } = resolvePorts();
 
 export default defineConfig({
-  // React Compiler owns memoization; src intentionally has no manual useMemo/useCallback.
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset()] }),

@@ -302,7 +302,6 @@ describe("series gaps, pauses and averages", () => {
     const summary = summarize(
       buildSeries({
         range: "7d",
-        // Both hours ran 12 checks, but only 2 of the first had a response time.
         buckets: [
           hour("01:00", "02:00", 1000, 2),
           hour("02:00", "03:00", 100, 10),
@@ -376,9 +375,7 @@ describe("24 h window", () => {
         buckets: [point(first, 100), point("11:55", 100)],
       }).map((entry) => entry.kind);
     expect(kinds("03:00", [])).toEqual(["gap", "value", "value"]);
-    // 8 minutes is under 2 x 5 minutes: no gap.
     expect(kinds("00:08", [])).toEqual(["value", "value"]);
-    // The leading hours are a pause, so they are not also a gap.
     expect(kinds("03:00", [{ from: T("00:00"), to: T("03:00") }])).toEqual([
       "pause",
       "value",
@@ -432,7 +429,6 @@ describe("7 d and 30 d as the API shapes them", () => {
   const context = { intervalSeconds: 900 };
 
   it("reads a monitor paused for the whole window as one pause, with the current hour inside it", () => {
-    // The pause started before the window and is still going: it ends at the read time.
     const props = toChartProps(
       response({
         pauses: [
@@ -510,7 +506,6 @@ describe("7 d and 30 d as the API shapes them", () => {
     const createdAt = new Date(asOf - 2.5 * HOUR).toISOString();
     const props = toChartProps(response(), { ...context, createdAt });
     const series = buildSeries(props);
-    // Three hours touch the monitor's life; the first counts from creation, the last ends at now.
     expect(series.map((entry) => entry.kind)).toEqual(["gap"]);
     expect(series[0]?.at).toBe(Date.parse(createdAt));
     expect(series[0]?.end).toBe(asOf);
@@ -643,7 +638,6 @@ describe("ResponseTimeChart drawing", () => {
   it("breaks the line at a gap and never bridges it", () => {
     render(<ResponseTimeChart {...props24h()} />);
     const path = plotScope().getByTestId("monitor-response-line");
-    // Three checks, then a gap and a pause, then a lone check: two segments.
     expect(path.getAttribute("d")?.match(/M/g)).toHaveLength(2);
     expect(plotScope().getAllByTestId("monitor-response-gap")).toHaveLength(1);
     expect(plotScope().getAllByTestId("monitor-response-pause")).toHaveLength(
@@ -884,7 +878,6 @@ describe("ResponseTimeChart memo inputs", () => {
 
   it("redraws the gaps when only the window moves", () => {
     const { rerender } = render(<ResponseTimeChart {...base} />);
-    // 10:00 to now is fresh, but 00:00 to 10:00 is a leading gap.
     expect(gapCount()).toBe(1);
     rerender(
       <ResponseTimeChart
@@ -902,7 +895,6 @@ describe("ResponseTimeChart memo inputs", () => {
         window={{ from: T("09:40"), to: T("12:00") }}
       />,
     );
-    // A 20 minute lead is over 2 x 300 s.
     expect(gapCount()).toBe(1);
     rerender(
       <ResponseTimeChart
@@ -1009,7 +1001,6 @@ describe("ResponseTimeChart keyboard", () => {
       characterData: true,
       subtree: true,
     });
-    // A refetch: new arrays, the selected step (07:00) still present with a new value.
     rerender(
       <ResponseTimeChart
         {...props24h({

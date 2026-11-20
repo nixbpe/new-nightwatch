@@ -30,7 +30,6 @@ function secret() {
   return randomBytes(24).toString("hex");
 }
 
-/** Create the gitignored secrets file once; never overwrite existing secrets. */
 function ensureLocalEnv() {
   if (existsSync(LOCAL_ENV_PATH)) return;
   const content = [

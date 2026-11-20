@@ -131,7 +131,6 @@ describe("SessionsPage", () => {
     );
     expectVisibleAbsoluteTime(current, CURRENT);
     expect(within(current).queryByTestId("session-revoke-open")).toBeNull();
-    // Most recently active other session next (1 h ago before 3 days ago).
     const unknown = screen.getByTestId(`session-row-${UNKNOWN.id}`);
     expect(within(unknown).getByTestId("session-device")).toHaveTextContent(
       UNKNOWN_DEVICE.label,

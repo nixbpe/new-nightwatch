@@ -380,7 +380,6 @@ test.describe("signed-in settings", () => {
     await mfa.getByTestId("mfa-verify-submit").click();
     await expect(mfa.getByTestId("mfa-status-enabled")).toHaveText(/\S/);
 
-    // Leave the account as we found it.
     await mfa.getByTestId("mfa-disable-open").click();
     await mfa.getByTestId("mfa-disable-password").fill(PASSWORD!);
     await mfa.getByTestId("mfa-disable-submit").click();
@@ -433,7 +432,6 @@ test.describe("signed-in settings", () => {
     await expect(otherPage).toHaveURL(/\/settings\/security$/);
     await other.close();
 
-    // Revert from the still-signed-in session.
     await card.getByTestId("change-current-password").fill(temporary);
     await card.getByTestId("change-new-password").fill(PASSWORD!);
     await card.getByTestId("change-confirm-password").fill(PASSWORD!);

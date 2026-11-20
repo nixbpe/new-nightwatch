@@ -629,8 +629,6 @@ export async function listMonitors(
           row.matches &&
           (query.health === undefined || state.health === query.health),
       );
-      // Uptime is needed for every row only to sort by it; otherwise just for
-      // the page.
       let uptime: Map<string, UptimeWindows> | null =
         query.sort === "uptime"
           ? await loadUptime(
@@ -640,8 +638,6 @@ export async function listMonitors(
               now,
             )
           : null;
-      // The p95 is needed for every row only to sort by it; otherwise just
-      // for the page.
       let p95s: Map<string, number | null> | null =
         query.sort === "response_time"
           ? await loadResponseP95s24h(

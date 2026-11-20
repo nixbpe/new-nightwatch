@@ -194,7 +194,6 @@ describe("checker records a result (transaction A then B)", () => {
         { ...other.job(), monitorId: randomUUID() },
         dependencies(),
       );
-      // A job that names another Organization sees none of its rows.
       const crossTenant = await processMonitorCheck(
         { ...monitor.job(), tenantId: other.tenantId },
         dependencies(),
@@ -317,7 +316,6 @@ describe("checker records a result (transaction A then B)", () => {
           }),
         ),
       );
-      // All four requests are in flight before the change lands.
       const started = Date.now();
       while (target.requests.length < 4 && Date.now() - started < 4_000) {
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -390,11 +388,6 @@ type Step = "pass" | "fail" | "check_error";
 
 type StepEvent = { type: string; endReason?: string; lockHeld: boolean };
 
-/**
- * Runs one check per step, each with its own claim and scheduled_for, against
- * a target that answers 200 (pass) or 503 (fail); a check_error step makes the
- * resolver fail the way an unreachable resolver does.
- */
 async function runSteps(
   monitor: SeededMonitor,
   target: Pick<Target, "setHandler">,
@@ -761,7 +754,6 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
       await runSteps(monitor, target, ["fail", "fail"]);
-      // Edit: version 2, streak reset, incident stays open.
       await updateMonitor(
         db,
         monitor,
@@ -903,7 +895,6 @@ describe("hourly rollup (AC-14)", () => {
 
 const credentialEnv = loadMonitorEnv({ REDIS_URL: "redis://unused" });
 
-/** Stores an encrypted slot the way the API does. */
 async function storeSecret(
   monitor: SeededMonitor,
   slot: string,
@@ -1354,7 +1345,6 @@ describe("AC-62 and shutdown", () => {
       await waitForRequests(target, 1, running);
       controller.abort();
       expect(await running).toBe("aborted");
-      // The request itself is torn down, not just abandoned.
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(target.closedConnections()).toBe(1);
       expect((await countAll(monitor)).results).toBe(0);
@@ -1542,7 +1532,6 @@ describe("recorded rows carry no request data (AC-42)", () => {
       expect(target.requests[0]?.headers["x-custom"]).toBe(
         "request-header-marker",
       );
-      // The assertion result holds the matched text only where the executor put it.
       const [row] = await results(monitor);
       expect(row?.outcome).toBe("pass");
     } finally {
@@ -2095,7 +2084,6 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         "select * from monitor_last_responses where monitor_id = $1",
         [monitor.monitorId],
       );
-      // A fail is in flight when an Edit supersedes the claim.
       const release = Promise.withResolvers<undefined>();
       target.setHandler((_request, response) => {
         void release.promise.then(() => {

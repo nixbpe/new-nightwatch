@@ -110,7 +110,6 @@ describe("egress canary against real outbound HTTP", () => {
       outbound: outboundDeps,
     });
     expect(await down.status()).toBe("failed");
-    // A canary URL that resolves to a forbidden address is refused, never contacted.
     const blocked = createEgressCanary({
       urls: ["http://blocked.example.test:8080/"],
       outbound: { resolver: () => Promise.resolve(["127.0.0.1"]) },

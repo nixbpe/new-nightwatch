@@ -96,7 +96,6 @@ function wrap(
   };
 }
 
-// Monitors live in a Project: one per Organization the run creates.
 const projects = new Map<string, string>();
 const mp = (organizationId: string, suffix = "") =>
   monitorPath(organizationId, projects.get(organizationId)!, suffix);
@@ -1114,7 +1113,6 @@ async function secrets() {
   );
   await qbTarget.close();
 
-  // Delete removes stored secrets in the same transaction.
   const del = await sessions.owner.request("DELETE", mp(orgA, `/${b.id}`));
   const gone = await pool.query(
     "select count(*)::int n from monitor_secrets where monitor_id=$1",
@@ -1296,7 +1294,6 @@ async function concurrency() {
     dup.rowCount,
   );
 
-  // Late result after Pause, Edit and Delete is dropped.
   const slow = await acquireTarget();
   slow.setDelay(9000);
   const rows: Record<string, unknown>[] = [];

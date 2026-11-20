@@ -90,7 +90,6 @@ export function useInvitationCancel({
     ]);
     if (!isCurrentScope()) return;
     setConfirmation(null);
-    // A refetch, not the DELETE response, decides what the notice says.
     const refreshed = await refetchList();
     if (!isCurrentScope()) return;
     if (refreshed.isError) {

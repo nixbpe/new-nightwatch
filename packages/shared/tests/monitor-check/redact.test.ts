@@ -135,7 +135,6 @@ describe("createRedactor work bound for a displayed value", () => {
 
   it("smoke: a contiguous 1 MiB run takes one search per occurrence", () => {
     const text = "a".repeat(1 << 20);
-    // 100 needle forms, all absent except the one that fills the text.
     const redact = createRedactor([
       "a",
       ...Array.from({ length: 33 }, (_v, i) => `zz${String(i)}\\"/`),

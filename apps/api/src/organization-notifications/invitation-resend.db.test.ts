@@ -293,7 +293,6 @@ describe("POST /api/organizations/:organizationId/invitations/:publicId/resend",
         }
       }
     }
-    // Per organization: owner sends 4, admin sends 3.
     expect(sent).toBe(14);
     expect(linkCommittedAtSend).toHaveLength(14);
     expect(linkCommittedAtSend.every(Boolean)).toBe(true);
@@ -533,7 +532,6 @@ describe("resend cooldown", () => {
     );
     const row = created.rows[0];
     if (!row) throw new Error("created row missing");
-    // A fresh create is already cooling down.
     expect((await resend("ownerA", orgA, row.publicId)).status).toBe(429);
     await expectCooldown(row.publicId, row.id);
   });
@@ -799,7 +797,6 @@ describe("resend races on the organization lock", () => {
   describe("expired resend against create for the same email", () => {
     it("create first wins: the expired row is canceled, resend gets 404 and only the create mail is sent", async () => {
       const address = email("same-create-first");
-      // Stored with a different case than the lowercase create body.
       const row = await seed(
         orgA,
         address.replace("same", "Same").replace("@example", "@Example"),

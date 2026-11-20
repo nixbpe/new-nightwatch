@@ -71,12 +71,10 @@ const LINE_BREAKS = /[\r\n]/;
 const UNPAIRED_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-/** False for U+0000 and for text that is not well-formed Unicode. */
 export function isStorableText(value: string): boolean {
   return !value.includes("\0") && !UNPAIRED_SURROGATE.test(value);
 }
 
-/** Allowed ports: 80, 443 and 1024-65535. */
 export function isAllowedMonitorPort(port: number): boolean {
   return port === 80 || port === 443 || (port >= 1024 && port <= 65535);
 }

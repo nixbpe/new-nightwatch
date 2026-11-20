@@ -404,7 +404,6 @@ describe("notification inbox API", () => {
     });
     const expired = await seedItem({
       scope: "account",
-      // 31 days before the fixture day: one day past the 30-day expiry.
       occurredAt: atHour(-31 * 24),
     });
     const markAll = await request("/api/notifications/read-all", "POST", {

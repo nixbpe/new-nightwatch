@@ -13,7 +13,6 @@ import {
 const redisUrl = process.env.REDIS_URL;
 if (!redisUrl) throw new Error("REDIS_URL is required for rate limiter tests");
 
-// Nothing listens here, so the client sees a refused connection (Redis down).
 const closedPortUrl = "redis://127.0.0.1:1";
 
 const namespace = `rl:test:${randomUUID()}`;
@@ -63,7 +62,6 @@ describe("consumeRateLimit", () => {
       ).toEqual({ allowed: true, retryAfterSeconds: 0 });
     }
     clock += 1000;
-    // Oldest entry is 3 s old, so 57 s remain.
     expect(await limiter.consumeRateLimit({ key, limit: 3, windowMs })).toEqual(
       { allowed: false, retryAfterSeconds: 57 },
     );
@@ -100,7 +98,6 @@ describe("consumeRateLimit", () => {
       { allowed: true, retryAfterSeconds: 0 },
     );
     clock += 1000;
-    // Entries at +30 s and +60 s remain; the first is 30 s away from expiry.
     expect(await limiter.consumeRateLimit({ key, limit: 2, windowMs })).toEqual(
       { allowed: false, retryAfterSeconds: 29 },
     );
@@ -123,7 +120,6 @@ describe("consumeRateLimit", () => {
         ).allowed,
       ).toBe(true);
     }
-    // User A is at 10 per user; user B in the same org is unaffected.
     expect(
       (
         await consumeMonitorTestRateLimit(limiter, {
@@ -237,7 +233,6 @@ describe("consumeRateLimit", () => {
     clock += 20_000;
     await limiter.consumeRateLimit({ key: keyB, limit: 1, windowMs });
     clock += 10_000;
-    // A frees in 30 s, B in 50 s.
     expect(
       await limiter.consumeRateLimits({
         windowMs,
@@ -397,7 +392,6 @@ describe("limiter failure (fail closed)", () => {
   });
 
   it("logs a connection error once across reconnects and logs recovery on ready", async () => {
-    // Reserve a free port, release it, and let the client fail against it.
     const probe = net.createServer();
     await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
     const { port } = probe.address() as net.AddressInfo;

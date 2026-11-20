@@ -162,7 +162,6 @@ test("the create link opens the create dialog on the projects page", async ({
   await page.getByTestId("shell-project-switch").click();
   await page.getByTestId("shell-project-create").click();
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
-  // The parameter is dropped once the dialog is open, so a reload does not reopen it.
   await expect(page).toHaveURL(`/organizations/${org}/projects`);
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -215,7 +214,6 @@ test("opening a Project page by its link saves it as the last Project", async ({
 test("a bookmarked Project of another Organization, with many Projects, keeps the menu inside the viewport", async ({
   page,
 }) => {
-  // A second Organization the owner belongs to but is not active in.
   const other = await createOrganization(pool, `E2E Switcher many ${run}`);
   extraOrganizations.push(other);
   await addMember(pool, other, people.owner.userId, "owner");
@@ -275,7 +273,6 @@ test("a bookmarked Project of another Organization, with many Projects, keeps th
   await expect(page.getByTestId("shell-project-create")).toBeInViewport();
   await page.keyboard.press("Escape");
 
-  // The rail (below 1024 px) and the drawer (below 640 px) bound the menu the same way.
   const assertBounded = async (scope: Locator, height: number) => {
     await scope.getByTestId("shell-project-switch").click();
     const bounded = scope.getByTestId("shell-project-menu-panel");

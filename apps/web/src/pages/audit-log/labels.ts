@@ -32,7 +32,6 @@ export function exportTargetText(format: "csv" | "json"): string {
   return `ไฟล์ส่งออก ${format.toUpperCase()}`;
 }
 
-/** The target as plain text; links are added by the detail page. */
 export function targetText(target: AuditTarget): string {
   switch (target.type) {
     case "monitor":

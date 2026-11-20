@@ -111,8 +111,6 @@ const ownerCount = async () =>
     )
   ).rows[0]?.count ?? 0;
 
-// Every user is a member of both organizations, last active in A, with one
-// session selecting A and one selecting B.
 async function reset(withSecondOwner = true) {
   await owner.query(
     "delete from member where organization_id = any($1::uuid[])",
@@ -184,8 +182,6 @@ async function waitUntilBlocked(holderPid: number) {
   throw new Error("request never blocked on the holder's lock");
 }
 
-// Holds the organization lock, queues an action behind it, applies a concurrent
-// change, then releases.
 async function whileBlocked<T>(
   start: () => Promise<T>,
   change: (holder: Client) => Promise<void>,
@@ -256,7 +252,6 @@ describe("locked organization self-leave", () => {
       });
       const after = await snapshot();
       expect(after).toEqual(afterLeave(before, users[role]));
-      // Account, B membership and B session mirror survive.
       expect(after.memberships.map((row) => row.id)).toContain(
         `${members[role]}-b`,
       );
@@ -336,7 +331,6 @@ describe("locked organization self-leave", () => {
         outcomes.find((outcome) => outcome.status === "rejected")?.reason,
       ).toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
       expect(await ownerCount()).toBe(1);
-      // The loser's membership persists; exactly one of the two rows is gone.
       const rows = await ownerRows([members.owner, secondOwner.member]);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.role).toBe("owner");
@@ -390,7 +384,6 @@ describe("locked organization self-leave", () => {
           outcomes.find((outcome) => outcome.status === "rejected")?.reason,
         ).toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
         expect(await ownerCount()).toBe(1);
-        // Both users keep a membership unless the leave won.
         const leaverMember = everyone.find((entry) => entry.user === leaver);
         const rows = await ownerRows([
           leaverMember?.member ?? "",

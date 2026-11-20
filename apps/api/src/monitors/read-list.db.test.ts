@@ -339,7 +339,6 @@ describe("List: SSL level", () => {
 describe("List: uptime", () => {
   it("returns 24 h and 30 d windows with coverage from hand-computed rollups", async () => {
     const org = await ctx.createOrganization("read-uptime");
-    // Created 2 h ago; 24 passing 5-minute checks (ages 0 to 115 min) cover 7,200 s.
     const id = await seedMonitor(ctx, org.id, {
       name: "young",
       createdAgoSeconds: 7200,
@@ -513,7 +512,6 @@ describe("List: sort", () => {
         await seedResults(ctx, org.id, id, [ago], { responseTimeMs: ms });
       }
     };
-    // latest check / p95: m1 100 / 800, m2 300 / 300, m3 200 / 600, m4 900 / 900.
     await make("m1", [
       [10, 100],
       [600, 800],
@@ -639,11 +637,11 @@ describe("List: response sparkline", () => {
         responseMsSum: sum,
         responseMsMax: responseChecks === 0 ? null : sum,
       });
-    await hour([0], 2, 301); // the current hour: 150.5
-    await hour([7], 3, 100); // 33.33
-    await hour([23], 1, 40); // the oldest point
-    await hour([24], 1, 999); // outside the window
-    await hour([3], 0, 0); // an hour without a measured response
+    await hour([0], 2, 301);
+    await hour([7], 3, 100);
+    await hour([23], 1, 40);
+    await hour([24], 1, 999);
+    await hour([3], 0, 0);
     otherId = await seedMonitor(ctx, other.id, { name: "elsewhere" });
     await seedHourly(ctx, other.id, otherId, [0], {
       checks: 1,

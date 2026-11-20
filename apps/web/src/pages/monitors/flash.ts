@@ -19,7 +19,6 @@ export const MONITOR_NOTICES = {
 } as const;
 export type MonitorNoticeKey = keyof typeof MONITOR_NOTICES;
 
-/** Router state a monitor page sets when it hands a one-time notice to the next page. */
 export type MonitorFlashState = { notice: MonitorNoticeKey };
 
 function isNoticeKey(key: string): key is MonitorNoticeKey {

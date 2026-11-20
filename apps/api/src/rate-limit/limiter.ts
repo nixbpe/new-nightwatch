@@ -11,7 +11,6 @@ export type RateLimitRequest = {
   windowMs: number;
 };
 
-/** One window for every key, so mixed windows cannot be expressed. */
 export type RateLimitGroup = {
   windowMs: number;
   limits: readonly { key: string; limit: number }[];

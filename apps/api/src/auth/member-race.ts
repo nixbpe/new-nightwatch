@@ -35,7 +35,6 @@ export function isMemberUniquenessRace(error: unknown): boolean {
   );
 }
 
-// Only the member-uniqueness race becomes the 400 denial; others stay visible.
 export function translateMemberUniquenessRace(error: unknown): never {
   if (isMemberUniquenessRace(error)) {
     throw new APIError("BAD_REQUEST", {

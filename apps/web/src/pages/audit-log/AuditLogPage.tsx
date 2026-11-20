@@ -112,7 +112,6 @@ function AuditLogForOrganization({
           identity,
           now: new Date(snapshot.now),
           asOf: snapshot.asOf,
-          // Matches no page, so the pin applies to every page of this snapshot.
           basePage: 0,
         }
       : {
@@ -239,7 +238,6 @@ function AuditLogForOrganization({
     tableHeadingRef.current?.focus();
   };
   const refresh = () => {
-    // An invalid range sends no request, refresh included.
     if (rangeError !== undefined) return;
     const next: ListView = {
       identity,

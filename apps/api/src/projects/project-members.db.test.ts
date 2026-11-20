@@ -446,7 +446,6 @@ describe("change role and remove (AC-05, AC-06, AC-09)", () => {
   ] as const)(
     "answers 409 LAST_PROJECT_ADMIN for %s (AC-05)",
     async (_name, actor, operation) => {
-      // Owner and Admin are not Project members, so they never count as Project administrators.
       const projectId = await projectWith(org, [
         [org.users.viewer, "admin"],
         [org.users.auditor, "member"],
@@ -670,9 +669,7 @@ describe("permissions (AC-07, AC-08)", () => {
       remove(organization, actor, id, org.users.auditor),
     ];
     const cases = [
-      // A viewer who is not in the Project.
       ...routes(org, projectId, org.users.viewer),
-      // A Project id from another Organization, asked as an Owner of this one.
       ...routes(org, foreign, org.users.owner),
       ...routes(org, "not-a-uuid", org.users.owner),
     ];

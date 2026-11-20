@@ -35,7 +35,6 @@ import {
 
 const THAI = /[\u0e00-\u0e7f]/;
 
-// Latin tokens are mono, Thai wording is not (TYP-04).
 const mono = (text: string) =>
   THAI.test(text) ? text : <span className="font-mono">{text}</span>;
 

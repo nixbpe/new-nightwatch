@@ -535,7 +535,6 @@ it("does not refresh membership context when another member changes on a page wi
 it("refreshes membership context when another member changes and the actor's listed role differs", async () => {
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
-  // Another session demoted the actor; the refetched list shows the new role.
   directory.setRole("member-me", "admin");
   await user.selectOptions(roleSelect("member-ann"), "auditor");
   await user.click(save("member-ann"));

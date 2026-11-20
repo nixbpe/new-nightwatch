@@ -202,7 +202,6 @@ describe("role x operation", () => {
       expect(second.status).toBe(403);
       expect(second.json).toEqual(first.json);
     }
-    // The member of another Organization changed nothing in this one.
     expect(
       (await monitorRows(org.id)).some((row) => row.id === target.id),
     ).toBe(true);
@@ -313,7 +312,6 @@ describe("uniform MONITOR_NOT_FOUND", () => {
       expect(bodies[0]).toEqual({
         error: { code: "MONITOR_NOT_FOUND", message: "ไม่พบมอนิเตอร์นี้" },
       });
-      // The foreign monitor is untouched.
       expect(
         (await monitorRows(otherOrg.id)).some((row) => row.id === foreign.id),
       ).toBe(true);

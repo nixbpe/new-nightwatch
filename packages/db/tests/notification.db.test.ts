@@ -730,8 +730,6 @@ describe("monitor notification schema", () => {
        values ($1, $2, 'Monitors', $3)`,
       [projectM, tenantM, `m-${run.slice(0, 12)}`],
     );
-    // The viewer is a Project member; the auditor belongs to no Project, and
-    // the owner is both an Organization owner and a Project member.
     await owner.query(
       `insert into project_members (project_id, tenant_id, user_id, role)
        values ($1, $2, $3, 'member'), ($1, $2, $4, 'admin')`,
@@ -869,7 +867,6 @@ describe("monitor notification schema", () => {
         subject_monitor_hostname: "checkout.example.com",
         monitor_reason: "http_status",
         ledgers: 1,
-        // owner is both Organization owner and Project member: one recipient.
         recipients: [users.owner, users.admin, users.viewer].sort(),
       },
     ]);

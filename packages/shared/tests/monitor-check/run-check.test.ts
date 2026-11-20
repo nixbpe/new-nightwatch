@@ -339,7 +339,6 @@ describe("no response (AC-32) and classification (AC-10)", () => {
   });
 
   it("timeout is a fail", async () => {
-    // Accepts the connection and never answers.
     const silent = await startRawServer({});
     servers.push(silent);
     const result = await runCheck(
@@ -352,7 +351,6 @@ describe("no response (AC-32) and classification (AC-10)", () => {
   }, 10_000);
 
   it("timeout after a completed handshake keeps the certificate", async () => {
-    // Completes TLS, then never answers.
     const silent = await startRawServer({ tls: pki.leaf.good });
     servers.push(silent);
     const result = await runCheck(

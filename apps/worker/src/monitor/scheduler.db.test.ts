@@ -408,7 +408,6 @@ describe("monitor scheduler", () => {
     expect(claimed?.claim_token).not.toBeNull();
     expect(await jobs(live)).toHaveLength(0);
 
-    // Lease still valid: the next round must not claim again.
     await scheduler(live).round();
     expect(await jobs(live)).toHaveLength(0);
 

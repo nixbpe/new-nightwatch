@@ -84,7 +84,6 @@ describe("preferences storage", () => {
 });
 
 describe("formatDateTime", () => {
-  // 2026-09-10 07:12 UTC = 14:12 in Bangkok, 16:12 in Tokyo.
   const instant = new Date("2026-09-10T07:12:00Z");
   const base = defaultPreferences();
 

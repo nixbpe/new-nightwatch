@@ -1112,7 +1112,6 @@ describe("NotificationsPage", () => {
       setZone("America/Los_Angeles");
       await renderItems(
         [
-          // 2026-10-02 00:30 LA, today in LA
           item(
             "a0000000-0000-4000-8000-000000000001",
             "2026-10-02T07:30:00.000Z",

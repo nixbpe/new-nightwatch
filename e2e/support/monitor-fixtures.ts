@@ -210,11 +210,6 @@ export function basicConfig(name: string, url: string) {
   };
 }
 
-/**
- * Screenshot into VERIFY_SHOTS_DIR when set.
- * Desktop shots use a 1440 x 900 viewport and restore the page size afterwards;
- * `keepViewport` keeps the current size (the 640 px reflow shots).
- */
 export async function shot(
   page: Page,
   name: string,

@@ -76,7 +76,6 @@ test.beforeAll(async () => {
   owner = people.owner;
   await addMember(pool, orgEmpty, owner.userId, "owner");
   await addMember(pool, orgOther, owner.userId, "owner");
-  // Monitors live in a Project; the viewer and the auditor read it as Project members.
   projA = await createProject(pool, orgA, `E2E States A ${run}`);
   projEmpty = await createProject(pool, orgEmpty, `E2E States Empty ${run}`);
   projOther = await createProject(pool, orgOther, `E2E States Other ${run}`);
@@ -615,7 +614,6 @@ test.describe("secrets in the browser", () => {
     const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
 
-    // Viewers and owners see the state, never the value.
     await page.goto(`${overview()}/${id}`);
     await expect(page.getByTestId("monitor-config-auth")).toHaveAttribute(
       "data-configured",
@@ -667,7 +665,6 @@ test.describe("secrets in the browser", () => {
     );
     await page.getByTestId("monitor-form-auth-type").selectOption("bearer");
 
-    // A new origin with a kept secret cannot be saved or tested.
     await page
       .getByTestId("monitor-form-url")
       .fill(`http://${host}:${String(target.port + 1)}/health`);
@@ -737,7 +734,6 @@ test("a Project at 20 monitors shows the reason and the API refuses a 21st", asy
   const project = await createProject(pool, org, `E2E Limit ${run}`);
   const otherProject = await createProject(pool, org, `E2E Limit other ${run}`);
   const session = await signInApi(person);
-  // Same name and URL for all: duplicates are allowed inside a Project.
   for (let i = 0; i < 20; i++) {
     const reply = await session.request("POST", monitorPath(org, project), {
       ...basicConfig("same name", urlOf("/health")),
@@ -767,7 +763,6 @@ test("a Project at 20 monitors shows the reason and the API refuses a 21st", asy
     [org],
   );
   expect(kept.rows[0]).toEqual({ n: 20, active: 20 });
-  // The cap is per Project: another Project of the same Organization still accepts one.
   const elsewhere = await session.request(
     "POST",
     monitorPath(org, otherProject),
@@ -859,7 +854,6 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       }
       await expect(card.getByTestId("monitor-response-chart")).toBeVisible();
       await shot(page, `57-kpi-${range}-${theme}`);
-      // The one button changes its name with the view, so each name is queried again after a press.
       await card.getByTestId("monitor-response-toggle").focus();
       await page.keyboard.press("Enter");
       await expect(card.getByTestId("monitor-response-table")).toBeVisible();

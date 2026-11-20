@@ -117,7 +117,6 @@ export function useInvitationResend({
     ]);
     if (!isCurrentScope()) return;
     setConfirmation(null);
-    // Only a server-confirmed resend moves the row to the top of page 1.
     const refreshed = await (result === null ? refetchList() : loadFirstPage());
     if (!isCurrentScope()) return;
     if (failure !== null) {

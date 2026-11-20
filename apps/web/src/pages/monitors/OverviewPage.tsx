@@ -124,7 +124,6 @@ function OverviewForProject({
   const [offset, setOffset] = useState(0);
   const [health, setHealth] = useState<MonitorHealthName | undefined>();
   const [q, setQ] = useState("");
-  // Page state only: never stored, so a new visit starts at "problems".
   const [sort, setSort] = useState<MonitorListSort>("problems");
   const [searchText, setSearchText] = useState("");
   const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
@@ -133,7 +132,6 @@ function OverviewForProject({
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
-  // Set by a filter change the user made; the announcement waits for that filter's own data.
   const pendingAnnouncement = useRef(false);
   const pendingSortLabel = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);

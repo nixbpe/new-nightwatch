@@ -116,7 +116,6 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMonitorList: fetchMonitorListMock,
 }));
-// One readable Project, so the Project group and the monitors' leaf resolve (ProjectSwitcher.test.tsx covers the rest).
 vi.mock("../../lib/api/projects", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchProjectList: () =>
@@ -324,7 +323,6 @@ fetchNotificationsMock.mockResolvedValue({
   unreadCount: 0,
 });
 fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
-// The sidebar reads `summary.total`; the overview page also renders the full response.
 const monitorList = (total: number) => ({
   summary: { up: 0, down: 0, unknown: 0, paused: 0, total, limit: 20 },
   monitors: [],

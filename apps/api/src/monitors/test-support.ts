@@ -42,7 +42,6 @@ export type ApiResponse = {
   status: number;
   /** Parsed body of a JSON response; null for any other content type. */
   json: unknown;
-  /** The raw body, for file downloads. */
   text: string;
   headers: Headers;
 };
@@ -83,7 +82,6 @@ export function validConfig(
  * Every fixture id is run-unique and removed in `close`.
  */
 export async function openMonitorTestContext(options?: {
-  /** Builds the app without the credential env, as route tests do. */
   withoutCredentials?: boolean;
   /** Backs the Test rate limit; without it every Test answers 503. */
   redis?: Redis;

@@ -110,7 +110,6 @@ type ApiRequest = ((
   cookies: () => Record<string, string>;
 };
 
-// Sends the trusted SPA origin on writes.
 function client(
   targetApp?: OpenAPIHono,
   initialCookies?: Record<string, string>,
@@ -1081,7 +1080,6 @@ describe("concurrent acceptance race", () => {
 
     const preset = await admitUser("preset", invitationId);
     const userId = await sqlUserId(preset.email);
-    // Existing membership and pending invitation must yield a conflict.
     await database.sql.query(
       `insert into member (id, organization_id, user_id, role, created_at)
        values ($1, $2, $3, 'viewer', now())`,
@@ -1523,7 +1521,6 @@ describe("TOTP challenge and session boundary", () => {
     ).user;
     expect(enabledUser.twoFactorEnabled).not.toBe(true);
 
-    // Only now may sign-in require the two-factor challenge.
     const secret = totpSecretFromUri(enableBody.totpURI);
     const firstVerify = await totp.request(
       "POST",
@@ -2018,8 +2015,6 @@ describe("MFA re-enrollment guard", () => {
     expect(pending.twoFactorEnabled).not.toBe(true);
     expect(pending).toMatchObject({ projection: false, intentEvents: [] });
 
-    // An unverified enrollment restarts in place: same row, new secret and
-    // recovery codes, still pending, no intent.
     const restarted = await member.request(
       "POST",
       "/api/auth/two-factor/enable",
@@ -2322,7 +2317,6 @@ describe("duplicate-account signup stays enumeration-safe and harmless", () => {
     );
     expect(users.rows[0]?.n).toBe(1);
 
-    // The duplicate attempt's password never lands.
     const original = await client()("POST", "/api/auth/sign-in/email", {
       email: userEmail("dup"),
       password: PASSWORD,

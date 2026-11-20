@@ -194,7 +194,6 @@ describe("SecurityPage enrollment", () => {
   });
 
   it("a failed status lookup shows a retryable error instead of enrollment controls", async () => {
-    // A failed me/context lookup must not masquerade as a known "disabled" status.
     fetchMeContextMock.mockRejectedValueOnce(new Error("network down"));
     const user = userEvent.setup();
     renderPage();

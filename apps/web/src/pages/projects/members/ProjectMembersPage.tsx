@@ -230,8 +230,6 @@ function ProjectMembers({
     reload();
   };
 
-  // Shared by role change and removal: the reason text, and a refetch whenever
-  // the page may be showing something the server no longer agrees with.
   const failureMessage = (error: unknown, kind: "change" | "remove") => {
     if (error instanceof ApiError) {
       if (error.code === "LAST_PROJECT_ADMIN") {
@@ -779,7 +777,6 @@ function ProjectMembers({
           fallbackFocus={heading}
           onAdded={async ({ added, already, role }) => {
             const reloaded = await refresh();
-            // Only people this request added count; the rest were in already.
             const text =
               added === 0
                 ? "คนที่เลือกอยู่ในโปรเจกต์อยู่แล้ว ไม่มีใครถูกเพิ่ม"

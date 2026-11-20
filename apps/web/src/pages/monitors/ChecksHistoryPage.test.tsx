@@ -101,7 +101,6 @@ beforeEach(() => {
   refetch.intervalMs = 60_000;
   fetchMeContextMock.mockResolvedValue(context());
   fetchDetailMock.mockResolvedValue({ monitor: detail() });
-  // What the real Detail page reads when a test navigates to it.
   vi.mocked(fetchMonitorEvents).mockResolvedValue({
     events: [],
     page: { limit: 20, offset: 0, total: 0 },
@@ -564,7 +563,6 @@ describe("Checks history offset drift", () => {
       at: at(55).toISOString(),
       url: "https://deeper.acme.example/health",
     };
-    // After result 0 was loaded: it is not part of the list this page opened with.
     const newer = {
       at: new Date(Date.parse(scheduled(-5)) + 60_000).toISOString(),
       url: "https://newer.acme.example/health",
@@ -653,7 +651,6 @@ describe("Checks history offset drift", () => {
 
 describe("Checks history URL changes", () => {
   it("marks the change that falls between two chunks once both are shown, and lists it once", async () => {
-    // Between result 49 and result 50: result 49 is the first check after it.
     const between = {
       at: new Date(Date.parse(scheduled(49)) - 60_000).toISOString(),
       url: "https://new.acme.example/health",
@@ -694,7 +691,6 @@ describe("Checks history URL changes", () => {
   });
 
   it("shows each check with its assertions and marks a URL change above the table", async () => {
-    // Just before the newest result: the newest result is the first check after it.
     const changedAt = new Date(Date.parse(scheduled(0)) - 60_000).toISOString();
     fetchChecksMock.mockResolvedValue({
       checks: [
@@ -1389,7 +1385,6 @@ describe("Checks history links", () => {
       "href",
       `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
-    // The router takes the click over: no document load.
     expect(fireEvent.click(back)).toBe(false);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(

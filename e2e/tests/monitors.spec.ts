@@ -26,8 +26,6 @@ import {
   type Person,
 } from "../support/monitor-fixtures";
 
-// One Organization per run with an owner and a viewer, plus a second
-// Organization the owner also belongs to. Every name carries the run id.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -86,7 +84,6 @@ test.beforeAll(async () => {
   await addMember(pool, orgA, owner.userId, "owner");
   await addMember(pool, orgB, owner.userId, "owner");
   await addMember(pool, orgA, viewer.userId, "viewer");
-  // Monitors live in a Project; the viewer reads one as a Project member.
   projA = await createProject(pool, orgA, `E2E Monitors A ${run}`);
   projB = await createProject(pool, orgB, `E2E Monitors B ${run}`);
   await addProjectMember(pool, orgA, projA, viewer.userId, "member");

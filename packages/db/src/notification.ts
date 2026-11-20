@@ -456,7 +456,6 @@ export async function resolveNotificationDispatchClaim(
   };
 }
 
-/** Deletes only already-expired inbox rows in a bounded worker batch. */
 export async function purgeExpiredNotificationInboxItems(
   database: Database,
   input: { limit: number },

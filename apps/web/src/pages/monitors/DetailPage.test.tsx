@@ -1496,7 +1496,6 @@ describe("Detail structure", () => {
       detail({
         auth: { type: "basic" },
         headers: [{ id: HEADER_ID, name: "X-Api-Key", secret: true }],
-        // Only half of the Basic pair is stored, and the header has no slot.
         secretSlots: [{ slot: "auth.username", configured: true }],
       }),
     );
@@ -1660,7 +1659,6 @@ function expectNoStateAttributes(toggle: HTMLElement) {
 }
 
 const T = (time: string) => `2026-09-30T${time}:00.000Z`;
-/** A time `minutes` after the start of the 24 h window that ends at the page's dataAsOf. */
 const inWindow = (minutes: number) =>
   new Date(
     Date.parse(DATA_AS_OF) - 24 * 3_600_000 + minutes * 60_000,

@@ -279,7 +279,6 @@ describe("row level security", () => {
       exports: [colleague],
       jobs: [colleague],
     });
-    // A user of A asking with B's context sees B's own rows only for B's user.
     expect(await visible(tenantB, userA1)).toEqual({ exports: [], jobs: [] });
     expect(await visible(tenantB, userB1)).toEqual({
       exports: [other],
@@ -736,7 +735,6 @@ describe("retention", () => {
   it("clears expired files even when more than p_limit cleared rows exist, and does not touch a cleared row again", async () => {
     await clearExports();
     await clearExports();
-    // Cleared rows far outnumber the limit; the expired one must still be found.
     for (let i = 0; i < 6; i += 1) {
       const id = randomUUID();
       await owner.query(

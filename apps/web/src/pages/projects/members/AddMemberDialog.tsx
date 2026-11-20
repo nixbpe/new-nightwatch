@@ -150,7 +150,6 @@ export function AddMemberDialog({
     setSubmitting(true);
     setFormError(null);
     try {
-      // The API reports who its inserts actually added; the rest were in already.
       const { addedUserIds } = await addProjectMembers(
         organizationId,
         projectId,

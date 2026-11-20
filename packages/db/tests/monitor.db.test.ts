@@ -33,7 +33,6 @@ const MONITOR_TABLES = [
 
 type Seeded = { monitorId: string };
 
-/** One Project per tenant; every monitor belongs to its tenant's Project. */
 const projectOf = new Map<string, string>();
 
 async function insertMonitor(
@@ -219,7 +218,6 @@ describe("monitor tenant isolation", () => {
     async (table) => {
       await expect(
         withTenantContextRaw(database, tenantA, async (client) => {
-          // tenant_id = B fails the tenant policy's WITH CHECK.
           await insertChildRow(client, table, tenantB, seededB.monitorId);
         }),
       ).rejects.toThrow(/row-level security/);
@@ -664,7 +662,6 @@ describe("monitors config CHECK constraints", () => {
     await expect(insertWith("timeout_seconds", 31)).rejects.toThrow(
       /monitors_timeout_seconds_check/,
     );
-    // default interval is 300 s, so a timeout at or above it violates the pair check
     await expect(insertWith("timeout_seconds", 0)).rejects.toThrow(
       /monitors_timeout_seconds_check/,
     );
@@ -994,7 +991,6 @@ describe("claim_due_monitor_checks", () => {
     const stored = must(row.rows[0]);
     expect(stored.claim_token).toBe(claimA.claimToken);
     // monitors say 60 s / 10 s, the ledger says 120 s / 20 s: the ledger wins.
-    // next = now + 120 s, lease = now + 20 s + 60 s
     const lo = must(before.rows[0]).t.getTime();
     const hi = must(after.rows[0]).t.getTime();
     expect(stored.next_check_at.getTime()).toBeGreaterThanOrEqual(lo + 120_000);
@@ -1073,7 +1069,6 @@ describe("claim_due_monitor_checks", () => {
     const first = await claimAll();
     const firstClaim = must(first.find((c) => c.monitorId === id));
 
-    // Slot is due again but the lease is still live.
     await owner.query(
       "update monitor_schedule set next_check_at = '2000-01-02T00:00:00Z' where monitor_id = $1",
       [id],
@@ -1504,7 +1499,6 @@ describe("purge of monitor_last_responses", () => {
     const lastA = await seedLastResponse(31);
     const lastB = await seedLastResponse(31);
     const deleted = await purgeExpiredMonitorData(database, { limit: 2 });
-    // Last responses go first and spend the shared budget of 2.
     expect(deleted).toBe(2);
     expect(await ownerCount("monitor_last_responses", [lastA, lastB])).toBe(0);
     const events = await owner.query<{ n: string }>(

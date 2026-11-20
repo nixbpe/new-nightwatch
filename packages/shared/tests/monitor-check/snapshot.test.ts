@@ -1022,10 +1022,8 @@ describe("secrets echoed in any URL encoding", () => {
 
 describe("JSON escapes and nested encodings", () => {
   const own = { headers: [secretHeader("h1", "X-Own")] };
-  // A head is decoded as latin1, so a UTF-8 echo reaches the executor as its latin1 form.
   const wire = (text: string) => Buffer.from(text, "utf8").toString("latin1");
 
-  // [secret, echoed, also check a redirect URL]
   const cases: [string, string, boolean][] = [
     // Python json.dumps (ensure_ascii), Thai and é
     ["ลับ", "\\u0e25\\u0e31\\u0e1a", false],

@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 /* global process, console */
 /**
- *
  * The spec is obtained from apps/api's `emit-openapi` script, which
  * composes the real Hono app in-process — no server, database, or SMTP
  * needed — and writes GET /api/v1/openapi.json to a temp file.

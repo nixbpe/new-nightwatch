@@ -522,8 +522,6 @@ export async function rememberLastProject(
       );
       let stored = readable.rows[0]?.project_id;
       if (stored === undefined) {
-        // The stored Project is no longer readable by the caller: the requested one, which the
-        // locks held here keep readable, replaces it whatever its time.
         const replaced = await client.query<{ project_id: string }>(
           `insert into member_last_project
              (tenant_id, user_id, project_id, selected_at)

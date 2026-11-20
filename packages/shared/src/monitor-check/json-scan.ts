@@ -290,7 +290,6 @@ export function findSpans(
   return { spans, incomplete };
 }
 
-/** JSON type of the value starting at `start`, read from its first character. */
 export function jsonTypeAt(text: string, start: number): string {
   switch (text.charAt(start)) {
     case "{":

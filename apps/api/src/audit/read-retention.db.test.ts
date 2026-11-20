@@ -133,7 +133,6 @@ describe("recording start (AC-09)", () => {
         )
       ).rows[0]?.at.toISOString(),
     );
-    // Nothing recorded before the start is shown, even inside 365 days.
     expect(recent.events).toEqual([]);
     expect(recent.page.total).toBe(0);
 

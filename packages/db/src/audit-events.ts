@@ -146,7 +146,6 @@ export async function readAuditEventBatch(
     tenantId: string;
     filter: AuditEventFilter;
     actionCodes: readonly string[];
-    /** The lower end of the window, fixed once per export (see below). */
     retainedFrom: Date;
     snapshotAt: Date;
     cursor: AuditEventBatchCursor | null;

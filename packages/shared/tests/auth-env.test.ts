@@ -51,10 +51,6 @@ describe("loadAuthEnv", () => {
   });
 
   it("rejects truthy-looking junk for the strict SMTP_SECURE boolean", () => {
-    // Regression (INT-AUTH-2): z.coerce.boolean() made the string "false"
-    // true, breaking TLS startup against Mailpit. Only the exact strings
-    // "true"/"false" (or a real boolean) parse; any other value fails
-    // validation instead of being truthiness-coerced.
     expect(loadAuthEnv({ ...REQUIRED, SMTP_SECURE: "false" }).SMTP_SECURE).toBe(
       false,
     );

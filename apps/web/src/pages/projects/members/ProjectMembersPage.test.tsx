@@ -996,7 +996,6 @@ describe("add member dialog", () => {
     await waitFor(() => {
       expect(candidatesMock).toHaveBeenCalledWith(A, P, "nap");
     });
-    // Typed one character at a time inside the debounce window: no per-key requests.
     expect(candidatesMock).not.toHaveBeenCalledWith(A, P, "n");
     await waitFor(() => {
       expect(within(dialog).queryByTestId("add-member-row-kitti")).toBeNull();

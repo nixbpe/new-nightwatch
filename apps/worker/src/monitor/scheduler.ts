@@ -26,7 +26,6 @@ const PARTITION_CHECK_INTERVAL_MS = 60 * 60_000;
 const PARTITIONED_TABLES = ["monitor_check_results", "monitor_check_hourly"];
 
 export type MonitorSchedulerOptions = {
-  /** Test seam; production uses the wall clock. */
   now?: () => Date;
   enqueueTimeoutMs?: number;
 };
@@ -160,7 +159,6 @@ export class MonitorScheduler {
       );
       return true;
     } catch {
-      // The lease expires and a later round claims the monitor again.
       this.logger.error(
         { monitorId: claim.monitorId, tenantId: claim.tenantId },
         "monitor check enqueue failed",

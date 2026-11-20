@@ -232,7 +232,6 @@ describe("DELETE /api/organizations/:organizationId/invitations/:publicId", () =
     expect(present).toEqual(
       await cancel("outsider", absentOrg, crypto.randomUUID()),
     );
-    // A member of A only is a non-member of B.
     expect(await cancel("ownerA", orgB, row.publicId)).toEqual(present);
     expect(await statusOf(row.publicId)).toBe("pending");
   });

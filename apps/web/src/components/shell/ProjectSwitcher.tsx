@@ -328,7 +328,6 @@ export function ProjectSwitcher({
   );
 }
 
-/** A system object like the organization mark: 4 px corner, solid Primary with On primary initials. */
 function ProjectMark({
   name,
   muted = false,

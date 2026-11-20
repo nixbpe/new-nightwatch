@@ -164,8 +164,6 @@ async function events(id: string) {
   return result.rows;
 }
 
-// Audit events of one monitor, oldest first (written in the mutation's
-// own transaction).
 const mutationLines = async (monitorId: string) =>
   (
     await ctx.owner.sql.query<{
@@ -340,7 +338,6 @@ describe("Create", () => {
     });
     expect(await count(limited)).toBe(20);
 
-    // The replay wins over the limit and writes nothing.
     const replay = await create(
       validConfig({ name: "different body" }),
       limited,

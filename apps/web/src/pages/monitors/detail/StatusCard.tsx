@@ -21,7 +21,6 @@ import { UptimeStripMockup } from "./MonitorDetailMockups";
 
 export const NO_DATA = "ยังไม่มีข้อมูล";
 
-/** One line under the pill that says why the state holds; the pill itself is the state. */
 export function statusLine(monitor: Monitor): ReactNode {
   const { health, healthReason, openIncident } = monitor;
   if (health === "down" && openIncident !== null) {

@@ -241,7 +241,6 @@ export class AuditExporter {
     );
   }
 
-  /** Reads batch by batch, each in its own short transaction, and builds the file in memory. */
   async #build(claim: AuditExportClaim, request: ExportRequest) {
     const generatedAt = this.#now();
     const startedAt = generatedAt.getTime();

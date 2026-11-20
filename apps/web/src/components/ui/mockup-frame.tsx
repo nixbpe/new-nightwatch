@@ -57,7 +57,6 @@ export function MockupFrame({
   testId,
 }: {
   testId?: string;
-  /** What the sample shows, e.g. "ความพร้อมใช้งาน 30 วัน". */
   label: string;
   issue: number;
   issueUrl?: string;

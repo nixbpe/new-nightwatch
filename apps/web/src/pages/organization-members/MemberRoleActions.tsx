@@ -128,7 +128,6 @@ export function useMemberRoleChange({
     ]);
     if (!isCurrentScope()) return;
     setConfirmation(null);
-    // A refetch, not the PATCH response, decides what the notice says.
     const refreshed = await refetchList();
     if (!isCurrentScope()) return;
     const persisted = refreshed.isError

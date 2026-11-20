@@ -78,7 +78,6 @@ test.beforeAll(async () => {
     userIds.push(people[key].userId);
     memberIds[key] = await addMember(pool, orgA, people[key].userId, "admin");
   }
-  // A Project admin who is only an Organization viewer, and a viewer outside the Project.
   for (const key of ["projectAdmin", "outsider"] as const) {
     people[key] = await createPerson(pool, key, orgA);
     userIds.push(people[key].userId);
@@ -123,8 +122,6 @@ const overview = () => monitorUrl(orgA, projA);
 const detail = () => `${overview()}/${monitorId}`;
 
 test.describe("monitor permissions by role and screen", () => {
-  // Write access is the Project admin's and the Organization Owner's and Admin's;
-  // the viewer and the auditor read as Project members, the Project admin is only a viewer of the Organization.
   for (const role of [
     "owner",
     "admin",
@@ -263,7 +260,6 @@ test.describe("monitor role changes across signed-in sessions", () => {
     const dialog = dialogPage.getByTestId("monitor-detail-delete-dialog");
     await expect(dialog).toBeVisible();
 
-    // Second session: the owner demotes the first user to viewer.
     const demotion = await ownerSession.request(
       "PATCH",
       `/api/organizations/${orgA}/members/${memberIds.demoted}/role`,
@@ -322,7 +318,6 @@ test.describe("monitor role changes across signed-in sessions", () => {
     expect(after.rows[0].paused).toBe(false);
     expect(probe.hits.length).toBe(hits);
 
-    // The user is then removed: Detail shows a denied state with no cached data.
     const removal = await ownerSession.request(
       "DELETE",
       `/api/organizations/${orgA}/members/${memberIds.demoted}`,
@@ -457,7 +452,6 @@ for (const theme of ["light", "dark"] as const) {
         page.getByTestId(`monitor-list-name-${monitorId}`),
       ).toHaveText(monitorName);
       await shot(page, `overview-${theme}`);
-      // The shared DataTable puts the label on the scroll region around the table.
       await expect(
         page
           .getByTestId("monitor-overview-table-region")

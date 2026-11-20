@@ -131,7 +131,6 @@ function meContext(
   };
 }
 
-// When set, the Project pages redirect there, as a route guard would.
 let membersRedirect: string | null = null;
 
 function Probe() {
@@ -153,7 +152,6 @@ function renderShell({
   projects?: ProjectSummary[];
   last?: string | null;
   lastFails?: boolean;
-  /** Adds Org B, whose only Project is Delta; Org A stays the active one. */
   secondOrgRole?: "owner" | "viewer";
   listGate?: Promise<void>;
 } = {}) {
@@ -459,7 +457,6 @@ describe("ProjectSwitcher", () => {
       selectedAt: string;
       settle: (outcome: "ok" | "fail", storedId?: string) => void;
     };
-    // Every save waits until the test settles it.
     function deferSaves(): Save[] {
       const saves: Save[] = [];
       rememberLastProjectMock.mockImplementation(
@@ -1005,7 +1002,6 @@ describe("ProjectSwitcher", () => {
     const listGate = new Promise<void>((resolve) => {
       openList = resolve;
     });
-    // The server hinted Bravo, which is gone by the time the list is read.
     renderShell({
       path: "/workspace",
       last: P_BRAVO,
@@ -1120,7 +1116,6 @@ describe("ProjectSwitcher", () => {
           "shell-nav-/organizations/:organizationId/projects/:projectId/members",
         ),
       ).toHaveAttribute("aria-current", "page");
-      // No request pairs Org A with Org B's Project, and the active Organization's last Project is not asked for.
       expect(rememberLastProjectMock).not.toHaveBeenCalledWith(ORG_A, P_OTHER);
       expect(fetchLastProjectMock).not.toHaveBeenCalled();
       expect(fetchProjectListMock).not.toHaveBeenCalledWith(ORG_A);

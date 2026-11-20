@@ -16,7 +16,6 @@ export type NavLeaf = {
 /** `monitors`: the current Project's monitor `summary.total`; `unread`: the inbox unread count. */
 export type NavCountSource = "monitors" | "unread";
 
-/** What a group's pages belong to: the current Project, the active organization or the signed-in user. */
 export type NavScope = "project" | "organization" | "personal";
 
 export type NavGroup = {
@@ -32,7 +31,6 @@ export function isNavGroup(item: NavItem): item is NavGroup {
 }
 
 // Leaves must be real routes in router.tsx; the mockup's placeholder sections are intentionally omitted.
-// The Project group lists only pages that exist under a Project; the switcher above it is not a leaf.
 export const NAV_ITEMS: NavItem[] = [
   {
     label: "โปรเจกต์",

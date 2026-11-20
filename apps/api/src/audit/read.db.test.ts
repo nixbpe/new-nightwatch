@@ -674,7 +674,6 @@ describe("actors (AC-26)", () => {
       },
       { userId: former, displayName: null, membership: "former" },
     ]);
-    // viewer and auditor members that never acted are not offered.
     expect(JSON.stringify(body)).not.toContain(org.users.viewer);
     expect(JSON.stringify(body)).not.toContain("@");
   });

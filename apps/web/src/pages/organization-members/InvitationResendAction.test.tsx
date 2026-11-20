@@ -60,7 +60,6 @@ function invitation(
   };
 }
 
-/** Serves `order` (1-based ids, listed order) sliced like the API. */
 function serve(order: number[], cooling: ReadonlySet<number> = new Set()) {
   fetchList.mockImplementation((organizationId, limit, offset) =>
     Promise.resolve({
@@ -227,7 +226,6 @@ describe("invitation resend", () => {
       screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
     ).toBeVisible();
 
-    // The server confirmed; the refetched first page has not arrived.
     const refreshed = Promise.withResolvers<PendingInvitationListResponse>();
     fetchList.mockReturnValueOnce(refreshed.promise);
     held.resolve(resent());
@@ -290,7 +288,6 @@ describe("invitation resend", () => {
       const order = range(60);
       serve(order);
       resendRequest.mockImplementation(() => {
-        // The resent row (55) now leads the list and is cooling down.
         order.splice(order.indexOf(55), 1);
         order.unshift(55);
         serve(order, new Set([55]));
@@ -665,7 +662,6 @@ describe("invitation resend", () => {
     expect(
       await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
     ).toHaveTextContent(emailOf(1));
-    // Resend first, then cancel, so the cancel notice is the current one.
     await openAndConfirm(user, 1);
     await screen.findByTestId("pending-invitations-resend-success");
     await user.click(screen.getByTestId(`invitation-cancel-${publicId(3)}`));

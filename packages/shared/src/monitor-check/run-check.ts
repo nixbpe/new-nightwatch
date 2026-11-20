@@ -92,7 +92,6 @@ function buildRequest(
     setAuth(auth.headerName, key);
   }
 
-  // GET and HEAD never carry a body.
   const sendsBody =
     config.body !== null && config.method !== "GET" && config.method !== "HEAD";
   if (

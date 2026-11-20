@@ -502,7 +502,6 @@ export type SecretContext = {
   get: (slot: string) => string;
 };
 
-/** Client validation with the contract schema: same paths and reasons the server reports. */
 export function validateValues(
   values: FormValues,
   secrets: SecretContext,
@@ -566,7 +565,6 @@ function unplacedMessage(
   return message;
 }
 
-/** Splits errors into those that have a control to sit beside and the rest (listed above the buttons). */
 export function placeErrors(
   errors: FieldErrors,
   values: FormValues,

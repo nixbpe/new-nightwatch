@@ -71,7 +71,6 @@ export function assertionReasonLabel(
   actualType: string | null = null,
 ): string | null {
   if (reason === null) return null;
-  // A wrong type is only useful with the type that came back.
   return reason === "type_mismatch" && actualType !== null
     ? `${ASSERTION_REASON_LABELS[reason]} (ค่าจริงเป็น ${actualType})`
     : ASSERTION_REASON_LABELS[reason];
@@ -128,7 +127,6 @@ export function authText(auth: Monitor["auth"]): string {
     : AUTH_LABELS[auth.type];
 }
 
-/** Cause line of a failed check or an incident start; null when the reason is unknown. */
 export function failureCauseText(
   reason: string | null,
   tlsReason: string | null = null,

@@ -5,7 +5,6 @@ import {
   sameAddress,
 } from "../../src/outbound-http/address-policy";
 
-// [range, first address, last address]
 const FORBIDDEN_V4: [string, string, string][] = [
   ["0.0.0.0/8", "0.0.0.0", "0.255.255.255"],
   ["10.0.0.0/8", "10.0.0.0", "10.255.255.255"],

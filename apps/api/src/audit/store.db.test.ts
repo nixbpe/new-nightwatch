@@ -40,8 +40,6 @@ async function dbNow(): Promise<Date> {
   return must(result.rows[0]).now;
 }
 
-/** Inserts through the runtime role with an explicit age, so the row lands in
- * whatever partition covers `now() - age`. */
 async function seedEvent(tenantId: string, age: string): Promise<string> {
   return withTenantContextRaw(database, tenantId, async (client) => {
     const result = await client.query<{ id: string }>(
@@ -109,7 +107,6 @@ describe("current audit partitions", () => {
     );
     expect(await partitionNames()).toEqual(before);
     expect(before.some((name) => name.includes("default"))).toBe(false);
-    // Four months past the horizon has no partition, so the insert fails loudly.
     await expect(seedEvent(tenantA, "-130 days")).rejects.toThrow(
       /no partition of relation "audit_events" found/,
     );
@@ -219,7 +216,6 @@ describe("tenant isolation and append-only grants", () => {
     expect(asA.rows.map((row) => row.id)).not.toContain(b);
     expect(asB.rows.map((row) => row.id)).toContain(b);
     expect(asB.rows.map((row) => row.id)).not.toContain(a);
-    // Asking for the other tenant's id by value still returns nothing.
     const probe = await withTenantContextRaw(database, tenantA, (client) =>
       client.query("select 1 from audit_events where id = $1", [b]),
     );

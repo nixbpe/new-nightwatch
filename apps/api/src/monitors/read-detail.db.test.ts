@@ -366,7 +366,6 @@ describe("Resume compares database times", () => {
 
   it("the first slot after Resume counts even when the Worker clock ran behind", async () => {
     const id = await resumedMonitor();
-    // Scheduled exactly at the Resume, checked_at 30 s in the past.
     await insertAt(id, "0 seconds", 30);
     expect((await detailOf(detail, id)).health).toBe("up");
   });
@@ -557,7 +556,6 @@ describe("uptime and coverage", () => {
       name: "aged 2h",
       createdAgoSeconds: 7200,
     });
-    // 24 passing 5-minute checks, ages 5 s to 6,905 s: 7,200 s covered of 7,200 s.
     await seedResults(ctx, detail.id, id, ageSeries(24, 300, 5));
     await rollupFromResults(ctx, id);
     const { uptime } = await detailOf(detail, id);
@@ -621,7 +619,6 @@ describe("uptime and coverage", () => {
         name,
         createdAgoSeconds: 60 * dayAgo,
       });
-      // One full hour of 12 passing checks for each of the last 10 days x 24 h.
       await seedHourly(ctx, detail.id, id, tenDays, {
         checks: 12,
         passed: 12,
@@ -646,7 +643,6 @@ describe("uptime and coverage", () => {
       await seedEvent(ctx, detail.id, id, "paused", 40 * dayAgo);
       await seedEvent(ctx, detail.id, id, "resumed", 10 * dayAgo);
       const { uptime } = await detailOf(detail, id);
-      // Expected 10 days = 864,000 s; covered 240 h x 3,600 s.
       expect(uptime.d30.coveragePercent).toBeCloseTo(100, 0);
       // The 7-day window also expects the current hour, which has no rollup
       // row yet, so it can read up to 1 h in 167 h (0.6 %) short.
@@ -705,7 +701,6 @@ describe("Check history", () => {
       },
     );
     id = monitorWriteResponseSchema.parse(created.json).monitor.id;
-    // 30 checks, 60 s apart, ages 60 s to 1,800 s; the newest carries a fail.
     await seedResults(ctx, history.id, id, ageSeries(30, 60, 60), {
       urlMasked: masked,
     });

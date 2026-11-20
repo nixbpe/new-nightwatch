@@ -345,7 +345,6 @@ describe("organization member HTTP mutations", () => {
         },
       });
     }
-    // Blocked native-path denials are audited with the actor too.
     expect(
       auditLines
         .map((line) => JSON.parse(line) as Record<string, unknown>)
@@ -880,7 +879,6 @@ describe("organization member role HTTP contract", () => {
     });
     expect(viewerExisting.status).toBe(403);
     expect(viewerMissing).toEqual(viewerExisting);
-    // An owner learns that a target is absent.
     const ownerAbsent = await ownerClient("PATCH", path(`absent-${run}`), {
       role: "viewer",
     });
@@ -1051,7 +1049,6 @@ describe("organization monitor alerts setting HTTP contract", () => {
         [memberIds[key], settingsOrganizationId, userIds.get(key), role],
       );
     }
-    // The audit event is written in the mutation's transaction.
     const alertAudits = async () =>
       (
         await owner.sql.query<{
@@ -1253,7 +1250,6 @@ describe("organization member revoke HTTP contract", () => {
       error: { code: "PERMISSION_DENIED" },
     });
     expect(adminAbsentTarget).toEqual(adminOwnerTarget);
-    // The owner learns that a target is absent, not a denial.
     const ownerAbsent = await ownerClient(
       "DELETE",
       `/api/organizations/${a}/members/${absentId}`,
@@ -1348,7 +1344,6 @@ describe("organization member revoke HTTP contract", () => {
       expect(JSON.stringify(body)).not.toContain(a);
       expect((await session("GET", "/api/auth/get-session")).status).toBe(200);
     }
-    // A missing Organization gets the same denial as the one the session left.
     const missingOrganization = await targetSession1(
       "DELETE",
       `/api/organizations/${crypto.randomUUID()}/members/${memberIds.revokeAdmin}`,
@@ -1387,7 +1382,6 @@ describe("organization member revoke HTTP contract", () => {
     ]) {
       expect(finalLogs).not.toContain(secret);
     }
-    // B remains selectable from the revoked user's session.
     expect(
       (
         await targetSession1("PATCH", "/api/me/active-org", {
@@ -1481,7 +1475,6 @@ describe("organization member self-leave HTTP contract", () => {
           },
         },
       });
-      // Account, B membership and session survive; A mirrors are cleared.
       expect(
         (
           await owner.sql.query<{ organization_id: string }>(
@@ -1540,7 +1533,6 @@ describe("organization member self-leave HTTP contract", () => {
       for (const value of sensitive) expect(logs).not.toContain(value);
     }
 
-    // Everyone else left; the remaining owner is now the last owner.
     const remaining = await owner.sql.query<{ role: string }>(
       "select role from member where organization_id = $1",
       [a],

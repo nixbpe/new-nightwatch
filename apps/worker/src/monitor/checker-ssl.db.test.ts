@@ -50,7 +50,6 @@ function deps(events: MonitorEvent[]): CheckerDependencies {
   };
 }
 
-/** One check with a fresh claim, as the scheduler would hand it out. */
 async function check(
   monitor: SeededMonitor,
   events: MonitorEvent[],
@@ -581,7 +580,6 @@ describe("SSL state of the last hop (AC-35)", () => {
     it("a renewal that cannot be verified never alerts for the old expiry (FCS-01)", async () => {
       const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
       const otherPki = createTestPki();
-      // Valid for 90 days but signed by a CA the Worker does not trust.
       const untrusted = await startTlsTarget(
         otherPki.issue(TARGET_HOST, { days: 90 }),
       );

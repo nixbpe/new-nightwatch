@@ -201,7 +201,6 @@ export function useAuditExport({
     return outcome;
   };
 
-  /** Returns the message to show in the row, or null. */
   const retryRow = async (
     record: AuditExportRecord,
   ): Promise<string | null> => {

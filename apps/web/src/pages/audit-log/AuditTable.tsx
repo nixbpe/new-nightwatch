@@ -33,9 +33,7 @@ export function AuditTable({
   organizationId: string;
   events: readonly AuditEventSummary[];
   preferences: Preferences;
-  /** The list's query string, handed to the detail page so its back link restores it. */
   search: string;
-  /** The snapshot on screen; the detail page hands it back so the list returns to the same rows. */
   snapshot: ListSnapshot;
   registerLink: (eventId: string, element: HTMLAnchorElement | null) => void;
 }) {

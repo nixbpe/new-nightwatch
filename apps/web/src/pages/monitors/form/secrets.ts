@@ -224,7 +224,6 @@ export function secretShape(entries: PlannedEntry[]): string {
 export const REPLACE_EMPTY_MESSAGE = "กรอกค่าใหม่ หรือกดยกเลิกการแทนที่";
 export const SECRET_EMPTY_MESSAGE = "กรอกค่าลับ";
 
-/** An issue of the secret entries, placed at the input of its slot. */
 export type SecretIssue = {
   path: string;
   /** The path the server would name for it, which picks the message. */
@@ -247,10 +246,6 @@ export function placeSecretPath(
   return entry === undefined || entry.path === "secrets" ? path : entry.path;
 }
 
-/**
- * Empty required slots and the entry rules of the contract (length, line
- * breaks, unusable characters) for the values typed so far.
- */
 export function secretIssues(
   values: FormValues,
   base: EditBase | null,

@@ -47,7 +47,6 @@ function invitation(
   };
 }
 
-/** Serves `total` rows `row-1@…` onward, `limit`/`offset` sliced like the API. */
 function serve(total: number, activeCount = total) {
   fetchList.mockImplementation((organizationId, limit, offset) => {
     const invitations = Array.from(
@@ -379,7 +378,6 @@ describe("PendingInvitationsSection", () => {
       screen.getByTestId(`pending-invitation-row-${publicId(101)}`),
     ).toHaveTextContent("row-101@example.test");
 
-    // Another session cancels rows: 60 remain, so offset 100 is past the end.
     serve(60);
     fetchList.mockImplementationOnce((organizationId, limit, offset) =>
       Promise.resolve({

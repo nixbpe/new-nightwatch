@@ -85,7 +85,6 @@ export function PendingInvitationsSection({
     if (createdSignal > 0) setOffset(0);
   }, [createdSignal]);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Keyed by publicId; DOM row/action hooks carry only the public identifier.
   const controls = useRef({
     cancel: new Map<string, HTMLElement>(),
     resend: new Map<string, HTMLElement>(),

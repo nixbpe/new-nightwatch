@@ -817,8 +817,7 @@ describe("Pagination threshold of the feed and the incidents", () => {
     feedMock.mockImplementation((_org, _project, _monitor, page) =>
       Promise.resolve(
         page.offset === 20
-          ? // The rows beyond the first page went away while the reader was on page 2.
-            { events: [], page: { limit: 20, offset: 20, total: 15 } }
+          ? { events: [], page: { limit: 20, offset: 20, total: 15 } }
           : page.offset === 0 && shrunk
             ? feed(eventRows(15), 15)
             : feed(eventRows(20), 45),

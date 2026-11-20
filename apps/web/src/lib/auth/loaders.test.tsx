@@ -293,7 +293,6 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
       "/settings/security?tab=sessions#current",
     );
 
-    // Consumed: a later arrival falls back to the workspace instead of replaying the stale return.
     first.unmount();
     renderAt([anonOnly], "/anon-only");
     expect(await screen.findByTestId("location")).toHaveTextContent(

@@ -58,7 +58,6 @@ function invalid(fields: { field: string; reason: MonitorInvalidReason }[]) {
 }
 
 /**
- * Checks the entries against the saved config and the stored slots.
  * `save` enforces the required rule; `test` leaves a missing slot to the
  * executor, which reports it as a check error.
  */
@@ -81,7 +80,6 @@ export function planSecrets(input: {
       `secrets.${String(index)}${part === undefined ? "" : `.${part}`}`;
     const required = needed.has(slot);
     if (entry.action === "delete") {
-      // Deleting what the config still needs would leave a required slot empty.
       if (required) fields.push({ field: at("slot"), reason: "required" });
       return;
     }
