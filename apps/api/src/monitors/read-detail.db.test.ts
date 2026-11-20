@@ -400,6 +400,14 @@ describe("SSL level in Detail", () => {
       host: "ssl.example",
     });
     expect(view.ssl.notAfter).not.toBeNull();
+    const notAfter: unknown = expect.any(String);
+    expect((await listItem(detail, id)).ssl).toEqual({
+      level,
+      daysRemaining: days,
+      host: "ssl.example",
+      issuer: null,
+      notAfter,
+    });
   });
 });
 
@@ -419,6 +427,14 @@ describe("SSL state recorded by the checker", () => {
       daysRemaining: null,
       host: "ssl.example",
     });
+    const notAfter: unknown = expect.any(String);
+    expect((await listItem(detail, id)).ssl).toEqual({
+      level: "unreadable",
+      daysRemaining: null,
+      host: "ssl.example",
+      issuer: null,
+      notAfter,
+    });
   });
 
   it("reports an expired handshake without a date as expired with no days", async () => {
@@ -434,6 +450,13 @@ describe("SSL state recorded by the checker", () => {
       reason: "expired",
       notAfter: null,
       daysRemaining: null,
+    });
+    expect((await listItem(detail, id)).ssl).toEqual({
+      level: "expired",
+      daysRemaining: null,
+      host: "ssl.example",
+      issuer: null,
+      notAfter: null,
     });
   });
 });
@@ -513,6 +536,11 @@ describe("Detail view", () => {
       checks: 0,
       coveragePercent: 0,
     });
+    expect((await listItem(detail, id)).uptime.h24).toEqual({
+      percent: null,
+      checks: 0,
+      coveragePercent: 0,
+    });
   });
 
   it("every role sees alerts in Detail; the List item has no alerts field", async () => {
@@ -564,6 +592,12 @@ describe("uptime and coverage", () => {
       expect(window.checks).toBe(24);
       expect(window.coveragePercent).toBeCloseTo(100, 0);
     }
+    const item = await listItem(detail, id);
+    expect(item.uptime.h24.percent).toBe(100);
+    expect(item.uptime.h24.checks).toBe(24);
+    expect(item.uptime.h24.coveragePercent).toBeCloseTo(100, 0);
+    expect(item.uptime.d30.checks).toBe(24);
+    expect(item.uptime.d30.coveragePercent).toBeCloseTo(100, 0);
   });
 
   it("does not expect the time of a 1 h pause, and ignores check_error", async () => {

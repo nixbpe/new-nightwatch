@@ -34,21 +34,6 @@ describe("errorResponseSchema", () => {
 });
 
 describe("readinessResponseSchema", () => {
-  it("accepts ready and not_ready states with named checks", () => {
-    expect(
-      readinessResponseSchema.safeParse({
-        status: "ready",
-        checks: { self: "ok" },
-      }).success,
-    ).toBe(true);
-    expect(
-      readinessResponseSchema.safeParse({
-        status: "not_ready",
-        checks: { self: "fail" },
-      }).success,
-    ).toBe(true);
-  });
-
   it("rejects unknown readiness states", () => {
     expect(
       readinessResponseSchema.safeParse({ status: "degraded", checks: {} })

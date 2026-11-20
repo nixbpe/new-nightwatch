@@ -481,26 +481,6 @@ describe("Edit", () => {
     });
   });
 
-  it("shows the conflict message and keeps the typed values on a version conflict", async () => {
-    fetchDetailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
-    updateMock.mockRejectedValue(
-      new ApiError("MONITOR_VERSION_CONFLICT", "conflict", 409, {
-        currentVersion: 5,
-      }),
-    );
-    const user = userEvent.setup();
-    renderForm(editPath());
-    const name = await waitFor(expectSavedFormName);
-    await user.type(name, " mine");
-    await user.click(screen.getByTestId("monitor-form-save"));
-    expect(
-      await screen.findByTestId("monitor-form-conflict"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("monitor-form-name")).toHaveValue(
-      "Payments API mine",
-    );
-  });
-
   it("reloads the latest values on request after a conflict", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
     updateMock.mockRejectedValue(
@@ -514,6 +494,9 @@ describe("Edit", () => {
     await user.type(name, " mine");
     await user.click(screen.getByTestId("monitor-form-save"));
     await screen.findByTestId("monitor-form-conflict");
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue(
+      "Payments API mine",
+    );
     fetchDetailMock.mockResolvedValue({
       monitor: detail({ name: "Theirs", version: 5 }),
     });

@@ -495,21 +495,13 @@ describe("Checks history offset drift", () => {
     renderChecks();
     await user.click(await loadMoreButton());
     expect(await waitCount([1, 95, 125])).toBeInTheDocument();
+    expect(announcementNumbers()).toEqual([45, 51, 95, 125]);
     const rows = historyRows();
     expect(rows).toHaveLength(95);
     const times = rows.map((row) =>
       within(row).getByTestId("monitor-check-time").getAttribute("dateTime"),
     );
     expect(times).toEqual(span(0, 95).map(scheduled));
-  });
-
-  it("announces the added rows from the shown count, not from the chunk size", async () => {
-    shifted();
-    const user = userEvent.setup();
-    renderChecks();
-    await user.click(await loadMoreButton());
-    await waitCount([1, 95, 125]);
-    expect(announcementNumbers()).toEqual([45, 51, 95, 125]);
   });
 
   it("shows no result newer than the first chunk when more of them arrived than rows are loaded, and skips none of the older ones", async () => {

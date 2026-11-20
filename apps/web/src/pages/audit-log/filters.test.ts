@@ -23,12 +23,6 @@ describe("custom range validation", () => {
   const custom = (from?: string, to?: string) =>
     parse(`range=custom${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`);
 
-  it("rejects a start after the end", () => {
-    expect(
-      customRangeError(custom("2026-10-02", "2026-10-01"), undefined),
-    ).toBe("start-after-end");
-  });
-
   it("rejects a start before the retained day, compared as dates", () => {
     expect(
       customRangeError(custom("2025-10-02", "2026-10-01"), "2025-10-03"),

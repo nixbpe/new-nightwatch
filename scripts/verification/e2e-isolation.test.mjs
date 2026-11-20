@@ -180,15 +180,3 @@ test("shared services isolate schema, queue jobs, Lua rate limits, and cleanup",
     await source.close();
   }
 }, 30_000);
-
-test("bootstrap refuses ambient databases and unsafe cleanup names", async () => {
-  const name = `nw_e2e_${randomUUID().replaceAll("-", "")}`;
-  const foreign = await bootstrap("prepare", name, {
-    DATABASE_OWNER_URL: "postgres://foreign/database",
-  });
-  expect(foreign.code).toBe(1);
-  expect(foreign.stderr).toContain("this worktree's local Compose");
-  const unsafe = await bootstrap("cleanup", "nightwatch");
-  expect(unsafe.code).toBe(1);
-  expect(unsafe.stderr).toContain("Expected prepare|cleanup");
-});

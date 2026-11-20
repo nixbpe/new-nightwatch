@@ -962,6 +962,11 @@ describe("Last response panel", () => {
     ).toHaveTextContent(/\S/);
     const body = within(section).getByTestId("monitor-response-body");
     expect(body.tagName).toBe("PRE");
+    expect(body).toHaveAttribute("role", "region");
+    expect(body).toHaveAttribute("tabindex", "0");
+    expect(body).toHaveAccessibleName(/\S/);
+    body.focus();
+    expect(body).toHaveFocus();
     expect(body).toHaveTextContent(/^\{"ok":true\}$/);
     expect(
       within(section).getByTestId("monitor-response-target-disclosure"),
@@ -1112,21 +1117,6 @@ describe("Last response panel", () => {
         "monitor-response-body-omitted",
       ),
     ).toHaveAttribute("data-reason", "undecodable");
-  });
-
-  it("makes the body keyboard-focusable with an accessible name", async () => {
-    lastResponseMock.mockResolvedValue({ response: fullResponse });
-    renderDetail();
-    const body = await within(await lastResponseSection()).findByTestId(
-      "monitor-response-body",
-    );
-    expect(body.tagName).toBe("PRE");
-    expect(body).toHaveAttribute("role", "region");
-    expect(body).toHaveAttribute("tabindex", "0");
-    expect(body).toHaveAccessibleName(/\S/);
-    expect(body).toHaveTextContent(/^\{"ok":true\}$/);
-    body.focus();
-    expect(body).toHaveFocus();
   });
 
   it("renders target text as text, never as markup", async () => {

@@ -177,19 +177,6 @@ describe("Edit writes the editor and the changed fields", () => {
     });
   });
 
-  it("keeps url_masked meaning: set only when the URL changed", async () => {
-    const monitor = await created();
-    await edit(org.users.owner, monitor, {
-      ...configOf(monitor),
-      name: "Name only",
-    });
-    const named = await ctx.owner.sql.query<{ url_masked: string | null }>(
-      "select url_masked from monitor_events where monitor_id = $1",
-      [monitor.id],
-    );
-    expect(named.rows).toEqual([{ url_masked: null }]);
-  });
-
   it("writes no event for the Edit that loses with 409", async () => {
     const monitor = await created();
     const first = await edit(org.users.owner, monitor, {

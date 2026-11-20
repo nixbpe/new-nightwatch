@@ -243,15 +243,9 @@ describe("AuditLogPage table", () => {
     expect(screen.getByTestId("audit-list-loading-status")).toBeInTheDocument();
     expect(screen.queryByTestId("audit-total")).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\b0\b/);
-    pending.resolve(makeList([makeEvent(0)]));
+    pending.resolve(makeList([makeEvent(0)], 1234));
     await screen.findByTestId("audit-events-table");
     expect(listMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("announces the count in one status region", async () => {
-    listMock.mockResolvedValue(makeList([makeEvent(0)], 1234));
-    open();
-    await screen.findByTestId("audit-events-table");
     expect(screen.getByTestId("audit-list-count-status")).toHaveAttribute(
       "role",
       "status",
@@ -394,6 +388,7 @@ describe("AuditLogPage paging and filters", () => {
 
 describe("AuditLogPage custom range", () => {
   it("shows an error beside the field, keeps the values and sends no request for a reversed range", async () => {
+    const user = userEvent.setup();
     open("?range=custom&from=2026-10-02&to=2026-10-01");
     expect(
       await screen.findByTestId("audit-filter-range-error"),
@@ -409,12 +404,7 @@ describe("AuditLogPage custom range", () => {
     expect(screen.getByTestId("audit-filter-from")).toHaveValue("2026-10-02");
     expect(screen.getByTestId("audit-filter-to")).toHaveValue("2026-10-01");
     expect(listMock).not.toHaveBeenCalled();
-  });
-
-  it("does not refetch on รีเฟรช while the range is invalid, and points the button at the error", async () => {
-    const user = userEvent.setup();
-    open("?range=custom&from=2026-10-02&to=2026-10-01");
-    const error = await screen.findByTestId("audit-filter-range-error");
+    const error = screen.getByTestId("audit-filter-range-error");
     const refresh = screen.getByTestId("audit-refresh");
     expect(refresh).toHaveAttribute("aria-disabled", "true");
     expect(refresh).toHaveAttribute("aria-describedby", error.id);

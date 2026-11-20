@@ -167,6 +167,7 @@ describe("POST exports", () => {
     );
     expect(first.status).toBe(201);
     const record = asCreate(first).export;
+    expect(await counts(org.id)).toEqual({ exports: 1, jobs: 1, events: 1 });
     expect(record).toMatchObject({
       format: "csv",
       status: "generating",
@@ -641,19 +642,6 @@ describe("POST exports from a client that has left (cancellation)", () => {
       [late],
     );
     expect(state.rows[0]?.state).toBe("queued");
-  });
-
-  it("still commits when the signal is not aborted", async () => {
-    const org = await organization("auditexp-no-cancel");
-    await seedEvents(org.id, org.users.owner);
-    const created = await createAuditExport(
-      ctx.runtime,
-      { organizationId: org.id, actorUserId: org.users.owner },
-      request(),
-      new AbortController().signal,
-    );
-    expect(created.export.status).toBe("generating");
-    expect(await counts(org.id)).toEqual({ exports: 1, jobs: 1, events: 1 });
   });
 });
 

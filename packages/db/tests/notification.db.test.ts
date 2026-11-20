@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { sql } from "drizzle-orm";
-import { Client } from "pg";
+import { Client, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -76,22 +76,34 @@ afterAll(async () => {
   await database.close();
 }, 60_000);
 
+async function createAccountIntent(origin: string) {
+  const input = {
+    id: randomUUID(),
+    dispatchId: randomUUID(),
+    userId: accountA,
+    origin: `${origin}:${run}`,
+    eventType: "PASSWORD_CHANGED" as const,
+    occurredAt: new Date(),
+  };
+  await withAccountContext(database, accountA, (tx) =>
+    insertAccountNotificationIntent(tx, input),
+  );
+  return { intentId: input.id, dispatchId: input.dispatchId };
+}
+
+async function setClaim(dispatchId: string, claimToken: string) {
+  await owner.query(
+    `update notification_dispatch_ledger
+     set status = 'claimed', claim_token = $1, claimed_at = now()
+     where id = $2`,
+    [claimToken, dispatchId],
+  );
+}
+
 describe("notification database scopes", () => {
   it("enforces account context and exposes only bounded ledger claims", async () => {
-    const intentId = randomUUID();
-    const dispatchId = randomUUID();
-    const occurredAt = new Date();
-
-    await withAccountContext(database, accountA, async (tx) => {
-      await insertAccountNotificationIntent(tx, {
-        id: intentId,
-        dispatchId,
-        userId: accountA,
-        origin: `password-change:${run}`,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt,
-      });
-    });
+    const { intentId, dispatchId } =
+      await createAccountIntent("password-change");
 
     const expiry = await owner.query<{ correct: boolean }>(
       `select expires_at = occurred_at + interval '30 days' as correct
@@ -126,12 +138,7 @@ describe("notification database scopes", () => {
     ).rejects.toThrow("claim limit must be an integer between 1 and 100");
 
     const claimToken = randomUUID();
-    await owner.query(
-      `update notification_dispatch_ledger
-       set status = 'claimed', claim_token = $1, claimed_at = now()
-       where id = $2`,
-      [claimToken, dispatchId],
-    );
+    await setClaim(dispatchId, claimToken);
     await expect(
       markNotificationDispatchEnqueued(database, {
         id: dispatchId,
@@ -218,18 +225,7 @@ describe("notification database scopes", () => {
   });
 
   it("requeues a stale runtime claim so it can be claimed again", async () => {
-    const intentId = randomUUID();
-    const dispatchId = randomUUID();
-    await withAccountContext(database, accountA, async (tx) => {
-      await insertAccountNotificationIntent(tx, {
-        id: intentId,
-        dispatchId,
-        userId: accountA,
-        origin: `requeue:${run}`,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: new Date(),
-      });
-    });
+    const { intentId, dispatchId } = await createAccountIntent("requeue");
     await owner.query(
       `update notification_dispatch_ledger
        set created_at = '2000-01-01T00:00:00.000Z'
@@ -283,26 +279,10 @@ describe("notification database scopes", () => {
   });
 
   it("records safe dispatch failure reasons and clears them when recovered", async () => {
-    const intentId = randomUUID();
-    const dispatchId = randomUUID();
-    await withAccountContext(database, accountA, async (tx) => {
-      await insertAccountNotificationIntent(tx, {
-        id: intentId,
-        dispatchId,
-        userId: accountA,
-        origin: `failure-summary:${run}`,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: new Date(),
-      });
-    });
+    const { dispatchId } = await createAccountIntent("failure-summary");
 
     const firstToken = randomUUID();
-    await owner.query(
-      `update notification_dispatch_ledger
-       set status = 'claimed', claim_token = $1, claimed_at = now()
-       where id = $2`,
-      [firstToken, dispatchId],
-    );
+    await setClaim(dispatchId, firstToken);
     await expect(
       failNotificationDispatch(database, {
         id: dispatchId,
@@ -382,24 +362,11 @@ describe("notification database scopes", () => {
       "MATERIALIZATION_EXHAUSTED",
       "INVALID_SCOPE",
     ] as const) {
-      const dispatchId = randomUUID();
-      await withAccountContext(database, accountA, async (tx) => {
-        await insertAccountNotificationIntent(tx, {
-          id: randomUUID(),
-          dispatchId,
-          userId: accountA,
-          origin: `terminal-failure:${reason}:${run}`,
-          eventType: "PASSWORD_CHANGED",
-          occurredAt: new Date(),
-        });
-      });
-      const token = randomUUID();
-      await owner.query(
-        `update notification_dispatch_ledger
-         set status = 'claimed', claim_token = $1, claimed_at = now()
-         where id = $2`,
-        [token, dispatchId],
+      const { dispatchId } = await createAccountIntent(
+        `terminal-failure:${reason}`,
       );
+      const token = randomUUID();
+      await setClaim(dispatchId, token);
       // Only acknowledged work can be exhausted by materialization.
       if (reason === "MATERIALIZATION_EXHAUSTED") {
         await expect(
@@ -437,17 +404,7 @@ describe("notification database scopes", () => {
   });
 
   it("leaves pre-acknowledgement exhaustion for stale-claim recovery", async () => {
-    const dispatchId = randomUUID();
-    await withAccountContext(database, accountA, async (tx) => {
-      await insertAccountNotificationIntent(tx, {
-        id: randomUUID(),
-        dispatchId,
-        userId: accountA,
-        origin: `pre-ack-exhausted:${run}`,
-        eventType: "PASSWORD_CHANGED",
-        occurredAt: new Date(),
-      });
-    });
+    const { dispatchId } = await createAccountIntent("pre-ack-exhausted");
     const token = randomUUID();
     await owner.query(
       `update notification_dispatch_ledger
@@ -579,6 +536,17 @@ describe("notification database scopes", () => {
       tenantIntentId,
       pendingTenantIntentId,
     ];
+    async function expectHiddenDispatches(
+      client: PoolClient,
+      intentIds = allIntentIds,
+    ) {
+      const result = await client.query<{ intent_id: string }>(
+        `select intent_id from notification_dispatch_ledger
+         where intent_id = any($1::text[])`,
+        [intentIds],
+      );
+      expect(result.rows).toEqual([]);
+    }
     const noContext = await database.sql.query<{ intent_id: string }>(
       `select intent_id from notification_dispatch_ledger
        where intent_id = any($1::text[])`,
@@ -587,12 +555,7 @@ describe("notification database scopes", () => {
     expect(noContext.rows).toEqual([]);
 
     await withAccountContextRaw(database, accountA, async (client) => {
-      const beforeComplete = await client.query<{ intent_id: string }>(
-        `select intent_id from notification_dispatch_ledger
-         where intent_id = any($1::text[])`,
-        [allIntentIds],
-      );
-      expect(beforeComplete.rows).toEqual([]);
+      await expectHiddenDispatches(client);
       await expect(
         client.query(
           `select id, claim_token, attempt_count, failure_reason, failure_summary
@@ -604,12 +567,7 @@ describe("notification database scopes", () => {
     });
 
     const claimToken = randomUUID();
-    await owner.query(
-      `update notification_dispatch_ledger
-       set status = 'claimed', claim_token = $1, claimed_at = now()
-       where id = $2`,
-      [claimToken, accountDispatchId],
-    );
+    await setClaim(accountDispatchId, claimToken);
     await expect(
       resolveNotificationDispatchClaim(database, {
         id: accountDispatchId,
@@ -622,12 +580,7 @@ describe("notification database scopes", () => {
       userId: accountA,
     });
     await withAccountContextRaw(database, accountA, async (client) => {
-      const claimed = await client.query<{ intent_id: string }>(
-        `select intent_id from notification_dispatch_ledger
-         where intent_id = $1`,
-        [accountIntentId],
-      );
-      expect(claimed.rows).toEqual([]);
+      await expectHiddenDispatches(client, [accountIntentId]);
     });
 
     await expect(
@@ -637,12 +590,7 @@ describe("notification database scopes", () => {
       }),
     ).resolves.toBe(true);
     await withAccountContextRaw(database, accountA, async (client) => {
-      const enqueued = await client.query<{ intent_id: string }>(
-        `select intent_id from notification_dispatch_ledger
-         where intent_id = $1`,
-        [accountIntentId],
-      );
-      expect(enqueued.rows).toEqual([]);
+      await expectHiddenDispatches(client, [accountIntentId]);
     });
 
     await expect(
@@ -663,12 +611,7 @@ describe("notification database scopes", () => {
       ]);
     });
     await withAccountContextRaw(database, accountB, async (client) => {
-      const crossAccount = await client.query<{ intent_id: string }>(
-        `select intent_id from notification_dispatch_ledger
-         where intent_id = any($1::text[])`,
-        [allIntentIds],
-      );
-      expect(crossAccount.rows).toEqual([]);
+      await expectHiddenDispatches(client);
     });
     await withTenantContextRaw(database, tenantA, async (client) => {
       const visible = await client.query<{ intent_id: string; status: string }>(
@@ -681,12 +624,7 @@ describe("notification database scopes", () => {
       ]);
     });
     await withTenantContextRaw(database, tenantB, async (client) => {
-      const crossTenant = await client.query<{ intent_id: string }>(
-        `select intent_id from notification_dispatch_ledger
-         where intent_id = any($1::text[])`,
-        [allIntentIds],
-      );
-      expect(crossTenant.rows).toEqual([]);
+      await expectHiddenDispatches(client);
     });
   });
 });
@@ -911,56 +849,30 @@ describe("notification dispatch function security", () => {
         ],
       ],
     );
-    expect(functions.rows).toEqual([
-      {
-        function_name: "claim_notification_dispatches",
-        owner: "nightwatch_notification_ledger_owner",
+    const ledgerOwner = "nightwatch_notification_ledger_owner";
+    expect(functions.rows).toEqual(
+      [
+        ["claim_notification_dispatches", ledgerOwner],
+        ["complete_notification_dispatch", ledgerOwner],
+        [
+          "create_notification_dispatch",
+          "nightwatch_notification_dispatch_origin_owner",
+        ],
+        ["fail_notification_dispatch", ledgerOwner],
+        ["mark_notification_dispatch_enqueued", ledgerOwner],
+        [
+          "purge_expired_notification_inbox_items",
+          "nightwatch_notification_expiry_purge_owner",
+        ],
+        ["requeue_stale_notification_dispatches", ledgerOwner],
+        ["resolve_notification_dispatch_claim", ledgerOwner],
+      ].map(([function_name, owner]) => ({
+        function_name,
+        owner,
         public_execute: false,
         runtime_execute: true,
-      },
-      {
-        function_name: "complete_notification_dispatch",
-        owner: "nightwatch_notification_ledger_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "create_notification_dispatch",
-        owner: "nightwatch_notification_dispatch_origin_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "fail_notification_dispatch",
-        owner: "nightwatch_notification_ledger_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "mark_notification_dispatch_enqueued",
-        owner: "nightwatch_notification_ledger_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "purge_expired_notification_inbox_items",
-        owner: "nightwatch_notification_expiry_purge_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "requeue_stale_notification_dispatches",
-        owner: "nightwatch_notification_ledger_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-      {
-        function_name: "resolve_notification_dispatch_claim",
-        owner: "nightwatch_notification_ledger_owner",
-        public_execute: false,
-        runtime_execute: true,
-      },
-    ]);
+      })),
+    );
 
     const roles = await owner.query<{
       rolname: string;
@@ -982,32 +894,20 @@ describe("notification dispatch function security", () => {
         ],
       ],
     );
-    expect(roles.rows).toEqual([
-      {
-        rolname: "nightwatch_notification_dispatch_origin_owner",
+    expect(roles.rows).toEqual(
+      [
+        "nightwatch_notification_dispatch_origin_owner",
+        "nightwatch_notification_expiry_purge_owner",
+        "nightwatch_notification_ledger_owner",
+      ].map((rolname) => ({
+        rolname,
         rolcanlogin: false,
         rolsuper: false,
         rolbypassrls: false,
         rolcreaterole: false,
         rolcreatedb: false,
-      },
-      {
-        rolname: "nightwatch_notification_expiry_purge_owner",
-        rolcanlogin: false,
-        rolsuper: false,
-        rolbypassrls: false,
-        rolcreaterole: false,
-        rolcreatedb: false,
-      },
-      {
-        rolname: "nightwatch_notification_ledger_owner",
-        rolcanlogin: false,
-        rolsuper: false,
-        rolbypassrls: false,
-        rolcreaterole: false,
-        rolcreatedb: false,
-      },
-    ]);
+      })),
+    );
 
     const privileges = await owner.query<{
       role_name: string;
@@ -1036,35 +936,34 @@ describe("notification dispatch function security", () => {
         ],
       ],
     );
-    expect(privileges.rows).toEqual([
-      {
-        role_name: "nightwatch_notification_dispatch_origin_owner",
-        ledger_select: true,
-        ledger_update: false,
-        intents_select: true,
-        inbox_select: false,
-        inbox_update: false,
-        inbox_delete: false,
-      },
-      {
-        role_name: "nightwatch_notification_expiry_purge_owner",
+    expect(privileges.rows).toEqual(
+      [
+        {
+          role_name: "nightwatch_notification_dispatch_origin_owner",
+          ledger_select: true,
+          intents_select: true,
+        },
+        {
+          role_name: "nightwatch_notification_expiry_purge_owner",
+          inbox_select: true,
+          inbox_update: true,
+          inbox_delete: true,
+        },
+        {
+          role_name: "nightwatch_notification_ledger_owner",
+          ledger_select: true,
+          ledger_update: true,
+        },
+      ].map((grants) => ({
         ledger_select: false,
         ledger_update: false,
         intents_select: false,
-        inbox_select: true,
-        inbox_update: true,
-        inbox_delete: true,
-      },
-      {
-        role_name: "nightwatch_notification_ledger_owner",
-        ledger_select: true,
-        ledger_update: true,
-        intents_select: false,
         inbox_select: false,
         inbox_update: false,
         inbox_delete: false,
-      },
-    ]);
+        ...grants,
+      })),
+    );
 
     const rls = await owner.query<{
       relname: string;
@@ -1083,23 +982,17 @@ describe("notification dispatch function security", () => {
         ],
       ],
     );
-    expect(rls.rows).toEqual([
-      {
-        relname: "notification_dispatch_ledger",
+    expect(rls.rows).toEqual(
+      [
+        "notification_dispatch_ledger",
+        "notification_inbox_items",
+        "notification_intents",
+      ].map((relname) => ({
+        relname,
         relrowsecurity: true,
         relforcerowsecurity: true,
-      },
-      {
-        relname: "notification_inbox_items",
-        relrowsecurity: true,
-        relforcerowsecurity: true,
-      },
-      {
-        relname: "notification_intents",
-        relrowsecurity: true,
-        relforcerowsecurity: true,
-      },
-    ]);
+      })),
+    );
 
     await owner.query(
       `insert into notification_intents

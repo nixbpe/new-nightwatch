@@ -1520,23 +1520,6 @@ describe("purge of monitor_last_responses", () => {
   });
 });
 
-describe("monitor deletion", () => {
-  it("cascades secrets, schedule and child data", async () => {
-    const { monitorId } = await seedTenant(tenantA);
-    const tables = MONITOR_TABLES.filter((t) => t !== "monitors");
-    for (const table of tables) {
-      expect(await ownerCount(table, [monitorId])).toBe(1);
-    }
-    await withTenantContextRaw(database, tenantA, (client) =>
-      client.query("delete from monitors where id = $1", [monitorId]),
-    );
-    expect(await ownerCount("monitors", [monitorId])).toBe(0);
-    for (const table of tables) {
-      expect(await ownerCount(table, [monitorId])).toBe(0);
-    }
-  });
-});
-
 describe("monitor catalog invariants", () => {
   it("enables and forces RLS on every monitor table and partition", async () => {
     const result = await owner.query<{

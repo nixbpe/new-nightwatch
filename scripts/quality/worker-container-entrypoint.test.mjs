@@ -41,17 +41,6 @@ const unsetMessage =
 const refusedMessage =
   "nightwatch-worker: NODE_ENV must be production; refusing to start.\n";
 
-test("worker-entrypoint imports the production bundle in the launcher PID", async () => {
-  const result = await launch("production");
-  expect(result.code).toBe(0);
-  expect(result.stderr).toBe("");
-  expect(JSON.parse(result.stdout)).toEqual({
-    initialized: true,
-    pid: result.pid,
-    nodeEnv: "production",
-  });
-});
-
 test.each([
   [undefined, unsetMessage],
   ["", unsetMessage],
@@ -71,7 +60,11 @@ test("worker-entrypoint ignores command arguments instead of dispatching them", 
   const result = await launch("production", ["-e", "process.exit(99)"]);
   expect(result.code).toBe(0);
   expect(result.stderr).toBe("");
-  expect(JSON.parse(result.stdout).initialized).toBe(true);
+  expect(JSON.parse(result.stdout)).toEqual({
+    initialized: true,
+    pid: result.pid,
+    nodeEnv: "production",
+  });
 });
 
 test("worker-entrypoint refuses a runtime development-flavor environment bypass", async () => {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   isMemberUniquenessRace,
-  translateMemberUniquenessRace,
   withMemberRaceTranslation,
 } from "./member-race";
 
@@ -22,15 +21,6 @@ function drizzleWrapped(cause: unknown): Error & { cause: unknown } {
   };
   wrapped.cause = cause;
   return wrapped;
-}
-
-function captureThrow(fn: () => unknown): unknown {
-  try {
-    fn();
-  } catch (error) {
-    return error;
-  }
-  throw new Error("expected the call to throw");
 }
 
 describe("isMemberUniquenessRace", () => {
@@ -57,34 +47,6 @@ describe("isMemberUniquenessRace", () => {
     expect(isMemberUniquenessRace(new Error("connection refused"))).toBe(false);
     expect(isMemberUniquenessRace(null)).toBe(false);
     expect(isMemberUniquenessRace("23505")).toBe(false);
-  });
-});
-
-describe("translateMemberUniquenessRace", () => {
-  it("remaps the proven race to the native 400 denial", () => {
-    const caught = captureThrow(() =>
-      translateMemberUniquenessRace(drizzleWrapped(RACE_ERROR)),
-    );
-    expect(caught).toMatchObject({
-      name: "APIError",
-      statusCode: 400,
-      body: { message: "Invitation not found" },
-    });
-  });
-
-  it("rethrows every other error unchanged, including other 23505s", () => {
-    const otherConstraint = {
-      ...RACE_ERROR,
-      constraint: "user_email_lower_key",
-    };
-    const wrappedOther = drizzleWrapped(otherConstraint);
-    expect(
-      captureThrow(() => translateMemberUniquenessRace(wrappedOther)),
-    ).toBe(wrappedOther);
-    const plain = new Error("connection refused");
-    expect(captureThrow(() => translateMemberUniquenessRace(plain))).toBe(
-      plain,
-    );
   });
 });
 
@@ -129,6 +91,14 @@ describe("withMemberRaceTranslation", () => {
       fakeAdapter({ create: () => Promise.reject(failure) }),
     );
     await expect(wrapped.create()).rejects.toBe(failure);
+    const otherConstraint = drizzleWrapped({
+      ...RACE_ERROR,
+      constraint: "user_email_lower_key",
+    });
+    const other = wrapWith(
+      fakeAdapter({ create: () => Promise.reject(otherConstraint) }),
+    );
+    await expect(other.create()).rejects.toBe(otherConstraint);
   });
 
   it("translates the race on transaction-scoped adapters too", async () => {

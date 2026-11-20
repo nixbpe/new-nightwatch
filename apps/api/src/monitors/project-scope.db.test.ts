@@ -354,6 +354,7 @@ describe("permissions follow the Project role (AC-03)", () => {
     const { monitor } = monitorWriteResponseSchema.parse(created.json);
     const at = (suffix: string) =>
       monitorsPath(org.id, `/${monitor.id}${suffix}`, adminProject);
+    expect((await ctx.call(projectAdmin, "GET", at(""))).status).toBe(200);
     expect((await ctx.call(projectAdmin, "POST", at("/pause"))).status).toBe(
       200,
     );

@@ -933,6 +933,7 @@ describe("ProjectSwitcher", () => {
       );
     });
     expect(rememberLastProjectMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
   });
 
   it("AC-06: a failed save is silent and the switch still happens", async () => {
@@ -1232,15 +1233,6 @@ describe("ProjectSwitcher", () => {
       );
     });
     expect(screen.getByTestId("shell-search-open")).toHaveFocus();
-  });
-
-  it("AC-06: a URL naming a Project the user cannot see selects nothing", async () => {
-    renderShell({ path: membersPath(crypto.randomUUID()) });
-    const button = await screen.findByTestId("shell-project-switch");
-    await waitFor(() => {
-      expect(button).toHaveTextContent("เลือกโปรเจกต์");
-    });
-    expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
   });
 
   it("AC-06: a Project URL of an Organization the user is not in selects nothing and asks for no Project data", async () => {

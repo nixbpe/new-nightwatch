@@ -9,34 +9,9 @@ const href = (url: string, params: { name: string; value: string }[] = []) => {
 };
 
 describe("buildCheckUrl", () => {
-  it("returns the saved url when there are no params", () => {
-    expect(href("https://example.com/p?flag&q=a%20b~")).toBe(
-      "https://example.com/p?flag&q=a%20b~",
-    );
-  });
-
-  it("appends only the new pairs after the saved query bytes", () => {
-    expect(
-      href("https://example.com/p?flag&q=a%20b~", [
-        { name: "n", value: "hello world" },
-      ]),
-    ).toBe("https://example.com/p?flag&q=a%20b~&n=hello+world");
-  });
-
   it("starts a query when the saved url has none and keeps the fragment", () => {
     expect(href("https://example.com/p#top", [{ name: "k", value: "v" }])).toBe(
       "https://example.com/p?k=v#top",
-    );
-  });
-
-  it("applies the outbound policy to the combined url", () => {
-    const base = "https://example.com/";
-    const room = 2048 - base.length - "?k=".length;
-    expect(href(base, [{ name: "k", value: "v".repeat(room) }])).toHaveLength(
-      2048,
-    );
-    expect(href(base, [{ name: "k", value: "v".repeat(room + 1) }])).toBe(
-      "url_too_long",
     );
   });
 

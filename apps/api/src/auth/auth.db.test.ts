@@ -2,7 +2,10 @@ import { createHash, createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { meContextResponseSchema } from "@nightwatch/api-contract";
+import {
+  invitationResponseSchema,
+  meContextResponseSchema,
+} from "@nightwatch/api-contract";
 import {
   createDatabase,
   insertAccountNotificationIntent,
@@ -838,11 +841,16 @@ describe("invitation-gated signup against the real boundary", () => {
     if (!id) throw new Error("seeded pending invitation missing");
     const preview = await client()("GET", `/api/onboarding/invitations/${id}`);
     expect(preview.status).toBe(200);
-    const body = preview.json as {
-      invitation: { organizationName: string; role: string };
-    };
-    expect(body.invitation.organizationName).toBe(orgName);
-    expect(body.invitation.role).toBe("owner");
+    const expiresAt: unknown = expect.any(String);
+    expect(invitationResponseSchema.parse(preview.json)).toEqual({
+      invitation: {
+        id,
+        email: userEmail("gate"),
+        organizationName: orgName,
+        role: "owner",
+        expiresAt,
+      },
+    });
 
     const missing = await client()(
       "GET",
@@ -864,13 +872,17 @@ describe("verification continuation and explicit acceptance", () => {
     );
     const invitationId = invitations.rows[0]?.id;
     if (!invitationId) throw new Error("seeded gate invitation missing");
+    await database.sql.query(
+      "update invitation set email = upper(email) where id = $1",
+      [invitationId],
+    );
 
     const signup = await gate(
       "POST",
       "/api/auth/sign-up/email",
       {
         name: "Gate Owner",
-        email: userEmail("gate"),
+        email: userEmail("GaTe"),
         password: PASSWORD,
         callbackURL: `/onboarding?invitationId=${invitationId}`,
       },

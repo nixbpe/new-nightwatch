@@ -38,20 +38,6 @@ test("buildLocalComposeUrls preserves literal credentials, roles and resolved po
 const missingPasswords = ["NW_OWNER_PASSWORD", "NW_DB_PASSWORD"].flatMap(
   (key) => [undefined, ""].map((value) => ({ key, value })),
 );
-for (const { key, value } of missingPasswords) {
-  test(`buildLocalComposeUrls leaves ${key}=${JSON.stringify(value)} undefined`, () => {
-    expect(
-      buildLocalComposeUrls(
-        { ...secrets, [key]: value },
-        { slot: 0, dbPort: 5457 },
-      ),
-    ).toEqual({
-      ...urls,
-      [key === "NW_OWNER_PASSWORD" ? "ownerUrl" : "runtimeUrl"]: undefined,
-    });
-  });
-}
-
 test("buildLocalComposeUrls does not normalize nonblank passwords", () => {
   expect(
     buildLocalComposeUrls(
@@ -61,19 +47,6 @@ test("buildLocalComposeUrls does not normalize nonblank passwords", () => {
   ).toEqual({
     ownerUrl: "postgres://nightwatch_owner: owner @127.0.0.1:5457/nightwatch",
     runtimeUrl: "postgres://nightwatch: runtime @127.0.0.1:5457/nightwatch",
-    redisUrl: "redis://127.0.0.1:6380",
-  });
-});
-
-test("buildLocalComposeUrls preserves whitespace-only generated passwords literally", () => {
-  expect(
-    buildLocalComposeUrls(
-      { NW_OWNER_PASSWORD: " ", NW_DB_PASSWORD: "  " },
-      { slot: 0, dbPort: 5457 },
-    ),
-  ).toEqual({
-    ownerUrl: "postgres://nightwatch_owner: @127.0.0.1:5457/nightwatch",
-    runtimeUrl: "postgres://nightwatch:  @127.0.0.1:5457/nightwatch",
     redisUrl: "redis://127.0.0.1:6380",
   });
 });

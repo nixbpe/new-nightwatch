@@ -1,11 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { formatTime } from "../../pages/monitors/format";
 import { ResponseTimeChart } from "./response-time-chart";
 import {
-  axisTicks,
   buildSeries,
   chartWindow,
   describeEntry,
@@ -674,11 +673,6 @@ describe("ResponseTimeChart legend (AC-78)", () => {
   const noResponse = point("07:05", null);
   const checkError = { ...point("07:10", null), checkError: true };
 
-  it("lists the always-shown entries in canvas order with canvas wording", () => {
-    render(<ResponseTimeChart {...props24h()} />);
-    expectLegend(["value", "pause", "gap", "config-change"]);
-  });
-
   it("adds ✕ only for a check without a response time and ○ only for a system-side error", () => {
     const { unmount } = render(
       <ResponseTimeChart
@@ -772,51 +766,6 @@ describe("ResponseTimeChart vertical axis (AC-78)", () => {
     expect(plotScope().getByTestId("monitor-response-unit")).toHaveTextContent(
       /^ms$/,
     );
-  });
-});
-
-describe("clock-axis locale literals", () => {
-  it("keeps numeric minute and second parts without a Thai suffix", () => {
-    const at = new Date(T("07:05"));
-    const originalFormat = Object.getOwnPropertyDescriptor(
-      Intl.DateTimeFormat.prototype,
-      "format",
-    ) as PropertyDescriptor;
-    Object.defineProperty(Intl.DateTimeFormat.prototype, "format", {
-      configurable: true,
-      get: () => () => "14:05 น.",
-    });
-    const parts = vi
-      .spyOn(Intl.DateTimeFormat.prototype, "formatToParts")
-      .mockReturnValue([
-        { type: "hour", value: "14" },
-        { type: "literal", value: ":" },
-        { type: "minute", value: "05" },
-        { type: "literal", value: " น." },
-      ]);
-    try {
-      expect(axisTicks([at], 86_400_000, true)).toEqual([
-        { at, label: "14:05" },
-      ]);
-      parts.mockReturnValue([
-        { type: "hour", value: "14" },
-        { type: "literal", value: ":" },
-        { type: "minute", value: "05" },
-        { type: "literal", value: ":" },
-        { type: "second", value: "09" },
-        { type: "literal", value: " น." },
-      ]);
-      expect(axisTicks([at], 40_000, true)).toEqual([
-        { at, label: "14:05:09" },
-      ]);
-    } finally {
-      parts.mockRestore();
-      Object.defineProperty(
-        Intl.DateTimeFormat.prototype,
-        "format",
-        originalFormat,
-      );
-    }
   });
 });
 

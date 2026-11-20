@@ -387,6 +387,15 @@ describe("AuditEventPage changes", () => {
     ];
     open(makeDetail({ action: "organization.monitor.update", changes }));
     await screen.findByTestId("audit-event-changes-table");
+    const region = screen.getByTestId("audit-event-changes-region");
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toContainElement(
+      screen.getByTestId("audit-event-changes-table"),
+    );
+    expect(region).toHaveAttribute("role", "region");
+    expect(region).not.toHaveAccessibleName("");
+    region.focus();
+    expect(region).toHaveFocus();
     expect(
       screen.getByTestId("audit-event-changes-table"),
     ).not.toHaveAccessibleName("");
@@ -455,29 +464,6 @@ describe("AuditEventPage changes", () => {
     ];
     expect(records).toHaveLength(expected.length);
     expect(records).toEqual(expect.arrayContaining(expected));
-  });
-
-  it("wraps the changes table in a named, focusable region", async () => {
-    open(
-      makeDetail({
-        changes: [
-          {
-            field: "name",
-            before: { kind: "value", value: "a" },
-            after: { kind: "value", value: "b" },
-          },
-        ],
-      }),
-    );
-    const region = await screen.findByTestId("audit-event-changes-region");
-    expect(region).toHaveAttribute("tabindex", "0");
-    expect(region).toContainElement(
-      screen.getByTestId("audit-event-changes-table"),
-    );
-    expect(region).toHaveAttribute("role", "region");
-    expect(region).not.toHaveAccessibleName("");
-    region.focus();
-    expect(region).toHaveFocus();
   });
 
   it("says so when an event has no changes", async () => {

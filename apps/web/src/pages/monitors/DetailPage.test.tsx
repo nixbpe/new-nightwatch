@@ -48,7 +48,12 @@ import {
   projectDetail,
 } from "./detail-test-support";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
-import { formatDateTime, formatTime, TIME_ZONE } from "./format";
+import {
+  formatDateTime,
+  formatTime,
+  formatTimeWithSeconds,
+  TIME_ZONE,
+} from "./format";
 import { deferred } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -611,12 +616,6 @@ describe("Detail SSL card", () => {
     await readyDetail();
     certificate(screen.getByTestId("monitor-detail-ssl"), ssl);
   });
-  it("lists issuer, host and expiry date of a readable certificate", async () => {
-    showDetail(detail());
-    renderDetail();
-    await readyDetail();
-    certificate(screen.getByTestId("monitor-detail-ssl"), detail().ssl);
-  });
 });
 
 describe("Detail alerts card", () => {
@@ -1092,19 +1091,6 @@ describe("Detail loading, failure and refetch", () => {
     );
   });
 
-  it("keeps the last data with a warning when a refetch fails", async () => {
-    showDetail(detail());
-    renderDetail();
-    await readyDetail();
-    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    expect(
-      await screen.findByTestId("monitor-detail-refresh-error"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
-      "Payments API",
-    );
-  });
-
   it("shows the new state after another session pauses the monitor", async () => {
     showDetail(detail());
     renderDetail();
@@ -1176,6 +1162,9 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     expect(screen.getByTestId("monitor-detail-last-check")).toHaveAttribute(
       "dateTime",
       "2026-09-30T07:30:00.000Z",
+    );
+    expect(screen.getByTestId("monitor-detail-last-check")).toHaveTextContent(
+      formatTimeWithSeconds("2026-09-30T07:30:00.000Z"),
     );
     for (const [key, percent, checks] of [
       ["h24", "100.00%", "288"],
@@ -1811,6 +1800,10 @@ describe("Detail response-time chart", () => {
     showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
     renderDetail();
     await readyDetail();
+    const time = screen.getByTestId("monitor-detail-last-check");
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("dateTime", "2026-09-28T07:30:00.000Z");
+    expect(time).toHaveTextContent(formatDateTime("2026-09-28T07:30:00.000Z"));
     const card = responseCard();
     expect(
       await within(card).findByTestId("monitor-response-empty"),
@@ -2134,6 +2127,9 @@ describe("Detail response-time chart", () => {
       const user = userEvent.setup();
       renderDetail();
       await screen.findByTestId("monitor-response-chart");
+      expect(screen.getByTestId(`monitor-response-range-${range}`)).toHaveRole(
+        "radio",
+      );
       await user.click(screen.getByTestId(`monitor-response-range-${range}`));
       await waitFor(() => {
         expect(fetchResponseTimesMock).toHaveBeenCalledWith(
@@ -2149,6 +2145,8 @@ describe("Detail response-time chart", () => {
       expect(
         screen.getByTestId(`monitor-response-range-${range}`),
       ).toHaveAttribute("aria-checked", "true");
+      for (const group of responseCard().querySelectorAll('[role="group"]'))
+        expect(group).not.toHaveAccessibleName(/^ตัวอย่าง: p50 p95/);
       await user.click(screen.getByTestId("monitor-response-toggle"));
       const table = responseTable();
       expect(summaryNumbers()).toEqual([200, 500, 1, 60]);
@@ -2253,16 +2251,6 @@ describe("Detail response-time chart", () => {
 });
 
 describe("Detail redesign behaviours", () => {
-  it("keeps the date in the header when the last check was on a previous day", async () => {
-    showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
-    renderDetail();
-    await readyDetail();
-    const time = screen.getByTestId("monitor-detail-last-check");
-    expect(time.tagName).toBe("TIME");
-    expect(time).toHaveAttribute("dateTime", "2026-09-28T07:30:00.000Z");
-    expect(time).toHaveTextContent(formatDateTime("2026-09-28T07:30:00.000Z"));
-  });
-
   it("shows p50, p95, check count and failures for 24 h", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue({
@@ -2333,59 +2321,6 @@ describe("Detail redesign behaviours", () => {
     expect(
       within(card).getByTestId("monitor-response-failed"),
     ).toHaveTextContent(/^1$/);
-  });
-
-  it("shows four live KPIs without a percentile sample on 7 d", async () => {
-    showDetail(detail());
-    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
-      Promise.resolve(
-        range === "24h"
-          ? noResponseTimes
-          : {
-              range,
-              dataAsOf: DATA_AS_OF,
-              window: { from: "2026-09-30T06:00:00.000Z", to: DATA_AS_OF },
-              summary: { p50Ms: 100, p95Ms: 150, checks: 12, failed: 0 },
-              unit: "ms",
-              buckets: [
-                {
-                  hourStart: "2026-09-30T06:00:00.000Z",
-                  avgMs: 100,
-                  maxMs: 150,
-                  checks: 12,
-                  responseChecks: 12,
-                },
-              ],
-              pauses: [],
-              configChanges: [],
-            },
-      ),
-    );
-    const user = userEvent.setup();
-    renderDetail();
-    const range = await screen.findByTestId("monitor-response-range-7d");
-    expect(range).toHaveRole("radio");
-    await user.click(range);
-    await readyDetail();
-    const card = screen.getByTestId("monitor-response-times");
-    await waitFor(() =>
-      expect(
-        within(card).getByTestId("monitor-response-p50"),
-      ).toHaveTextContent(/^100 ms$/),
-    );
-    expect(within(card).getByTestId("monitor-response-p95")).toHaveTextContent(
-      "150 ms",
-    );
-    expect(
-      within(card).getByTestId("monitor-response-checks"),
-    ).toHaveTextContent(/^12$/);
-    expect(
-      within(card).getByTestId("monitor-response-failed"),
-    ).toHaveTextContent(/^0$/);
-    expect(range).toHaveAttribute("aria-checked", "true");
-    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, P, MONITOR_ID, "7d");
-    for (const group of card.querySelectorAll('[role="group"]'))
-      expect(group).not.toHaveAccessibleName(/^ตัวอย่าง: p50 p95/);
   });
 
   it("frames every sample region with its issue link", async () => {

@@ -235,7 +235,7 @@ describe("LoginPage", () => {
       signInEmailMock.mockResolvedValue({ data: null, error });
       renderPage();
 
-      await submitLogin("new@example.com", "super-secret-1");
+      const user = await submitLogin("new@example.com", "super-secret-1");
 
       expect(await screen.findByTestId("login-auth-error")).toBeVisible();
       expect(screen.getByTestId("login-email")).toHaveValue("new@example.com");
@@ -245,28 +245,12 @@ describe("LoginPage", () => {
       expect(screen.queryByTestId("location")).toBeNull();
       expect(screen.getByTestId("login-submit")).toBeEnabled();
       expect(screen.getByTestId("login-verify-email")).toBeInTheDocument();
+      await user.click(screen.getByTestId("login-verify-email"));
+      expect(await screen.findByTestId("location")).toHaveTextContent(
+        "/verify-email",
+      );
     },
   );
-
-  it("the resend link navigates to the verify-email page", async () => {
-    signInEmailMock.mockResolvedValue({
-      data: null,
-      error: {
-        code: "EMAIL_NOT_VERIFIED",
-        message: "Email not verified",
-        status: 403,
-      },
-    });
-    renderPage();
-
-    await submitLogin("new@example.com", "super-secret-1");
-    await screen.findByTestId("login-auth-error");
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("login-verify-email"));
-    expect(await screen.findByTestId("location")).toHaveTextContent(
-      "/verify-email",
-    );
-  });
 
   it("keeps the deep link when session identity remounts before sign-in settles", async () => {
     const finishSignIn = deferSignIn();

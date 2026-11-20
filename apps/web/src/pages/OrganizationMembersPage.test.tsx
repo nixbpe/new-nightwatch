@@ -797,14 +797,48 @@ describe("OrganizationMembersPage", () => {
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
   });
 
-  it("recovers membership when an initial list retry is denied", async () => {
+  it.each([
+    [
+      "recovers membership when an initial list retry is denied",
+      {
+        retry: "initial",
+        listCalls: 2,
+        contextCalls: 1,
+      },
+    ],
+    [
+      "recovers fresh membership again when the bounded refetch is denied",
+      {
+        retry: "bounded",
+        listCalls: 2,
+        contextCalls: 2,
+      },
+    ],
+    [
+      "recovers membership after a manual list retry is denied",
+      {
+        retry: "manual",
+        listCalls: 3,
+        contextCalls: 2,
+      },
+    ],
+  ] as const)("%s", async (_name, { retry, listCalls, contextCalls }) => {
     const viewerOrganization = {
       ...organizationA,
       role: "viewer" as const,
     };
+    const refresh = vi.fn();
+    if (retry !== "initial") {
+      refresh.mockResolvedValueOnce({
+        organizations: [organizationA],
+        lastActiveTenantId: organizationId,
+      });
+    }
     tenant = {
       ...tenant,
-      refreshMembershipContext: vi.fn(() => {
+      refreshMembershipContext: refresh[
+        retry === "initial" ? "mockImplementation" : "mockImplementationOnce"
+      ](() => {
         tenant = {
           ...tenant,
           me: { organizations: [viewerOrganization] },
@@ -816,17 +850,29 @@ describe("OrganizationMembersPage", () => {
         });
       }),
     };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+    if (retry !== "initial") {
+      vi.mocked(fetchOrganizationMembers).mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
       );
+    }
+    if (retry !== "bounded") {
+      vi.mocked(fetchOrganizationMembers).mockRejectedValueOnce(
+        new Error("offline"),
+      );
+    }
+    vi.mocked(fetchOrganizationMembers).mockRejectedValueOnce(
+      new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+    );
     const user = userEvent.setup();
 
     renderRecoveryDirectory({ workspaceRoute: "present" });
 
-    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
-    await user.click(screen.getByTestId("members-list-retry"));
+    if (retry !== "bounded") {
+      expect(
+        await screen.findByTestId("members-list-alert"),
+      ).toBeInTheDocument();
+      await user.click(screen.getByTestId("members-list-retry"));
+    }
     expect(
       await screen.findByTestId("test-members-workspace"),
     ).toBeInTheDocument();
@@ -834,8 +880,13 @@ describe("OrganizationMembersPage", () => {
     expect(
       screen.queryByTestId("members-organization-slug"),
     ).not.toBeInTheDocument();
-    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    if (retry === "bounded") {
+      expect(
+        screen.queryByTestId("members-total-count"),
+      ).not.toBeInTheDocument();
+    }
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(listCalls);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(contextCalls);
   });
 
   it("keeps a delayed origin member page and offset out of the confirmed destination scope", async () => {
@@ -1232,11 +1283,23 @@ describe("OrganizationMembersPage", () => {
     );
   });
 
-  it("recovers fresh membership again when the bounded refetch is denied", async () => {
-    const viewerOrganization = {
-      ...organizationA,
-      role: "viewer" as const,
-    };
+  it.each([
+    [
+      "stops at context retry when a second fresh owner context cannot explain denial",
+      {
+        secondContext: {
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        },
+      },
+    ],
+    [
+      "stops at context retry when the second membership recovery fails",
+      {
+        secondContext: null,
+      },
+    ],
+  ] as const)("%s", async (_name, { secondContext }) => {
     tenant = {
       ...tenant,
       refreshMembershipContext: vi
@@ -1245,85 +1308,7 @@ describe("OrganizationMembersPage", () => {
           organizations: [organizationA],
           lastActiveTenantId: organizationId,
         })
-        .mockImplementationOnce(() => {
-          tenant = {
-            ...tenant,
-            me: { organizations: [viewerOrganization] },
-            activeOrg: viewerOrganization,
-          };
-          return Promise.resolve({
-            organizations: [viewerOrganization],
-            lastActiveTenantId: organizationId,
-          });
-        }),
-    };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(
-        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
-      )
-      .mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
-      );
-
-    renderRecoveryDirectory({ workspaceRoute: "present" });
-
-    expect(
-      await screen.findByTestId("test-members-workspace"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(
-      screen.queryByTestId("members-organization-slug"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
-    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
-  });
-
-  it("stops at context retry when a second fresh owner context cannot explain denial", async () => {
-    tenant = {
-      ...tenant,
-      refreshMembershipContext: vi
-        .fn()
-        .mockResolvedValueOnce({
-          organizations: [organizationA],
-          lastActiveTenantId: organizationId,
-        })
-        .mockResolvedValueOnce({
-          organizations: [organizationA],
-          lastActiveTenantId: organizationId,
-        }),
-    };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(
-        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
-      )
-      .mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
-      );
-
-    renderPage();
-
-    expect(
-      await screen.findByTestId("members-admission-alert"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("members-admission-retry")).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("members-organization-slug"),
-    ).not.toBeInTheDocument();
-    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
-  });
-
-  it("stops at context retry when the second membership recovery fails", async () => {
-    tenant = {
-      ...tenant,
-      refreshMembershipContext: vi
-        .fn()
-        .mockResolvedValueOnce({
-          organizations: [organizationA],
-          lastActiveTenantId: organizationId,
-        })
-        .mockResolvedValueOnce(null),
+        .mockResolvedValueOnce(secondContext),
     };
     vi.mocked(fetchOrganizationMembers)
       .mockRejectedValueOnce(
@@ -1409,57 +1394,24 @@ describe("OrganizationMembersPage", () => {
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
 
-  it("recovers membership after a manual list retry is denied", async () => {
+  it.each([
+    [
+      "retires revoked scope after the next list denial and routes to the confirmed replacement",
+      {
+        revoked: true,
+      },
+    ],
+    [
+      "uses a fresh owner organization instead of a fresh viewer last-active organization",
+      {
+        revoked: false,
+      },
+    ],
+  ] as const)("%s", async (_name, { revoked }) => {
     const viewerOrganization = {
       ...organizationA,
       role: "viewer" as const,
     };
-    tenant = {
-      ...tenant,
-      refreshMembershipContext: vi
-        .fn()
-        .mockResolvedValueOnce({
-          organizations: [organizationA],
-          lastActiveTenantId: organizationId,
-        })
-        .mockImplementationOnce(() => {
-          tenant = {
-            ...tenant,
-            me: { organizations: [viewerOrganization] },
-            activeOrg: viewerOrganization,
-          };
-          return Promise.resolve({
-            organizations: [viewerOrganization],
-            lastActiveTenantId: organizationId,
-          });
-        }),
-    };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(
-        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
-      )
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
-      );
-    const user = userEvent.setup();
-
-    renderRecoveryDirectory({ workspaceRoute: "present" });
-
-    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
-    await user.click(screen.getByTestId("members-list-retry"));
-    expect(
-      await screen.findByTestId("test-members-workspace"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(
-      screen.queryByTestId("members-organization-slug"),
-    ).not.toBeInTheDocument();
-    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
-  });
-
-  it("retires revoked scope after the next list denial and routes to the confirmed replacement", async () => {
     const bPage: OrganizationMemberListResponse = {
       organizationId: organizationBId,
       members: [
@@ -1476,17 +1428,27 @@ describe("OrganizationMembersPage", () => {
     };
     tenant = {
       ...tenant,
-      me: { organizations: [organizationA, organizationB] },
-      activeOrg: organizationA,
+      ...(revoked
+        ? {
+            me: { organizations: [organizationA, organizationB] },
+            activeOrg: organizationA,
+          }
+        : {}),
       refreshMembershipContext: vi.fn(() => {
         tenant = {
           ...tenant,
-          me: { organizations: [organizationB] },
+          me: {
+            organizations: revoked
+              ? [organizationB]
+              : [viewerOrganization, organizationB],
+          },
           activeOrg: organizationB,
         };
         return Promise.resolve({
-          organizations: [organizationB],
-          lastActiveTenantId: organizationBId,
+          organizations: revoked
+            ? [organizationB]
+            : [viewerOrganization, organizationB],
+          lastActiveTenantId: revoked ? organizationBId : organizationId,
         });
       }),
     };
@@ -1506,17 +1468,23 @@ describe("OrganizationMembersPage", () => {
         "member-name",
       ),
     ).toHaveTextContent("B-confirmed");
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    if (revoked) {
+      expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    }
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(
-      screen.getByTestId("members-organization-slug"),
-    ).not.toHaveTextContent("acme");
-    expect(screen.getByTestId("members-organization-slug")).toBeInTheDocument();
-    expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
-      "beta",
-    );
+    if (revoked) {
+      expect(
+        screen.getByTestId("members-organization-slug"),
+      ).not.toHaveTextContent("acme");
+      expect(
+        screen.getByTestId("members-organization-slug"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
+        "beta",
+      );
+    }
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       1,
       organizationId,
@@ -1572,72 +1540,6 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
-  });
-
-  it("uses a fresh owner organization instead of a fresh viewer last-active organization", async () => {
-    const viewerOrganization = {
-      ...organizationA,
-      role: "viewer" as const,
-    };
-    const bPage: OrganizationMemberListResponse = {
-      organizationId: organizationBId,
-      members: [
-        {
-          id: "member-b",
-          userId: "user-b",
-          name: "B-confirmed",
-          email: "b@example.test",
-          role: "owner",
-        },
-      ],
-      page: { limit: 50, offset: 0, total: 1 },
-      memberLimit: 1000,
-    };
-    tenant = {
-      ...tenant,
-      refreshMembershipContext: vi.fn(() => {
-        tenant = {
-          ...tenant,
-          me: { organizations: [viewerOrganization, organizationB] },
-          activeOrg: organizationB,
-        };
-        return Promise.resolve({
-          organizations: [viewerOrganization, organizationB],
-          lastActiveTenantId: organizationId,
-        });
-      }),
-    };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
-      )
-      .mockResolvedValueOnce(bPage);
-
-    renderRecoveryDirectory({ workspaceRoute: "absent" });
-
-    expect(
-      await screen.findByTestId("member-row-member-b"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("member-row-member-b")).getByTestId(
-        "member-name",
-      ),
-    ).toHaveTextContent("B-confirmed");
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${organizationBId}/members`,
-    );
-    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
-      1,
-      organizationId,
-      50,
-      0,
-    );
-    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
-      2,
-      organizationBId,
-      50,
-      0,
-    );
   });
 });
 

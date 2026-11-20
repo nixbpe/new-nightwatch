@@ -18,35 +18,6 @@ describe("ErrorBoundary", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders children when nothing throws", () => {
-    render(
-      <ErrorBoundary>
-        <p data-testid="boundary-child">calm</p>
-      </ErrorBoundary>,
-    );
-    expect(screen.getByTestId("boundary-child")).toBeInTheDocument();
-  });
-
-  it("shows the fallback with the error message when a child throws", () => {
-    render(
-      <ErrorBoundary>
-        <Bomb />
-      </ErrorBoundary>,
-    );
-    expect(screen.getByTestId("render-error-title")).toBeInTheDocument();
-    expect(screen.getByTestId("render-error-message")).toHaveTextContent(
-      "kaboom",
-    );
-    expect(screen.getByTestId("render-error-message")).toHaveAttribute(
-      "role",
-      "alert",
-    );
-    expect(screen.getByTestId("render-error").tagName).toBe("MAIN");
-    expect(screen.getByTestId("render-error")).toContainElement(
-      screen.getByTestId("render-error-message"),
-    );
-  });
-
   it("renders no landmark of its own when nested inside one", () => {
     render(
       <main>
@@ -75,6 +46,15 @@ describe("ErrorBoundary", () => {
     );
     expect(screen.getByTestId("render-error-message")).toHaveTextContent(
       "kaboom",
+    );
+    expect(screen.getByTestId("render-error-title")).toBeInTheDocument();
+    expect(screen.getByTestId("render-error-message")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByTestId("render-error").tagName).toBe("MAIN");
+    expect(screen.getByTestId("render-error")).toContainElement(
+      screen.getByTestId("render-error-message"),
     );
     recovered = true;
     await userEvent.click(screen.getByTestId("render-error-retry"));

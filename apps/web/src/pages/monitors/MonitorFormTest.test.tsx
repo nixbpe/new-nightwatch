@@ -846,6 +846,8 @@ describe("Saving and testing are independent", () => {
       }),
     );
     const user = await openCreate();
+    expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
+    expect(screen.queryByTestId("monitor-test-http-status")).toBeNull();
     await user.click(testButton());
     await waitFor(() => {
       expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
@@ -853,6 +855,13 @@ describe("Saving and testing are independent", () => {
         "fail",
       );
     });
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveAttribute(
+      "data-http-status",
+      "503",
+    );
+    expect(assertionRecords()).toEqual([
+      { expected: "200-299", actual: "503", status: "fail", truncated: false },
+    ]);
     expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
       "503",
     );
@@ -908,36 +917,6 @@ describe("Edit test", () => {
 });
 
 describe("Redesign mockups and notes", () => {
-  it("shows no result status while idle and the actual HTTP status after a failed test", async () => {
-    draftMock.mockResolvedValue(
-      result({
-        outcome: "fail",
-        failureReason: "http_status",
-        httpStatus: 503,
-      }),
-    );
-    const user = await openCreate();
-    expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
-    expect(screen.queryByTestId("monitor-test-http-status")).toBeNull();
-    await user.click(testButton());
-    await waitFor(() => {
-      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
-        "data-outcome",
-        "fail",
-      );
-    });
-    expect(screen.getByTestId("monitor-test-http-status")).toHaveAttribute(
-      "data-http-status",
-      "503",
-    );
-    expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
-      "503",
-    );
-    expect(assertionRecords()).toEqual([
-      { expected: "200-299", actual: "503", status: "fail", truncated: false },
-    ]);
-  });
-
   it("describes the URL input with the scheme and redirect note", async () => {
     await openCreate();
     expect(

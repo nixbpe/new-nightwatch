@@ -215,35 +215,6 @@ describe("add members (AC-04, AC-09, AC-12)", () => {
     expect(JSON.stringify(events)).not.toContain("@");
   });
 
-  it("is idempotent: a user already in the Project keeps their role and writes no event", async () => {
-    const projectId = await projectWith(org, [[org.users.viewer, "admin"]]);
-    const again = await add(org, org.users.owner, projectId, {
-      userIds: [org.users.viewer],
-      role: "member",
-    });
-    expect(again.status).toBe(200);
-    expect(
-      addProjectMembersResponseSchema.parse(again.json).addedUserIds,
-    ).toEqual([]);
-    expect(await rolesOf(projectId)).toEqual({ [org.users.viewer]: "admin" });
-    expect(await memberEvents(org.id, projectId)).toHaveLength(0);
-
-    const mixed = await add(org, org.users.owner, projectId, {
-      userIds: [org.users.viewer, org.users.auditor],
-      role: "member",
-    });
-    expect(mixed.status).toBe(200);
-    expect(
-      addProjectMembersResponseSchema.parse(mixed.json).addedUserIds,
-    ).toEqual([org.users.auditor]);
-    expect(await rolesOf(projectId)).toEqual({
-      [org.users.viewer]: "admin",
-      [org.users.auditor]: "member",
-    });
-    const events = await memberEvents(org.id, projectId);
-    expect(events.map((event) => event.target_id)).toEqual([org.users.auditor]);
-  });
-
   it.each(["owner", "admin", "viewer", "auditor"] as const)(
     "adds an Organization %s as admin and as member (AC-12)",
     async (role) => {
@@ -627,6 +598,9 @@ describe("permissions (AC-07, AC-08)", () => {
   it("lets a Project administrator manage members", async () => {
     const projectId = await projectWith(org, [[org.users.viewer, "admin"]]);
     expect(
+      (await ctx.call(org.users.viewer, "GET", base(org, projectId))).status,
+    ).toBe(200);
+    expect(
       (
         await add(org, org.users.viewer, projectId, {
           userIds: [org.users.auditor],
@@ -960,6 +934,24 @@ describe("member candidates", () => {
     );
     expect(response.status).toBe(200);
     expect(response.json).toEqual({ candidates: [] });
+
+    const mixed = await add(isolated, isolated.users.owner, projectId, {
+      userIds: [isolated.users.viewer, isolated.users.auditor],
+      role: "member",
+    });
+    expect(mixed.status).toBe(200);
+    expect(
+      addProjectMembersResponseSchema.parse(mixed.json).addedUserIds,
+    ).toEqual([isolated.users.auditor]);
+    expect(await rolesOf(projectId)).toEqual({
+      [isolated.users.viewer]: "admin",
+      [isolated.users.auditor]: "member",
+    });
+    expect(
+      (await memberEvents(isolated.id, projectId))
+        .map((event) => event.target_id)
+        .sort(),
+    ).toEqual([isolated.users.viewer, isolated.users.auditor].sort());
   });
 
   it("treats % and _ in q literally and rejects a q over 100 characters", async () => {

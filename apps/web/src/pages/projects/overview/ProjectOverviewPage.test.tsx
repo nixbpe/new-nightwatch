@@ -240,24 +240,17 @@ describe("Project overview", () => {
       );
     });
     await ready();
+    expect(screen.queryByText(/AWS/)).toBeNull();
     for (const [key, value] of Object.entries({
       total: 17,
       up: 9,
       down: 4,
       paused: 3,
+      unknown: 1,
     }))
       expect(screen.getByTestId(`project-overview-${key}`)).toHaveTextContent(
         String(value),
       );
-  });
-  it("shows the unknown count when the server reports it", async () => {
-    vi.mocked(fetchMonitorList).mockResolvedValue(
-      list([item({ health: "unknown" })]),
-    );
-    renderPage();
-    expect(
-      await screen.findByTestId("project-overview-unknown"),
-    ).toHaveTextContent("1");
   });
   it("keeps the last numbers with a stale warning when a refetch fails", async () => {
     const { client } = renderPage();
@@ -378,14 +371,10 @@ describe("Project overview", () => {
     await screen.findByTestId("project-overview-events-error");
     expect(screen.getByTestId("project-overview-total")).toHaveTextContent("1");
   });
-  it("renders no AWS card", async () => {
-    renderPage();
-    await ready();
-    expect(screen.queryByText(/AWS/)).toBeNull();
-  });
   it("shows member and admin counts with a link to members (AC-05)", async () => {
     renderPage();
     await ready();
+    expect(fetchProjectMembers).not.toHaveBeenCalled();
     expect(
       screen.getByTestId("project-overview-member-count"),
     ).toHaveTextContent("3");
@@ -405,11 +394,6 @@ describe("Project overview", () => {
       screen.getByTestId("project-overview-members-unknown"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("project-overview-member-count")).toBeNull();
-  });
-  it("requests no member list for the counts", async () => {
-    renderPage();
-    await ready();
-    expect(fetchProjectMembers).not.toHaveBeenCalled();
   });
   it.each(["owner", "viewer"] as const)(
     "shows the first-run empty state with an add link for writers and read-only text for members (AC-06): %s",

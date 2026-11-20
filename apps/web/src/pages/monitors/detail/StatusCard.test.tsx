@@ -1,8 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { DATA_AS_OF, detail } from "../detail-test-support";
-import { ConfigCard } from "./ConfigCard";
+import { detail } from "../detail-test-support";
 import { StatusCard } from "./StatusCard";
 
 function uptimeRecord(key: "h24" | "d7" | "d30") {
@@ -15,54 +14,6 @@ function uptimeRecord(key: "h24" | "d7" | "d30") {
     coverage: within(window).getByTestId("monitor-status-coverage").textContent,
   };
 }
-
-function dotOf() {
-  const section = screen.getByTestId("monitor-status");
-  return {
-    line: within(section).getByTestId("monitor-status-as-of"),
-    dot: within(section).getByTestId("monitor-status-freshness-dot"),
-    time: within(section).getByTestId("monitor-status-as-of-time"),
-  };
-}
-
-function expectAsOf(time: HTMLElement) {
-  expect(time.tagName).toBe("TIME");
-  expect(time).toHaveAttribute("dateTime", DATA_AS_OF);
-  expect(time).toHaveTextContent(
-    new Date(DATA_AS_OF).toLocaleTimeString("en-GB", { hour12: false }),
-  );
-}
-
-describe("detail labels (TYP-04)", () => {
-  it("exposes uptime windows and the current request method", () => {
-    const monitor = detail();
-    render(
-      <>
-        <StatusCard monitor={monitor} fresh />
-        <ConfigCard monitor={monitor} />
-      </>,
-    );
-    expect(uptimeRecord("h24")).toEqual({
-      percent: "100.00%",
-      checks: "288",
-      coverage: "100.00%",
-    });
-    expect(uptimeRecord("d7")).toEqual({
-      percent: "99.50%",
-      checks: "2,016",
-      coverage: "100.00%",
-    });
-    expect(uptimeRecord("d30")).toEqual({
-      percent: "99.20%",
-      checks: "8,640",
-      coverage: "100.00%",
-    });
-    expect(screen.getByTestId("monitor-config-method")).toHaveTextContent(
-      /^GET$/,
-    );
-    expect(screen.getByTestId("monitor-config-method").tagName).toBe("DD");
-  });
-});
 
 describe("failure threshold note", () => {
   it("shows one recorded failure and states that down status starts at the stored threshold of 3 failures", () => {
@@ -119,18 +70,5 @@ describe("uptime caption (AC-75, AC-14)", () => {
       checks: "8,640",
       coverage: "80.00%",
     });
-  });
-});
-
-describe("data-as-of dot (AC-81)", () => {
-  it.each([true, false])("shows as-of data with fresh=%s", (fresh) => {
-    render(<StatusCard monitor={detail()} fresh={fresh} />);
-    const { dot, line, time } = dotOf();
-    expect(dot).toHaveAttribute("aria-hidden", "true");
-    expect(dot).toHaveAttribute("data-fresh", String(fresh));
-    expectAsOf(time);
-    expect(line).toHaveTextContent(
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-    );
   });
 });

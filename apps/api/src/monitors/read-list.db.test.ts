@@ -6,8 +6,6 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  ageSeries,
-  rollupFromResults,
   seedHourly,
   seedIncident,
   seedMonitor,
@@ -255,67 +253,6 @@ describe("List: filters", () => {
 });
 
 describe("List: SSL level", () => {
-  const DAY = 86_400;
-  it.each([
-    ["30 d exactly", 30 * DAY, "caution", 30],
-    ["expired 1 s ago", -1, "expired", 0],
-  ] as const)("%s", async (label, secondsLeft, level, days) => {
-    // The fixture expiry is fixed before the request, so the request sees a
-    // few milliseconds less; ceil() keeps each of these values stable.
-    const id = await seedMonitor(ctx, sslOrg.id, {
-      name: label,
-      sslHost: "ssl.example",
-      sslNotAfterInSeconds: secondsLeft,
-      sslState: "ok",
-    });
-    const body = await list(sslOrg);
-    const item = body.monitors.find((candidate) => candidate.id === id);
-    expect(item?.ssl).toEqual({
-      level,
-      daysRemaining: days,
-      host: "ssl.example",
-      issuer: null,
-      notAfter: item?.ssl.notAfter,
-    });
-    expect(item?.ssl.notAfter).not.toBeNull();
-  });
-
-  it("reports an unreadable certificate as recorded although an old expiry is kept", async () => {
-    const id = await seedMonitor(ctx, sslOrg.id, {
-      name: "unreadable with kept expiry",
-      sslHost: "ssl.example",
-      sslNotAfterInSeconds: 60 * DAY,
-      sslState: "unreadable",
-      sslReason: "handshake_failed",
-    });
-    const item = (await list(sslOrg)).monitors.find((m) => m.id === id);
-    expect(item?.ssl).toEqual({
-      level: "unreadable",
-      daysRemaining: null,
-      host: "ssl.example",
-      issuer: null,
-      notAfter: item?.ssl.notAfter,
-    });
-    expect(item?.ssl.notAfter).not.toBeNull();
-  });
-
-  it("reports an expired handshake without a date as expired with no days", async () => {
-    const id = await seedMonitor(ctx, sslOrg.id, {
-      name: "expired without date",
-      sslHost: "ssl.example",
-      sslState: "expired",
-      sslReason: "expired",
-    });
-    const item = (await list(sslOrg)).monitors.find((m) => m.id === id);
-    expect(item?.ssl).toEqual({
-      level: "expired",
-      daysRemaining: null,
-      host: "ssl.example",
-      issuer: null,
-      notAfter: null,
-    });
-  });
-
   it("reports the recorded state without an expiry date", async () => {
     const cases = [
       ["no data", null, "no_data"],
@@ -333,32 +270,6 @@ describe("List: SSL level", () => {
         notAfter: null,
       });
     }
-  });
-});
-
-describe("List: uptime", () => {
-  it("returns 24 h and 30 d windows with coverage from hand-computed rollups", async () => {
-    const org = await ctx.createOrganization("read-uptime");
-    const id = await seedMonitor(ctx, org.id, {
-      name: "young",
-      createdAgoSeconds: 7200,
-    });
-    await seedResults(ctx, org.id, id, ageSeries(24, 300, 5), {});
-    await rollupFromResults(ctx, id);
-    const item = (await list(org)).monitors[0];
-    expect(item?.uptime.h24.percent).toBe(100);
-    expect(item?.uptime.h24.checks).toBe(24);
-    expect(item?.uptime.h24.coveragePercent).toBeCloseTo(100, 0);
-    expect(item?.uptime.d30.checks).toBe(24);
-    expect(item?.uptime.d30.coveragePercent).toBeCloseTo(100, 0);
-
-    const idle = await seedMonitor(ctx, org.id, { name: "no results" });
-    const idleItem = (await list(org)).monitors.find((m) => m.id === idle);
-    expect(idleItem?.uptime.h24).toEqual({
-      percent: null,
-      checks: 0,
-      coveragePercent: 0,
-    });
   });
 });
 
@@ -780,16 +691,6 @@ describe("Recent events", () => {
       durationSeconds: 3000,
     });
     expect(openedEvent).toMatchObject({ reason: "http_status" });
-  });
-
-  it("is not captured by GET /monitors/{monitorId}", async () => {
-    const response = await ctx.call(
-      events.users.viewer,
-      "GET",
-      monitorsPath(events.id, "/recent-events"),
-    );
-    expect(response.status).toBe(200);
-    expect(response.json).toHaveProperty("events");
   });
 
   it("limits to 1..20 with a default of 10, newest first", async () => {

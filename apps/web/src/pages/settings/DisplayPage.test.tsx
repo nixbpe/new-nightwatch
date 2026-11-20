@@ -22,11 +22,13 @@ describe("DisplayPage", () => {
 
   it("the theme control applies immediately and shares the persisted choice", async () => {
     const user = userEvent.setup();
+    const other = renderHook(() => useTheme());
     render(<DisplayPage />);
 
     await user.click(screen.getByTestId("display-theme-dark"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(localStorage.getItem("nightwatch-theme")).toBe("dark");
+    expect(other.result.current.theme).toBe("dark");
     expect(screen.getByTestId("display-theme-dark")).toHaveAttribute(
       "aria-checked",
       "true",
@@ -57,16 +59,6 @@ describe("DisplayPage", () => {
     await user.click(screen.getByTestId("display-theme-system"));
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
     expect(localStorage.getItem("nightwatch-theme")).toBe("system");
-  });
-
-  it("every useTheme consumer (e.g. the account menu) sees the choice made here", async () => {
-    const user = userEvent.setup();
-    const other = renderHook(() => useTheme());
-    render(<DisplayPage />);
-
-    await user.click(screen.getByTestId("display-theme-dark"));
-
-    expect(other.result.current.theme).toBe("dark");
   });
 
   it("shows the stored preferences and keeps the single-language select honest", () => {

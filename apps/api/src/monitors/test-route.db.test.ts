@@ -629,6 +629,7 @@ describe("role x operation", () => {
     async (role) => {
       const monitorId = crypto.randomUUID();
       for (const path of [testPath(org.id), testPath(org.id, monitorId)]) {
+        resetCounters();
         const start = logLines.length;
         const reply = await call(
           fullApp,
@@ -636,7 +637,9 @@ describe("role x operation", () => {
           path,
           config(target(http1, "/ok")),
         );
+        expect(reply.status).toBe(403);
         expect(errorCode(reply)).toBe("PERMISSION_DENIED");
+        expect(outboundSeen()).toBe(0);
         const lines = logLines
           .slice(start)
           .filter((line) => line.includes("organization.monitor.test"));
@@ -656,18 +659,6 @@ describe("role x operation", () => {
       }
     },
   );
-
-  it("answers a viewer 403 before it looks the monitor up", async () => {
-    resetCounters();
-    const reply = await call(
-      fullApp,
-      org.users.viewer,
-      testPath(org.id, crypto.randomUUID()),
-      config(target(http1, "/ok")),
-    );
-    expect(errorCode(reply)).toBe("PERMISSION_DENIED");
-    expect(outboundSeen()).toBe(0);
-  });
 });
 
 async function createMonitor(

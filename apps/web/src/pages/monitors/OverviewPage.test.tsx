@@ -729,6 +729,7 @@ describe("Overview states", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
     expect(screen.queryByTestId("monitor-overview-empty")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
   });
 
   it("shows the failure with a retry, never the empty state", async () => {
@@ -910,6 +911,7 @@ describe("Overview states", () => {
     expect(
       await screen.findByTestId("monitor-overview-filtered-empty"),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
     expect(
       screen
         .getByTestId("monitor-overview-announcement")
@@ -1462,43 +1464,6 @@ describe("Overview times, focus and filter failures", () => {
       "data-health",
       "unknown",
     );
-  });
-
-  it("offers no add control until the monitor count is known", async () => {
-    fetchListMock.mockReturnValue(new Promise(() => undefined));
-    renderPage();
-    await screen.findByTestId("monitor-overview-loading");
-    expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
-  });
-
-  it("hides the pagination summary under the filtered-empty state", async () => {
-    const user = userEvent.setup();
-    fetchListMock.mockImplementation((_org, _project, params) =>
-      Promise.resolve(
-        params.health === "down"
-          ? list([], { total: 2, pageTotal: 0 })
-          : list([
-              item({ id: "0efa9833-5468-426d-83e5-077fc85d867d", name: "Web" }),
-            ]),
-      ),
-    );
-    renderPage();
-    expect(
-      await screen.findByTestId(
-        "monitor-list-name-0efa9833-5468-426d-83e5-077fc85d867d",
-      ),
-    ).toHaveTextContent(/^Web$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-0efa9833-5468-426d-83e5-077fc85d867d",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/0efa9833-5468-426d-83e5-077fc85d867d`,
-    );
-    await user.click(screen.getByTestId("monitor-overview-health-down"));
-    await screen.findByTestId("monitor-overview-filtered-empty");
-    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
   });
 });
 

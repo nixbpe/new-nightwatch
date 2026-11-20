@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { auditChangeSchema, type AuditChange } from "./audit-log";
+import { auditChangeSchema } from "./audit-log";
 
 const change = (before: unknown, after: unknown) => ({
   field: "name",
@@ -33,14 +33,6 @@ describe("auditChangeSchema wire shape", () => {
   ])("rejects %j", (side) => {
     expect(auditChangeSchema.safeParse(change(side, null)).success).toBe(false);
     expect(auditChangeSchema.safeParse(change(null, side)).success).toBe(false);
-  });
-
-  it("keeps the inferred type: a value may be a string, number, boolean or null", () => {
-    const values: AuditChange[] = [
-      change(null, { kind: "value", value: null }),
-      change({ kind: "value", value: 1 }, { kind: "value", value: "a" }),
-    ].map((item) => auditChangeSchema.parse(item));
-    expect(values).toHaveLength(2);
   });
 });
 

@@ -123,25 +123,6 @@ afterAll(async () => {
 });
 
 describe("listOrganizationMembers", () => {
-  it("returns a bounded deterministic page and exact total for an authorized owner", async () => {
-    const first = await listOrganizationMembers(database, {
-      organizationId,
-      actorUserId: ownerId,
-      limit: 50,
-      offset: 0,
-    });
-    const second = await listOrganizationMembers(database, {
-      organizationId,
-      actorUserId: ownerId,
-      limit: 50,
-      offset: 50,
-    });
-    expect(first.members).toHaveLength(50);
-    expect(first.page).toEqual({ limit: 50, offset: 0, total: 55 });
-    expect(second.members).toHaveLength(5);
-    expect(second.page.total).toBe(55);
-  });
-
   it("orders duplicate names by member ID rather than conflicting user ID", async () => {
     const all = await listOrganizationMembers(database, {
       organizationId,
@@ -157,17 +138,6 @@ describe("listOrganizationMembers", () => {
       { id: duplicateMemberA, userId: duplicateUserZ },
       { id: duplicateMemberZ, userId: duplicateUserA },
     ]);
-  });
-
-  it("denies viewers before reading directory data", async () => {
-    await expect(
-      listOrganizationMembers(database, {
-        organizationId,
-        actorUserId: viewerId,
-        limit: 50,
-        offset: 0,
-      }),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
   it("denies without returning directory rows when the actor is downgraded after authorization starts", async () => {

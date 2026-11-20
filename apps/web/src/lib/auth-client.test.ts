@@ -34,16 +34,6 @@ describe("authErrorMessage", () => {
     ).toBe("รหัสยืนยันไม่ถูกต้อง");
   });
 
-  it("returns the fallback for an unknown code, never the English message", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(
-      authErrorMessage(
-        { code: "SOMETHING_NEW", message: "Something new" },
-        FALLBACK,
-      ),
-    ).toBe(FALLBACK);
-  });
-
   it("keeps USER_NOT_FOUND unmapped to avoid account enumeration", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(

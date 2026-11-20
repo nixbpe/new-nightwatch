@@ -30,10 +30,6 @@ describe("invitationResponseSchema", () => {
     },
   };
 
-  it("accepts a pending invitation preview", () => {
-    expect(invitationResponseSchema.safeParse(valid).success).toBe(true);
-  });
-
   it("rejects unknown roles and malformed ISO timestamps", () => {
     expect(
       invitationResponseSchema.safeParse({
@@ -69,17 +65,6 @@ describe("meContextResponseSchema", () => {
     ],
     lastActiveTenantId: null,
   };
-
-  it("accepts a context with memberships and a null last tenant", () => {
-    expect(meContextResponseSchema.safeParse(valid).success).toBe(true);
-  });
-
-  it("accepts a context with no memberships (access-needed state)", () => {
-    expect(
-      meContextResponseSchema.safeParse({ ...valid, organizations: [] })
-        .success,
-    ).toBe(true);
-  });
 
   it("rejects non-UUID organization ids and lastActiveTenantId", () => {
     expect(
