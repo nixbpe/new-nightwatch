@@ -12,6 +12,7 @@ export const AUDIT_CATEGORIES = [
   "invitation",
   "audit_log",
   "project",
+  "aws_connection",
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 export const auditCategorySchema = z.enum(AUDIT_CATEGORIES);
@@ -39,6 +40,12 @@ export const AUDIT_ACTIONS = [
   "organization.project.member.add",
   "organization.project.member.role.update",
   "organization.project.member.remove",
+  "organization.aws_connection.test",
+  "organization.aws_connection.update",
+  "organization.aws_connection.delete",
+  "organization.project.aws_connection.test",
+  "organization.project.aws_connection.update",
+  "organization.project.aws_connection.delete",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
@@ -67,6 +74,15 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
   "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
   "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
+  "organization.aws_connection.test": "ทดสอบการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.update": "บันทึกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.delete": "ยกเลิกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.project.aws_connection.test":
+    "ทดสอบการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.update":
+    "บันทึกการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.delete":
+    "ยกเลิกการเชื่อมต่อ AWS ของโปรเจกต์",
 };
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
@@ -76,6 +92,7 @@ export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   invitation: "คำเชิญ",
   audit_log: "บันทึกกิจกรรม",
   project: "โปรเจกต์",
+  aws_connection: "การเชื่อมต่อ AWS",
 };
 
 export const AUDIT_LIST_MAX_LIMIT = 50;
@@ -162,6 +179,7 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
     role: organizationRoleSchema,
   }),
   z.object({ type: z.literal("notification_settings") }),
+  z.object({ type: z.literal("aws_connection") }),
   z.object({
     type: z.literal("audit_export"),
     exportId: z.uuid(),

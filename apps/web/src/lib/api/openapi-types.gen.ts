@@ -5314,9 +5314,9 @@ export interface paths {
                                 /** Format: date-time */
                                 occurredAt: string;
                                 /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
+                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5368,6 +5368,9 @@ export interface paths {
                                 } | {
                                     /** @enum {string} */
                                     type: "notification_settings";
+                                } | {
+                                    /** @enum {string} */
+                                    type: "aws_connection";
                                 } | {
                                     /** @enum {string} */
                                     type: "audit_export";
@@ -5492,9 +5495,9 @@ export interface paths {
                                 /** Format: date-time */
                                 occurredAt: string;
                                 /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
+                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5548,6 +5551,9 @@ export interface paths {
                                     type: "notification_settings";
                                 } | {
                                     /** @enum {string} */
+                                    type: "aws_connection";
+                                } | {
+                                    /** @enum {string} */
                                     type: "audit_export";
                                     /** Format: uuid */
                                     exportId: string;
@@ -5592,7 +5598,7 @@ export interface paths {
                                     format: "csv" | "json";
                                     from: string | null;
                                     to: string | null;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection")[];
                                     actorUserId: string | null;
                                     searchApplied: boolean;
                                 };
@@ -5833,7 +5839,7 @@ export interface paths {
                                     from: string;
                                     /** Format: date-time */
                                     to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection")[];
                                     actorUserId: string | null;
                                     q: string | null;
                                 };
@@ -5938,7 +5944,7 @@ export interface paths {
                             from: string;
                             /** Format: date-time */
                             to: string;
-                            categories?: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
+                            categories?: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection")[];
                             actorUserId?: string;
                             q?: string;
                         };
@@ -5967,7 +5973,7 @@ export interface paths {
                                     from: string;
                                     /** Format: date-time */
                                     to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection")[];
                                     actorUserId: string | null;
                                     q: string | null;
                                 };
