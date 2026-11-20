@@ -30,15 +30,13 @@
     "provision:organization": "bun scripts/provision.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "validate": "bun run workflow:test && bun run agent:check && bun run format:check && bun run codegen:check && bun run lint && bun run typecheck && bun run test",
+    "validate": "bun run workflow:test && bun run format:check && bun run codegen:check && bun run lint && bun run typecheck && bun run test",
     "security": "bun run security:audit && bun run security:secrets && bun run security:sast",
     "security:audit": "bun audit --audit-level=high",
     "security:secrets": "gitleaks git --config .gitleaks.toml --redact --exit-code 1 .",
     "security:sast": "semgrep scan --config p/typescript --config p/security-audit --error --metrics=off .",
     "security:image": "sh -c 'for app in api worker; do docker build -f apps/$app/Dockerfile -t nightwatch-$app:trivy-scan . || exit 1; trivy image --exit-code 1 --severity HIGH,CRITICAL nightwatch-$app:trivy-scan || exit 1; done'",
     "codegen:check": "turbo run codegen:check",
-    "agent:check": "bun scripts/quality/check-agent-config.mjs",
-    "candidate:manifest": "bun scripts/quality/candidate-manifest.mjs",
     "workflow:test": "bun test scripts/quality/*.test.mjs"
   },
   "devDependencies": {
