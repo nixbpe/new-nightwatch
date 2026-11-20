@@ -493,6 +493,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
       ...deps.aws,
+      credentialEnv: deps.credentialEnv,
       ...(deps.redis && {
         rateLimiter: createRateLimiter({
           redis: deps.redis,

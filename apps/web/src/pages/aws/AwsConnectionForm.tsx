@@ -1,4 +1,9 @@
-import { awsRoleArnSchema, type AwsTestResult } from "@nightwatch/api-contract";
+import {
+  awsProjectAccessKeySchema,
+  awsRoleArnSchema,
+  type AwsProjectInput,
+  type AwsTestResult,
+} from "@nightwatch/api-contract";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Alert } from "../../components/ui";
@@ -72,6 +77,7 @@ export function AwsConnectionForm({
   check,
   disconnect,
   changed,
+  access,
 }: {
   initialRoleArn: string | null;
   canTest?: boolean;
@@ -84,8 +90,22 @@ export function AwsConnectionForm({
   ) => Promise<AwsTestResult>;
   disconnect: (signal: AbortSignal) => Promise<unknown>;
   changed: () => Promise<unknown>;
+  access?: {
+    region: string;
+    check: (
+      draft: Extract<AwsProjectInput, { method: "access_key" }>,
+      save: boolean,
+      signal: AbortSignal,
+    ) => Promise<AwsTestResult>;
+  };
 }) {
   const [roleArn, setRoleArn] = useState(initialRoleArn ?? "");
+  const [keyDraft, setKeyDraft] = useState({
+    method: "access_key" as const,
+    accessKeyId: "",
+    secretAccessKey: "",
+    region: access?.region ?? "us-east-1",
+  });
   const [state, setState] = useState<State>({ phase: "idle" });
   const [opener, setOpener] = useState<HTMLButtonElement | null>(null);
   const fallback = useRef<HTMLInputElement>(null);
@@ -100,7 +120,9 @@ export function AwsConnectionForm({
     state.phase === "testing" ||
     state.phase === "saving" ||
     state.phase === "disconnecting";
-  const valid = awsRoleArnSchema.safeParse(roleArn).success;
+  const valid = access
+    ? awsProjectAccessKeySchema.safeParse(keyDraft).success
+    : awsRoleArnSchema.safeParse(roleArn).success;
   const canSave = state.phase === "tested" && state.result.ok;
   async function run(action: "test" | "save" | "disconnect") {
     if (
@@ -125,12 +147,16 @@ export function AwsConnectionForm({
         if (abort.signal.aborted) return;
         setOpener(null);
         setRoleArn("");
+        setKeyDraft({ ...keyDraft, accessKeyId: "", secretAccessKey: "" });
         setState({ phase: "idle" });
         await changed();
       } else {
-        const result = await check(roleArn, action === "save", abort.signal);
+        const result = await (access
+          ? access.check(keyDraft, action === "save", abort.signal)
+          : check(roleArn, action === "save", abort.signal));
         if (abort.signal.aborted) return;
         if (action === "save" && result.ok) {
+          setKeyDraft({ ...keyDraft, accessKeyId: "", secretAccessKey: "" });
           setState({ phase: "saved" });
           await changed();
         } else setState({ phase: "tested", result });
@@ -144,25 +170,54 @@ export function AwsConnectionForm({
   }
   return (
     <div className="space-y-3">
-      <label className="block">
-        Role ARN
-        <Input
-          ref={fallback}
-          value={roleArn}
-          disabled={busy || !canTest}
-          spellCheck={false}
-          data-testid="aws-role-arn"
-          aria-invalid={roleArn.length > 0 && !valid}
-          aria-describedby="aws-role-format"
-          onChange={(event) => {
-            setRoleArn(event.target.value);
-            setState({ phase: "idle" });
-          }}
-        />
-      </label>
-      <p id="aws-role-format" className="text-sm text-muted-foreground">
-        รูปแบบ: arn:aws:iam::123456789012:role/NightWatchRole
-      </p>
+      {access ? (
+        (
+          [
+            ["accessKeyId", "Access key ID"],
+            ["secretAccessKey", "Secret access key"],
+            ["region", "Region"],
+          ] as const
+        ).map(([field, label]) => (
+          <label className="block" key={field}>
+            {label}
+            <Input
+              ref={field === "accessKeyId" ? fallback : undefined}
+              type={field === "secretAccessKey" ? "password" : "text"}
+              data-testid={`aws-${field}`}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+              value={keyDraft[field]}
+              onChange={(event) => {
+                setKeyDraft({ ...keyDraft, [field]: event.target.value });
+                setState({ phase: "idle" });
+              }}
+            />
+          </label>
+        ))
+      ) : (
+        <>
+          <label className="block">
+            Role ARN
+            <Input
+              ref={fallback}
+              value={roleArn}
+              disabled={busy || !canTest}
+              spellCheck={false}
+              data-testid="aws-role-arn"
+              aria-invalid={roleArn.length > 0 && !valid}
+              aria-describedby="aws-role-format"
+              onChange={(event) => {
+                setRoleArn(event.target.value);
+                setState({ phase: "idle" });
+              }}
+            />
+          </label>
+          <p id="aws-role-format" className="text-sm text-muted-foreground">
+            รูปแบบ: arn:aws:iam::123456789012:role/NightWatchRole
+          </p>
+        </>
+      )}
       {state.phase === "tested" &&
         (state.result.ok ? (
           <Alert tone="warning" role="status" data-testid="aws-test-passed">

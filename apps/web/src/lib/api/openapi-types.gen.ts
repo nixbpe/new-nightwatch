@@ -6959,6 +6959,12 @@ export interface paths {
                         roleArn: string;
                         /** @enum {string} */
                         method: "assume_role";
+                    } | {
+                        /** @enum {string} */
+                        method: "access_key";
+                        accessKeyId: string;
+                        secretAccessKey: string;
+                        region: string;
                     };
                 };
             };
@@ -7231,6 +7237,12 @@ export interface paths {
                         roleArn: string;
                         /** @enum {string} */
                         method: "assume_role";
+                    } | {
+                        /** @enum {string} */
+                        method: "access_key";
+                        accessKeyId: string;
+                        secretAccessKey: string;
+                        region: string;
                     };
                 };
             };

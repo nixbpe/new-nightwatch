@@ -1,4 +1,9 @@
-import { AppError } from "@nightwatch/shared";
+import type { AwsProjectInput } from "@nightwatch/api-contract";
+import {
+  AppError,
+  encryptSecret,
+  type CredentialEnv,
+} from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
 import { recordAuditEvent } from "../audit/record";
@@ -102,7 +107,7 @@ export function getProjectAws(deps: AwsDeps, input: ProjectIdentity) {
 export async function checkProjectAws(
   deps: AwsDeps,
   input: ProjectIdentity,
-  roleArn: string,
+  config: AwsProjectInput,
   save: boolean,
 ) {
   const tenant = input.organizationId;
@@ -113,8 +118,9 @@ export async function checkProjectAws(
     true,
     async (client, { projectId }) => {
       await initialize(client, tenant, projectId);
-      const currentHub = await hub(client, tenant);
-      if (!currentHub)
+      const currentHub =
+        config.method === "assume_role" ? await hub(client, tenant) : undefined;
+      if (config.method === "assume_role" && !currentHub)
         throw new AppError(
           409,
           "AWS_HUB_REQUIRED",
@@ -128,41 +134,63 @@ export async function checkProjectAws(
   const st = requireSts(deps);
   const limit = await limitAws(deps, input);
   if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
-  const outcome = await testIdentity(roleArn, () =>
-    st.projectRole(
-      {
-        roleArn: snapshot.currentHub.role_arn,
-        externalId: snapshot.currentHub.external_id,
-      },
-      { roleArn, externalId: snapshot.row.external_id },
-    ),
-  );
+  const roleArn = config.method === "assume_role" ? config.roleArn : null;
+  const outcome = await testIdentity(roleArn, () => {
+    if (config.method === "access_key")
+      return st.accessKey(config.region, {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+      });
+    const currentHub = snapshot.currentHub;
+    if (!currentHub) throw new Error("Missing checked AWS hub");
+    return st.projectRole(
+      { roleArn: currentHub.role_arn, externalId: currentHub.external_id },
+      { roleArn: config.roleArn, externalId: snapshot.row.external_id },
+    );
+  });
   return withProjectAccess(
     deps.database,
     input,
     "aws.manage",
     true,
     async (client, { actorRole, projectId }) => {
-      const currentHub = await hub(client, tenant, true);
+      const currentHub =
+        config.method === "assume_role"
+          ? await hub(client, tenant, true)
+          : undefined;
       const current = await connection(client, tenant, projectId);
       if (
         current?.revision !== snapshot.row.revision ||
-        currentHub?.revision !== snapshot.currentHub.revision
+        currentHub?.revision !== snapshot.currentHub?.revision
       )
         staleConnection();
       if (save && outcome.ok) {
+        const [id, secret] =
+          config.method === "access_key"
+            ? encryptProjectKeys(deps.credentialEnv, tenant, projectId, config)
+            : [];
         await client.query(
-          `update project_aws_connections set method = 'assume_role', role_arn = $3, account_id = $4,
-        hub_revision = $5, last_test_at = now(), region = null, revision = gen_random_uuid(),
-        access_key_ciphertext = null, access_key_iv = null, access_key_auth_tag = null, access_key_key_version = null,
-        secret_ciphertext = null, secret_iv = null, secret_auth_tag = null, secret_key_version = null,
-        updated_at = now(), updated_by = $6 where tenant_id = $1 and project_id = $2`,
+          `update project_aws_connections set method = $3, role_arn = $4, account_id = $5,
+          hub_revision = $6, last_test_at = now(), region = $7, revision = gen_random_uuid(),
+          access_key_ciphertext = $8, access_key_iv = $9, access_key_auth_tag = $10, access_key_key_version = $11,
+          secret_ciphertext = $12, secret_iv = $13, secret_auth_tag = $14, secret_key_version = $15,
+          updated_at = now(), updated_by = $16 where tenant_id = $1 and project_id = $2`,
           [
             tenant,
             projectId,
+            config.method,
             roleArn,
             outcome.accountId,
-            currentHub.revision,
+            currentHub?.revision ?? null,
+            config.method === "access_key" ? config.region : null,
+            id?.ciphertext ?? null,
+            id?.iv ?? null,
+            id?.authTag ?? null,
+            id?.keyVersion ?? null,
+            secret?.ciphertext ?? null,
+            secret?.iv ?? null,
+            secret?.authTag ?? null,
+            secret?.keyVersion ?? null,
             input.actorUserId,
           ],
         );
@@ -180,6 +208,40 @@ export async function checkProjectAws(
       return outcome;
     },
   );
+}
+
+function encryptProjectKeys(
+  env: CredentialEnv | undefined,
+  tenantId: string,
+  projectId: string,
+  config: Extract<AwsProjectInput, { method: "access_key" }>,
+) {
+  if (!env)
+    throw new AppError(
+      503,
+      "AWS_CREDENTIALS_UNAVAILABLE",
+      "ยังไม่พร้อมจัดเก็บคีย์ AWS",
+    );
+  return [
+    encryptSecret(
+      {
+        tenantId,
+        monitorId: projectId,
+        slot: "aws.access_key_id",
+        value: config.accessKeyId,
+      },
+      env,
+    ),
+    encryptSecret(
+      {
+        tenantId,
+        monitorId: projectId,
+        slot: "aws.secret_access_key",
+        value: config.secretAccessKey,
+      },
+      env,
+    ),
+  ] as const;
 }
 
 export function disconnectProjectAws(deps: AwsDeps, input: ProjectIdentity) {

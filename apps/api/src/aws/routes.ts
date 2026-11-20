@@ -2,7 +2,7 @@ import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   awsOrganizationInputSchema,
   awsOrganizationSchema,
-  awsProjectRoleInputSchema,
+  awsProjectInputSchema,
   awsProjectSchema,
   awsTestResultSchema,
   errorResponseSchema,
@@ -192,7 +192,7 @@ export function registerAwsRoutes(
           body: {
             required: true,
             content: {
-              "application/json": { schema: awsProjectRoleInputSchema },
+              "application/json": { schema: awsProjectInputSchema },
             },
           },
         },
@@ -210,7 +210,7 @@ export function registerAwsRoutes(
             checkProjectAws(
               deps,
               { ...input, projectId },
-              c.req.valid("json").roleArn,
+              c.req.valid("json"),
               method === "put",
             ),
         );

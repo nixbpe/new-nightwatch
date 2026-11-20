@@ -1,6 +1,7 @@
 import {
   awsOrganizationSchema,
   awsProjectSchema,
+  type AwsProjectInput,
   awsTestResultSchema,
 } from "@nightwatch/api-contract";
 
@@ -57,12 +58,11 @@ export function fetchProjectAws(
 export function checkProjectAws(
   organizationId: string,
   projectId: string,
-  roleArn: string,
+  body: AwsProjectInput,
   save: boolean,
   signal: AbortSignal,
 ) {
   const params = { organizationId, projectId };
-  const body = { method: "assume_role" as const, roleArn };
   return save
     ? request(project, awsTestResultSchema, {
         method: "PUT",

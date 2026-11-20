@@ -1,5 +1,6 @@
 import type { AwsProject } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -95,10 +96,17 @@ export function ProjectAwsPage() {
 function ProjectAws({ organizationId, projectId }: Scope) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const queryClient = useQueryClient();
+  const [selectedMethod, setSelectedMethod] = useState<
+    "assume_role" | "access_key" | null
+  >(null);
   const query = useAwsProject({ organizationId, projectId }, !switched);
   if (switched) return null;
   const connection = query.data;
   const settings = connection?.settings;
+  const method =
+    selectedMethod ??
+    connection?.method ??
+    (settings?.hubConnected ? "assume_role" : "access_key");
   return (
     <Page>
       <PageHeader title="การเชื่อมต่อ AWS ของโปรเจกต์" />
@@ -125,23 +133,79 @@ function ProjectAws({ organizationId, projectId }: Scope) {
                     การเชื่อมต่อขององค์กร
                   </Link>
                 </p>
-                <CopyValue label="External ID" value={settings.externalId} />
-                {settings.trustPolicy && (
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="group"
+                  aria-label="วิธีเชื่อมต่อ AWS"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="aws-method-role"
+                    aria-pressed={method === "assume_role"}
+                    disabled={!settings.hubConnected}
+                    onClick={() => {
+                      setSelectedMethod("assume_role");
+                    }}
+                  >
+                    Assume role
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="aws-method-key"
+                    aria-pressed={method === "access_key"}
+                    onClick={() => {
+                      setSelectedMethod("access_key");
+                    }}
+                  >
+                    Access key
+                  </Button>
+                </div>
+                {connection.secretSet && (
+                  <p data-testid="aws-key-set">ตั้งค่าแล้ว</p>
+                )}
+                {method === "access_key" && (
+                  <p>
+                    หมุนคีย์ด้วยตนเองโดยใส่คู่ใหม่ทั้งชุด แนะนำ Assume role
+                    เมื่อใช้บัญชีกลางได้
+                  </p>
+                )}
+                {method === "assume_role" && (
+                  <CopyValue label="External ID" value={settings.externalId} />
+                )}
+                {method === "assume_role" && settings.trustPolicy && (
                   <CopyValue
                     label="นโยบายความเชื่อถือ"
                     value={settings.trustPolicy}
                   />
                 )}
                 <AwsConnectionForm
+                  key={method}
                   initialRoleArn={settings.roleArn}
-                  canTest={settings.hubConnected}
+                  canTest={method === "access_key" || settings.hubConnected}
+                  access={
+                    method === "access_key"
+                      ? {
+                          region: settings.region ?? "us-east-1",
+                          check: (draft, save, signal) =>
+                            checkProjectAws(
+                              organizationId,
+                              projectId,
+                              draft,
+                              save,
+                              signal,
+                            ),
+                        }
+                      : undefined
+                  }
                   saved={connection.method !== null}
                   affected="โปรเจกต์นี้จะไม่ได้เชื่อมต่อกับ AWS"
                   check={(arn, save, signal) =>
                     checkProjectAws(
                       organizationId,
                       projectId,
-                      arn,
+                      { method: "assume_role", roleArn: arn },
                       save,
                       signal,
                     )

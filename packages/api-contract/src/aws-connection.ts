@@ -44,9 +44,29 @@ export const awsOrganizationSchema = z.object({
 export type AwsOrganization = z.infer<typeof awsOrganizationSchema>;
 export type AwsTestResult = z.infer<typeof awsTestResultSchema>;
 
-export const awsProjectRoleInputSchema = awsOrganizationInputSchema.extend({
+const awsProjectRoleInputSchema = awsOrganizationInputSchema.extend({
   method: z.literal("assume_role"),
 });
+export const awsProjectAccessKeySchema = z
+  .object({
+    method: z.literal("access_key"),
+    accessKeyId: z.string().regex(/^[A-Z0-9]{16,128}$/),
+    secretAccessKey: z
+      .string()
+      .min(16)
+      .max(128)
+      .regex(/^[A-Za-z0-9/+=]+$/),
+    region: z
+      .string()
+      .max(32)
+      .regex(/^[a-z]{2}(?:-[a-z]+)+-\d+$/),
+  })
+  .strict();
+export const awsProjectInputSchema = z.discriminatedUnion("method", [
+  awsProjectRoleInputSchema,
+  awsProjectAccessKeySchema,
+]);
+export type AwsProjectInput = z.infer<typeof awsProjectInputSchema>;
 export const awsProjectSchema = z.object({
   state: z.enum(["disconnected", "connected", "needs_retest"]),
   method: z.enum(["assume_role", "access_key"]).nullable(),

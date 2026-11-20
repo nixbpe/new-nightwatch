@@ -9,7 +9,11 @@ import {
   getOrganizationAws,
   type AwsDeps,
 } from "./organization";
-import { checkProjectAws, getProjectAws } from "./project";
+import {
+  checkProjectAws,
+  disconnectProjectAws,
+  getProjectAws,
+} from "./project";
 
 const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
 const database = createDatabase(runtimeUrl);
@@ -31,7 +35,15 @@ const consumeRateLimits = vi.fn(() =>
 const deps: AwsDeps = {
   database,
   principalArn: "arn:aws:iam::999999999999:role/NightWatch",
-  sts: { organization, projectRole, accessKey: vi.fn() },
+  sts: {
+    organization,
+    projectRole,
+    accessKey: () => Promise.resolve(identity),
+  },
+  credentialEnv: {
+    CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: "v1",
+    CREDENTIAL_ENCRYPTION_KEYS: { v1: Buffer.alloc(32, 1).toString("base64") },
+  },
   rateLimiter: { consumeRateLimits, consumeRateLimit: vi.fn() },
 };
 
@@ -124,6 +136,7 @@ it("rejects late Project verification after a hub change and retains historical 
   const projectId = randomUUID();
   const projectInput = { ...input, projectId };
   const reader = { ...projectInput, actorUserId: viewer };
+  const projectConfig = { method: "assume_role", roleArn } as const;
   await owner.sql.query(
     "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'AWS', 'aws-project')",
     [projectId, organizationId],
@@ -137,10 +150,10 @@ it("rejects late Project verification after a hub change and retains historical 
   );
   expect(await getProjectAws(deps, reader)).not.toHaveProperty("settings");
   await expect(
-    checkProjectAws(deps, reader, roleArn, true),
+    checkProjectAws(deps, reader, projectConfig, true),
   ).rejects.toMatchObject({ statusCode: 403 });
   await checkOrganizationAws(deps, input, roleArn, true);
-  await checkProjectAws(deps, projectInput, roleArn, true);
+  await checkProjectAws(deps, projectInput, projectConfig, true);
   expect(await getProjectAws(deps, reader)).toMatchObject({
     state: "connected",
     method: "assume_role",
@@ -152,7 +165,7 @@ it("rejects late Project verification after a hub change and retains historical 
     return late.promise;
   });
   const pending = expect(
-    checkProjectAws(deps, projectInput, roleArn, true),
+    checkProjectAws(deps, projectInput, projectConfig, true),
   ).rejects.toMatchObject({ statusCode: 409, code: "AWS_CONNECTION_CHANGED" });
   await started.promise;
   try {
@@ -167,12 +180,61 @@ it("rejects late Project verification after a hub change and retains historical 
     settings: { hubConnected: false, roleArn },
   });
   await checkOrganizationAws(deps, input, roleArn, true);
-  await checkProjectAws(deps, projectInput, roleArn, false);
+  await checkProjectAws(deps, projectInput, projectConfig, false);
   expect(await getProjectAws(deps, reader)).toMatchObject({
     state: "needs_retest",
   });
-  await checkProjectAws(deps, projectInput, roleArn, true);
+  await checkProjectAws(deps, projectInput, projectConfig, true);
   expect(await getProjectAws(deps, reader)).toMatchObject({
     state: "connected",
   });
+});
+
+it("writes both access-key fields encrypted and erases them when disconnected", async () => {
+  const projectId = randomUUID();
+  const projectInput = { ...input, projectId };
+  await owner.sql.query(
+    "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'Keys', 'aws-keys')",
+    [projectId, organizationId],
+  );
+  const draft = {
+    method: "access_key",
+    accessKeyId: "TESTACCESSKEY001",
+    secretAccessKey: "dummysecretkey001",
+    region: "us-east-1",
+  } as const;
+  const saved = await checkProjectAws(deps, projectInput, draft, true);
+  const status = await getProjectAws(deps, projectInput);
+  expect(status).toMatchObject({
+    state: "connected",
+    method: "access_key",
+    secretSet: true,
+  });
+  const persisted = () =>
+    withTenantContextRaw(database, organizationId, async (client) => {
+      const result = await client.query<{
+        id: Buffer | null;
+        secret: Buffer | null;
+      }>(
+        "select access_key_ciphertext as id, secret_ciphertext as secret from project_aws_connections where tenant_id = $1 and project_id = $2",
+        [organizationId, projectId],
+      );
+      return result.rows[0];
+    });
+  const encrypted = await persisted();
+  expect(encrypted?.id).toBeInstanceOf(Buffer);
+  expect(encrypted?.secret).toBeInstanceOf(Buffer);
+  expect(encrypted?.id).not.toEqual(Buffer.from(draft.accessKeyId));
+  expect(encrypted?.secret).not.toEqual(Buffer.from(draft.secretAccessKey));
+  await disconnectProjectAws(deps, projectInput);
+  expect(await persisted()).toEqual({ id: null, secret: null });
+  const audit = await withTenantContextRaw(database, organizationId, (client) =>
+    client.query(
+      "select target_attributes, changes from audit_events where tenant_id = $1 and target_id = $2",
+      [organizationId, projectId],
+    ),
+  );
+  const outputs = JSON.stringify([saved, status, audit.rows]);
+  expect(outputs).not.toContain(draft.accessKeyId);
+  expect(outputs).not.toContain(draft.secretAccessKey);
 });

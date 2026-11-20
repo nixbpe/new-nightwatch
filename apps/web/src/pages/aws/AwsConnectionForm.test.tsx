@@ -49,3 +49,36 @@ it("requires the current draft to pass Test before Save and cancels disconnect w
   expect(opener).toHaveFocus();
   expect(disconnect).not.toHaveBeenCalled();
 });
+
+it("clears both write-only key fields after successful Save", async () => {
+  const user = userEvent.setup();
+  const check = vi.fn(() =>
+    Promise.resolve({
+      ok: true as const,
+      accountId: "123456789012",
+      arn: "arn:aws:iam::123456789012:user/fixture",
+    }),
+  );
+  render(
+    <AwsConnectionForm
+      initialRoleArn={null}
+      saved={false}
+      affected=""
+      check={check}
+      access={{ region: "us-east-1", check }}
+      disconnect={() => Promise.resolve()}
+      changed={() => Promise.resolve()}
+    />,
+  );
+  const id = screen.getByTestId("aws-accessKeyId");
+  const secret = screen.getByTestId("aws-secretAccessKey");
+  expect(secret).toHaveAttribute("type", "password");
+  await user.type(id, "T".repeat(20));
+  await user.type(secret, "x".repeat(40));
+  await user.click(screen.getByTestId("aws-test"));
+  await screen.findByTestId("aws-test-passed");
+  await user.click(screen.getByTestId("aws-save"));
+  await screen.findByTestId("aws-saved");
+  expect(id).toHaveValue("");
+  expect(secret).toHaveValue("");
+});

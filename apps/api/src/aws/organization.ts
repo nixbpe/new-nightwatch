@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
-import { AppError, StsError, type StsVerifier } from "@nightwatch/shared";
+import {
+  AppError,
+  StsError,
+  type CredentialEnv,
+  type StsVerifier,
+} from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
 import { recordAuditEvent, type AuditAction } from "../audit/record";
@@ -15,6 +20,7 @@ export type AwsDeps = {
   database: Database;
   sts?: StsVerifier;
   principalArn?: string;
+  credentialEnv?: CredentialEnv;
   rateLimiter?: RateLimiter;
 };
 type HubRow = {
