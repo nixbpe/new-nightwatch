@@ -43,3 +43,24 @@ export const awsOrganizationSchema = z.object({
 });
 export type AwsOrganization = z.infer<typeof awsOrganizationSchema>;
 export type AwsTestResult = z.infer<typeof awsTestResultSchema>;
+
+export const awsProjectRoleInputSchema = awsOrganizationInputSchema.extend({
+  method: z.literal("assume_role"),
+});
+export const awsProjectSchema = z.object({
+  state: z.enum(["disconnected", "connected", "needs_retest"]),
+  method: z.enum(["assume_role", "access_key"]).nullable(),
+  accountId: accountId.nullable(),
+  lastTestAt: testAt.nullable(),
+  settings: z
+    .object({
+      hubConnected: z.boolean(),
+      roleArn: awsRoleArnSchema.nullable(),
+      region: z.string().nullable(),
+      externalId: z.string(),
+      trustPolicy: z.string().nullable(),
+    })
+    .optional(),
+  secretSet: z.literal(true).optional(),
+});
+export type AwsProject = z.infer<typeof awsProjectSchema>;

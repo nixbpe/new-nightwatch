@@ -25,7 +25,7 @@ import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerAuditLogReadRoutes } from "./audit/routes";
 import type { AwsDeps } from "./aws/organization";
-import { registerOrganizationAwsRoutes } from "./aws/routes";
+import { registerAwsRoutes } from "./aws/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -488,7 +488,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
     });
-    registerOrganizationAwsRoutes(app, {
+    registerAwsRoutes(app, {
       auth,
       database,
       logger: deps.logger,
