@@ -35,6 +35,7 @@ import {
 } from "../../monitors/useMonitorAccess";
 import { PROJECT_GONE_NOTICE } from "../members/ProjectMembersPage";
 import { EventsSection } from "./EventsSection";
+import { ProjectAwsCard } from "../../aws/ProjectAwsPage";
 
 export function ProjectOverviewPage() {
   const { organizationId, projectId } = useParams();
@@ -384,6 +385,7 @@ function OverviewForProject({
             จัดการสมาชิก
           </Link>
         </section>
+        <ProjectAwsCard organizationId={organizationId} projectId={projectId} />
       </div>
     </Page>
   );

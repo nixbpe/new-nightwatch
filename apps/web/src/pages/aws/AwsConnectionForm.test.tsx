@@ -44,9 +44,7 @@ it("requires the current draft to pass Test before Save and cancels disconnect w
   const opener = screen.getByRole("button", { name: "ยกเลิกการเชื่อมต่อ" });
   await user.click(opener);
   const dialog = await screen.findByRole("dialog");
-  expect(
-    within(dialog).getByRole("button", { name: "ยกเลิก", exact: true }),
-  ).toHaveFocus();
+  expect(within(dialog).getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
   await user.keyboard("{Escape}");
   expect(opener).toHaveFocus();
   expect(disconnect).not.toHaveBeenCalled();

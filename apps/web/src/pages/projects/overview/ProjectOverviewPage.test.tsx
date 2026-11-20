@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { guardUnassignedNetwork } from "../../../test/guard-network";
 import { bindQueryClientIdentity } from "../../../lib/queryClient";
+import { fetchProjectAws } from "../../../lib/api/aws";
 import { fetchMeContext, updateActiveOrganization } from "../../../lib/api/me";
 import {
   fetchProjectDetail,
@@ -42,6 +43,10 @@ import { formatDuration, incidentReasonLabel } from "../../monitors/format";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
 guardUnassignedNetwork();
+vi.mock("../../../lib/api/aws", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  fetchProjectAws: vi.fn(),
+}));
 vi.mock("../../../lib/api/me", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
@@ -108,10 +113,33 @@ function renderPage(org = A) {
   return { client, router };
 }
 beforeEach(() => {
+  vi.mocked(fetchProjectAws).mockResolvedValue({
+    state: "disconnected",
+    method: null,
+    accountId: null,
+    lastTestAt: null,
+  });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchMonitorList).mockResolvedValue(list([item()]));
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
+});
+it("shows historical AWS identity on the Project overview after the hub changes", async () => {
+  vi.mocked(fetchProjectAws).mockResolvedValue({
+    state: "needs_retest",
+    method: "assume_role",
+    accountId: "123456789012",
+    lastTestAt: DATA_AS_OF,
+  });
+  renderPage();
+  const card = await screen.findByTestId("project-aws-card");
+  expect(
+    await within(card).findByTestId("aws-connection-status"),
+  ).toHaveTextContent("123456789012");
+  expect(within(card).getByRole("link")).toHaveAttribute(
+    "href",
+    `/organizations/${A}/projects/${P}/aws`,
+  );
 });
 afterEach(async () => {
   cleanup();
@@ -240,7 +268,6 @@ describe("Project overview", () => {
       );
     });
     await ready();
-    expect(screen.queryByText(/AWS/)).toBeNull();
     for (const [key, value] of Object.entries({
       total: 17,
       up: 9,

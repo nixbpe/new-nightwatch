@@ -49,6 +49,7 @@ import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
+import { ProjectAwsPage } from "./pages/aws/ProjectAwsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -172,6 +173,10 @@ export const routes: RouteObject[] = [
             path: "/workspace",
             loader: workspaceLoader,
             element: <WorkspaceEntryFallback />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/aws",
+            element: <ProjectAwsPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/overview",
