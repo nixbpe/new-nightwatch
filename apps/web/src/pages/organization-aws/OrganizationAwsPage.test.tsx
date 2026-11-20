@@ -923,4 +923,55 @@ describe("F-013 repair round 1", () => {
       expect(screen.queryByTestId("aws-external-id")).toBeNull();
     },
   );
+
+  it.each(["save", "disconnect"] as const)(
+    "PR-119 AC-11 a GET in flight during %s cannot restore the old snapshot",
+    async (kind) => {
+      const before = kind === "save" ? notConnected() : connected();
+      const stale = Promise.withResolvers<OrganizationAwsConnectionResponse>();
+      fetchMock
+        .mockResolvedValueOnce(before)
+        .mockReturnValueOnce(stale.promise);
+      testMock.mockResolvedValue(passed);
+      saveMock.mockResolvedValue(connected({ revision: 1 }));
+      disconnectMock.mockResolvedValue(notConnected({ revision: 4 }));
+      const { queryClient } = renderPage();
+      const user = userEvent.setup();
+      if (kind === "save") {
+        await typeArn(ARN);
+        await user.click(screen.getByTestId("aws-connection-test"));
+      } else {
+        await screen.findByTestId("aws-connection-disconnect");
+      }
+      // A background refetch starts and stays pending.
+      void queryClient.invalidateQueries({
+        queryKey: ["tenant", "aws-connection", ORG_A],
+      });
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+      if (kind === "save") {
+        await user.click(await screen.findByTestId("aws-connection-save"));
+        await screen.findByTestId("aws-connection-saved");
+      } else {
+        await user.click(screen.getByTestId("aws-connection-disconnect"));
+        await user.click(screen.getByTestId("aws-disconnect-confirm"));
+        await screen.findByTestId("aws-connection-disconnected");
+      }
+      await act(async () => {
+        stale.resolve(before);
+        await stale.promise;
+      });
+      expect(screen.getByTestId("aws-connection-status")).toHaveTextContent(
+        kind === "save" ? "เชื่อมต่อแล้ว" : "ยังไม่เชื่อมต่อ",
+      );
+      expect(
+        queryClient.getQueryData<OrganizationAwsConnectionResponse>([
+          "tenant",
+          "aws-connection",
+          ORG_A,
+        ])?.revision,
+      ).toBe(kind === "save" ? 1 : 4);
+    },
+  );
 });

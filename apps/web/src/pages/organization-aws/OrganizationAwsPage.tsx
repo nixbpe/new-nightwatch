@@ -166,7 +166,11 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
             organizationId={organizationId}
             data={data}
             onUpdated={(next) => {
-              queryClient.setQueryData(queryKey, next);
+              // A GET that started before the change would answer with the
+              // old snapshot; cancel it so it cannot overwrite the result.
+              void queryClient.cancelQueries({ queryKey }).then(() => {
+                queryClient.setQueryData(queryKey, next);
+              });
             }}
             onDenied={denyAction}
             onReload={() => void query.refetch()}
