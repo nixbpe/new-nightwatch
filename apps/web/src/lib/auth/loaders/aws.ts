@@ -7,7 +7,8 @@ import { gateVerifiedSession, prefetchMeContext } from "./session";
 export async function awsLoader({ params, request }: LoaderFunctionArgs) {
   const session = await gateVerifiedSession(request);
   if (session instanceof Response) return session;
-  const { organizationId, projectId } = params;
+  const organizationId = params.organizationId?.toLowerCase();
+  const projectId = params.projectId?.toLowerCase();
   if (!organizationId) return null;
   const context = await prefetchMeContext(session.user.id);
   const role = context?.organizations.find(

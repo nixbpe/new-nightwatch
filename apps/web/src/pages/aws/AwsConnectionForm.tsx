@@ -4,7 +4,14 @@ import {
   type AwsProjectInput,
   type AwsTestResult,
 } from "@nightwatch/api-contract";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -78,8 +85,10 @@ export function AwsConnectionForm({
   disconnect,
   changed,
   access,
+  disconnectFocus,
 }: {
   initialRoleArn: string | null;
+  disconnectFocus?: RefObject<HTMLElement | null>;
   canTest?: boolean;
   saved: boolean;
   affected: ReactNode;
@@ -109,6 +118,8 @@ export function AwsConnectionForm({
   const [state, setState] = useState<State>({ phase: "idle" });
   const [opener, setOpener] = useState<HTMLButtonElement | null>(null);
   const fallback = useRef<HTMLDivElement>(null);
+  const disconnected = useRef(false);
+  const preferFallback = useCallback(() => disconnected.current, []);
   const flight = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
@@ -144,7 +155,10 @@ export function AwsConnectionForm({
     try {
       if (action === "disconnect") {
         await disconnect(abort.signal);
-        if (!abort.signal.aborted) await changed();
+        if (!abort.signal.aborted) {
+          disconnected.current = true;
+          await changed();
+        }
         if (abort.signal.aborted) return;
         setOpener(null);
         setRoleArn("");
@@ -251,6 +265,7 @@ export function AwsConnectionForm({
             variant="outline"
             disabled={busy}
             onClick={(event) => {
+              disconnected.current = false;
               setOpener(event.currentTarget);
             }}
           >
@@ -293,7 +308,8 @@ export function AwsConnectionForm({
           pendingLabel="กำลังยกเลิก…"
           pending={state.phase === "disconnecting"}
           opener={opener}
-          fallbackFocus={fallback}
+          fallbackFocus={disconnectFocus ?? fallback}
+          preferFallbackFocus={preferFallback}
           onCancel={() => {
             setOpener(null);
           }}

@@ -21,9 +21,8 @@ import {
 export function OrganizationAwsPage() {
   const { organizationId } = useParams();
   if (!organizationId) return null;
-  return (
-    <OrganizationAws key={organizationId} organizationId={organizationId} />
-  );
+  const id = organizationId.toLowerCase();
+  return <OrganizationAws key={id} organizationId={id} />;
 }
 
 function OrganizationAws({ organizationId }: { organizationId: string }) {

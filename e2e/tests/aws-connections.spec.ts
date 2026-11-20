@@ -73,7 +73,7 @@ test("owner connects a hub and a Project with both STS methods; Project member c
     await page.getByTestId("login-password").fill(owner.password);
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/organizations\/[^/]+\/projects(?:\/|$)/);
-    await page.goto(`${org}/aws`);
+    await page.goto(`/organizations/${organizationId.toUpperCase()}/aws`);
     await expect(page.getByTestId("aws-role-arn")).toBeEnabled();
     await page.getByTestId("aws-role-arn").fill(hubRole);
     await testAndSave(page);
@@ -140,6 +140,31 @@ test("owner connects a hub and a Project with both STS methods; Project member c
         })
       ).status,
     ).toBe(403);
+
+    // Reconnect the hub in a different session; loading a saved key directly
+    // leaves no explicit method selection to hold the keyed form after DELETE.
+    expect(
+      (
+        await secondSession.request("PUT", `/api${org}/aws-connection`, {
+          roleArn: hubRole,
+        })
+      ).body,
+    ).toMatchObject({ ok: true });
+    await page.goto(`${project}/aws`);
+    await expect(page.getByTestId("aws-method-key")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.getByRole("button", { name: "ยกเลิกการเชื่อมต่อ" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "ยืนยันการยกเลิก" })
+      .click();
+    await expect(page.getByTestId("aws-method-role")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByTestId("project-aws-heading-focus")).toBeFocused();
   } finally {
     try {
       await cleanUp(db.sql, people, organizationId ? [organizationId] : []);

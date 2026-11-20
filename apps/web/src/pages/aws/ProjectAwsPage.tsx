@@ -1,6 +1,6 @@
 import type { AwsProject } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -90,11 +90,13 @@ export function ProjectAwsCard({ organizationId, projectId }: Scope) {
 export function ProjectAwsPage() {
   const { organizationId, projectId } = useParams();
   if (!organizationId || !projectId) return null;
+  const org = organizationId.toLowerCase();
+  const project = projectId.toLowerCase();
   return (
     <ProjectAws
-      key={`${organizationId}:${projectId}`}
-      organizationId={organizationId}
-      projectId={projectId}
+      key={`${org}:${project}`}
+      organizationId={org}
+      projectId={project}
     />
   );
 }
@@ -102,6 +104,7 @@ export function ProjectAwsPage() {
 function ProjectAws({ organizationId, projectId }: Scope) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const queryClient = useQueryClient();
+  const disconnectFocus = useRef<HTMLDivElement>(null);
   const { me } = useTenant();
   const role = me?.organizations.find((org) => org.id === organizationId)?.role;
   const [selectedMethod, setSelectedMethod] = useState<
@@ -117,7 +120,13 @@ function ProjectAws({ organizationId, projectId }: Scope) {
     (settings?.hubConnected ? "assume_role" : "access_key");
   return (
     <Page>
-      <PageHeader title="การเชื่อมต่อ AWS ของโปรเจกต์" />
+      <div
+        ref={disconnectFocus}
+        tabIndex={-1}
+        data-testid="project-aws-heading-focus"
+      >
+        <PageHeader title="การเชื่อมต่อ AWS ของโปรเจกต์" />
+      </div>
       {query.isPending ? (
         <p role="status">กำลังโหลดการเชื่อมต่อ AWS…</p>
       ) : query.isError ? (
@@ -196,6 +205,7 @@ function ProjectAws({ organizationId, projectId }: Scope) {
                 )}
                 <AwsConnectionForm
                   key={method}
+                  disconnectFocus={disconnectFocus}
                   initialRoleArn={settings.roleArn}
                   canTest={method === "access_key" || settings.hubConnected}
                   access={
