@@ -138,6 +138,7 @@ describe("Project scope in the navigation definition", () => {
     ).toEqual([
       `/organizations/${other}/projects/${P1}/overview`,
       `/organizations/${other}/projects/${P1}/monitors`,
+      `/organizations/${other}/projects/${P1}/inventory`,
       `/organizations/${other}/projects/${P1}/aws`,
       `/organizations/${other}/projects/${P1}/members`,
     ]);
@@ -162,6 +163,12 @@ describe("Project scope in the navigation definition", () => {
         label: "ตรวจสถานะบริการ",
         icon: "activity",
         path: `/organizations/${ORG}/projects/${P1}/monitors`,
+        group: "โปรเจกต์",
+      },
+      {
+        label: "Inventory",
+        icon: "inventory",
+        path: `/organizations/${ORG}/projects/${P1}/inventory`,
         group: "โปรเจกต์",
       },
       {

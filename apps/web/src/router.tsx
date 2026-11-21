@@ -49,8 +49,14 @@ import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import { awsLoader } from "./lib/auth/loaders/aws";
+import {
+  inventoryLoader,
+  inventoryRejectedRowsLoader,
+} from "./lib/auth/loaders/inventory";
 import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
 import { ProjectAwsPage } from "./pages/aws/ProjectAwsPage";
+import { InventoryPage } from "./pages/inventory/InventoryPage";
+import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -179,6 +185,16 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/projects/:projectId/aws",
             loader: awsLoader,
             element: <ProjectAwsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory",
+            loader: inventoryLoader,
+            element: <InventoryPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",
+            loader: inventoryRejectedRowsLoader,
+            element: <RejectedRowsPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/overview",

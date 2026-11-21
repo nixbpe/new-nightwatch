@@ -297,6 +297,16 @@ export function HistoryIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function InventoryIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+      <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   grid: GridIcon,
   inbox: InboxIcon,
@@ -308,6 +318,7 @@ export const NAV_ICONS = {
   monitor: MonitorIcon,
   activity: ActivityIcon,
   history: HistoryIcon,
+  inventory: InventoryIcon,
 } as const;
 
 export type NavIconName = keyof typeof NAV_ICONS;
