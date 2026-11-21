@@ -139,7 +139,6 @@ describe("Project scope in the navigation definition", () => {
       `/organizations/${other}/projects/${P1}/overview`,
       `/organizations/${other}/projects/${P1}/monitors`,
       `/organizations/${other}/projects/${P1}/inventory`,
-      `/organizations/${other}/projects/${P1}/aws`,
       `/organizations/${other}/projects/${P1}/members`,
     ]);
     expect(
@@ -169,12 +168,6 @@ describe("Project scope in the navigation definition", () => {
         label: "Inventory",
         icon: "inventory",
         path: `/organizations/${ORG}/projects/${P1}/inventory`,
-        group: "โปรเจกต์",
-      },
-      {
-        label: "การเชื่อมต่อ AWS",
-        icon: "activity",
-        path: `/organizations/${ORG}/projects/${P1}/aws`,
         group: "โปรเจกต์",
       },
       {

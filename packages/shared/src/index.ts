@@ -30,8 +30,7 @@ export * from "./monitor-check";
 export * from "./audit-export";
 export {
   createStsVerifier,
-  STS_DEFAULT_REGION,
-  STS_REGIONS,
   StsError,
+  type StsErrorCode,
   type StsVerifier,
 } from "./aws/sts";

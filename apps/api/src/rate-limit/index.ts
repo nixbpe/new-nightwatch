@@ -1,4 +1,5 @@
 export {
+  consumeAwsTestRateLimit,
   consumeMonitorTestRateLimit,
   createRateLimiter,
   type RateLimitFailureReason,

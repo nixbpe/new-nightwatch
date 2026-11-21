@@ -81,6 +81,8 @@ create policy inventory_rows_tenant_access on inventory_rows
 grant select, insert, delete on inventory_systems to nightwatch;
 grant select, insert on inventory_rows to nightwatch;
 
+-- The list is main's (0029) plus the upload action; the category and target
+-- rules already cover organization.project.% and the project target type.
 alter table audit_events drop constraint audit_events_action_check;
 alter table audit_events add constraint audit_events_action_check check (
   action in (
@@ -93,7 +95,10 @@ alter table audit_events add constraint audit_events_action_check check (
     'organization.project.create', 'organization.project.update', 'organization.project.delete',
     'organization.project.member.add', 'organization.project.member.role.update',
     'organization.project.member.remove',
-    'organization.aws_connection.test', 'organization.aws_connection.update', 'organization.aws_connection.delete',
+    'organization.aws_connection.tested', 'organization.aws_connection.updated',
+    'organization.aws_connection.disconnected',
+    'organization.aws_connection.test', 'organization.aws_connection.update',
+    'organization.aws_connection.delete',
     'organization.project.aws_connection.test', 'organization.project.aws_connection.update',
     'organization.project.aws_connection.delete',
     'organization.project.inventory.upload'

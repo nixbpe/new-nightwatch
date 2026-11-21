@@ -45,6 +45,16 @@
 
 [Outbound helper](../packages/shared/src/outbound-http/send.ts), [Check executor](../packages/shared/src/monitor-check/run-check.ts), [Test API](../apps/api/src/monitors/test-route.ts), [Test contract](../packages/api-contract/src/monitor.ts), [Test panel](../apps/web/src/pages/monitors/form/TestPanel.tsx).
 
+## การเชื่อมต่อ AWS ขององค์กร
+
+- API: [routes and service](../apps/api/src/aws-connection/) (`registerAwsConnectionRoutes`, `updateOrganizationAwsConnection`), STS seam `awsSts` ใน [app factory](../apps/api/src/app.ts), [STS helper](../packages/shared/src/aws/sts.ts) (`createStsVerifier`), quota [rate limit](../apps/api/src/rate-limit/limiter.ts) (`consumeAwsTestRateLimit`).
+- Contract: [AWS connection shapes](../packages/api-contract/src/aws-connection.ts) (`organizationAwsConnectionResponseSchema`, `awsRoleArnSchema`).
+- Data: [migration ของ Organization และ Project](../packages/db/migrations/0029_aws_connections_v2.sql) (`org_aws_connections`, `project_aws_connections`).
+- Focused tests: [API](../apps/api/src/aws-connection/routes.db.test.ts), [DB/RLS](../packages/db/tests/aws-connections.db.test.ts), [STS helper](../packages/shared/tests/sts.test.ts).
+- Web: [Organization AWS page](../apps/web/src/pages/organization-aws/OrganizationAwsPage.tsx) (`/organizations/:organizationId/aws`), [form and disconnect](../apps/web/src/pages/organization-aws/ConnectionCard.tsx), [client](../apps/web/src/lib/api/aws-connection.ts), [loader](../apps/web/src/lib/auth/loaders/awsConnection.ts), menu entry in [nav config](../apps/web/src/components/shell/nav-config.ts).
+- Bootstrap: [API bootstrap](../apps/api/src/server.ts) (`startApi`) receives the verifier from [production entry](../apps/api/src/index.ts) or the test-only [e2e entry](../apps/api/src/testing/e2e-server.ts) (fakecloud); [entry isolation test](../apps/api/src/entry-isolation.test.ts).
+- Browser: [page tests](../apps/web/src/pages/organization-aws/OrganizationAwsPage.test.tsx), [e2e](../e2e/tests/organization-aws.spec.ts) with [fakecloud helpers](../e2e/support/fakecloud.ts) (requires Docker).
+
 ## บันทึกกิจกรรมและส่งออก
 
 [API audit](../apps/api/src/audit/), [Worker audit](../apps/worker/src/audit/), [Web audit](../apps/web/src/pages/audit-log/).
@@ -57,13 +67,9 @@
 - Contract: [Filter/count shapes](../packages/api-contract/src/notification.ts) (`notificationListResponseSchema`, `notificationCountResponseSchema`), [hostname snapshot migration](../packages/db/migrations/0027_notification_monitor_hostname.sql).
 - Focused tests: [API service](../apps/api/src/notifications/service.db.test.ts), [Web inbox](../apps/web/src/pages/NotificationsPage.test.tsx), [loaders](../apps/web/src/lib/auth/loaders.test.tsx).
 
-## การเชื่อมต่อบัญชี AWS ของ Organization และ Project
-
-[API](../apps/api/src/aws/), [Web](../apps/web/src/pages/aws/), [สัญญา](../packages/api-contract/src/aws-connection.ts), [AWS STS](../packages/shared/src/aws/sts.ts), [migration](../packages/db/migrations/0028_aws_connections.sql), [browser test](../e2e/tests/aws-connections.spec.ts).
-
 ## Inventory ของ Project (E-005 F-017)
 
-[API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0029_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
+[API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0030_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
 
 ## สัญญา API
 

@@ -190,8 +190,6 @@ Architecture requirements remain WEB-01 and WEB-02.
 
 ## Playwright E2E
 
-The Playwright API launcher starts a disposable [fakecloud](https://github.com/faiscadev/fakecloud) container for AWS integration, including filtered runs. Install Docker, `curl`, `jq`, and AWS CLI v2, and allow pulling the pinned image from `ghcr.io`. The fixture binds to loopback, uses only emulator credentials, and stops its own container on shutdown. Do not provide real AWS credentials.
-
 ```sh
 bun install --cwd e2e --frozen-lockfile
 (cd e2e && bun x playwright install chromium)
@@ -210,6 +208,17 @@ schema-snapshot bootstrap does not prove clean migration replay.
 Cleanup removes only the run's database and prefixed Redis keys, never dev
 containers or unprefixed keys. SIGKILL cannot run cleanup. Keep namespace
 isolation intact; longer timeouts do not fix jobs consumed by the wrong Worker.
+
+Every run needs Docker: Playwright starts the fakecloud STS/IAM emulator
+(`ghcr.io/faiscadev/fakecloud@sha256:9be41fb9274d792dcd1de6914177021edb5d5fea168ceceb28793543ffeede2a`,
+the image from `packages/shared/tests/sts-fakecloud.integration.sh`) on
+`127.0.0.1:${FAKECLOUD_PORT}` (default 4600 + worktree slot) as container
+`nw-e2e-fakecloud-<port>`, removing a leftover container of that name first.
+The API under test boots from the test-only entry
+[`src/testing/e2e-server.ts`](../../apps/api/src/testing/e2e-server.ts), which
+injects the fakecloud STS verifier into the production bootstrap; the production
+entry cannot reach it. Two runs in one worktree need different `FAKECLOUD_PORT`
+values.
 
 Verify isolation against running local services:
 

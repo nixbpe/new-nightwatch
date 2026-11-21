@@ -1,7 +1,9 @@
-import type {
-  AuditLogActorsResponse,
-  AuditLogEventResponse,
-  AuditLogListResponse,
+import {
+  auditLogEventResponseSchema,
+  auditLogListResponseSchema,
+  type AuditLogActorsResponse,
+  type AuditLogEventResponse,
+  type AuditLogListResponse,
 } from "@nightwatch/api-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -627,6 +629,44 @@ describe("detail (AC-12, AC-13)", () => {
     expect(
       (await detail(orgA.users.viewer, orgA.id, "not-a-uuid")).status,
     ).toBe(403);
+  });
+});
+
+describe("AWS connection events written before 0029", () => {
+  it("lists and opens #118's event shapes within the response contract", async () => {
+    const org = await organization("auditread-aws-legacy");
+    const ids = [
+      await seed(org.id, {
+        actorUserId: org.users.owner,
+        action: "organization.aws_connection.update",
+        targetType: "aws_connection",
+      }),
+      await seed(org.id, {
+        actorUserId: org.users.owner,
+        action: "organization.project.aws_connection.delete",
+        targetType: "project",
+        targetId: crypto.randomUUID(),
+      }),
+    ];
+    const listed = await list(org.users.owner, org.id);
+    expect(listed.status).toBe(200);
+    expect(auditLogListResponseSchema.safeParse(listed.json).success).toBe(
+      true,
+    );
+    for (const id of ids) {
+      const opened = await detail(org.users.owner, org.id, id);
+      expect(opened.status).toBe(200);
+      expect(auditLogEventResponseSchema.safeParse(opened.json).success).toBe(
+        true,
+      );
+    }
+    expect(
+      asEvent(await detail(org.users.owner, org.id, ids[0] ?? "")),
+    ).toMatchObject({
+      event: {
+        target: { type: "aws_connection", roleArn: null, revision: null },
+      },
+    });
   });
 });
 

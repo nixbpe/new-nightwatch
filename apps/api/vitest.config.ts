@@ -31,7 +31,12 @@ export default defineConfig({
       reporter: ["text", "json-summary"],
       include: ["src/**"],
       // Server bootstrap is covered by dev-server smoke runs.
-      exclude: ["src/index.ts", "src/**/*.test.ts"],
+      exclude: [
+        "src/index.ts",
+        "src/server.ts",
+        "src/testing/e2e-server.ts",
+        "src/**/*.test.ts",
+      ],
       thresholds: gate
         ? {
             lines: 80,

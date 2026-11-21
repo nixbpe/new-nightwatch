@@ -33,3 +33,5 @@ export { auditLogLoader, auditLogEventLoader } from "./loaders/auditLog";
 export { workspaceLoader } from "./loaders/workspace";
 
 export { organizationMembersLoader } from "./loaders/organizationMembers";
+
+export { organizationAwsLoader } from "./loaders/awsConnection";

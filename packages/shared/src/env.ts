@@ -18,6 +18,11 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+  /** NightWatch's IAM principal for AWS trust policies; display only, not a credential. */
+  NIGHTWATCH_AWS_PRINCIPAL_ARN: z
+    .string()
+    .regex(/^arn:aws:iam::\d{12}:(root|(role|user)\/[\w+=,.@/-]+)$/)
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

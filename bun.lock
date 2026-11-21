@@ -17,6 +17,7 @@
       "name": "@nightwatch/api",
       "version": "0.0.1",
       "dependencies": {
+        "@aws-sdk/credential-provider-node": "3.972.97",
         "@hono/zod-openapi": "^1.0.0",
         "@nightwatch/api-contract": "workspace:*",
         "@nightwatch/db": "workspace:*",
@@ -32,6 +33,7 @@
         "zod": "^4.6.7",
       },
       "devDependencies": {
+        "@aws-sdk/client-sts": "3.1173.0",
         "@nightwatch/eslint-config": "workspace:*",
         "@nightwatch/typescript-config": "workspace:*",
         "@types/pg": "^8.11.10",

@@ -26,6 +26,10 @@ export const AUDIT_ACTIONS = [
   "organization.project.member.add",
   "organization.project.member.role.update",
   "organization.project.member.remove",
+  "organization.aws_connection.tested",
+  "organization.aws_connection.updated",
+  "organization.aws_connection.disconnected",
+  // Written by #118's AWS connection before 0029; kept so those events read.
   "organization.aws_connection.test",
   "organization.aws_connection.update",
   "organization.aws_connection.delete",
@@ -42,7 +46,8 @@ export type AuditCategory =
   | "member"
   | "invitation"
   | "audit_log"
-  | "project";
+  | "project"
+  | "aws_connection";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.monitor.create": "สร้างมอนิเตอร์",
@@ -68,6 +73,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
   "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
   "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
+  "organization.aws_connection.tested": "ทดสอบการเชื่อมต่อ AWS",
+  "organization.aws_connection.updated": "ตั้งค่าการเชื่อมต่อ AWS",
+  "organization.aws_connection.disconnected": "ยกเลิกการเชื่อมต่อ AWS",
   "organization.aws_connection.test": "ทดสอบการเชื่อมต่อ AWS ขององค์กร",
   "organization.aws_connection.update": "บันทึกการเชื่อมต่อ AWS ขององค์กร",
   "organization.aws_connection.delete": "ยกเลิกการเชื่อมต่อ AWS ขององค์กร",
@@ -123,7 +131,7 @@ export const AUDIT_EXPORT_MAX_BYTES = 25 * 1024 * 1024;
 export const AUDIT_EXPORT_FILE_TTL_HOURS = 24;
 
 export function auditScopeNote(recordingStartedOn: string): string {
-  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ การเชื่อมต่อ AWS ขององค์กร และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account ระดับโปรเจกต์, API key และ findings`;
 }
 
 export function auditActionCodesMatching(q: string): AuditAction[] {

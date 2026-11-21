@@ -1158,7 +1158,7 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(16);
+    ).toHaveLength(15);
     expect(
       within(dialog).queryByTestId("shell-command-option-/workspace"),
     ).toBeNull();
@@ -1166,7 +1166,6 @@ describe("AppShell", () => {
       `/organizations/${ORG_A}/projects/${PROJECT}/overview`,
       MONITORS_A,
       `/organizations/${ORG_A}/projects/${PROJECT}/inventory`,
-      `/organizations/${ORG_A}/projects/${PROJECT}/aws`,
       `/organizations/${ORG_A}/projects/${PROJECT}/members`,
       "/notifications",
       "/settings",

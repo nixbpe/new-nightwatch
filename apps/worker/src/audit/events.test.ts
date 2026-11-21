@@ -116,3 +116,19 @@ describe("export target of a Project member event", () => {
     ]);
   });
 });
+
+describe("export target of an AWS connection event", () => {
+  it("names the AWS connection, not the notification settings", async () => {
+    expect(
+      await targetsOf([
+        row({
+          category: "aws_connection",
+          action: "organization.aws_connection.updated",
+          targetType: "aws_connection",
+          targetId: null,
+          targetAttributes: { roleArn: "arn:aws:iam::111122223333:role/Hub" },
+        }),
+      ]),
+    ).toEqual(["การเชื่อมต่อ AWS"]);
+  });
+});

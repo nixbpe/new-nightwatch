@@ -38,8 +38,6 @@ export function targetText(target: AuditTarget): string {
       return target.deleted || target.displayName === null
         ? "ถูกลบแล้ว"
         : target.displayName;
-    case "aws_connection":
-      return "การเชื่อมต่อ AWS ขององค์กร";
     case "project":
       return target.deleted || target.displayName === null
         ? "ถูกลบแล้ว"
@@ -58,6 +56,8 @@ export function targetText(target: AuditTarget): string {
       return "ตั้งค่าการแจ้งเตือน";
     case "audit_export":
       return exportTargetText(target.format);
+    case "aws_connection":
+      return "การเชื่อมต่อ AWS";
   }
 }
 

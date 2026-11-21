@@ -17,8 +17,6 @@ export type ProjectAction =
   | "monitor.read"
   | "monitor.write"
   | "monitor.readResponse"
-  | "aws.read"
-  | "aws.manage"
   | "inventory.read"
   | "inventory.write";
 
@@ -28,7 +26,6 @@ const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set([
   "project.read",
   "monitor.read",
   "monitor.readResponse",
-  "aws.read",
   "inventory.read",
 ]);
 
@@ -69,16 +66,6 @@ const PROJECT_PERMISSIONS: Record<
     projectMember: "allow",
   },
   "monitor.write": {
-    orgAdmin: "allow",
-    projectAdmin: "allow",
-    projectMember: "deny",
-  },
-  "aws.read": {
-    orgAdmin: "allow",
-    projectAdmin: "allow",
-    projectMember: "allow",
-  },
-  "aws.manage": {
     orgAdmin: "allow",
     projectAdmin: "allow",
     projectMember: "deny",

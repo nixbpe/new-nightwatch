@@ -1488,7 +1488,6 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/projects/:projectId/overview",
       "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
       "shell-nav-/organizations/:organizationId/projects/:projectId/inventory",
-      "shell-nav-/organizations/:organizationId/projects/:projectId/aws",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);
     expect(scoped("organization")).toEqual([

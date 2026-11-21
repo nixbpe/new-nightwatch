@@ -40,6 +40,10 @@ export const AUDIT_ACTIONS = [
   "organization.project.member.add",
   "organization.project.member.role.update",
   "organization.project.member.remove",
+  "organization.aws_connection.tested",
+  "organization.aws_connection.updated",
+  "organization.aws_connection.disconnected",
+  // Written by #118's AWS connection before 0029; kept so those events read.
   "organization.aws_connection.test",
   "organization.aws_connection.update",
   "organization.aws_connection.delete",
@@ -75,6 +79,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
   "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
   "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
+  "organization.aws_connection.tested": "ทดสอบการเชื่อมต่อ AWS",
+  "organization.aws_connection.updated": "ตั้งค่าการเชื่อมต่อ AWS",
+  "organization.aws_connection.disconnected": "ยกเลิกการเชื่อมต่อ AWS",
   "organization.aws_connection.test": "ทดสอบการเชื่อมต่อ AWS ขององค์กร",
   "organization.aws_connection.update": "บันทึกการเชื่อมต่อ AWS ขององค์กร",
   "organization.aws_connection.delete": "ยกเลิกการเชื่อมต่อ AWS ขององค์กร",
@@ -182,7 +189,16 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
     role: organizationRoleSchema,
   }),
   z.object({ type: z.literal("notification_settings") }),
-  z.object({ type: z.literal("aws_connection") }),
+  /** The Organization AWS connection as the event recorded it; never a credential or AWS text. */
+  z.object({
+    type: z.literal("aws_connection"),
+    roleArn: z.string().nullable(),
+    accountId: z.string().nullable(),
+    result: z.enum(["passed", "failed"]).nullable(),
+    code: z.string().nullable(),
+    // Null on events written before 0029, which recorded no revision.
+    revision: z.number().int().nullable(),
+  }),
   z.object({
     type: z.literal("audit_export"),
     exportId: z.uuid(),
@@ -476,5 +492,5 @@ export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
 );
 
 export function auditScopeNote(recordingStartedOn: string): string {
-  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ การเชื่อมต่อ AWS ขององค์กร และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account ระดับโปรเจกต์, API key และ findings`;
 }

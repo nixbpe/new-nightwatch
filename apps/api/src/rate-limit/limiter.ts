@@ -185,3 +185,24 @@ export function consumeMonitorTestRateLimit(
     ],
   });
 }
+
+/**
+ * AWS connection test quota (REQ-04), shared by Test and PUT of the
+ * Organization and Project connections: 10 per 60 s per user per org, 30 per
+ * 60 s per org. Its own namespace, apart from monitor tests and login.
+ */
+export function consumeAwsTestRateLimit(
+  limiter: RateLimiter,
+  scope: { userId: string; organizationId: string },
+): Promise<RateLimitResult> {
+  return limiter.consumeRateLimits({
+    windowMs: 60_000,
+    limits: [
+      {
+        key: `rl:aws-test:u:${scope.userId}:o:${scope.organizationId}`,
+        limit: 10,
+      },
+      { key: `rl:aws-test:o:${scope.organizationId}`, limit: 30 },
+    ],
+  });
+}

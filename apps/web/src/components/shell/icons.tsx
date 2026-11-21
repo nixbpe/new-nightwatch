@@ -297,6 +297,14 @@ export function HistoryIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function CloudIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </svg>
+  );
+}
+
 export function InventoryIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>
@@ -319,6 +327,7 @@ export const NAV_ICONS = {
   activity: ActivityIcon,
   history: HistoryIcon,
   inventory: InventoryIcon,
+  cloud: CloudIcon,
 } as const;
 
 export type NavIconName = keyof typeof NAV_ICONS;

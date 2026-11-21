@@ -41,8 +41,6 @@ function targetLabel(row: AuditEventBatchRow): string {
           : "ถูกลบแล้ว";
       return `${monitor} ในโปรเจกต์ ${project}`;
     }
-    case "aws_connection":
-      return "การเชื่อมต่อ AWS ขององค์กร";
     case "project":
       return row.projectExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
     case "member": {
@@ -64,6 +62,8 @@ function targetLabel(row: AuditEventBatchRow): string {
           : "";
       return `คำเชิญ role ${role} (${row.targetId ?? ""})`;
     }
+    case "aws_connection":
+      return "การเชื่อมต่อ AWS";
     case "audit_export":
       return row.targetAttributes.format === "json"
         ? "ไฟล์ส่งออก JSON"
