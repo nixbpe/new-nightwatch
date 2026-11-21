@@ -422,7 +422,17 @@ describe("inventory upload", () => {
     const csv = [HEADER, GOOD("Limiter")].join("\n");
     const statuses: number[] = [];
     for (let i = 0; i < 11; i += 1) {
-      statuses.push((await upload(org.users.owner, csv)).status);
+      statuses.push(
+        (
+          await upload(
+            org.users.owner,
+            csv,
+            "inventory.csv",
+            i % 2 === 0 ? projectId : projectId.toUpperCase(),
+            i % 2 === 0 ? org.id : org.id.toUpperCase(),
+          )
+        ).status,
+      );
     }
     expect(statuses).toEqual([...Array<number>(10).fill(200), 429]);
   });
