@@ -16,11 +16,17 @@ import writeXlsxFile from "write-excel-file/universal";
 import { recordAuditEvent } from "../audit/record";
 import { withProjectAccess, type Identity } from "../projects/service";
 import type { RateLimiter } from "../rate-limit";
+import type { CpeSearch } from "./cpe";
 import { parseInventoryFile } from "./file";
 import { inventoryFileRejected } from "./messages";
+import { syncMappings } from "./mappings";
 import { validateRow, type InventoryRow } from "./rows";
 
-export type InventoryDeps = { database: Database; rateLimiter?: RateLimiter };
+export type InventoryDeps = {
+  database: Database;
+  rateLimiter?: RateLimiter;
+  cpeSearch?: CpeSearch;
+};
 export type ProjectIdentity = Identity & { projectId: string };
 
 type SystemRow = {
@@ -227,6 +233,7 @@ export async function uploadInventory(
           rows.map((row) => JSON.stringify(row.issues)),
         ],
       );
+      await syncMappings(client, tenant, projectId);
       await recordAuditEvent(client, {
         ...input,
         actorRole,

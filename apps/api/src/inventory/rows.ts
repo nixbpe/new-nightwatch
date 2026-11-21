@@ -71,7 +71,7 @@ export function versionIssue(
 // The Project-wide identity of a System. Lower-casing can lengthen a name past the
 // 200 characters the key column holds, and cutting it would give two names one
 // key, so a longer key is replaced by its hash.
-export function systemKeyOf(system: string): string {
+export function identityKey(system: string): string {
   const lower = system.toLowerCase();
   return Array.from(lower).length <= INVENTORY_FIELD_MAX_LENGTH
     ? lower
@@ -122,7 +122,7 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    systemKey: systemKeyOf(row.system),
+    systemKey: identityKey(row.system),
     ...row,
     issues,
   };
