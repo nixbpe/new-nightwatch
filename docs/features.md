@@ -61,6 +61,10 @@
 
 [API](../apps/api/src/aws/), [Web](../apps/web/src/pages/aws/), [สัญญา](../packages/api-contract/src/aws-connection.ts), [AWS STS](../packages/shared/src/aws/sts.ts), [migration](../packages/db/migrations/0028_aws_connections.sql), [browser test](../e2e/tests/aws-connections.spec.ts).
 
+## Inventory ของ Project (E-005 F-017)
+
+[API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0029_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).
