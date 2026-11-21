@@ -2,6 +2,8 @@ import {
   inventoryRejectedRowsSchema,
   inventorySummarySchema,
 } from "@nightwatch/api-contract";
+import { createHash } from "node:crypto";
+
 import { AppError } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import readExcelFile from "read-excel-file/universal";
@@ -233,6 +235,23 @@ describe("inventory upload", () => {
         .parse(after.json)
         .systems.filter((system) => system.name.startsWith(long)),
     ).toHaveLength(2);
+  });
+
+  it("keeps a System named like a hash key apart from the long name it hashes", async () => {
+    const long = `${"İ".repeat(100)}hash`;
+    const digest = createHash("sha256")
+      .update(long.toLowerCase())
+      .digest("hex");
+    const response = await upload(
+      org.users.owner,
+      [HEADER, GOOD(long), GOOD(`sha256:${digest}`)].join("\n"),
+    );
+    expect(response.status).toBe(200);
+    const names = inventorySummarySchema
+      .parse(response.json)
+      .systems.map((system) => system.name);
+    expect(names).toContain(long);
+    expect(names).toContain(`sha256:${digest}`);
   });
 
   it("rejects the whole file and keeps the earlier data when a column is missing", async () => {
