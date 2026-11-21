@@ -269,6 +269,19 @@ describe("inventory upload", () => {
     expect(await storedRows()).toEqual(before);
   });
 
+  it("rejects an unterminated CSV quote without replacing stored inventory", async () => {
+    const before = await storedRows();
+    const response = await upload(
+      org.users.owner,
+      `${HEADER}\n${GOOD("billing api").replace("Internal", '"Internal')}\n${GOOD("HR Portal")}`,
+    );
+    expect(response.status).toBe(400);
+    expect(response.json).toMatchObject({
+      error: { code: "INVENTORY_FILE_REJECTED" },
+    });
+    expect(await storedRows()).toEqual(before);
+  });
+
   it("answers 413 in the error envelope for an oversized body", async () => {
     const response = await upload(
       org.users.owner,
