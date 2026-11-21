@@ -1487,6 +1487,7 @@ describe("ProjectSwitcher", () => {
     expect(scoped("project")).toEqual([
       "shell-nav-/organizations/:organizationId/projects/:projectId/overview",
       "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
+      "shell-nav-/organizations/:organizationId/projects/:projectId/vulnerabilities",
       "shell-nav-/organizations/:organizationId/projects/:projectId/inventory",
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);

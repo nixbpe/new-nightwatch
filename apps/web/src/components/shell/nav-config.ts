@@ -48,6 +48,11 @@ export const NAV_ITEMS: NavItem[] = [
         count: "monitors",
       },
       {
+        label: "ช่องโหว่",
+        icon: "shield",
+        path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
+      },
+      {
         label: "Inventory",
         icon: "inventory",
         path: "/organizations/:organizationId/projects/:projectId/inventory",
