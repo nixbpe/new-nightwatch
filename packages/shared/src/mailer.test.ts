@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 
 describe("createMailer", () => {
-  it("bounds the SMTP connection, greeting and silence below the Worker's 5 minute lease", () => {
+  it("sets connection, greeting and idle timeouts whose sum is below the Worker's 5 minute lease (the Worker also caps a whole send)", () => {
     createMailer(
       { SMTP_HOST: "smtp.example.test", SMTP_PORT: 587, SMTP_SECURE: false },
       logger,
