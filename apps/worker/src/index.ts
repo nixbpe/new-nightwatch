@@ -1,11 +1,14 @@
 import { createDatabase, failNotificationDispatch } from "@nightwatch/db";
 import {
+  createFeeds,
   createLogger,
   loadEnv,
   loadMonitorEnv,
+  createRateLimiter,
   type MonitorEnv,
 } from "@nightwatch/shared";
 import { Worker } from "bullmq";
+import { Redis } from "ioredis";
 
 import {
   createDispatchQueue,
@@ -31,6 +34,7 @@ import {
 } from "./monitor/queue";
 import { MonitorScheduler, startMonitorSchedule } from "./monitor/scheduler";
 import { armHardDeadline, closeWithin } from "./shutdown";
+import { VulnerabilityScanner } from "./vulnerability/scanner";
 
 const WORKER_ROLES = [
   "consumer",
@@ -38,6 +42,7 @@ const WORKER_ROLES = [
   "monitor-scheduler",
   "monitor-checker",
   "audit-exporter",
+  "vulnerability-scanner",
 ] as const;
 type WorkerRole = (typeof WORKER_ROLES)[number];
 
@@ -100,6 +105,26 @@ auditExporter?.start();
 const stopAuditMaintenance = roles.has("audit-exporter")
   ? startAuditMaintenance(database, logger)
   : null;
+// The vulnerability scan claims from PostgreSQL and spends from the same NVD bucket as the
+// API, so it needs the Redis limiter with the same key prefix.
+const vulnerabilityRedis = roles.has("vulnerability-scanner")
+  ? createLimiterRedis(redisUrl, env.REDIS_KEY_PREFIX)
+  : null;
+const vulnerabilityScanner = vulnerabilityRedis
+  ? new VulnerabilityScanner(database, {
+      feeds: createFeeds({ logger }),
+      limiter: createRateLimiter({ redis: vulnerabilityRedis, logger }),
+      cache: {
+        get: (key) => vulnerabilityRedis.get(key),
+        set: async (key, value, ttlSeconds) => {
+          await vulnerabilityRedis.set(key, value, "EX", ttlSeconds);
+        },
+      },
+      logger,
+    })
+  : null;
+vulnerabilityScanner?.start();
+if (vulnerabilityScanner) logger.info({}, "vulnerability scanner ready");
 let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
@@ -117,6 +142,8 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   stopAuditMaintenance?.();
   await auditExporter?.stop();
   if (auditExporter) logger.info({}, "audit exporter stopped");
+  await vulnerabilityScanner?.stop();
+  if (vulnerabilityScanner) logger.info({}, "vulnerability scanner stopped");
   // Closes run together so the slowest one, not their sum, bounds shutdown.
   const elapsed = Date.now() - shutdownStarted;
   const abort = monitorChecker
@@ -135,6 +162,7 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
     monitorQueue && closeWithin(monitorQueue),
   ]);
   clearTimeout(abort);
+  vulnerabilityRedis?.disconnect();
   await database.close();
   logger.flush();
   // Abandoned requests would keep the event loop alive until their own timeout.
@@ -271,4 +299,17 @@ function startConsumer(): Worker<MaterializeJobData> {
       });
   });
   return consumer;
+}
+
+function createLimiterRedis(url: string, prefix: string | undefined): Redis {
+  const redis = new Redis(url, {
+    keyPrefix: prefix === undefined ? "" : `${prefix}:`,
+    commandTimeout: 2000,
+    maxRetriesPerRequest: 1,
+  });
+  // A listener is required or ioredis prints every reconnect error.
+  redis.on("error", (error: Error & { code?: string }) => {
+    logger.warn({ kind: error.code ?? error.name }, "redis connection error");
+  });
+  return redis;
 }
