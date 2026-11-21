@@ -2,7 +2,7 @@
 
 | Field           | Value                                                    |
 | --------------- | -------------------------------------------------------- |
-| ID / revision   | DIR-001 / v4                                             |
+| ID / revision   | DIR-001 / v5                                             |
 | document_status | Direction Approved                                       |
 | outcome_status  | Not measured                                             |
 | Owner           | Product Owner role; accountable person not yet confirmed |
@@ -16,7 +16,7 @@ Product intent only; it lists neither implemented capabilities nor validated dem
 ## Decisions (settled; do not re-ask)
 
 - D1 Primary user is Platform/SRE responsible for security. Security specialists, access administrators and action owners support them; auditors, compliance and IAM/GRC are out of scope.
-- D2 The main job is choosing what to address first; change detection and remediation verification are out of scope.
+- D2 The main job is choosing what to address first; change detection and remediation verification are out of scope. Alerting on new CVEs that change the order is part of the main job; inventory drift detection and remediation verification remain out of scope (v5, E-005 A-02).
 - D3 Rank by observed technical context such as exposure and permissions, beyond severity alone.
 - D4 With incomplete context, give a provisional order with knowns and unknowns; missing data never implies low risk.
 - D5 Done when the user can decide the next action from reasons, affected resources and guidance. No native assignment, ticketing or completion tracking.
@@ -29,9 +29,9 @@ Product intent only; it lists neither implemented capabilities nor validated dem
 
 **Principle.** One customer is one Organization and the isolation boundary; a Project holds authorized cloud scope and observations, and comparisons never leave one Organization, whatever other memberships a user has. Keep provenance, scope and freshness visible: missing context is not low risk, and no findings is not proof of safe or complete collection. Advice is never execution, assignment or proof of a fix. Partial, stale or uneven data and missing permissions stay understandable, and unsupported inferences never appear as facts.
 
-- S1 Out of the first scope: autonomous cloud changes, certification guarantees, exhaustive-detection claims and provider parity. AWS-first is not full AWS coverage; other providers need their own decision.
-- S2 Reports, notifications, SLOs, access governance and broader compliance are possible later capabilities. Availability monitoring of HTTP(S) endpoints that an Organization specifies (uptime, response time, SSL expiry, in-app alerts) is in scope as a supporting capability; it is not the core positioning and does not change D1-D9.
-- S3 This document does not authorize collecting customer credentials or sensitive evidence, with one exception: auth values and secret headers of an availability monitor (S2) may be stored encrypted at rest, are write-only in UI and API, are decrypted only in a credential helper per JOB-05, and never appear in responses, logs, notifications or test results. A Project's AWS access key (access key ID and secret access key) may be stored under the same rules: encrypted at rest, write-only in UI and API, decrypted only in a credential helper per JOB-05, and never shown in responses, logs, notifications or test results. Assume-role connections store only a role ARN and an External ID, which are not credentials. All other customer credentials remain out of scope.
+- S1 Out of the first scope: autonomous cloud changes, certification guarantees, exhaustive-detection claims and provider parity. AWS-first is not full AWS coverage; other providers need their own decision. Inventory that an Organization supplies itself may be a data source of a Project, covering OS, DB, middleware, runtime and appliances wherever they run, on AWS or elsewhere; cloud inspection remains AWS-first (v5, E-005 A-01).
+- S2 Reports, notifications, SLOs, access governance and broader compliance are possible later capabilities. Availability monitoring of HTTP(S) endpoints that an Organization specifies (uptime, response time, SSL expiry, in-app alerts) is in scope as a supporting capability; it is not the core positioning and does not change D1-D9. Alerts for new CVEs that are Critical or listed in KEV, delivered in-app and by Email, and Excel export per Project are supporting capabilities in this round; other channels remain possible later (v5, E-005 A-03).
+- S3 This document does not authorize collecting customer credentials or sensitive evidence, with one exception: auth values and secret headers of an availability monitor (S2) may be stored encrypted at rest, are write-only in UI and API, are decrypted only in a credential helper per JOB-05, and never appear in responses, logs, notifications or test results. A Project's AWS access key (access key ID and secret access key) may be stored under the same rules: encrypted at rest, write-only in UI and API, decrypted only in a credential helper per JOB-05, and never shown in responses, logs, notifications or test results. Assume-role connections store only a role ARN and an External ID, which are not credentials. Inventory that an Organization uploads and its CVE match results may be stored, isolated per Organization under Scope and trust; the security owner defines encryption, retention and access before delivery (v5, E-005 A-04). All other customer credentials remain out of scope.
 
 ## Discovery (all Hypothesis, Not run)
 
