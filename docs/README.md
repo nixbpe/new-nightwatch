@@ -8,7 +8,7 @@ This index locates contract sources and code entry points. It defines no additio
 
 Detailed criteria and design belong to the current request or issue. The code index below locates API contracts, migrations and tests; it defines no additional acceptance criteria.
 
-[Product Direction](product-direction.md), [Projects and project members](epics/E-001-project-organization-visibility.md), [Member governance](epics/E-002-organization-member-governance.md), [Project workspace](epics/E-003-project-workspace.md) and [AWS account connection](epics/E-004-aws-account-connection.md) describe product intent and initiative scope. Historical approvals do not authorize new implementation or release.
+[Product Direction](product-direction.md), [Projects and project members](epics/E-001-project-organization-visibility.md), [Member governance](epics/E-002-organization-member-governance.md), [Project workspace](epics/E-003-project-workspace.md), [AWS account connection](epics/E-004-aws-account-connection.md) and [CVE monitoring from inventory](epics/E-005-cve-monitoring-from-inventory.md) describe product intent and initiative scope. Historical approvals do not authorize new implementation or release.
 
 ## Code entry points
 
