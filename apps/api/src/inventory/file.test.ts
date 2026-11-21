@@ -46,6 +46,16 @@ describe("parseCsv", () => {
 });
 
 describe("parseInventoryFile for .csv", () => {
+  it("rejects an unterminated quoted field instead of consuming later records", async () => {
+    expect(
+      await parseInventoryFile(
+        "inv.csv",
+        encode(
+          `${HEADER}\nA,B,C,D,1.2.3,OS,Production,"Internal\nA,B,C,D,1.2.4,OS,Production,Internal`,
+        ),
+      ),
+    ).toEqual({ ok: false, rejection: { code: "csv_invalid" } });
+  });
   it("maps columns by name ignoring case, padding and order and skips blank rows", async () => {
     const csv =
       "﻿ Exposure ,version,LAYER,environment,product,vendor,owner,system\r\n" +

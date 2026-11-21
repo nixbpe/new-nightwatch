@@ -40,6 +40,8 @@ function reasonOf(rejection: FileRejection): string {
       return "ไม่พบ sheet ชื่อ Inventory เปลี่ยนชื่อ sheet ที่มีข้อมูลเป็น Inventory แล้ว upload ใหม่";
     case "csv_not_utf8":
       return 'อ่านไฟล์ไม่ได้ save เป็น "CSV UTF-8 (Comma delimited)" หรือใช้ .xlsx';
+    case "csv_invalid":
+      return "อ่านไฟล์ CSV ไม่ได้ พบเครื่องหมายคำพูดที่ไม่ปิด แก้ไฟล์แล้ว upload ใหม่";
     case "unsupported_extension":
       return "รับเฉพาะ .xlsx และ .csv";
     case "xlsx_unreadable":
