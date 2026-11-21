@@ -33,8 +33,17 @@ export function senderAddress(
   return { name: "NightWatch", address: from };
 }
 
+export const SMTP_CONNECTION_TIMEOUT_MS = 10_000;
+export const SMTP_GREETING_TIMEOUT_MS = 10_000;
+export const SMTP_SOCKET_TIMEOUT_MS = 30_000;
+
 export function createMailer(authEnv: SmtpSettings, logger: Logger): Mailer {
   const transport: Transporter = nodemailer.createTransport({
+    // Bounded well below the Worker's 5 minute lease, so a hung server cannot hold a claim
+    // past it: connect 10 s, greeting 10 s, then 30 s without traffic.
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
     host: authEnv.SMTP_HOST,
     port: authEnv.SMTP_PORT,
     secure: authEnv.SMTP_SECURE,
