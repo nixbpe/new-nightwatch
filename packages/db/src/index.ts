@@ -14,6 +14,7 @@ export {
   insertAccountNotificationIntent,
   insertAuditExportNotificationIntent,
   insertMonitorNotificationIntent,
+  insertVulnerabilityNotificationIntent,
   markNotificationDispatchEnqueued,
   recordAccountMfaTransition,
   requeueStaleNotificationDispatches,

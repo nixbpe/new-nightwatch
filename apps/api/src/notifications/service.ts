@@ -30,6 +30,9 @@ type InboxRow = {
   subjectMonitorHostname: string | null;
   monitorReason: string | null;
   sslNotAfter: Date | string | null;
+  subjectProjectName: string | null;
+  vulnerabilityCveCount: number | null;
+  vulnerabilityComponentCount: number | null;
 };
 
 type InboxServiceDeps = { database: Database; cursorSecret: string };
@@ -88,6 +91,28 @@ function toItem(row: InboxRow): NotificationItem {
       eventType: row.eventType,
       actor: null,
       category: "audit-log",
+    };
+  }
+  if (row.eventType === "VULNERABILITY_NEW") {
+    if (
+      !row.subjectProjectId ||
+      !row.subjectProjectName ||
+      !row.vulnerabilityCveCount ||
+      !row.vulnerabilityComponentCount
+    ) {
+      throw new Error("vulnerability notification requires a subject");
+    }
+    return {
+      ...organization,
+      eventType: row.eventType,
+      actor: null,
+      category: "vulnerability",
+      subject: {
+        projectId: row.subjectProjectId,
+        projectName: row.subjectProjectName,
+        cveCount: row.vulnerabilityCveCount,
+        componentCount: row.vulnerabilityComponentCount,
+      },
     };
   }
   if (
@@ -260,9 +285,12 @@ const itemFields = `
   subject_project_id as "subjectProjectId",
   subject_monitor_id as "subjectMonitorId", subject_monitor_name as "subjectMonitorName",
   subject_monitor_hostname as "subjectMonitorHostname",
-  monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter"`;
+  monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter",
+  subject_project_name as "subjectProjectName",
+  vulnerability_cve_count as "vulnerabilityCveCount",
+  vulnerability_component_count as "vulnerabilityComponentCount"`;
 
-// A monitor item is served only while the reader can still see its Project:
+// A monitor or new-CVE item is served only while the reader can still see its Project:
 // an Organization Owner/Admin, or a current member of the item's Project. A
 // reader removed from the Project keeps the Organization but not the item, and
 // regains it when added back. Other categories are not touched. `organization`
@@ -270,7 +298,7 @@ const itemFields = `
 function monitorProjectAccess(organization: string, user: string): string {
   return `
   and (
-    event_type not like 'MONITOR\\_%'
+    (event_type not like 'MONITOR\\_%' and event_type <> 'VULNERABILITY_NEW')
     or exists (
       select 1
       from member as reader,
@@ -296,6 +324,7 @@ const completedDispatch = `
 
 const categoryPredicates = {
   monitor: "event_type like 'MONITOR\\_%'",
+  vulnerability: "event_type = 'VULNERABILITY_NEW'",
   security: "scope_kind = 'account'",
   organization:
     "event_type in ('ORG-NOTIFICATION-SETTINGS-CHANGED', 'AUDIT_EXPORT_READY', 'AUDIT_EXPORT_FAILED')",

@@ -115,14 +115,17 @@ export function createMaterializationDependencies(
           (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
            event_type, occurred_at, actor_user_id, actor_display_name,
            subject_project_id, subject_monitor_id, subject_monitor_name,
-           monitor_reason, ssl_not_after, subject_audit_export_id, subject_monitor_hostname)
+           monitor_reason, ssl_not_after, subject_audit_export_id, subject_monitor_hostname,
+           subject_project_name, vulnerability_cve_count, vulnerability_component_count)
          select gen_random_uuid()::text,
                 intent.id, intent.origin, recipient.recipient_user_id, intent.scope_kind,
                 intent.tenant_id, intent.event_type, intent.occurred_at,
                 intent.actor_user_id, intent.actor_display_name,
                 intent.subject_project_id, intent.subject_monitor_id,
                 intent.subject_monitor_name, intent.monitor_reason,
-                intent.ssl_not_after, intent.subject_audit_export_id, intent.subject_monitor_hostname
+                intent.ssl_not_after, intent.subject_audit_export_id, intent.subject_monitor_hostname,
+                intent.subject_project_name, intent.vulnerability_cve_count,
+                intent.vulnerability_component_count
          from notification_intents as intent
          join notification_intent_recipients as recipient
            on recipient.intent_id = intent.id
@@ -137,9 +140,9 @@ export function createMaterializationDependencies(
               from unnest(string_to_array(current_member.role, ',')) as role_token(value)
               where btrim(role_token.value) in ('owner', 'admin')
             )
-            -- A monitor event also reaches the members of its Project.
+            -- A monitor or new-CVE event also reaches the members of its Project.
             or (
-              intent.event_type like 'MONITOR\\_%'
+              (intent.event_type like 'MONITOR\\_%' or intent.event_type = 'VULNERABILITY_NEW')
               and exists (
                 select 1
                 from project_members as project_member

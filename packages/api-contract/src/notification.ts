@@ -13,6 +13,7 @@ export const notificationEventTypeSchema = z.enum([
   "MONITOR_SSL_EXPIRED",
   "AUDIT_EXPORT_READY",
   "AUDIT_EXPORT_FAILED",
+  "VULNERABILITY_NEW",
 ]);
 
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;
@@ -96,7 +97,25 @@ const auditExportNotificationItemSchema = z.object({
   category: z.literal("audit-log"),
 });
 
+/**
+ * CVEs a scan saw first for a Project that are Critical or in KEV, once per run. The Project
+ * is named as it was at event time; the item links to the Project's new-CVE page.
+ */
+const vulnerabilityNotificationItemSchema = z.object({
+  ...organizationItemBase,
+  eventType: z.literal("VULNERABILITY_NEW"),
+  actor: z.null(),
+  category: z.literal("vulnerability"),
+  subject: z.object({
+    projectId: z.uuid(),
+    projectName: z.string().min(1).max(200),
+    cveCount: z.number().int().min(1),
+    componentCount: z.number().int().min(1),
+  }),
+});
+
 const organizationNotificationItemSchema = z.discriminatedUnion("eventType", [
+  vulnerabilityNotificationItemSchema,
   settingsChangedNotificationItemSchema,
   auditExportNotificationItemSchema,
   monitorDownNotificationItemSchema,
@@ -211,6 +230,7 @@ export const notificationSettingsParamsSchema = z.object({
 export const notificationStatusFilterSchema = z.enum(["all", "unread"]);
 export const notificationCategoryFilterSchema = z.enum([
   "monitor",
+  "vulnerability",
   "security",
   "organization",
 ]);
