@@ -149,8 +149,6 @@ function targetOf(row: EventRow): AuditTarget {
           }
         : monitor;
     }
-    case "aws_connection":
-      return { type: "aws_connection" };
     case "project":
       return {
         type: "project",
@@ -189,6 +187,22 @@ function targetOf(row: EventRow): AuditTarget {
       };
     case "notification_settings":
       return { type: "notification_settings" };
+    case "aws_connection": {
+      const text = (key: string) => {
+        const value = row.targetAttributes[key];
+        return typeof value === "string" ? value : null;
+      };
+      const result = row.targetAttributes.result;
+      const revision = row.targetAttributes.revision;
+      return {
+        type: "aws_connection",
+        roleArn: text("roleArn"),
+        accountId: text("accountId"),
+        result: result === "passed" || result === "failed" ? result : null,
+        code: text("code"),
+        revision: Number.isInteger(revision) ? Number(revision) : null,
+      };
+    }
     case "audit_export":
       return {
         type: "audit_export",

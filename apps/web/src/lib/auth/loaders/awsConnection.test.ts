@@ -2,20 +2,22 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { guardUnassignedNetwork } from "../../../test/guard-network";
-import { fetchOrganizationAws } from "../../api/aws";
+import { fetchOrganizationAwsConnection } from "../../api/aws-connection";
 import { ApiError } from "../../api/client";
-import { fetchMeContext } from "../../api/me";
+import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../api/me";
 import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
 } from "../../queryClient";
-import { awsLoader } from "./aws";
+import { organizationAwsLoader } from "./awsConnection";
 
 guardUnassignedNetwork();
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 
-const { getSessionMock } = vi.hoisted(() => ({ getSessionMock: vi.fn() }));
+const { getSessionMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
+}));
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({ getSession: getSessionMock }),
@@ -24,13 +26,13 @@ vi.mock("../../api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
 }));
-vi.mock("../../api/aws", async (importOriginal) => ({
+vi.mock("../../api/aws-connection", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  fetchOrganizationAws: vi.fn(),
+  fetchOrganizationAwsConnection: vi.fn(),
 }));
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
-const fetchMock = vi.mocked(fetchOrganizationAws);
+const fetchMock = vi.mocked(fetchOrganizationAwsConnection);
 
 const owner: MeContextResponse = {
   user: {
@@ -46,7 +48,7 @@ const owner: MeContextResponse = {
 
 function load() {
   const url = new URL(`http://localhost/organizations/${ORG}/aws`);
-  return awsLoader({
+  return organizationAwsLoader({
     request: new Request(url),
     url,
     pattern: "/organizations/:organizationId/aws",
@@ -71,19 +73,25 @@ afterEach(async () => {
   vi.resetAllMocks();
 });
 
-describe("awsLoader", () => {
+describe("organizationAwsLoader", () => {
   it.each(["PERMISSION_DENIED", "MEMBERSHIP_DENIED"] as const)(
-    "F-013 AC-08 D5 loads the context again when the Organization prefetch answers %s",
+    "PR-119 R-WEB-7 AC-08 marks the context stale when the prefetch answers %s",
     async (code) => {
       fetchMock.mockRejectedValue(new ApiError(code, "denied", 403));
       expect(await load()).toBeNull();
-      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      const client = peekStagedQueryClient()?.client;
+      expect(client?.getQueryState(ME_CONTEXT_QUERY_KEY)?.isInvalidated).toBe(
+        true,
+      );
     },
   );
 
-  it("F-013 D5 keeps the context on a prefetch failure other than a denial", async () => {
+  it("PR-119 R-WEB-7 keeps the context on a prefetch failure other than a denial", async () => {
     fetchMock.mockRejectedValue(new ApiError("HTTP_500", "boom", 500));
     expect(await load()).toBeNull();
-    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    const client = peekStagedQueryClient()?.client;
+    expect(client?.getQueryState(ME_CONTEXT_QUERY_KEY)?.isInvalidated).toBe(
+      false,
+    );
   });
 });

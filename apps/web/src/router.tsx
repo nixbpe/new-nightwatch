@@ -25,6 +25,7 @@ import {
   projectOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
+  organizationAwsLoader,
   organizationMembersLoader,
   projectMembersLoader,
   projectsLoader,
@@ -48,13 +49,11 @@ import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
-import { awsLoader } from "./lib/auth/loaders/aws";
-import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
-import { ProjectAwsPage } from "./pages/aws/ProjectAwsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
 import { OrganizationMembersPage } from "./pages/OrganizationMembersPage";
+import { OrganizationAwsPage } from "./pages/organization-aws/OrganizationAwsPage";
 import { ProjectMembersPage } from "./pages/projects/members/ProjectMembersPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { DisplayPage } from "./pages/settings/DisplayPage";
@@ -176,11 +175,6 @@ export const routes: RouteObject[] = [
             element: <WorkspaceEntryFallback />,
           },
           {
-            path: "/organizations/:organizationId/projects/:projectId/aws",
-            loader: awsLoader,
-            element: <ProjectAwsPage />,
-          },
-          {
             path: "/organizations/:organizationId/projects/:projectId/overview",
             loader: projectOverviewLoader,
             element: <ProjectOverviewPage />,
@@ -216,11 +210,6 @@ export const routes: RouteObject[] = [
             element: <NotificationsPage />,
           },
           {
-            path: "/organizations/:organizationId/aws",
-            loader: awsLoader,
-            element: <OrganizationAwsPage />,
-          },
-          {
             path: "/organizations/:organizationId/notification-settings",
             loader: notificationSettingsLoader,
             element: <OrganizationNotificationSettingsPage />,
@@ -229,6 +218,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/members",
             loader: organizationMembersLoader,
             element: <OrganizationMembersPage />,
+          },
+          {
+            path: "/organizations/:organizationId/aws",
+            loader: organizationAwsLoader,
+            element: <OrganizationAwsPage />,
           },
           {
             path: "/organizations/:organizationId/projects",

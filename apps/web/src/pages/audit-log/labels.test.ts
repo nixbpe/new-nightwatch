@@ -62,6 +62,21 @@ describe("targetText for a Project member", () => {
   });
 });
 
+describe("targetText for the Organization AWS connection", () => {
+  it("names the connection whatever the event recorded", () => {
+    expect(
+      targetText({
+        type: "aws_connection",
+        roleArn: "arn:aws:iam::111122223333:role/Hub",
+        accountId: "111122223333",
+        result: "passed",
+        code: null,
+        revision: 1,
+      }),
+    ).toBe("การเชื่อมต่อ AWS");
+  });
+});
+
 describe("auditValueText for a Project role change", () => {
   it("labels the Project roles, not the raw code", () => {
     const value = (raw: string) => ({ kind: "value" as const, value: raw });

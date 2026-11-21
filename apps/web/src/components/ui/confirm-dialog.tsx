@@ -35,7 +35,6 @@ export function ConfirmDialog({
   pending,
   opener,
   fallbackFocus,
-  preferFallbackFocus,
   onCancel,
   onConfirm,
   "data-testid": testId,
@@ -54,7 +53,6 @@ export function ConfirmDialog({
   pending: boolean;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
-  preferFallbackFocus?: () => boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -79,11 +77,10 @@ export function ConfirmDialog({
     document.addEventListener("focusin", keepFocusInside);
     return () => {
       document.removeEventListener("focusin", keepFocusInside);
-      if (!preferFallbackFocus?.() && opener?.isConnected === true)
-        opener.focus();
-      else if (fallback?.isConnected) fallback.focus();
+      if (opener?.isConnected === true) opener.focus();
+      else fallback?.focus();
     };
-  }, [opener, fallbackFocus, preferFallbackFocus]);
+  }, [opener, fallbackFocus]);
 
   useEffect(() => {
     // The focused Confirm button is disabled while pending; keep focus in the dialog.

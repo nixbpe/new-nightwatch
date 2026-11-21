@@ -5316,7 +5316,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5371,6 +5371,12 @@ export interface paths {
                                 } | {
                                     /** @enum {string} */
                                     type: "aws_connection";
+                                    roleArn: string | null;
+                                    accountId: string | null;
+                                    /** @enum {string|null} */
+                                    result: "passed" | "failed" | null;
+                                    code: string | null;
+                                    revision: number | null;
                                 } | {
                                     /** @enum {string} */
                                     type: "audit_export";
@@ -5497,7 +5503,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5552,6 +5558,12 @@ export interface paths {
                                 } | {
                                     /** @enum {string} */
                                     type: "aws_connection";
+                                    roleArn: string | null;
+                                    accountId: string | null;
+                                    /** @enum {string|null} */
+                                    result: "passed" | "failed" | null;
+                                    code: string | null;
+                                    revision: number | null;
                                 } | {
                                     /** @enum {string} */
                                     type: "audit_export";
@@ -6247,1140 +6259,6 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/aws-connection": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Organization AWS settings */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            revision: string;
-                            roleArn: string | null;
-                            accountId: string | null;
-                            /** Format: date-time */
-                            lastTestAt: string | null;
-                            externalId: string;
-                            trustPolicy: string | null;
-                            projects: {
-                                /** Format: uuid */
-                                projectId: string;
-                                name: string;
-                                accountId: string;
-                                roleArn: string;
-                                /** Format: date-time */
-                                lastTestAt: string;
-                                current: boolean;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        roleArn: string;
-                        /** Format: uuid */
-                        revision: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description AWS identity verification result */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            ok: true;
-                            accountId: string;
-                            arn: string;
-                        } | {
-                            /** @enum {boolean} */
-                            ok: false;
-                            /** @enum {string} */
-                            code: "AWS_ACCESS_DENIED" | "AWS_ACCOUNT_MISMATCH" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN";
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description AWS request quota exceeded */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete: {
-            parameters: {
-                query: {
-                    revision: string;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Disconnected */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/aws-connection/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        roleArn: string;
-                        /** Format: uuid */
-                        revision: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description AWS identity verification result */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            ok: true;
-                            accountId: string;
-                            arn: string;
-                        } | {
-                            /** @enum {boolean} */
-                            ok: false;
-                            /** @enum {string} */
-                            code: "AWS_ACCESS_DENIED" | "AWS_ACCOUNT_MISMATCH" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN";
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description AWS request quota exceeded */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/projects/{projectId}/aws-connection": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Project AWS connection */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {string} */
-                            state: "disconnected" | "connected" | "needs_retest";
-                            /** @enum {string|null} */
-                            method: "assume_role" | "access_key" | null;
-                            accountId: string | null;
-                            /** Format: date-time */
-                            lastTestAt: string | null;
-                            settings?: {
-                                hubConnected: boolean;
-                                roleArn: string | null;
-                                region: string | null;
-                                externalId: string;
-                                trustPolicy: string | null;
-                            };
-                            /** @enum {boolean} */
-                            secretSet?: true;
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        roleArn: string;
-                        /** @enum {string} */
-                        method: "assume_role";
-                    } | {
-                        /** @enum {string} */
-                        method: "access_key";
-                        accessKeyId: string;
-                        secretAccessKey: string;
-                        region: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description AWS identity verification result */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            ok: true;
-                            accountId: string;
-                            arn: string;
-                        } | {
-                            /** @enum {boolean} */
-                            ok: false;
-                            /** @enum {string} */
-                            code: "AWS_ACCESS_DENIED" | "AWS_ACCOUNT_MISMATCH" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN";
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description AWS request quota exceeded */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Disconnected */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/projects/{projectId}/aws-connection/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        roleArn: string;
-                        /** @enum {string} */
-                        method: "assume_role";
-                    } | {
-                        /** @enum {string} */
-                        method: "access_key";
-                        accessKeyId: string;
-                        secretAccessKey: string;
-                        region: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description AWS identity verification result */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            ok: true;
-                            accountId: string;
-                            arn: string;
-                        } | {
-                            /** @enum {boolean} */
-                            ok: false;
-                            /** @enum {string} */
-                            code: "AWS_ACCESS_DENIED" | "AWS_ACCOUNT_MISMATCH" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN";
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description AWS request quota exceeded */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Request rejected */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -8914,6 +7792,707 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/aws-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the Organization AWS connection; creates the External ID on first read */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The External ID, the saved connection and the assume-role Projects that use it */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            externalId: string;
+                            principalArn: string | null;
+                            revision: number;
+                            connection: {
+                                roleArn: string;
+                                accountId: string;
+                                verifiedArn: string;
+                                /** Format: date-time */
+                                testedAt: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                                updatedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                            } | null;
+                            projects: {
+                                /** Format: uuid */
+                                projectId: string;
+                                projectName: string;
+                                roleArn: string;
+                                accountId: string;
+                                lastTest: {
+                                    /** @enum {string} */
+                                    result: "passed" | "failed";
+                                    /** @enum {string|null} */
+                                    code: "AWS_ACCESS_DENIED" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN" | "AWS_ACCOUNT_MISMATCH" | null;
+                                    /** Format: date-time */
+                                    testedAt: string;
+                                } | null;
+                                /** @enum {string} */
+                                status: "passed" | "failed" | "untested" | "stale";
+                            }[];
+                        };
+                    };
+                };
+                /** @description The Role ARN is malformed (field error), or the request fails its schema */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_ROLE_ARN_INVALID";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    field: "roleArn";
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or the user is not an Organization Owner or Admin; no settings data */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        /** Save a Role ARN after the server tests it again; a failed test keeps the saved value */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        roleArn: string;
+                        revision: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The External ID, the saved connection and the assume-role Projects that use it */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            externalId: string;
+                            principalArn: string | null;
+                            revision: number;
+                            connection: {
+                                roleArn: string;
+                                accountId: string;
+                                verifiedArn: string;
+                                /** Format: date-time */
+                                testedAt: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                                updatedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                            } | null;
+                            projects: {
+                                /** Format: uuid */
+                                projectId: string;
+                                projectName: string;
+                                roleArn: string;
+                                accountId: string;
+                                lastTest: {
+                                    /** @enum {string} */
+                                    result: "passed" | "failed";
+                                    /** @enum {string|null} */
+                                    code: "AWS_ACCESS_DENIED" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN" | "AWS_ACCOUNT_MISMATCH" | null;
+                                    /** Format: date-time */
+                                    testedAt: string;
+                                } | null;
+                                /** @enum {string} */
+                                status: "passed" | "failed" | "untested" | "stale";
+                            }[];
+                        };
+                    };
+                };
+                /** @description The Role ARN is malformed (field error), or the request fails its schema */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_ROLE_ARN_INVALID";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    field: "roleArn";
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or the user is not an Organization Owner or Admin; no settings data */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The connection changed since the given revision; reload */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_CONNECTION_REVISION_CONFLICT";
+                                message: string;
+                                details: {
+                                    currentRevision: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The server's test failed; nothing was saved */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_CONNECTION_TEST_FAILED";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    code: "AWS_ACCESS_DENIED" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN" | "AWS_ACCOUNT_MISMATCH";
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description AWS test quota reached; Retry-After carries the wait in seconds. STS was not called */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_TEST_RATE_LIMITED";
+                                message: string;
+                                details: {
+                                    retryAfterSeconds: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The rate limiter is unavailable; STS was not called */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Disconnect the Organization account; the External ID and Project settings stay */
+        delete: {
+            parameters: {
+                query?: {
+                    revision?: number | null;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The External ID, the saved connection and the assume-role Projects that use it */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            externalId: string;
+                            principalArn: string | null;
+                            revision: number;
+                            connection: {
+                                roleArn: string;
+                                accountId: string;
+                                verifiedArn: string;
+                                /** Format: date-time */
+                                testedAt: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                                updatedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                            } | null;
+                            projects: {
+                                /** Format: uuid */
+                                projectId: string;
+                                projectName: string;
+                                roleArn: string;
+                                accountId: string;
+                                lastTest: {
+                                    /** @enum {string} */
+                                    result: "passed" | "failed";
+                                    /** @enum {string|null} */
+                                    code: "AWS_ACCESS_DENIED" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN" | "AWS_ACCOUNT_MISMATCH" | null;
+                                    /** Format: date-time */
+                                    testedAt: string;
+                                } | null;
+                                /** @enum {string} */
+                                status: "passed" | "failed" | "untested" | "stale";
+                            }[];
+                        };
+                    };
+                };
+                /** @description The Role ARN is malformed (field error), or the request fails its schema */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_ROLE_ARN_INVALID";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    field: "roleArn";
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or the user is not an Organization Owner or Admin; no settings data */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The connection changed since the given revision; reload */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_CONNECTION_REVISION_CONFLICT";
+                                message: string;
+                                details: {
+                                    currentRevision: number;
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/aws-connection/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a Role ARN with STS AssumeRole and GetCallerIdentity; saves nothing */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        roleArn: string;
+                        revision: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The test result; a failure carries a fixed code, never AWS text */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            result: "passed";
+                            accountId: string;
+                            arn: string;
+                        } | {
+                            /** @enum {string} */
+                            result: "failed";
+                            /** @enum {string} */
+                            code: "AWS_ACCESS_DENIED" | "AWS_REGION_DISABLED" | "AWS_TIMEOUT" | "AWS_UNKNOWN" | "AWS_ACCOUNT_MISMATCH";
+                        };
+                    };
+                };
+                /** @description The Role ARN is malformed (field error), or the request fails its schema */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_ROLE_ARN_INVALID";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    field: "roleArn";
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or the user is not an Organization Owner or Admin; no settings data */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The connection changed since the given revision; reload */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_CONNECTION_REVISION_CONFLICT";
+                                message: string;
+                                details: {
+                                    currentRevision: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description AWS test quota reached; Retry-After carries the wait in seconds. STS was not called */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "AWS_TEST_RATE_LIMITED";
+                                message: string;
+                                details: {
+                                    retryAfterSeconds: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The rate limiter is unavailable; STS was not called */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {

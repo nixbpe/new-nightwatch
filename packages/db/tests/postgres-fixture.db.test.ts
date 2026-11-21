@@ -245,6 +245,7 @@ describe("owned PostgreSQL fixture", () => {
         "0026_project_monitors.sql",
         "0027_notification_monitor_hostname.sql",
         "0028_aws_connections.sql",
+        "0029_aws_connections_v2.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -299,23 +300,78 @@ describe("owned PostgreSQL fixture", () => {
         }
         if (stage === "0027_notification_monitor_hostname.sql") {
           expect(
-            await hasColumn(fixture, "project_aws_connections", "external_id"),
-          ).toBe(false);
-          expect(
             await hasColumn(
               fixture,
               "notification_intents",
               "subject_monitor_hostname",
             ),
           ).toBe(true);
+          expect(
+            await hasColumn(fixture, "org_aws_connections", "revision"),
+          ).toBe(false);
         }
         if (stage === "0028_aws_connections.sql") {
           expect(
-            await hasColumn(fixture, "org_aws_connections", "external_id"),
+            await hasColumn(fixture, "org_aws_connections", "revision"),
           ).toBe(true);
           expect(
-            await hasColumn(fixture, "project_aws_connections", "external_id"),
+            await hasColumn(fixture, "org_aws_connections", "verified_arn"),
+          ).toBe(false);
+          // A saved connection and audit events written under 0028.
+          await fixture.owner.sql.query(
+            `insert into org_aws_connections
+               (tenant_id, external_id, role_arn, account_id, last_test_at)
+             values ($1, 'nw-org-legacy', 'arn:aws:iam::123456789012:role/Hub',
+               '123456789012', now())`,
+            [id],
+          );
+          await fixture.owner.sql.query(
+            `insert into audit_events
+               (tenant_id, actor_user_id, actor_role, category, action, target_type)
+             values ($1, 'legacy-user', 'owner', 'aws_connection',
+               'organization.aws_connection.update', 'aws_connection'),
+               ($1, 'legacy-user', 'owner', 'project',
+               'organization.project.aws_connection.delete', 'project')`,
+            [id],
+          );
+        }
+        if (stage === "0029_aws_connections_v2.sql") {
+          expect(
+            await hasColumn(fixture, "org_aws_connections", "verified_arn"),
           ).toBe(true);
+          expect(
+            (
+              await fixture.owner.sql.query(
+                "select action from audit_events where tenant_id = $1 order by action",
+                [id],
+              )
+            ).rows,
+          ).toEqual([
+            { action: "organization.aws_connection.update" },
+            { action: "organization.project.aws_connection.delete" },
+          ]);
+          // The saved connection is discarded by decision; RLS is rebuilt.
+          expect(
+            (
+              await fixture.owner.sql.query(
+                "select count(*)::int as n from org_aws_connections",
+              )
+            ).rows,
+          ).toEqual([{ n: 0 }]);
+          expect(
+            (
+              await fixture.owner.sql.query(
+                `select c.relname, c.relforcerowsecurity as forced,
+                   (select count(*)::int from pg_policies p where p.tablename = c.relname) as policies
+                 from pg_class c
+                 where c.relname in ('org_aws_connections', 'project_aws_connections')
+                 order by c.relname`,
+              )
+            ).rows,
+          ).toEqual([
+            { relname: "org_aws_connections", forced: true, policies: 2 },
+            { relname: "project_aws_connections", forced: true, policies: 2 },
+          ]);
         }
       }
       expect((await fixture.advanceTo("latest")).applied).toEqual([]);

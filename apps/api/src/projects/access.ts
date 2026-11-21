@@ -16,9 +16,7 @@ export type ProjectAction =
   | "project.members.manage"
   | "monitor.read"
   | "monitor.write"
-  | "monitor.readResponse"
-  | "aws.read"
-  | "aws.manage";
+  | "monitor.readResponse";
 
 // Actions that only read: they check the Organization role under a shared
 // lock and answer MEMBERSHIP_DENIED for a role that no longer normalizes.
@@ -26,7 +24,6 @@ const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set([
   "project.read",
   "monitor.read",
   "monitor.readResponse",
-  "aws.read",
 ]);
 
 export function isReadAction(action: ProjectAction): boolean {
@@ -66,16 +63,6 @@ const PROJECT_PERMISSIONS: Record<
     projectMember: "allow",
   },
   "monitor.write": {
-    orgAdmin: "allow",
-    projectAdmin: "allow",
-    projectMember: "deny",
-  },
-  "aws.read": {
-    orgAdmin: "allow",
-    projectAdmin: "allow",
-    projectMember: "allow",
-  },
-  "aws.manage": {
     orgAdmin: "allow",
     projectAdmin: "allow",
     projectMember: "deny",
