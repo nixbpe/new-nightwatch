@@ -385,6 +385,48 @@ describe("running a check", () => {
     expect(advanceMock).toHaveBeenCalledTimes(1);
   });
 
+  it("steps again from the retry control after a failed step", async () => {
+    fetchMock.mockResolvedValue(
+      list({ run: run({ status: "running", finishedAt: null, doneUnits: 0 }) }),
+    );
+    advanceMock.mockRejectedValueOnce(
+      new ApiError("FEEDS_UNAVAILABLE", "x", 503),
+    );
+    advanceMock.mockResolvedValue({ run: run(), retryAfterSeconds: null });
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId("vuln-retry"));
+    await waitFor(() => {
+      expect(advanceMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("vuln-error")).toBeNull();
+    });
+  });
+
+  it("says a failed run left the earlier results in place", async () => {
+    fetchMock.mockResolvedValue(
+      list({ run: run({ status: "failed", failedUnits: 1 }) }),
+    );
+    renderPage();
+    expect(await screen.findByTestId("vuln-run-failed")).toHaveTextContent(
+      "ผลที่แสดงเป็นของรอบก่อนหน้า",
+    );
+    expect(advanceMock).not.toHaveBeenCalled();
+  });
+
+  it("flags a component whose backport lookup was partial", async () => {
+    fetchMock.mockResolvedValue(
+      list({
+        components: [component({ state: "none_found", backportPartial: true })],
+      }),
+    );
+    renderPage();
+    expect(
+      await screen.findByTestId("vuln-backport-partial"),
+    ).toHaveTextContent("ตรวจ backport ไม่ครบ");
+  });
+
   it("does not step a run on behalf of a member", async () => {
     fetchMock.mockResolvedValue(
       list({

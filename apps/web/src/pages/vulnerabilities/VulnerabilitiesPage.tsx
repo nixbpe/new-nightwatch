@@ -5,7 +5,7 @@ import type {
   VulnerabilityRun,
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -163,13 +163,24 @@ function stateNote(
   const checked = component.checkedSources
     .map((source) => SOURCE_LABELS[source])
     .join(", ");
+  const partial = component.backportPartial ? (
+    <span className="ml-2 text-caution" data-testid="vuln-backport-partial">
+      ตรวจ backport ไม่ครบ บาง CVE อาจยังไม่ถูกกรอง
+    </span>
+  ) : null;
+  const note = (content: ReactNode) => (
+    <>
+      {content}
+      {partial}
+    </>
+  );
   switch (component.state) {
     case "none_found":
-      return (
+      return note(
         <span data-testid="vuln-none-found">
           ไม่พบ CVE ณ feed เวลา <span className="font-mono">{at}</span> (ตรวจ{" "}
           {checked}) ไม่ได้หมายความว่าปลอดภัย
-        </span>
+        </span>,
       );
     case "check_failed":
       return (
@@ -196,16 +207,20 @@ function stateNote(
         </span>
       );
     case "backport_only":
-      return <span>CVE ที่พบถูกกรองเป็น backport ทั้งหมด ตรวจเมื่อ {at}</span>;
-    case "findings":
-      return component.failedSources.length === 0 ? null : (
-        <span className="text-caution">
-          {component.failedSources
-            .map((source) => SOURCE_LABELS[source])
-            .join(", ")}{" "}
-          ใช้ไม่ได้ ผลอาจไม่ครบ
-        </span>
+      return note(
+        <span>CVE ที่พบถูกกรองเป็น backport ทั้งหมด ตรวจเมื่อ {at}</span>,
       );
+    case "findings":
+      return component.failedSources.length === 0
+        ? partial
+        : note(
+            <span className="text-caution">
+              {component.failedSources
+                .map((source) => SOURCE_LABELS[source])
+                .join(", ")}{" "}
+              ใช้ไม่ได้ ผลอาจไม่ครบ
+            </span>,
+          );
   }
 }
 
@@ -222,6 +237,8 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
   const [stepError, setStepError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [wait, setWait] = useState<number | null>(null);
+  // Bumped by "ลองใหม่" so the stepping effect starts again after a failed step.
+  const [attempt, setAttempt] = useState(0);
   const looping = useRef<string | null>(null);
   const query = useQuery({
     queryKey: key,
@@ -282,7 +299,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
       looping.current = null;
       clearTimeout(timer);
     };
-  }, [canManage, runId, organizationId, projectId, queryClient, key]);
+  }, [canManage, runId, organizationId, projectId, queryClient, key, attempt]);
 
   const start = async () => {
     setStarting(true);
@@ -355,8 +372,28 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
         {stepError === null ? null : (
           <Alert tone="error" data-testid="vuln-error">
             {stepError}
+            {canManage && run?.status === "running" ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="ml-3"
+                data-testid="vuln-retry"
+                onClick={() => {
+                  setStepError(null);
+                  setAttempt((value) => value + 1);
+                }}
+              >
+                ลองใหม่
+              </Button>
+            ) : null}
           </Alert>
         )}
+        {run?.status === "failed" ? (
+          <Alert tone="warning" data-testid="vuln-run-failed">
+            การตรวจรอบล่าสุดไม่สำเร็จ {run.failedUnits} product
+            ผลที่แสดงเป็นของรอบก่อนหน้า
+          </Alert>
+        ) : null}
         {run?.status === "done" && run.failedUnits > 0 ? (
           <Alert tone="warning" data-testid="vuln-failed-units">
             ตรวจไม่สำเร็จ {run.failedUnits} product แหล่งข้อมูลบางแห่งใช้ไม่ได้
@@ -492,8 +529,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                         data-testid={`vuln-component-${systemId}-${component.product}-${component.version}`}
                       >
                         <tr className="border-t border-foreground/10 bg-foreground/4">
-                          <th
-                            scope="colgroup"
+                          <td
                             colSpan={6}
                             className="px-4 py-2 text-left font-normal"
                           >
@@ -511,7 +547,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                                 inventoryPath,
                               )}
                             </span>
-                          </th>
+                          </td>
                         </tr>
                         {component.findings.map((finding) => (
                           <FindingRow key={finding.cveId} finding={finding} />
