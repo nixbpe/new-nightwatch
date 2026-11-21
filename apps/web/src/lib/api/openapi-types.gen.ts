@@ -7813,7 +7813,7 @@ export interface paths {
                                 /** @enum {string|null} */
                                 cvssSeverity: "none" | "low" | "medium" | "high" | "critical" | null;
                                 kev: boolean | null;
-                                stillFound: boolean;
+                                stillFound: boolean | null;
                             }[];
                             truncated: boolean;
                         };

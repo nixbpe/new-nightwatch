@@ -221,9 +221,11 @@ function NewVulnerabilities({
                         )}
                       </td>
                       <td className="px-4 py-2 text-[13px]">
-                        {item.stillFound
-                          ? "ยังพบในการตรวจล่าสุด"
-                          : "ไม่พบแล้วในการตรวจล่าสุด"}
+                        {item.stillFound === null
+                          ? "ยังไม่ทราบ (ตรวจ product นี้ไม่สำเร็จในรอบล่าสุด)"
+                          : item.stillFound
+                            ? "ยังพบในการตรวจล่าสุด"
+                            : "ไม่พบแล้วในการตรวจล่าสุด"}
                       </td>
                     </tr>
                   ))}

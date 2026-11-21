@@ -87,6 +87,7 @@ describe("NewVulnerabilitiesPage", () => {
             kev: null,
             stillFound: false,
           }),
+          item({ cveId: "CVE-2026-1002", stillFound: null }),
         ],
       }),
     );
@@ -100,6 +101,9 @@ describe("NewVulnerabilitiesPage", () => {
     const second = screen.getByTestId("new-cve-CVE-2026-1001");
     expect(second).toHaveTextContent("ไม่ทราบ");
     expect(second).toHaveTextContent("ไม่พบแล้วในการตรวจล่าสุด");
+    expect(screen.getByTestId("new-cve-CVE-2026-1002")).toHaveTextContent(
+      "ยังไม่ทราบ (ตรวจ product นี้ไม่สำเร็จในรอบล่าสุด)",
+    );
     expect(screen.getByTestId("new-cve-checked")).toHaveTextContent(
       "ตรวจล่าสุดเสร็จเมื่อ",
     );
