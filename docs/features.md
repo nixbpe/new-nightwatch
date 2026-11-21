@@ -49,7 +49,7 @@
 
 - API: [routes and service](../apps/api/src/aws-connection/) (`registerAwsConnectionRoutes`, `updateOrganizationAwsConnection`), STS seam `awsSts` ใน [app factory](../apps/api/src/app.ts), [STS helper](../packages/shared/src/aws/sts.ts) (`createStsVerifier`), quota [rate limit](../apps/api/src/rate-limit/limiter.ts) (`consumeAwsTestRateLimit`).
 - Contract: [AWS connection shapes](../packages/api-contract/src/aws-connection.ts) (`organizationAwsConnectionResponseSchema`, `awsRoleArnSchema`).
-- Data: [migration ของ Organization และ Project](../packages/db/migrations/0028_aws_connections.sql) (`org_aws_connections`, `project_aws_connections`).
+- Data: [migration ของ Organization และ Project](../packages/db/migrations/0029_aws_connections_v2.sql) (`org_aws_connections`, `project_aws_connections`).
 - Focused tests: [API](../apps/api/src/aws-connection/routes.db.test.ts), [DB/RLS](../packages/db/tests/aws-connections.db.test.ts), [STS helper](../packages/shared/tests/sts.test.ts).
 - Web: [Organization AWS page](../apps/web/src/pages/organization-aws/OrganizationAwsPage.tsx) (`/organizations/:organizationId/aws`), [form and disconnect](../apps/web/src/pages/organization-aws/ConnectionCard.tsx), [client](../apps/web/src/lib/api/aws-connection.ts), [loader](../apps/web/src/lib/auth/loaders/awsConnection.ts), menu entry in [nav config](../apps/web/src/components/shell/nav-config.ts).
 - Bootstrap: [API bootstrap](../apps/api/src/server.ts) (`startApi`) receives the verifier from [production entry](../apps/api/src/index.ts) or the test-only [e2e entry](../apps/api/src/testing/e2e-server.ts) (fakecloud); [entry isolation test](../apps/api/src/entry-isolation.test.ts).

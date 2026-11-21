@@ -484,6 +484,23 @@ describe("audit_events constraints", () => {
       [tenantA, userA, category, action],
     );
 
+  it("keeps the action names that 0028 wrote valid for existing events", async () => {
+    for (const action of ["test", "update", "delete"])
+      await insert(`organization.aws_connection.${action}`, "aws_connection");
+    for (const action of ["test", "update", "delete"])
+      await owner.query(
+        `insert into audit_events
+           (tenant_id, actor_user_id, actor_role, category, action, target_type)
+         values ($1, $2, 'owner', 'project', $3, 'project')`,
+        [tenantA, userA, `organization.project.aws_connection.${action}`],
+      );
+    const { rows } = await owner.query(
+      "select count(*)::int as n from audit_events where tenant_id = $1 and (action like 'organization.aws_connection.%' or action like 'organization.project.aws_connection.%') and action not in ('organization.aws_connection.tested', 'organization.aws_connection.updated', 'organization.aws_connection.disconnected')",
+      [tenantA],
+    );
+    expect(rows[0]).toMatchObject({ n: 6 });
+  });
+
   it("accepts the AWS connection actions and rejects a category that does not match", async () => {
     for (const action of ["tested", "updated", "disconnected"]) {
       await insert(`organization.aws_connection.${action}`, "aws_connection");

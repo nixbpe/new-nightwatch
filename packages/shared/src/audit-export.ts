@@ -29,6 +29,13 @@ export const AUDIT_ACTIONS = [
   "organization.aws_connection.tested",
   "organization.aws_connection.updated",
   "organization.aws_connection.disconnected",
+  // Written by #118's AWS connection before 0029; kept so those events read.
+  "organization.aws_connection.test",
+  "organization.aws_connection.update",
+  "organization.aws_connection.delete",
+  "organization.project.aws_connection.test",
+  "organization.project.aws_connection.update",
+  "organization.project.aws_connection.delete",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -68,6 +75,15 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.aws_connection.tested": "ทดสอบการเชื่อมต่อ AWS",
   "organization.aws_connection.updated": "ตั้งค่าการเชื่อมต่อ AWS",
   "organization.aws_connection.disconnected": "ยกเลิกการเชื่อมต่อ AWS",
+  "organization.aws_connection.test": "ทดสอบการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.update": "บันทึกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.delete": "ยกเลิกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.project.aws_connection.test":
+    "ทดสอบการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.update":
+    "บันทึกการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.delete":
+    "ยกเลิกการเชื่อมต่อ AWS ของโปรเจกต์",
 };
 
 export type AuditValue =

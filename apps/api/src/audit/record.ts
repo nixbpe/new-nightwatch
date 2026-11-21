@@ -35,6 +35,12 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.aws_connection.tested": "aws_connection",
   "organization.aws_connection.updated": "aws_connection",
   "organization.aws_connection.disconnected": "aws_connection",
+  "organization.aws_connection.test": "aws_connection",
+  "organization.aws_connection.update": "aws_connection",
+  "organization.aws_connection.delete": "aws_connection",
+  "organization.project.aws_connection.test": "project",
+  "organization.project.aws_connection.update": "project",
+  "organization.project.aws_connection.delete": "project",
 };
 
 // What a writer passes; the read response shape is `AuditTarget` in the contract.

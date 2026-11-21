@@ -193,13 +193,14 @@ function targetOf(row: EventRow): AuditTarget {
         return typeof value === "string" ? value : null;
       };
       const result = row.targetAttributes.result;
+      const revision = row.targetAttributes.revision;
       return {
         type: "aws_connection",
         roleArn: text("roleArn"),
         accountId: text("accountId"),
         result: result === "passed" || result === "failed" ? result : null,
         code: text("code"),
-        revision: Number(row.targetAttributes.revision),
+        revision: Number.isInteger(revision) ? Number(revision) : null,
       };
     }
     case "audit_export":
