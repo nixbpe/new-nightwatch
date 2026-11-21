@@ -63,8 +63,9 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
   });
   const queryDenied = isDenied(query.error) ? query.error.code : null;
   // Only a denial that arrived while this page was mounted refreshes the
-  // context (hiding the menu entry, AC-08); one restored from the cache after
-  // that refresh does not, so a context that still says Owner cannot loop.
+  // context (hiding the menu entry, AC-08). One already in the cache was
+  // handled by whoever stored it (the route loader or an earlier mount), so a
+  // context that still says Owner cannot loop.
   const [errorsAtMount] = useState(
     () => queryClient.getQueryState(queryKey)?.errorUpdateCount ?? 0,
   );
