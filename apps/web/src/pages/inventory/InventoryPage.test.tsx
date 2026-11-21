@@ -123,6 +123,20 @@ describe("InventoryPage", () => {
     );
   });
 
+  it("links the pending CPE/purl count to the review queue", async () => {
+    fetchMock.mockResolvedValue(
+      summary({ mappings: { pending: 5, confirmed: 3, unmapped: 1 } }),
+    );
+    renderPage();
+
+    const tile = await screen.findByTestId("inventory-tile-mappings");
+    expect(tile).toHaveTextContent("5");
+    expect(within(tile).getByTestId("inventory-mappings-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/inventory/mappings`,
+    );
+  });
+
   it("uploads the chosen file for the current Project and shows the new totals", async () => {
     fetchMock.mockResolvedValue(
       summary({

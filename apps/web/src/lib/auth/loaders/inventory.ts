@@ -2,6 +2,7 @@ import { type LoaderFunctionArgs } from "react-router";
 
 import {
   fetchInventory,
+  fetchMappings,
   fetchRejectedRows,
   inventoryKeys,
 } from "../../api/inventory";
@@ -58,4 +59,14 @@ export function inventoryRejectedRowsLoader(args: LoaderFunctionArgs) {
       staleTime: 0,
     });
   });
+}
+
+export function inventoryMappingsLoader(args: LoaderFunctionArgs) {
+  return prefetch(args, (client, { organizationId, projectId }) =>
+    client.query({
+      queryKey: inventoryKeys.mappings(organizationId, projectId),
+      queryFn: ({ signal }) => fetchMappings(organizationId, projectId, signal),
+      staleTime: 0,
+    }),
+  );
 }

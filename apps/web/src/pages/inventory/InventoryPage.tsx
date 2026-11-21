@@ -342,7 +342,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             summary={query.data}
             scope={{ organizationId, projectId }}
           />
-          <HairlineGrid className="grid-cols-1 sm:grid-cols-3">
+          <HairlineGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               testId="inventory-tile-upload"
               label="upload ล่าสุด"
@@ -364,6 +364,20 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
               label="แถวที่ใช้งานได้"
               value={String(query.data.usableRows)}
               note={`ไม่ผ่าน ${String(query.data.totalRows - query.data.usableRows)} แถว`}
+            />
+            <Tile
+              testId="inventory-tile-mappings"
+              label="รอยืนยัน CPE/purl"
+              value={String(query.data.mappings.pending)}
+              note={
+                <Link
+                  data-testid="inventory-mappings-link"
+                  className="text-primary underline-offset-4 hover:underline"
+                  to={`/organizations/${organizationId}/projects/${projectId}/inventory/mappings`}
+                >
+                  ไปที่คิวยืนยัน
+                </Link>
+              }
             />
           </HairlineGrid>
           <section
