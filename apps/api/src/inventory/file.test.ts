@@ -233,6 +233,15 @@ describe("resource limits", () => {
     });
   });
 
+  it("keeps reading a workbook whose rows carry an Excel-style prefixed attribute", async () => {
+    const bytes = await withSheet((xml) =>
+      xml.replace(/<row r="2"/, '<row r="2" x14ac:dyDescent="0.25"'),
+    );
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toMatchObject({
+      ok: true,
+    });
+  });
+
   it("scans past a far reference that only sits inside a comment", async () => {
     const bytes = await withSheet((xml) =>
       xml.replace("<sheetData>", '<!-- <row r="4000000000"> --><sheetData>'),
@@ -309,6 +318,28 @@ describe("resource limits", () => {
       "a DOCTYPE",
       (xml: string) =>
         `<!DOCTYPE x [<!ENTITY a "<row r='4000000000'/>">]>${xml}`,
+    ],
+    [
+      "xmlns before a prefix",
+      (xml: string) => xml.replace(/<row r="2"/, '<row xmlns:x:r="4000000000"'),
+    ],
+    [
+      "a double colon after xmlns",
+      (xml: string) => xml.replace(/<row r="2"/, '<row xmlns::r="4000000000"'),
+    ],
+    [
+      "a hidden r behind spaces around =",
+      (xml: string) =>
+        xml.replace(/<row r="2"/, `<row a = "x r='4000000000' "`),
+    ],
+    [
+      "attributes with no separator",
+      (xml: string) =>
+        xml.replace(/<row r="2"/, `<row a="1"b="x r='4000000000' "`),
+    ],
+    [
+      "a non-breaking space as separator",
+      (xml: string) => xml.replace(/<row r="2"/, '<row\u00a0r="1"'),
     ],
     [
       "an unquoted attribute",

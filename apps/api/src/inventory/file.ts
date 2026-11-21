@@ -116,17 +116,29 @@ function columnNumber(letters: string): number {
 const MAX_TAG_LENGTH = 4096;
 const MAX_ATTRIBUTES = 64;
 const ELEMENT_NAME = /([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)/y;
-const ATTRIBUTE_NAME = /[^\s=/>"'<]+/y;
-const BLANK = /\s*/y;
-
-function skip(pattern: RegExp, text: string, from: number): number {
-  pattern.lastIndex = from;
-  pattern.exec(text);
-  return pattern.lastIndex;
-}
+const ATTRIBUTE_NAME = /[A-Za-z_:][\w.:-]*/y;
+// XML whitespace only; JavaScript's \s also matches NBSP and U+2028.
+const SPACE = /[ \t\n\r]+/y;
 
 function malformed(): never {
   throw new Error("malformed or oversized tag");
+}
+
+function match(pattern: RegExp, text: string, at: number): string | undefined {
+  pattern.lastIndex = at;
+  return pattern.exec(text)?.[0];
+}
+
+// The reader's own rule (read-excel-file parseXmlStream.saxen.js trimXmlnsPrefix):
+// drop everything up to the first ":", but a ":" at index 5 of a name that starts
+// with "xmlns" does not count.
+function readerAttributeName(name: string): string {
+  for (let i = 0; i < name.length; i += 1) {
+    if (name[i] === ":" && !(i === 5 && name.startsWith("xmlns"))) {
+      return name.slice(i + 1);
+    }
+  }
+  return name;
 }
 
 function assertReference(local: "row" | "c", reference: string): void {
@@ -143,19 +155,20 @@ function assertReference(local: "row" | "c", reference: string): void {
   }
 }
 
-// One linear pass that reads tags the way an XML parser does: attribute values are
-// quoted and may hold ">", comments and CDATA are skipped, a repeated attribute is
-// refused. A `row` or `c` element (any prefix, either quote) must carry a plain
-// reference within the caps, so the reader never fills the gap to a far row or
-// column. A tag that is too long or does not tokenize is refused.
+// One linear pass over the tags of an XML part, accepting only the canonical form
+// a spreadsheet writes: name, then repeated (whitespace, name, "=", quoted value),
+// then optional whitespace and ">" or "/>", with a separator after every closing
+// quote. In that subset the reader's recovery paths for odd input never run, so
+// the scan and the reader agree on every attribute. Anything else, a repeated name
+// after the reader's prefix rule, a tag over 4096 characters, a DOCTYPE or other
+// declaration, is refused. A `row` or `c` element must carry a plain reference
+// within the caps, so the reader never fills the gap to a far row or column.
 function assertSheetBounds(xml: Uint8Array): void {
   const text = new TextDecoder().decode(xml);
   let start = text.indexOf("<");
   while (start !== -1) {
     const next = text.charAt(start + 1);
     if (next === "!" || next === "?" || next === "/") {
-      // A workbook has no DOCTYPE or other declaration, and the reader's handling
-      // of one is not ours to mirror, so only comments and CDATA are skipped.
       const closer = text.startsWith("<!--", start)
         ? "-->"
         : text.startsWith("<![CDATA[", start)
@@ -174,33 +187,41 @@ function assertSheetBounds(xml: Uint8Array): void {
     const name = ELEMENT_NAME.exec(text);
     if (!name) malformed();
     const local = name[2];
-    let position = ELEMENT_NAME.lastIndex;
+    let position = start + 1 + name[0].length;
     const seen = new Set<string>();
     let reference: string | undefined;
     for (;;) {
-      position = skip(BLANK, text, position);
       if (position - start > MAX_TAG_LENGTH) malformed();
-      const char = text.charAt(position);
-      if (char === ">" || (char === "/" && text.charAt(position + 1) === ">")) {
+      const space = match(SPACE, text, position);
+      if (text.charAt(position + (space?.length ?? 0)) === ">") {
+        position += (space?.length ?? 0) + 1;
         break;
       }
-      ATTRIBUTE_NAME.lastIndex = position;
-      const attribute = ATTRIBUTE_NAME.exec(text);
-      if (!attribute || seen.size >= MAX_ATTRIBUTES) malformed();
-      position = skip(BLANK, text, ATTRIBUTE_NAME.lastIndex);
+      if (text.startsWith("/>", position + (space?.length ?? 0))) {
+        position += (space?.length ?? 0) + 2;
+        break;
+      }
+      if (space === undefined) malformed();
+      position += space.length;
+      const attribute = match(ATTRIBUTE_NAME, text, position);
+      if (attribute === undefined || seen.size >= MAX_ATTRIBUTES) malformed();
+      position += attribute.length;
       if (text.charAt(position) !== "=") malformed();
-      position = skip(BLANK, text, position + 1);
-      const quote = text.charAt(position);
+      const quote = text.charAt(position + 1);
       if (quote !== '"' && quote !== "'") malformed();
-      const close = text.indexOf(quote, position + 1);
+      const close = text.indexOf(quote, position + 2);
       if (close === -1 || close - start > MAX_TAG_LENGTH) malformed();
-      // The reader drops everything up to the first ":" of an attribute name, so
-      // x:r and :r are r, and two names that strip to the same one are a repeat.
-      const attributeName = attribute[0].slice(attribute[0].indexOf(":") + 1);
-      if (seen.has(attributeName)) malformed();
-      seen.add(attributeName);
-      if (attributeName === "r") reference = text.slice(position + 1, close);
+      const value = text.slice(position + 2, close);
+      if (value.includes("<")) malformed();
+      const key = readerAttributeName(attribute);
+      if (seen.has(key)) malformed();
+      seen.add(key);
+      if (key === "r") reference = value;
       position = close + 1;
+      const after = text.charAt(position);
+      if (after !== ">" && after !== "/" && !/[ \t\n\r]/.test(after)) {
+        malformed();
+      }
     }
     if ((local === "row" || local === "c") && reference !== undefined) {
       assertReference(local, reference);
