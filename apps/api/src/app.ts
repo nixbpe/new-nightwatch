@@ -26,6 +26,7 @@ import type { Mailer } from "./auth/mailer";
 import { registerAuditLogReadRoutes } from "./audit/routes";
 import type { AwsDeps } from "./aws/organization";
 import { registerAwsRoutes } from "./aws/routes";
+import { registerInventoryRoutes } from "./inventory/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -494,6 +495,17 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       logger: deps.logger,
       ...deps.aws,
       credentialEnv: deps.credentialEnv,
+      ...(deps.redis && {
+        rateLimiter: createRateLimiter({
+          redis: deps.redis,
+          logger: deps.logger,
+        }),
+      }),
+    });
+    registerInventoryRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
       ...(deps.redis && {
         rateLimiter: createRateLimiter({
           redis: deps.redis,

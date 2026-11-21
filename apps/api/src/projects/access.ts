@@ -18,7 +18,9 @@ export type ProjectAction =
   | "monitor.write"
   | "monitor.readResponse"
   | "aws.read"
-  | "aws.manage";
+  | "aws.manage"
+  | "inventory.read"
+  | "inventory.write";
 
 // Actions that only read: they check the Organization role under a shared
 // lock and answer MEMBERSHIP_DENIED for a role that no longer normalizes.
@@ -27,6 +29,7 @@ const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set([
   "monitor.read",
   "monitor.readResponse",
   "aws.read",
+  "inventory.read",
 ]);
 
 export function isReadAction(action: ProjectAction): boolean {
@@ -80,6 +83,16 @@ const PROJECT_PERMISSIONS: Record<
     projectAdmin: "allow",
     projectMember: "deny",
   },
+  "inventory.read": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "allow",
+  },
+  "inventory.write": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "deny",
+  },
   // Headers and body come from the target and may hold personal data (OD-58-04).
   "monitor.readResponse": {
     orgAdmin: "allow",
@@ -91,6 +104,7 @@ const PROJECT_PERMISSIONS: Record<
 const DENIED_MESSAGES: Partial<Record<ProjectAction, string>> = {
   "monitor.readResponse": "คุณไม่มีสิทธิ์ดูการตอบกลับของมอนิเตอร์นี้",
   "monitor.write": "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ของโปรเจกต์นี้",
+  "inventory.write": "เฉพาะผู้ดูแลโปรเจกต์ upload inventory ได้",
 };
 
 export function projectAccessOf(

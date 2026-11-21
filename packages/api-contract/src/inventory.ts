@@ -97,3 +97,30 @@ export const inventoryRejectedRowsSchema = z.object({
   rows: z.array(inventoryRejectedRowSchema),
 });
 export type InventoryRejectedRows = z.infer<typeof inventoryRejectedRowsSchema>;
+
+const LIST_VALUES: Partial<Record<InventoryColumn, readonly string[]>> = {
+  Layer: INVENTORY_LAYERS,
+  Environment: INVENTORY_ENVIRONMENTS,
+  Exposure: INVENTORY_EXPOSURES,
+};
+
+/** The reason shown to members and written into the Owner download. */
+export function inventoryIssueMessage(issue: InventoryIssue): string {
+  const list = LIST_VALUES[issue.column]?.join(", ");
+  switch (issue.code) {
+    case "required":
+      return list ? `ว่าง ต้องเลือก ${list}` : "ว่าง ต้องกรอก";
+    case "not_in_list":
+      return `ค่าไม่อยู่ในรายการ ใช้ ${list ?? ""}`.trim();
+    case "too_long":
+      return `ยาวเกิน ${String(INVENTORY_FIELD_MAX_LENGTH)} ตัวอักษร`;
+    case "version_not_text":
+      return "Excel เก็บค่าเป็นตัวเลขหรือวันที่จนค่าเดิมหาย ตั้งคอลัมน์เป็น Text แล้วกรอกใหม่";
+    case "version_not_a_number":
+      return "ต้องเป็นเลขเวอร์ชัน ไม่ใช่ข้อความ เช่น latest";
+    case "version_not_patch_level":
+      return "ไม่ถึง patch level เช่น 8.0.36 หรือ 22.04.4";
+    case "product_has_version":
+      return "มีเลขเวอร์ชันปนในชื่อ Product ให้ย้ายไปคอลัมน์ Version";
+  }
+}
