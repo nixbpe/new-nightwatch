@@ -102,7 +102,7 @@ describe("NewVulnerabilitiesPage", () => {
     expect(second).toHaveTextContent("ไม่ทราบ");
     expect(second).toHaveTextContent("ไม่พบแล้วในการตรวจล่าสุด");
     expect(screen.getByTestId("new-cve-CVE-2026-1002")).toHaveTextContent(
-      "ยังไม่ทราบ (ตรวจ product นี้ไม่สำเร็จในรอบล่าสุด)",
+      "ยังไม่ทราบ (รอบล่าสุดไม่มีผลตรวจ product นี้)",
     );
     expect(screen.getByTestId("new-cve-checked")).toHaveTextContent(
       "ตรวจล่าสุดเสร็จเมื่อ",

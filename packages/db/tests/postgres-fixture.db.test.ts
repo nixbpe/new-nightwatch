@@ -320,11 +320,12 @@ describe("owned PostgreSQL fixture", () => {
               await fixture.owner.sql.query(
                 `select c.relname, c.relforcerowsecurity as forced
                  from pg_class c
-                 where c.relname in ('vulnerability_schedules', 'vulnerability_seen')
+                 where c.relname in ('vulnerability_components', 'vulnerability_schedules', 'vulnerability_seen')
                  order by c.relname`,
               )
             ).rows,
           ).toEqual([
+            { relname: "vulnerability_components", forced: true },
             { relname: "vulnerability_schedules", forced: true },
             { relname: "vulnerability_seen", forced: true },
           ]);
