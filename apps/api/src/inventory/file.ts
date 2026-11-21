@@ -80,12 +80,17 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
   try {
     let entries = 0;
     let unzipped = 0;
+    const names = new Set<string>();
     // fflate sizes each inflate buffer from the declared size, so the declared
     // total bounds what is inflated; every .xml and .rels part is inflated and scanned
     // (a superset of what the reader unpacks) because the reader takes the sheet
     // path from the workbook's rels, not from a fixed name.
     const parts = unzipSync(bytes, {
       filter: (file) => {
+        // fflate's sync and async unzippers keep different copies of a repeated
+        // name, so the scan and the reader could see different parts.
+        if (names.has(file.name)) throw new Error("repeated entry name");
+        names.add(file.name);
         entries += 1;
         unzipped += file.originalSize;
         if (entries > MAX_ZIP_ENTRIES || unzipped > MAX_UNZIPPED_BYTES) {

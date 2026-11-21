@@ -427,6 +427,38 @@ describe("resource limits", () => {
     },
   );
 
+  it("rejects a zip that names two entries alike", async () => {
+    const valid = await workbook([
+      {
+        sheet: "Inventory",
+        rows: [
+          HEADER.split(","),
+          ["A", "B", "C", "D", "1.2.3", "OS", "Production", "Internal"],
+        ],
+      },
+    ]);
+    const parts = unzipSync(valid);
+    parts["dup1.xml"] = encode("<a/>");
+    parts["dup2.xml"] = encode("<b/>");
+    const bytes = zipSync(parts);
+    // zipSync cannot write two entries of one name, so the second name is patched
+    // in both its local header and its central directory record (same length).
+    const from = encode("dup2.xml");
+    const to = encode("dup1.xml");
+    let patched = 0;
+    for (let i = 0; i + from.length <= bytes.length; i += 1) {
+      if (from.every((byte, offset) => bytes[i + offset] === byte)) {
+        bytes.set(to, i);
+        patched += 1;
+      }
+    }
+    expect(patched).toBe(2);
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+  });
+
   it("rejects a zip with more than 200 entries", async () => {
     const parts: Record<string, Uint8Array> = {};
     for (let i = 0; i < 201; i += 1)
