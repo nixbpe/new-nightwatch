@@ -14,6 +14,7 @@ import {
 } from "../monitors/test-support";
 import { createRedisClient } from "../rate-limit";
 import { suggestMapping } from "./mappings";
+import { identityKey } from "./rows";
 
 const redisUrl = process.env.REDIS_URL;
 if (!redisUrl) throw new Error("REDIS_URL is required for mapping tests");
@@ -311,6 +312,76 @@ describe("review decisions", () => {
     expect(response.json).toMatchObject({
       error: { code: "INVENTORY_MAPPING_NOT_FOUND" },
     });
+  });
+});
+
+describe("a Project that uploaded before mappings existed", () => {
+  it("gets its pending mappings on first read, with the upload's keys, once", async () => {
+    const legacy = await ctx.createProject(org.id, "mapping-legacy", []);
+    const longName = "İ".repeat(200);
+    const system = crypto.randomUUID();
+    await ctx.owner.sql.query(
+      `insert into inventory_systems (id, tenant_id, project_id, name_key, name, file_name, uploaded_by, total_rows, usable_rows)
+       values ($1, $2, $3, 'billing', 'Billing', 'inventory.csv', 'seed', 3, 3)`,
+      [system, org.id, legacy],
+    );
+    let lineNo = 2;
+    for (const [vendor, product] of [
+      ["Redis", "Redis"],
+      ["REDIS", "redis"],
+      [longName, "Thing"],
+    ] as const) {
+      await ctx.owner.sql.query(
+        `insert into inventory_rows (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer, environment, exposure, usable)
+         values ($1, $2, $3, $4, 't', $5, $6, '1.2.3', 'OS', 'Production', 'Internal', true)`,
+        [org.id, legacy, system, lineNo, vendor, product],
+      );
+      lineNo += 1;
+    }
+    expect(
+      (
+        await ctx.owner.sql.query(
+          "select 1 from inventory_mappings where project_id = $1",
+          [legacy],
+        )
+      ).rowCount,
+    ).toBe(0);
+
+    const summary = await ctx.call(org.users.owner, "GET", path("", legacy));
+    expect(inventorySummarySchema.parse(summary.json).mappings.pending).toBe(2);
+    const first = await mappings(org.users.owner, legacy);
+    expect(first.counts.pending).toBe(2);
+    // The over-long vendor gets the hash key an upload computes, not a SQL lower().
+    const keys = await ctx.owner.sql.query<{ vendor_key: string }>(
+      "select vendor_key from inventory_mappings where project_id = $1 order by vendor_key",
+      [legacy],
+    );
+    expect(keys.rows.map((row) => row.vendor_key)).toContain(
+      identityKey(longName),
+    );
+    expect(identityKey(longName).startsWith("\u0001sha256:")).toBe(true);
+
+    // A decision survives the next read, and a later upload keeps the same mapping.
+    const redisItem = first.items.find(
+      (item) => item.vendor.toLowerCase() === "redis",
+    );
+    if (!redisItem) throw new Error("redis mapping missing");
+    const redis = redisItem;
+    expect(
+      (
+        await decide(
+          org.users.owner,
+          redis.id,
+          { action: "confirm", cpe: REDIS },
+          legacy,
+        )
+      ).status,
+    ).toBe(200);
+    const again = await mappings(org.users.owner, legacy);
+    expect(again.counts).toEqual({ pending: 1, confirmed: 1, unmapped: 0 });
+    expect(
+      again.items.find((item) => item.vendor.toLowerCase() === "redis")?.id,
+    ).toBe(redis.id);
   });
 });
 

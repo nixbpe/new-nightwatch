@@ -19,7 +19,7 @@ import type { RateLimiter } from "../rate-limit";
 import type { CpeSearch } from "./cpe";
 import { parseInventoryFile } from "./file";
 import { inventoryFileRejected } from "./messages";
-import { syncMappings } from "./mappings";
+import { ensureMappings, syncMappings } from "./mappings";
 import { validateRow, type InventoryRow } from "./rows";
 
 export type InventoryDeps = {
@@ -114,8 +114,15 @@ export function getInventory(deps: InventoryDeps, input: ProjectIdentity) {
     input,
     "inventory.read",
     false,
-    (client, { projectId, access }) =>
-      summarize(client, input.organizationId, projectId, canUpload(access)),
+    async (client, { projectId, access }) => {
+      await ensureMappings(client, input.organizationId, projectId);
+      return summarize(
+        client,
+        input.organizationId,
+        projectId,
+        canUpload(access),
+      );
+    },
   );
 }
 

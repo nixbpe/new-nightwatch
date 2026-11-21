@@ -233,6 +233,28 @@ const canManage = (access: { kind: string; role?: string }) =>
   access.kind === "org-admin" ||
   (access.kind === "member" && access.role === "admin");
 
+/**
+ * A Project that uploaded its inventory before mappings existed (migration 0031) has usable
+ * rows and no mapping. The first read makes them with the same code an upload uses, so the
+ * keys are exactly the upload's (a SQL backfill cannot reproduce the hash of an over-long
+ * key) and the review queue does not wait for another upload. Safe to repeat: the
+ * insert skips pairs that exist, and a read holds the Project lock an upload also takes.
+ */
+export async function ensureMappings(
+  client: PoolClient,
+  tenant: string,
+  project: string,
+): Promise<void> {
+  const { rows } = await client.query<{ missing: boolean }>(
+    `select exists (select 1 from inventory_rows
+                    where tenant_id = $1 and project_id = $2 and usable)
+        and not exists (select 1 from inventory_mappings
+                        where tenant_id = $1 and project_id = $2) as missing`,
+    [tenant, project],
+  );
+  if (rows[0]?.missing === true) await syncMappings(client, tenant, project);
+}
+
 export function listMappings(
   deps: InventoryDeps,
   input: ProjectIdentity,
@@ -244,6 +266,7 @@ export function listMappings(
     "inventory.read",
     false,
     async (client, { projectId, access }) => {
+      await ensureMappings(client, input.organizationId, projectId);
       const all = await loadItems(client, input.organizationId, projectId);
       const counts = { pending: 0, confirmed: 0, unmapped: 0 };
       for (const item of all) counts[item.status] += 1;
