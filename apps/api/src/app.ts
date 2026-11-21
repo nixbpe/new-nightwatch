@@ -29,6 +29,8 @@ import { registerAwsConnectionRoutes } from "./aws-connection/routes";
 import { createNvdCpeSearch } from "./inventory/cpe";
 import { registerInventoryMappingRoutes } from "./inventory/mapping-routes";
 import { registerInventoryRoutes } from "./inventory/routes";
+import { createFeeds } from "./vulnerability/feeds";
+import { registerVulnerabilityRoutes } from "./vulnerability/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -526,6 +528,21 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       trustedOrigin: deps.authEnv.CORS_ORIGIN,
     });
     registerInventoryMappingRoutes(app, inventory);
+    registerVulnerabilityRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+      feeds: createFeeds({ outbound: deps.outbound, logger: deps.logger }),
+      ...(deps.redis && {
+        rateLimiter: inventory.rateLimiter,
+        cache: {
+          get: (key: string) => deps.redis?.get(key) ?? Promise.resolve(null),
+          set: async (key: string, value: string, ttlSeconds: number) => {
+            await deps.redis?.set(key, value, "EX", ttlSeconds);
+          },
+        },
+      }),
+    });
     registerProjectRoutes(app, {
       auth,
       database,
