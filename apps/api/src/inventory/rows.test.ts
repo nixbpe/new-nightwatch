@@ -1,7 +1,9 @@
+import { INVENTORY_FIELD_MAX_LENGTH } from "@nightwatch/api-contract";
+import { IDENTITY_KEY_MAX_LENGTH } from "@nightwatch/shared";
 import { describe, expect, it } from "vitest";
 
 import type { RawRow } from "./file";
-import { validateRow, versionIssue } from "./rows";
+import { identityKey, validateRow, versionIssue } from "./rows";
 
 function raw(overrides: Partial<RawRow["cells"]> = {}): RawRow {
   return {
@@ -127,5 +129,19 @@ describe("validateRow", () => {
     const row = validateRow(raw({ System: "" }));
     expect(row.systemKey).toBe("");
     expect(row.issues).toEqual([{ column: "System", code: "required" }]);
+  });
+});
+
+describe("identityKey", () => {
+  it("uses the field length the inventory contract allows", () => {
+    expect(IDENTITY_KEY_MAX_LENGTH).toBe(INVENTORY_FIELD_MAX_LENGTH);
+  });
+
+  it("lower-cases a name and replaces a key that grows past the limit by its hash", () => {
+    expect(identityKey("Redis")).toBe("redis");
+    const long = "İ".repeat(150);
+    expect(identityKey(long).startsWith("\u0001sha256:")).toBe(true);
+    expect(identityKey(long)).toHaveLength("\u0001sha256:".length + 64);
+    expect(identityKey(long)).not.toBe(identityKey("İ".repeat(151)));
   });
 });
