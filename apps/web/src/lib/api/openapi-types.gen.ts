@@ -7601,8 +7601,41 @@ export interface paths {
                                     };
                                 };
                             } | null;
-                            /** Format: uuid */
-                            resultsRunId: string | null;
+                            results: {
+                                /** Format: uuid */
+                                id: string;
+                                /** @enum {string} */
+                                status: "running" | "done" | "failed";
+                                /** Format: date-time */
+                                createdAt: string;
+                                /** Format: date-time */
+                                finishedAt: string | null;
+                                totalUnits: number;
+                                doneUnits: number;
+                                failedUnits: number;
+                                feeds: {
+                                    nvd?: {
+                                        ok: boolean;
+                                        /** Format: date-time */
+                                        at: string;
+                                    };
+                                    osv?: {
+                                        ok: boolean;
+                                        /** Format: date-time */
+                                        at: string;
+                                    };
+                                    kev?: {
+                                        ok: boolean;
+                                        /** Format: date-time */
+                                        at: string;
+                                    };
+                                    epss?: {
+                                        ok: boolean;
+                                        /** Format: date-time */
+                                        at: string;
+                                    };
+                                };
+                            } | null;
                             summary: {
                                 components: number;
                                 cves: number;
