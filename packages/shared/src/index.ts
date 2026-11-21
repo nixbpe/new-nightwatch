@@ -6,10 +6,13 @@ export {
   loadAuthEnv,
   loadEnv,
   loadMonitorEnv,
+  loadSmtpEnv,
   monitorEnvSchema,
+  smtpEnvSchema,
   type AuthEnv,
   type Env,
   type MonitorEnv,
+  type SmtpEnv,
 } from "./env";
 export {
   CredentialError,
@@ -37,3 +40,4 @@ export {
 export * from "./vulnerability";
 export * from "./rate-limit";
 export * from "./identity-key";
+export * from "./mailer";
