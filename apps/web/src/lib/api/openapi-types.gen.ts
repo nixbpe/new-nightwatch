@@ -448,7 +448,7 @@ export interface paths {
             parameters: {
                 query?: {
                     status?: "all" | "unread";
-                    category?: "monitor" | "security" | "organization";
+                    category?: "monitor" | "vulnerability" | "security" | "organization";
                     limit?: number;
                     cursor?: string;
                 };
@@ -480,6 +480,29 @@ export interface paths {
                                 actor: unknown;
                                 category: unknown;
                             } | ({
+                                /** Format: uuid */
+                                id: string;
+                                /** @enum {string} */
+                                scope: "organization";
+                                /** Format: uuid */
+                                organizationId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** Format: date-time */
+                                readAt: string | null;
+                                /** @enum {string} */
+                                eventType: "VULNERABILITY_NEW";
+                                actor: unknown;
+                                /** @enum {string} */
+                                category: "vulnerability";
+                                subject: {
+                                    /** Format: uuid */
+                                    projectId: string;
+                                    projectName: string;
+                                    cveCount: number;
+                                    componentCount: number;
+                                };
+                            } | {
                                 /** Format: uuid */
                                 id: string;
                                 /** @enum {string} */
@@ -792,6 +815,29 @@ export interface paths {
                             actor: unknown;
                             category: unknown;
                         } | ({
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            scope: "organization";
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** Format: date-time */
+                            readAt: string | null;
+                            /** @enum {string} */
+                            eventType: "VULNERABILITY_NEW";
+                            actor: unknown;
+                            /** @enum {string} */
+                            category: "vulnerability";
+                            subject: {
+                                /** Format: uuid */
+                                projectId: string;
+                                projectName: string;
+                                cveCount: number;
+                                componentCount: number;
+                            };
+                        } | {
                             /** Format: uuid */
                             id: string;
                             /** @enum {string} */

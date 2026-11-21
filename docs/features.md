@@ -83,6 +83,8 @@
 
 [scanner ใน worker](../apps/worker/src/vulnerability/scanner.ts) (role `vulnerability-scanner`, ดู [runbook](runbooks/uptime-monitor.md#run-the-worker-roles)), [SQL ของ run และ schedule](../packages/db/src/vulnerability-run.ts), [loop ประมวลผล unit และ KEV](../packages/shared/src/vulnerability/process.ts), [limiter ของ NVD](../packages/shared/src/rate-limit.ts), [API CVE ใหม่](../apps/api/src/vulnerability/service.ts), [Web](../apps/web/src/pages/vulnerabilities/NewVulnerabilitiesPage.tsx), [migration](../packages/db/migrations/0033_vulnerability_monitoring.sql), [browser test](../e2e/tests/vulnerabilities.spec.ts).
 
+แจ้งเตือน CVE ใหม่ (S4.3 in-app): [สร้าง intent ตอน run จบ](../packages/db/src/vulnerability-run.ts), [intent และผู้รับ](../packages/db/src/notification.ts), [migration](../packages/db/migrations/0034_vulnerability_notifications.sql), [inbox API](../apps/api/src/notifications/service.ts), [Web](../apps/web/src/pages/NotificationsPage.tsx).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

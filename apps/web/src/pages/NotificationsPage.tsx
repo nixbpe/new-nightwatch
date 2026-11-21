@@ -50,6 +50,10 @@ type MonitorNotificationItem = Extract<
   NotificationItem,
   { category: "monitor" }
 >;
+type VulnerabilityNotificationItem = Extract<
+  NotificationItem,
+  { category: "vulnerability" }
+>;
 
 const SSL_CAUTION_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -76,6 +80,8 @@ function itemTitle(item: NotificationItem) {
         return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)`;
       case "MONITOR_SSL_EXPIRED":
         return `ใบรับรอง SSL ของ ${item.subject.monitorName} หมดอายุแล้ว`;
+      case "VULNERABILITY_NEW":
+        return `โปรเจกต์ ${item.subject.projectName} พบ CVE ใหม่ที่วิกฤตหรืออยู่ใน KEV ${String(item.subject.cveCount)} รายการ (${String(item.subject.componentCount)} component)`;
       case "AUDIT_EXPORT_READY":
         return "ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด";
       case "AUDIT_EXPORT_FAILED":
@@ -94,6 +100,7 @@ function itemContext(
   if (item.scope !== "organization") return ["บัญชีของคุณ", "ความปลอดภัย"];
   if (item.category === "monitor") return [organizationName, "มอนิเตอร์"];
   if (item.category === "audit-log") return [organizationName, "บันทึกกิจกรรม"];
+  if (item.category === "vulnerability") return [organizationName, "ช่องโหว่"];
   return [organizationName, "การตั้งค่าการแจ้งเตือน"];
 }
 function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
@@ -105,6 +112,8 @@ function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
         return <MonitorIcon size={size} />;
       case "MONITOR_RECOVERED":
         return <CheckIcon size={size} />;
+      case "VULNERABILITY_NEW":
+        return <ShieldIcon size={size} />;
       case "AUDIT_EXPORT_READY":
         return <DownloadIcon size={size} />;
       case "AUDIT_EXPORT_FAILED":
@@ -135,6 +144,10 @@ function downReason(reason: string) {
 /** Monitor items link to the Detail page; a deleted monitor is reported there. */
 function monitorPath(item: MonitorNotificationItem) {
   return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/monitors/${item.subject.monitorId}`;
+}
+/** A new-CVE item links to the Project's new-CVE page. */
+function newCvesPath(item: VulnerabilityNotificationItem) {
+  return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/vulnerabilities/new`;
 }
 function auditExportPath(organizationId: string) {
   return `/organizations/${organizationId}/audit-log#my-exports`;
@@ -362,6 +375,19 @@ function NotificationList({
               >
                 เปิดมอนิเตอร์
                 <span className="sr-only"> {item.subject.monitorName}</span>
+              </Link>
+            ) : null}
+            {item.scope === "organization" &&
+            item.category === "vulnerability" ? (
+              <Link
+                data-testid="notification-vulnerability-link"
+                to={newCvesPath(item)}
+                onClick={onNavigate}
+                data-popover-item={popoverItems ? "" : undefined}
+                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                ดู CVE ใหม่
+                <span className="sr-only"> {item.subject.projectName}</span>
               </Link>
             ) : null}
             {item.scope === "organization" && item.category === "audit-log" ? (
@@ -729,6 +755,34 @@ function NotificationsPageForOrganization({
               </>
             ) : null}
             {detail.scope === "organization" &&
+            detail.category === "vulnerability" ? (
+              <>
+                <dt className="text-foreground-secondary">โปรเจกต์</dt>
+                <dd className="mb-3 sm:mb-0">
+                  <Link
+                    data-testid="notification-vulnerability-link"
+                    to={newCvesPath(detail)}
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    ดู CVE ใหม่
+                    <span className="sr-only">
+                      {" "}
+                      {detail.subject.projectName}
+                    </span>
+                  </Link>{" "}
+                  <span className="text-foreground-secondary">
+                    ({detail.subject.projectName})
+                  </span>
+                </dd>
+                <dt className="text-foreground-secondary">รายละเอียด</dt>
+                <dd data-testid="notification-vulnerability-counts">
+                  {detail.subject.cveCount} CVE ใน{" "}
+                  {detail.subject.componentCount} component รวมเฉพาะ CVE
+                  ที่วิกฤตหรืออยู่ใน KEV ที่พบครั้งแรกในรอบนี้
+                </dd>
+              </>
+            ) : null}
+            {detail.scope === "organization" &&
             detail.category === "audit-log" ? (
               <>
                 <dt className="text-foreground-secondary">บันทึกกิจกรรม</dt>
@@ -879,6 +933,7 @@ function NotificationsPageForOrganization({
             [
               ["all", "ทั้งหมด"],
               ["monitor", "มอนิเตอร์"],
+              ["vulnerability", "ช่องโหว่"],
               ["security", "ความปลอดภัย"],
               ["organization", "องค์กร"],
             ] as const
