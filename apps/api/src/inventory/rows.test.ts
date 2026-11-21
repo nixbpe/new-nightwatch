@@ -116,6 +116,13 @@ describe("validateRow", () => {
     ).toBe(one.systemKey);
   });
 
+  it("keeps a hash key apart from a System named as that key", () => {
+    const long = validateRow(raw({ System: `${"İ".repeat(100)}one` }));
+    const typed = validateRow(raw({ System: long.systemKey }));
+    expect(typed.system).toBe(long.systemKey.replace(/\p{Cc}/gu, " ").trim());
+    expect(typed.systemKey).not.toBe(long.systemKey);
+  });
+
   it("keeps a row without a System name in the empty-name group", () => {
     const row = validateRow(raw({ System: "" }));
     expect(row.systemKey).toBe("");
