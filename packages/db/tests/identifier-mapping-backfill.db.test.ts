@@ -34,6 +34,7 @@ describe("identifier mappings backfill from migration 0031", () => {
         [2, "Redis", "Redis", true],
         [3, "REDIS", "redis", true],
         [4, "OpenSSL", "openssl", true],
+        [6, "ÉCOLE", "ÜBER", true],
         [5, "Rejected", "Thing", false],
       ];
       for (const [line, vendor, product, usable] of rows) {
@@ -75,6 +76,13 @@ describe("identifier mappings backfill from migration 0031", () => {
         {
           vendor_key: "redis",
           product_key: "redis",
+          status: "pending",
+          cpe: null,
+        },
+        // The key an upload computes with toLowerCase(), so the next upload keeps this row.
+        {
+          vendor_key: "ÉCOLE".toLowerCase(),
+          product_key: "ÜBER".toLowerCase(),
           status: "pending",
           cpe: null,
         },
