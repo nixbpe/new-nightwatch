@@ -592,7 +592,7 @@ describe("dictionary suggestions", () => {
       expect(Number(retryAfter)).toBeGreaterThan(0);
     } finally {
       // The key is shared with other tests: free it even when an assertion fails.
-      await redis.del("rl:nvd-cpe:global");
+      await redis.del("rl:nvd:global");
     }
   });
 

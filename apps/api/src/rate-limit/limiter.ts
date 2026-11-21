@@ -169,6 +169,13 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
   };
 }
 
+/**
+ * One bucket for every call to NVD, CPE dictionary and CVE API alike: it allows 5 requests
+ * per 30 s without an API key and sees one egress address, so 4 are shared by every
+ * Organization and both consumers.
+ */
+export const NVD_GLOBAL_LIMIT = { key: "rl:nvd:global", limit: 4 } as const;
+
 /** Test rate limit (REQ-04): 10 per 60 s per user per org, 30 per 60 s per org. */
 export function consumeMonitorTestRateLimit(
   limiter: RateLimiter,

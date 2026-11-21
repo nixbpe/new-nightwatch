@@ -1158,13 +1158,14 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(15);
+    ).toHaveLength(16);
     expect(
       within(dialog).queryByTestId("shell-command-option-/workspace"),
     ).toBeNull();
     for (const path of [
       `/organizations/${ORG_A}/projects/${PROJECT}/overview`,
       MONITORS_A,
+      `/organizations/${ORG_A}/projects/${PROJECT}/vulnerabilities`,
       `/organizations/${ORG_A}/projects/${PROJECT}/inventory`,
       `/organizations/${ORG_A}/projects/${PROJECT}/members`,
       "/notifications",
