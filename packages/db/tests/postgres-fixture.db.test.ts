@@ -245,6 +245,7 @@ describe("owned PostgreSQL fixture", () => {
         "0026_project_monitors.sql",
         "0027_notification_monitor_hostname.sql",
         "0028_aws_connections.sql",
+        "0029_project_inventory.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -308,6 +309,15 @@ describe("owned PostgreSQL fixture", () => {
               "subject_monitor_hostname",
             ),
           ).toBe(true);
+        }
+        if (stage === "0029_project_inventory.sql") {
+          expect(
+            (
+              await fixture.owner.sql.query(
+                "select to_regclass('public.inventory_systems')::text as systems, to_regclass('public.inventory_rows')::text as rows",
+              )
+            ).rows,
+          ).toEqual([{ systems: "inventory_systems", rows: "inventory_rows" }]);
         }
         if (stage === "0028_aws_connections.sql") {
           expect(
