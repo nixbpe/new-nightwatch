@@ -26,6 +26,12 @@ export const AUDIT_ACTIONS = [
   "organization.project.member.add",
   "organization.project.member.role.update",
   "organization.project.member.remove",
+  "organization.aws_connection.test",
+  "organization.aws_connection.update",
+  "organization.aws_connection.delete",
+  "organization.project.aws_connection.test",
+  "organization.project.aws_connection.update",
+  "organization.project.aws_connection.delete",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -61,6 +67,15 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
   "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
   "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
+  "organization.aws_connection.test": "ทดสอบการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.update": "บันทึกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.aws_connection.delete": "ยกเลิกการเชื่อมต่อ AWS ขององค์กร",
+  "organization.project.aws_connection.test":
+    "ทดสอบการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.update":
+    "บันทึกการเชื่อมต่อ AWS ของโปรเจกต์",
+  "organization.project.aws_connection.delete":
+    "ยกเลิกการเชื่อมต่อ AWS ของโปรเจกต์",
 };
 
 export type AuditValue =

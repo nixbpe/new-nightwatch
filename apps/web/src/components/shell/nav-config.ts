@@ -48,6 +48,11 @@ export const NAV_ITEMS: NavItem[] = [
         count: "monitors",
       },
       {
+        label: "การเชื่อมต่อ AWS",
+        icon: "activity",
+        path: "/organizations/:organizationId/projects/:projectId/aws",
+      },
+      {
         label: "สมาชิกโปรเจกต์",
         icon: "users",
         path: "/organizations/:organizationId/projects/:projectId/members",
@@ -72,6 +77,12 @@ export const NAV_ITEMS: NavItem[] = [
         label: "ตั้งค่าการแจ้งเตือน",
         icon: "bell",
         path: "/organizations/:organizationId/notification-settings",
+        roles: ["owner", "admin"],
+      },
+      {
+        label: "การเชื่อมต่อ AWS ขององค์กร",
+        icon: "activity",
+        path: "/organizations/:organizationId/aws",
         roles: ["owner", "admin"],
       },
       {

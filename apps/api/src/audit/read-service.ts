@@ -149,6 +149,8 @@ function targetOf(row: EventRow): AuditTarget {
           }
         : monitor;
     }
+    case "aws_connection":
+      return { type: "aws_connection" };
     case "project":
       return {
         type: "project",

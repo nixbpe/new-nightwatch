@@ -48,6 +48,9 @@ import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
+import { awsLoader } from "./lib/auth/loaders/aws";
+import { OrganizationAwsPage } from "./pages/aws/OrganizationAwsPage";
+import { ProjectAwsPage } from "./pages/aws/ProjectAwsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -173,6 +176,11 @@ export const routes: RouteObject[] = [
             element: <WorkspaceEntryFallback />,
           },
           {
+            path: "/organizations/:organizationId/projects/:projectId/aws",
+            loader: awsLoader,
+            element: <ProjectAwsPage />,
+          },
+          {
             path: "/organizations/:organizationId/projects/:projectId/overview",
             loader: projectOverviewLoader,
             element: <ProjectOverviewPage />,
@@ -206,6 +214,11 @@ export const routes: RouteObject[] = [
             path: "/notifications",
             loader: notificationsLoader,
             element: <NotificationsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/aws",
+            loader: awsLoader,
+            element: <OrganizationAwsPage />,
           },
           {
             path: "/organizations/:organizationId/notification-settings",

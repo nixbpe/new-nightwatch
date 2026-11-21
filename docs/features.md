@@ -57,6 +57,10 @@
 - Contract: [Filter/count shapes](../packages/api-contract/src/notification.ts) (`notificationListResponseSchema`, `notificationCountResponseSchema`), [hostname snapshot migration](../packages/db/migrations/0027_notification_monitor_hostname.sql).
 - Focused tests: [API service](../apps/api/src/notifications/service.db.test.ts), [Web inbox](../apps/web/src/pages/NotificationsPage.test.tsx), [loaders](../apps/web/src/lib/auth/loaders.test.tsx).
 
+## การเชื่อมต่อบัญชี AWS ของ Organization และ Project
+
+[API](../apps/api/src/aws/), [Web](../apps/web/src/pages/aws/), [สัญญา](../packages/api-contract/src/aws-connection.ts), [AWS STS](../packages/shared/src/aws/sts.ts), [migration](../packages/db/migrations/0028_aws_connections.sql), [browser test](../e2e/tests/aws-connections.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

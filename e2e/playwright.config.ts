@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { resolvePorts } from "../scripts/ports.mjs";
 
@@ -7,6 +10,10 @@ import { resolvePorts } from "../scripts/ports.mjs";
 const { webPort, apiPort } = resolvePorts();
 const webUrl = `http://localhost:${webPort}`;
 const apiUrl = `http://localhost:${apiPort}`;
+const stsFixture = (process.env.NIGHTWATCH_E2E_STS_FIXTURE ??= join(
+  tmpdir(),
+  `nightwatch-sts-${randomUUID()}`,
+));
 
 // Runtime configuration is forwarded from the caller only — never fabricated
 // here. APP_URL/BETTER_AUTH_URL/CORS_ORIGIN fall back to the resolved dev
@@ -78,10 +85,12 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: "bun run dev",
+      command:
+        "bash ../../packages/shared/tests/sts-fakecloud.integration.sh --serve",
       cwd: "../apps/api",
       url: `${apiUrl}/health`,
-      env: apiServerEnv(),
+      env: { ...apiServerEnv(), NIGHTWATCH_E2E_STS_FIXTURE: stsFixture },
+      gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
       // API log lines reach the run output so a run can be scanned for secrets.
       stdout: "pipe",
       reuseExistingServer: false,

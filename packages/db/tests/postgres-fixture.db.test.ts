@@ -244,6 +244,7 @@ describe("owned PostgreSQL fixture", () => {
         "0025_member_last_project.sql",
         "0026_project_monitors.sql",
         "0027_notification_monitor_hostname.sql",
+        "0028_aws_connections.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -296,7 +297,10 @@ describe("owned PostgreSQL fixture", () => {
             ),
           ).toBe(false);
         }
-        if (stage === "0027_notification_monitor_hostname.sql")
+        if (stage === "0027_notification_monitor_hostname.sql") {
+          expect(
+            await hasColumn(fixture, "project_aws_connections", "external_id"),
+          ).toBe(false);
           expect(
             await hasColumn(
               fixture,
@@ -304,6 +308,15 @@ describe("owned PostgreSQL fixture", () => {
               "subject_monitor_hostname",
             ),
           ).toBe(true);
+        }
+        if (stage === "0028_aws_connections.sql") {
+          expect(
+            await hasColumn(fixture, "org_aws_connections", "external_id"),
+          ).toBe(true);
+          expect(
+            await hasColumn(fixture, "project_aws_connections", "external_id"),
+          ).toBe(true);
+        }
       }
       expect((await fixture.advanceTo("latest")).applied).toEqual([]);
       await expect(

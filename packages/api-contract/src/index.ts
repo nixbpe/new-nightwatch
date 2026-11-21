@@ -32,6 +32,7 @@ export {
   type PendingInvitation,
   type PendingInvitationListResponse,
 } from "./auth";
+export * from "./aws-connection";
 export { errorResponseSchema, type ErrorResponse } from "./error";
 export {
   emailNotVerifiedErrorResponseSchema,

@@ -32,6 +32,12 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.project.member.add": "project",
   "organization.project.member.role.update": "project",
   "organization.project.member.remove": "project",
+  "organization.aws_connection.test": "aws_connection",
+  "organization.aws_connection.update": "aws_connection",
+  "organization.aws_connection.delete": "aws_connection",
+  "organization.project.aws_connection.test": "project",
+  "organization.project.aws_connection.update": "project",
+  "organization.project.aws_connection.delete": "project",
 };
 
 // What a writer passes; the read response shape is `AuditTarget` in the contract.
@@ -42,7 +48,8 @@ export type AuditEventTarget = {
     | "invitation"
     | "notification_settings"
     | "audit_export"
-    | "project";
+    | "project"
+    | "aws_connection";
   /** user id, invitation `public_id`, monitor, project or export id; never `invitation.id`. */
   id?: string;
   /** Non-personal display attributes only (no email, name or search text). */
