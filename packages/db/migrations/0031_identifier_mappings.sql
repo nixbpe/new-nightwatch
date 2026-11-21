@@ -39,6 +39,17 @@ create table inventory_mappings (
 create index inventory_mappings_status_idx
   on inventory_mappings (tenant_id, project_id, status);
 
+-- Projects that uploaded an inventory under 0030 have no mappings yet. Each distinct
+-- vendor and product pair of their usable rows enters the review queue as pending, the
+-- same pairs and keys a new upload creates, so the queue does not wait for another
+-- upload. This runs before row level security is forced, as the owner role.
+insert into inventory_mappings (tenant_id, project_id, vendor_key, product_key, vendor, product, status)
+select distinct on (tenant_id, project_id, lower(vendor), lower(product))
+  tenant_id, project_id, lower(vendor), lower(product), vendor, product, 'pending'
+from inventory_rows
+where usable
+order by tenant_id, project_id, lower(vendor), lower(product), vendor, product;
+
 alter table inventory_mappings enable row level security;
 alter table inventory_mappings force row level security;
 
