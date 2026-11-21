@@ -68,3 +68,15 @@ services:
     environment:
       <<: *worker-env
       WORKER_ROLES: vulnerability-scanner
+
+  # Needs migration 0035 and a reachable SMTP server (checked at startup, OUT-02). Sends the
+  # new-CVE mail to the recipients of the notification who may still receive it.
+  notification-email:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: notification-email
+      SMTP_HOST: ${SMTP_HOST:-host.docker.internal}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-nightwatch@localhost}
+      APP_URL: ${APP_URL:-http://localhost:5173}

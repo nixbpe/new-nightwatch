@@ -85,6 +85,8 @@
 
 แจ้งเตือน CVE ใหม่ (S4.3 in-app): [สร้าง intent ตอน run จบ](../packages/db/src/vulnerability-run.ts), [intent และผู้รับ](../packages/db/src/notification.ts), [migration](../packages/db/migrations/0034_vulnerability_notifications.sql), [inbox API](../apps/api/src/notifications/service.ts), [Web](../apps/web/src/pages/NotificationsPage.tsx).
 
+Email ของแจ้งเตือน CVE ใหม่ (S4.3): [worker ส่งอีเมล](../apps/worker/src/vulnerability/email.ts) (role `notification-email`, ดู [runbook](runbooks/uptime-monitor.md#run-the-worker-roles)), [คิวและฟังก์ชัน claim](../packages/db/migrations/0035_notification_email_jobs.sql), [mailer ที่ใช้ร่วมกับ API](../packages/shared/src/mailer.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

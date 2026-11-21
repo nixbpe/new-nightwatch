@@ -60,6 +60,12 @@ Find supported roles through the [Worker runtime code index](../features.md#tool
   from the same NVD limit as the API through Redis with the same `REDIS_KEY_PREFIX`. Run one
   instance per NVD egress address; more instances share the limit and add no throughput. A lease
   lasts 30 minutes, after which another instance continues the run.
+- For the new-CVE mail (F-020, S4.3), run `notification-email`. It needs `SMTP_HOST`, `SMTP_PORT`,
+  `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (required) and `APP_URL` (the origin of
+  the links), and refuses to start when the SMTP server cannot be verified. A mail is sent at most
+  once per claim, so a Worker that stops between SMTP acceptance and the end of the claim sends it
+  again after the 5 minute lease. A failed send is retried after 5 minutes times the attempts, up to
+  5 attempts. Each recipient is checked again when the mail is sent.
 - After [local dependency setup](../../scripts/quality/README.md#local-development-dependencies-postgresql--mailpit--redis),
   run `bun run dev` for local development.
 - To stop the Worker, send SIGTERM. The scheduler stops before the checker.
