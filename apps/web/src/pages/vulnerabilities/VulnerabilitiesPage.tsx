@@ -4,7 +4,7 @@ import type {
   VulnerabilityList,
   VulnerabilityRun,
 } from "@nightwatch/api-contract";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
@@ -21,13 +21,17 @@ import {
   advanceVulnerabilityRun,
   fetchVulnerabilities,
   startVulnerabilityRun,
-  systemExportHref,
+  downloadSystemExport,
   vulnerabilityErrorMessage,
   vulnerabilityKeys,
 } from "../../lib/api/vulnerabilities";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
-import { formatUploadedAt, NO_SYSTEM_NAME } from "../inventory/format";
+import {
+  formatUploadedAt,
+  NO_SYSTEM_NAME,
+  saveBlob,
+} from "../inventory/format";
 import { SamplePanel } from "./SamplePanel";
 
 type Scope = { organizationId: string; projectId: string };
@@ -105,6 +109,50 @@ function severityPill(finding: VulnerabilityFinding) {
       <span className="font-mono">{finding.cvssScore.toFixed(1)}</span>
       {level === null ? "" : ` ${SEVERITY_LABELS[level]}`}
     </StatusPill>
+  );
+}
+
+/** One System's findings as Excel; a failed download says so next to the button and keeps the page. */
+function ExportButton({
+  organizationId,
+  projectId,
+  systemId,
+  systemName,
+}: {
+  organizationId: string;
+  projectId: string;
+  systemId: string;
+  systemName: string;
+}) {
+  const download = useMutation({
+    mutationFn: () => downloadSystemExport(organizationId, projectId, systemId),
+    onSuccess: ({ blob, filename }) => {
+      saveBlob(blob, filename ?? "vulnerabilities.xlsx");
+    },
+  });
+  return (
+    <span className="flex items-center gap-2">
+      {download.isError ? (
+        <span
+          className="text-xs text-danger"
+          data-testid={`vuln-export-error-${systemId}`}
+        >
+          {vulnerabilityErrorMessage(download.error)}
+        </span>
+      ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        data-testid={`vuln-export-${systemId}`}
+        disabled={download.isPending}
+        onClick={() => {
+          download.mutate();
+        }}
+      >
+        ส่งออก Excel
+        <span className="sr-only"> ของ {systemName}</span>
+      </Button>
+    </span>
   );
 }
 
@@ -526,18 +574,12 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                     <h3 className="text-sm font-semibold text-heading">
                       {system.name}
                     </h3>
-                    <a
-                      data-testid={`vuln-export-${systemId}`}
-                      href={systemExportHref(
-                        organizationId,
-                        projectId,
-                        systemId,
-                      )}
-                      className="text-xs text-primary underline-offset-4 hover:underline"
-                    >
-                      ส่งออก Excel
-                      <span className="sr-only"> ของ {system.name}</span>
-                    </a>
+                    <ExportButton
+                      organizationId={organizationId}
+                      projectId={projectId}
+                      systemId={systemId}
+                      systemName={system.name}
+                    />
                   </div>
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="text-xs text-foreground-secondary">

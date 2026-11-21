@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
@@ -245,15 +246,13 @@ for (const theme of ["light", "dark"] as const) {
       await shot(page, `vulnerabilities-priority-${theme}`);
 
       await page.getByTestId("priority-back").click();
-      const link = page.getByTestId(`vuln-export-${systemId}`);
-      const href = await link.getAttribute("href");
-      expect(href).toContain(`/systems/${systemId}/export`);
-      const download = await page.request.get(href ?? "");
-      expect(download.status()).toBe(200);
-      expect(download.headers()["content-type"]).toContain(
-        "spreadsheetml.sheet",
-      );
-      expect((await download.body()).byteLength).toBeGreaterThan(1000);
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.getByTestId(`vuln-export-${systemId}`).click(),
+      ]);
+      expect(download.suggestedFilename()).toBe("vulnerabilities.xlsx");
+      const path = await download.path();
+      expect((await readFile(path)).byteLength).toBeGreaterThan(1000);
     });
 
     test("lists what the scans saw first, reached from the findings page", async ({

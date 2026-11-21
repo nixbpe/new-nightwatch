@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api/client";
 import {
   advanceVulnerabilityRun,
+  downloadSystemExport,
   drawSample,
   fetchSample,
   fetchVulnerabilities,
@@ -38,6 +39,7 @@ vi.mock("../../lib/api/vulnerabilities", async (importOriginal) => ({
   fetchVulnerabilities: vi.fn(),
   startVulnerabilityRun: vi.fn(),
   advanceVulnerabilityRun: vi.fn(),
+  downloadSystemExport: vi.fn(),
   fetchSample: vi.fn(),
   drawSample: vi.fn(),
   reviewSampleItem: vi.fn(),
@@ -46,6 +48,7 @@ vi.mock("../../lib/api/vulnerabilities", async (importOriginal) => ({
 const fetchMock = vi.mocked(fetchVulnerabilities);
 const startMock = vi.mocked(startVulnerabilityRun);
 const advanceMock = vi.mocked(advanceVulnerabilityRun);
+const exportMock = vi.mocked(downloadSystemExport);
 const sampleMock = vi.mocked(fetchSample);
 const drawMock = vi.mocked(drawSample);
 const reviewMock = vi.mocked(reviewSampleItem);
@@ -213,6 +216,7 @@ beforeEach(() => {
     fetchMock,
     startMock,
     advanceMock,
+    exportMock,
     sampleMock,
     drawMock,
     reviewMock,
@@ -329,18 +333,54 @@ describe("VulnerabilitiesPage findings", () => {
   });
 });
 
-describe("links of the findings page", () => {
-  it("links to the priority list and offers each System's findings as Excel", async () => {
+describe("links and downloads of the findings page", () => {
+  it("links to the priority list", async () => {
     fetchMock.mockResolvedValue(list());
     renderPage();
     expect(await screen.findByTestId("vuln-priority-link")).toHaveAttribute(
       "href",
       `/organizations/${ORG}/projects/${PROJECT}/vulnerabilities/priority`,
     );
-    expect(await screen.findByTestId(`vuln-export-${SYSTEM}`)).toHaveAttribute(
-      "href",
-      `/api/organizations/${ORG}/projects/${PROJECT}/vulnerabilities/systems/${SYSTEM}/export`,
-    );
+  });
+
+  it("downloads one System's findings through the API client under the name the server gives", async () => {
+    fetchMock.mockResolvedValue(list());
+    const blob = new Blob(["xlsx"]);
+    exportMock.mockResolvedValue({ blob, filename: "vulnerabilities.xlsx" });
+    const create = vi.fn(() => "blob:export");
+    const revoke = vi.fn();
+    vi.spyOn(URL, "createObjectURL").mockImplementation(create);
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(revoke);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId(`vuln-export-${SYSTEM}`));
+
+    await waitFor(() => {
+      expect(click).toHaveBeenCalledTimes(1);
+    });
+    expect(exportMock.mock.calls[0]?.slice(0, 3)).toEqual([
+      ORG,
+      PROJECT,
+      SYSTEM,
+    ]);
+    expect(create).toHaveBeenCalledWith(blob);
+    expect(revoke).toHaveBeenCalledWith("blob:export");
+  });
+
+  it("says a download failed next to its button and keeps the findings", async () => {
+    fetchMock.mockResolvedValue(list());
+    exportMock.mockRejectedValue(new ApiError("X", "x", 503));
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId(`vuln-export-${SYSTEM}`));
+
+    expect(
+      await screen.findByTestId(`vuln-export-error-${SYSTEM}`),
+    ).toHaveTextContent("บริการตรวจ CVE ยังไม่พร้อม");
+    expect(screen.getByTestId("vuln-finding-CVE-2024-0001")).toBeVisible();
   });
 });
 
