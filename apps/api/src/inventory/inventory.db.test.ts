@@ -382,6 +382,40 @@ describe("inventory upload", () => {
     ]);
   });
 
+  it("does not replace a System when an overlong name shares its prefix", async () => {
+    const project = await ctx.createProject(org.id, "long-name-identity", []);
+    const prefix = "A".repeat(200);
+    const first = await upload(
+      org.users.owner,
+      [HEADER, GOOD(prefix)].join("\n"),
+      "inventory.csv",
+      project,
+    );
+    expect(first.status).toBe(200);
+    const originalId = systemId(
+      inventorySummarySchema.parse(first.json),
+      prefix,
+    );
+    const second = await upload(
+      org.users.owner,
+      [HEADER, GOOD(`${prefix}other`)].join("\n"),
+      "inventory.csv",
+      project,
+    );
+    expect(second.status).toBe(200);
+    const summary = inventorySummarySchema.parse(second.json);
+    expect(summary.systems).toHaveLength(2);
+    expect(
+      summary.systems.find((system) => system.id === originalId),
+    ).toMatchObject({ name: prefix, totalRows: 1, usableRows: 1 });
+    expect(await storedRows(project)).toEqual(
+      expect.arrayContaining([
+        { name: prefix, line_no: 2, usable: true },
+        { name: prefix, line_no: 2, usable: false },
+      ]),
+    );
+  });
+
   it("limits uploads per user and Project", async () => {
     const keys = await redis.keys(`rl:inventory-upload:u:${org.users.owner}:*`);
     if (keys.length > 0) await redis.del(...keys);

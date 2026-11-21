@@ -124,7 +124,7 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    systemKey: systemKeyOf(row.system),
+    systemKey: systemKeyOf(text(raw.cells.System)),
     ...row,
     issues,
   };

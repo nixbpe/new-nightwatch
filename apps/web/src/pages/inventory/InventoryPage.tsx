@@ -205,7 +205,7 @@ function UploadCard({
             </Alert>
             {summary.lastUploadAt === null ? null : (
               <p className="text-[13px] text-foreground-secondary">
-                ข้อมูลเดิมยังใช้ match CVE อยู่
+                ข้อมูลเดิมยังพร้อมสำหรับการจับคู่ CVE
               </p>
             )}
           </>
