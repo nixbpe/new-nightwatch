@@ -760,6 +760,15 @@ describe("monitor notification schema", () => {
     await expect(
       insert("tenant", { ...full, components: null }),
     ).rejects.toThrow("notification_intents_vulnerability_subject");
+    // Another event type carries none of the new-CVE columns.
+    await expect(
+      owner.query(
+        `insert into notification_intents
+           (id, scope_kind, tenant_id, origin, event_type, occurred_at, vulnerability_cve_count)
+         values ($1, 'tenant', $2, $3, 'ORG-NOTIFICATION-SETTINGS-CHANGED', now(), 1)`,
+        [randomUUID(), tenantM, `vulnerability-other-${randomUUID()}`],
+      ),
+    ).rejects.toThrow("notification_intents_vulnerability_subject");
   });
 
   it("accepts old event types and monitor types in tenant scope only", async () => {
