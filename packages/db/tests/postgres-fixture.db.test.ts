@@ -249,6 +249,7 @@ describe("owned PostgreSQL fixture", () => {
         "0030_project_inventory.sql",
         "0031_identifier_mappings.sql",
         "0032_vulnerability_matching.sql",
+        "0033_vulnerability_monitoring.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -312,6 +313,21 @@ describe("owned PostgreSQL fixture", () => {
           expect(
             await hasColumn(fixture, "org_aws_connections", "revision"),
           ).toBe(false);
+        }
+        if (stage === "0033_vulnerability_monitoring.sql") {
+          expect(
+            (
+              await fixture.owner.sql.query(
+                `select c.relname, c.relforcerowsecurity as forced
+                 from pg_class c
+                 where c.relname in ('vulnerability_schedules', 'vulnerability_seen')
+                 order by c.relname`,
+              )
+            ).rows,
+          ).toEqual([
+            { relname: "vulnerability_schedules", forced: true },
+            { relname: "vulnerability_seen", forced: true },
+          ]);
         }
         if (stage === "0032_vulnerability_matching.sql") {
           expect(

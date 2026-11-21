@@ -7802,7 +7802,7 @@ export interface paths {
                             windowDays: number;
                             /** Format: date-time */
                             checkedAt: string | null;
-                            warnings: ("no_scan" | "run_failed" | "feed_down" | "stale")[];
+                            warnings: ("no_scan" | "run_failed" | "units_failed" | "feed_down" | "stale")[];
                             items: {
                                 cveId: string;
                                 vendor: string;
@@ -7815,6 +7815,7 @@ export interface paths {
                                 kev: boolean | null;
                                 stillFound: boolean;
                             }[];
+                            truncated: boolean;
                         };
                     };
                 };

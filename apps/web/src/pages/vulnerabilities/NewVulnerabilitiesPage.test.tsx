@@ -30,6 +30,7 @@ const list = (overrides: Partial<NewCveList> = {}): NewCveList => ({
   checkedAt: AT,
   warnings: [],
   items: [],
+  truncated: false,
   ...overrides,
 });
 
@@ -116,6 +117,7 @@ describe("NewVulnerabilitiesPage", () => {
   it.each([
     ["no_scan", null],
     ["run_failed", AT],
+    ["units_failed", AT],
     ["feed_down", AT],
     ["stale", AT],
   ] as const)(
@@ -130,6 +132,12 @@ describe("NewVulnerabilitiesPage", () => {
       expect(screen.getByTestId("new-cve-checked")).toBeInTheDocument();
     },
   );
+
+  it("says when the list holds only the latest CVEs", async () => {
+    fetchMock.mockResolvedValue(list({ items: [item()], truncated: true }));
+    renderPage();
+    expect(await screen.findByTestId("new-cve-truncated")).toBeVisible();
+  });
 
   it("shows the error and a retry when the list cannot be loaded", async () => {
     fetchMock.mockRejectedValue(new ApiError("INTERNAL", "x", 500));

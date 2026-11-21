@@ -21,6 +21,8 @@ const WARNING_TEXT: Record<NewCveList["warnings"][number], string> = {
   no_scan: "ยังไม่มีการตรวจที่เสร็จสมบูรณ์ ระบบจะตรวจอัตโนมัติทุก 12 ชั่วโมง",
   run_failed:
     "การตรวจรอบล่าสุดไม่สำเร็จ รายการด้านล่างเป็นผลของรอบที่เสร็จก่อนหน้า",
+  units_failed:
+    "การตรวจรอบล่าสุดตรวจ product บางตัวไม่สำเร็จ CVE ของ product เหล่านั้นอาจยังไม่ปรากฏ",
   feed_down: "แหล่งข้อมูล CVE บางแห่งใช้ไม่ได้ในการตรวจครั้งล่าสุด ผลอาจไม่ครบ",
   stale: "การตรวจล่าสุดเกิน 25 ชั่วโมงแล้ว CVE ที่เพิ่งประกาศอาจยังไม่ปรากฏ",
 };
@@ -129,6 +131,11 @@ function NewVulnerabilities({
               </Alert>
             ))}
           </div>
+          {data.truncated ? (
+            <Alert tone="warning" data-testid="new-cve-truncated">
+              มี CVE ใหม่มากกว่าที่แสดง แสดงเฉพาะรายการล่าสุด
+            </Alert>
+          ) : null}
           {data.items.length === 0 ? (
             data.warnings.length === 0 ? (
               <p className="text-sm" data-testid="new-cve-none">
