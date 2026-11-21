@@ -293,12 +293,13 @@ function cutUnits(value: string, units: number): string {
   return result;
 }
 
-const sheetName = (owner: string, used: Set<string>): string => {
-  const cleaned = owner
-    .replace(SHEET_NAME_FORBIDDEN, " ")
-    .replace(/^'+|'+$/g, "")
-    .trim();
-  const base = cutUnits(cleaned || NO_OWNER, 28).trim() || NO_OWNER;
+export const sheetName = (owner: string, used: Set<string>): string => {
+  // 24 units leave room for a collision suffix of up to " 9999".
+  const cleaned = owner.replace(SHEET_NAME_FORBIDDEN, " ").trim();
+  const base =
+    cutUnits(cleaned || NO_OWNER, 24)
+      .replace(/^'+|'+$/g, "")
+      .trim() || NO_OWNER;
   let name = base;
   for (let n = 2; used.has(name.toLowerCase()); n += 1)
     name = `${base} ${String(n)}`;

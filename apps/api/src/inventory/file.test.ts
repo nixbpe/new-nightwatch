@@ -243,6 +243,27 @@ describe("resource limits", () => {
       (xml: string) => xml.replace(/ r="A2"/, ' r="A2147483647"'),
     ],
     ["a far column", (xml: string) => xml.replace(/ r="H2"/, ' r="ZZZZZZZZ2"')],
+    [
+      "single quotes",
+      (xml: string) => xml.replace(/<row r="2"/, "<row r='4000000000'"),
+    ],
+    [
+      "spaces around =",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r = "4000000000"'),
+    ],
+    [
+      "a namespace prefix",
+      (xml: string) => xml.replace(/<row r="2"/, '<x:row r="4000000000"'),
+    ],
+    [
+      "a numeric entity",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r="&#52;000000000"'),
+    ],
+    [
+      "a tag too long to be real",
+      (xml: string) =>
+        xml.replace(/<row r="2"/, `<row ${'a="1" '.repeat(1000)}r="2"`),
+    ],
   ])("rejects an xlsx with %s without reading it", async (_name, edit) => {
     const bytes = await withSheet(edit);
     const started = performance.now();
@@ -252,6 +273,42 @@ describe("resource limits", () => {
     });
     expect(performance.now() - started).toBeLessThan(1000);
   });
+
+  it("scans a sheet that sits under a path the library reads from the workbook rels", async () => {
+    const valid = await workbook([
+      {
+        sheet: "Inventory",
+        rows: [
+          HEADER.split(","),
+          ["A", "B", "C", "D", "1.2.3", "OS", "Production", "Internal"],
+        ],
+      },
+    ]);
+    const parts = unzipSync(valid);
+    parts["xl/elsewhere/evil.xml"] = encode(
+      '<sheetData><row r="4000000000"/></sheetData>',
+    );
+    expect(await parseInventoryFile("inv.xlsx", zipSync(parts))).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+  });
+
+  it.each(["<row ", "<c ", "<"])(
+    "refuses a part made of %j repeated without taking quadratic time",
+    async (unit) => {
+      const bytes = zipSync({
+        "xl/worksheets/sheet1.xml": encode(unit.repeat(400_000)),
+      });
+      expect(bytes.byteLength).toBeLessThan(INVENTORY_MAX_FILE_BYTES);
+      const started = performance.now();
+      expect(await parseInventoryFile("inv.xlsx", bytes)).toEqual({
+        ok: false,
+        rejection: { code: "xlsx_unreadable" },
+      });
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
 
   it("rejects a zip with more than 200 entries", async () => {
     const parts: Record<string, Uint8Array> = {};

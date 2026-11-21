@@ -81,7 +81,8 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
     let entries = 0;
     let unzipped = 0;
     // fflate sizes each inflate buffer from the declared size, so the declared
-    // total bounds what is inflated; only sheet parts are inflated here.
+    // total bounds what is inflated; every XML part is inflated and scanned because the
+    // reader takes the sheet path from the workbook, not from a fixed name.
     const parts = unzipSync(bytes, {
       filter: (file) => {
         entries += 1;
@@ -89,7 +90,7 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
         if (entries > MAX_ZIP_ENTRIES || unzipped > MAX_UNZIPPED_BYTES) {
           throw new Error("zip limits exceeded");
         }
-        return /^xl\/worksheets\/[^/]+\.xml$/i.test(file.name);
+        return /\.xml$/i.test(file.name);
       },
     });
     for (const xml of Object.values(parts)) assertSheetBounds(xml);
@@ -112,18 +113,41 @@ function columnNumber(letters: string): number {
   return value;
 }
 
+const MAX_TAG_LENGTH = 4096;
+const REF_ATTRIBUTE = /\sr\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+const TAG_NAME = /^([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)/;
+
+// One linear pass over the tags of an XML part. A `row` or `c` element (with or
+// without a namespace prefix, either quote style) must carry a plain reference
+// within the caps; anything the reader could expand into a far row or column, or
+// any tag too long to be real, is refused before the reader sees the part.
 function assertSheetBounds(xml: Uint8Array): void {
   const text = new TextDecoder().decode(xml);
-  for (const match of text.matchAll(/<row\b[^>]*?\sr="(\d+)"/g)) {
-    if (Number(match[1]) > MAX_SHEET_ROW_NUMBER) throw new Error("row number");
-  }
-  for (const match of text.matchAll(/<c\b[^>]*?\sr="([A-Za-z]+)(\d+)"/g)) {
-    if (
-      Number(match[2]) > MAX_SHEET_ROW_NUMBER ||
-      columnNumber((match[1] ?? "").toUpperCase()) > MAX_SHEET_COLUMN_NUMBER
-    ) {
-      throw new Error("cell reference");
+  let start = text.indexOf("<");
+  while (start !== -1) {
+    const end = text.indexOf(">", start);
+    if (end === -1) return;
+    if (end - start > MAX_TAG_LENGTH) throw new Error("tag too long");
+    const tag = text.slice(start + 1, end);
+    const local = TAG_NAME.exec(tag)?.[2];
+    if (local === "row" || local === "c") {
+      const attribute = REF_ATTRIBUTE.exec(tag);
+      const reference = attribute?.[1] ?? attribute?.[2];
+      if (reference !== undefined) {
+        const parts =
+          local === "row"
+            ? /^()(\d{1,6})$/.exec(reference)
+            : /^([A-Za-z]{1,3})(\d{1,6})$/.exec(reference);
+        if (
+          !parts ||
+          Number(parts[2]) > MAX_SHEET_ROW_NUMBER ||
+          columnNumber((parts[1] ?? "").toUpperCase()) > MAX_SHEET_COLUMN_NUMBER
+        ) {
+          throw new Error("reference out of bounds");
+        }
+      }
     }
+    start = text.indexOf("<", end + 1);
   }
 }
 
