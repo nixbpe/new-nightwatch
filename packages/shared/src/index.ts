@@ -34,3 +34,4 @@ export {
   type StsErrorCode,
   type StsVerifier,
 } from "./aws/sts";
+export * from "./vulnerability";

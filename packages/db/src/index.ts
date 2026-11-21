@@ -49,3 +49,4 @@ export {
   type MonitorCheckClaim,
 } from "./monitor";
 export { listMigrations, runMigrations, sha256 } from "./migrator";
+export * from "./vulnerability-run";
