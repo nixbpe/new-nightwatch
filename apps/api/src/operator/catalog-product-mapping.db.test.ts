@@ -56,6 +56,10 @@ describe("parseCatalogArgs", () => {
     ],
     ["a missing product", ["--vendor", "a", "--cpe", CPE]],
     [
+      "a purl with no name once the version is dropped",
+      ["--vendor", "a", "--product", "b", "--purl", "pkg:deb/@1.0"],
+    ],
+    [
       "a stray argument",
       ["--vendor", "a", "--product", "b", "--cpe", CPE, "extra"],
     ],
@@ -66,6 +70,25 @@ describe("parseCatalogArgs", () => {
 });
 
 describe("upsertCatalogMapping", () => {
+  it("stores a versioned CPE and purl for the product", async () => {
+    const key = await upsertCatalogMapping(owner, {
+      vendor: `${vendor} versioned`,
+      product: "Thing",
+      cpe: "cpe:2.3:a:ver:thing:1.2.3:p1:*:*:*:*:*:*",
+      purl: "pkg:deb/ubuntu/thing@1.2.3?distro=ubuntu-22.04",
+    });
+    const read = await owner.sql.query(
+      "select cpe, purl from catalog_product_mappings where vendor_key = $1",
+      [key.vendorKey],
+    );
+    expect(read.rows).toEqual([
+      {
+        cpe: "cpe:2.3:a:ver:thing:*:*:*:*:*:*:*:*",
+        purl: "pkg:deb/ubuntu/thing?distro=ubuntu-22.04",
+      },
+    ]);
+  });
+
   it("writes the pair under the normalized keys and replaces it on a repeat", async () => {
     const first = await upsertCatalogMapping(owner, {
       vendor,

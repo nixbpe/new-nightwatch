@@ -189,6 +189,18 @@ describe("createNvdCpeSearch", () => {
     expect(JSON.stringify(lines)).not.toContain("secret");
   });
 
+  it("drops a dictionary name with a control character", async () => {
+    const search = createNvdCpeSearch({
+      send: reply({
+        products: [
+          { cpe: { cpeName: F5 } },
+          { cpe: { cpeName: F5.replace("big-ip", "big\u0000ip") } },
+        ],
+      }),
+    });
+    expect((await search("big-ip")).map((name) => name.cpe)).toEqual([F5]);
+  });
+
   it("treats an empty answer as no candidates", async () => {
     expect(await createNvdCpeSearch({ send: reply({}) })("nothing")).toEqual(
       [],

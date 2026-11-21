@@ -93,6 +93,34 @@ describe("productCpe and productPurl", () => {
     expect(productCpe("not a cpe")).toBe("not a cpe");
   });
 
+  it("reads an escaped backslash at the end of a component as the end of it", () => {
+    expect(productCpe("cpe:2.3:a:ven\\\\:prod:1:*:*:*:*:*:*:*")).toBe(
+      "cpe:2.3:a:ven\\\\:prod:*:*:*:*:*:*:*:*",
+    );
+  });
+
+  it("leaves an unencoded scope and an @ in a qualifier or subpath alone", () => {
+    expect(productPurl("pkg:npm/@angular/core@16.0.0")).toBe(
+      "pkg:npm/@angular/core",
+    );
+    expect(productPurl("pkg:npm/@angular/core")).toBe("pkg:npm/@angular/core");
+    expect(productPurl("pkg:deb/x/y?repository_url=https://u@host")).toBe(
+      "pkg:deb/x/y?repository_url=https://u@host",
+    );
+    expect(
+      productPurl("pkg:deb/x/y@1.0?repository_url=https://u@host#a@b"),
+    ).toBe("pkg:deb/x/y?repository_url=https://u@host#a@b");
+    expect(
+      purlSchema.safeParse(productPurl("pkg:npm/@angular/core@16.0.0")).success,
+    ).toBe(true);
+  });
+
+  it("can leave a purl without a name, which purlSchema refuses", () => {
+    expect(purlSchema.safeParse(productPurl("pkg:deb/@1.0")).success).toBe(
+      false,
+    );
+  });
+
   it("drops only the @version of a purl", () => {
     expect(
       productPurl(

@@ -1,6 +1,7 @@
 import {
   productCpe,
   productPurl,
+  purlSchema,
   type CpeCandidate,
   type InventoryMapping,
   type InventoryMappingList,
@@ -64,38 +65,81 @@ export async function syncMappings(
     productKey: key.split("\u0000")[1] ?? "",
     ...pair,
   }));
+  const keys = {
+    vendor: list.map((pair) => pair.vendorKey),
+    product: list.map((pair) => pair.productKey),
+  };
+  // Catalog rows are read here and made product-level before they are copied, so the
+  // invariant does not depend on how a row was written.
+  const catalog = await client.query<{
+    vendor_key: string;
+    product_key: string;
+    cpe: string | null;
+    purl: string | null;
+  }>(
+    `select c.vendor_key, c.product_key, c.cpe, c.purl
+     from catalog_product_mappings c
+     join unnest($1::text[], $2::text[]) as p(vendor_key, product_key)
+       on c.vendor_key = p.vendor_key and c.product_key = p.product_key`,
+    [keys.vendor, keys.product],
+  );
+  const hits = catalog.rows.map((row) => ({
+    vendorKey: row.vendor_key,
+    productKey: row.product_key,
+    cpe: row.cpe === null ? null : productCpe(row.cpe),
+    purl: row.purl === null ? null : productPurl(row.purl),
+  }));
+  const hit = new Map(
+    hits.map((row) => [`${row.vendorKey}\u0000${row.productKey}`, row]),
+  );
   await client.query(
     `insert into inventory_mappings
        (tenant_id, project_id, vendor_key, product_key, vendor, product, status, cpe, purl,
         source, confirmed_at)
      select $1, $2, p.vendor_key, p.product_key, p.vendor, p.product,
-            case when c.vendor_key is null then 'pending' else 'confirmed' end,
-            c.cpe, c.purl,
-            case when c.vendor_key is null then null else 'central' end,
-            case when c.vendor_key is null then null else now() end
-     from unnest($3::text[], $4::text[], $5::text[], $6::text[])
-            as p(vendor_key, product_key, vendor, product)
-     left join catalog_product_mappings c
-       on c.vendor_key = p.vendor_key and c.product_key = p.product_key
+            case when p.confirmed then 'confirmed' else 'pending' end,
+            nullif(p.cpe, ''), nullif(p.purl, ''),
+            case when p.confirmed then 'central' end,
+            case when p.confirmed then now() end
+     from unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::boolean[], $8::text[], $9::text[])
+            as p(vendor_key, product_key, vendor, product, confirmed, cpe, purl)
      on conflict (project_id, vendor_key, product_key) do nothing`,
     [
       tenant,
       project,
-      list.map((pair) => pair.vendorKey),
-      list.map((pair) => pair.productKey),
+      keys.vendor,
+      keys.product,
       list.map((pair) => pair.vendor),
       list.map((pair) => pair.product),
+      list.map((pair) => hit.has(`${pair.vendorKey}\u0000${pair.productKey}`)),
+      list.map(
+        (pair) =>
+          hit.get(`${pair.vendorKey}\u0000${pair.productKey}`)?.cpe ?? "",
+      ),
+      list.map(
+        (pair) =>
+          hit.get(`${pair.vendorKey}\u0000${pair.productKey}`)?.purl ?? "",
+      ),
     ],
   );
   // An operator may confirm a pair after it entered the queue; that confirmation wins.
   await client.query(
     `update inventory_mappings m
-     set status = 'confirmed', cpe = c.cpe, purl = c.purl, confidence = null,
-         source = 'central', confirmed_by = null, confirmed_at = now(), updated_at = now()
-     from catalog_product_mappings c
+     set status = 'confirmed', cpe = nullif(c.cpe, ''), purl = nullif(c.purl, ''),
+         confidence = null, source = 'central', confirmed_by = null,
+         confirmed_at = now(), updated_at = now()
+     from unnest($3::text[], $4::text[], $5::text[], $6::text[])
+            as c(vendor_key, product_key, cpe, purl)
      where m.tenant_id = $1 and m.project_id = $2 and m.status = 'pending'
        and c.vendor_key = m.vendor_key and c.product_key = m.product_key`,
-    [tenant, project],
+    [
+      tenant,
+      project,
+      hits.map((row) => row.vendorKey),
+      hits.map((row) => row.productKey),
+      hits.map((row) => row.cpe ?? ""),
+      hits.map((row) => row.purl ?? ""),
+    ],
   );
   await client.query(
     `delete from inventory_mappings
@@ -255,6 +299,14 @@ export function updateMapping(
           (given.purl !== undefined && given.purl !== current.purl);
         const cpe = typed ? (given.cpe ?? null) : current.cpe;
         const purl = typed ? (given.purl ?? null) : current.purl;
+        // Dropping the version can leave a purl with no name; never store that.
+        if (purl !== null && !purlSchema.safeParse(purl).success) {
+          throw new AppError(
+            400,
+            "MAPPING_IDENTIFIER_INVALID",
+            "purl ที่ไม่มีเวอร์ชันแล้วไม่ถูกต้อง ตรวจชื่อ package",
+          );
+        }
         if (cpe === null && purl === null) {
           throw new AppError(
             400,

@@ -214,6 +214,32 @@ describe("review decisions", () => {
     );
   });
 
+  it("keeps a typed purl for the product and refuses one left without a name", async () => {
+    const { items } = await mappings(org.users.owner);
+    const target = find(items, "F5", "BIG-IP LTM");
+    const ok = await decide(org.users.owner, target.id, {
+      action: "confirm",
+      purl: "pkg:npm/@angular/core@16.0.0",
+    });
+    expect(inventoryMappingSchema.parse(ok.json)).toMatchObject({
+      status: "confirmed",
+      purl: "pkg:npm/@angular/core",
+      cpe: null,
+    });
+    const bad = await decide(org.users.owner, target.id, {
+      action: "confirm",
+      purl: "pkg:deb/@1.0",
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.json).toMatchObject({
+      error: { code: "MAPPING_IDENTIFIER_INVALID" },
+    });
+    await ctx.owner.sql.query(
+      "update inventory_mappings set status = 'pending', cpe = null, purl = null, confidence = null, source = null, confirmed_at = null, confirmed_by = null where id = $1",
+      [target.id],
+    );
+  });
+
   it("refuses a CPE with a control character with 400, not 500", async () => {
     const { items } = await mappings(org.users.owner);
     const response = await decide(
@@ -307,6 +333,37 @@ describe("a later upload", () => {
     });
     expect(find(items, "Acme", "Gadget").status).toBe("pending");
     expect(items.some((item) => item.vendor === catalogVendor)).toBe(true);
+  });
+
+  it("copies a versioned catalog row to the Project as a product-level identifier", async () => {
+    const vendor = `versioned${run}`;
+    await ctx.owner.sql.query(
+      "insert into catalog_product_mappings (vendor_key, product_key, cpe, purl) values ($1, 'thing', 'cpe:2.3:a:ver:thing:1.2.3:*:*:*:*:*:*:*', 'pkg:deb/ubuntu/thing@1.2.3?distro=ubuntu-22.04')",
+      [vendor],
+    );
+    try {
+      await upload(
+        org.users.owner,
+        [
+          HEADER,
+          line("Versioned", vendor, "Thing"),
+          line("Versioned", "Acme", "Gadget"),
+        ].join("\n"),
+      );
+      expect(
+        find((await mappings(org.users.owner)).items, vendor, "Thing"),
+      ).toMatchObject({
+        status: "confirmed",
+        source: "central",
+        cpe: "cpe:2.3:a:ver:thing:*:*:*:*:*:*:*:*",
+        purl: "pkg:deb/ubuntu/thing?distro=ubuntu-22.04",
+      });
+    } finally {
+      await ctx.owner.sql.query(
+        "delete from catalog_product_mappings where vendor_key = $1",
+        [vendor],
+      );
+    }
   });
 
   it("confirms a pending pair when an operator adds it to the catalog", async () => {
@@ -515,24 +572,28 @@ describe("dictionary suggestions", () => {
     );
     const statuses: number[] = [];
     let retryAfter: string | null = null;
-    for (let i = 0; i < 6; i += 1) {
-      const response = await ctx.call(
-        org.users.owner,
-        "GET",
-        path(`/mappings/${pending.id}/cpe-search?q=gadget`),
-      );
-      statuses.push(response.status);
-      if (response.status === 429) {
-        retryAfter = response.headers.get("retry-after");
-        expect(response.json).toMatchObject({
-          error: { code: "CPE_LOOKUP_RATE_LIMITED" },
-        });
-        break;
+    try {
+      for (let i = 0; i < 6; i += 1) {
+        const response = await ctx.call(
+          org.users.owner,
+          "GET",
+          path(`/mappings/${pending.id}/cpe-search?q=gadget`),
+        );
+        statuses.push(response.status);
+        if (response.status === 429) {
+          retryAfter = response.headers.get("retry-after");
+          expect(response.json).toMatchObject({
+            error: { code: "CPE_LOOKUP_RATE_LIMITED" },
+          });
+          break;
+        }
       }
+      expect(statuses.at(-1)).toBe(429);
+      expect(Number(retryAfter)).toBeGreaterThan(0);
+    } finally {
+      // The key is shared with other tests: free it even when an assertion fails.
+      await redis.del("rl:nvd-cpe:global");
     }
-    expect(statuses.at(-1)).toBe(429);
-    expect(Number(retryAfter)).toBeGreaterThan(0);
-    await redis.del("rl:nvd-cpe:global");
   });
 
   it("answers 502 in the envelope when the dictionary cannot be reached", async () => {

@@ -23,15 +23,37 @@ export const cpeNameSchema = z
  * eight components after it become `*`.
  */
 export function productCpe(cpe: string): string {
-  const parts = cpe.split(/(?<!\\):/);
+  // A backslash escapes the next character, so `\:` stays inside a component and a
+  // component can end in `\\` before the delimiter.
+  const parts: string[] = [];
+  let part = "";
+  for (let i = 0; i < cpe.length; i += 1) {
+    const char = cpe.charAt(i);
+    if (char === "\\") {
+      part += char + cpe.charAt(i + 1);
+      i += 1;
+    } else if (char === ":") {
+      parts.push(part);
+      part = "";
+    } else part += char;
+  }
+  parts.push(part);
   return parts.length === 13
     ? [...parts.slice(0, 5), ...Array<string>(8).fill("*")].join(":")
     : cpe;
 }
 
-/** A purl without its `@version`; the type, namespace, name and qualifiers stay. */
+/**
+ * A purl without its `@version`. The version is the `@` after the last `/` of the
+ * path (before any `?` or `#`), so an unencoded scope such as `pkg:npm/@angular/core`
+ * and an `@` in a qualifier are left alone. Callers check the result with `purlSchema`.
+ */
 export function productPurl(purl: string): string {
-  return purl.replace(/@[^?#]*/, "");
+  const end = purl.search(/[?#]/);
+  const path = end === -1 ? purl : purl.slice(0, end);
+  const rest = end === -1 ? "" : purl.slice(end);
+  const at = path.indexOf("@", path.lastIndexOf("/") + 1);
+  return (at === -1 ? path : path.slice(0, at)) + rest;
 }
 
 // package-url: pkg:<type>/<namespace and name>[@version][?qualifiers][#subpath].

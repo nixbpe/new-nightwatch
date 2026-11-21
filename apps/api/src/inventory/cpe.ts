@@ -1,5 +1,6 @@
 import {
   CPE_NAME_PATTERN,
+  cpeNameSchema,
   productCpe,
   type CpeCandidate,
 } from "@nightwatch/api-contract";
@@ -166,6 +167,6 @@ export function createNvdCpeSearch(options: {
           product.cpe.titles?.find((title) => title.lang === "en")?.title ??
           null,
       }))
-      .filter((name) => CPE_NAME_PATTERN.test(name.cpe));
+      .filter((name) => cpeNameSchema.safeParse(name.cpe).success);
   };
 }

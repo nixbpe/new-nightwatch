@@ -29,7 +29,13 @@ const argsSchema = z
   })
   .refine((args) => args.cpe !== undefined || args.purl !== undefined, {
     message: "give --cpe or --purl",
-  });
+  })
+  .refine(
+    (args) =>
+      args.purl === undefined ||
+      purlSchema.safeParse(productPurl(args.purl)).success,
+    { message: "--purl has no package name once its version is dropped" },
+  );
 
 export type CatalogMappingArgs = z.infer<typeof argsSchema>;
 
