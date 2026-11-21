@@ -22,10 +22,13 @@
     "@nightwatch/db": "workspace:*",
     "@nightwatch/shared": "workspace:*",
     "better-auth": "1.7.7",
+    "fflate": "0.8.3",
     "hono": "~4.13.5",
     "ioredis": "5.11.1",
     "nodemailer": "^10.0.1",
     "pg": "^8.23.0",
+    "read-excel-file": "9.3.14",
+    "write-excel-file": "4.1.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
