@@ -10,7 +10,7 @@ import {
 } from "@nightwatch/api-contract";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
-import { ApiError, request } from "./client";
+import { ApiError, request, requestFile, type DownloadedFile } from "./client";
 
 const base =
   "/api/organizations/{organizationId}/projects/{projectId}/vulnerabilities";
@@ -68,13 +68,17 @@ export function fetchPriority(
   });
 }
 
-/** The download of one System's findings as Excel (S5.2); the browser fetches it with its session. */
-export function systemExportHref(
+/** One System's findings as Excel (S5.2), through the credentialed API client like every other call. */
+export function downloadSystemExport(
   organizationId: string,
   projectId: string,
   systemId: string,
-): string {
-  return `/api/organizations/${organizationId}/projects/${projectId}/vulnerabilities/systems/${systemId}/export`;
+  signal?: AbortSignal,
+): Promise<DownloadedFile> {
+  return requestFile(`${base}/systems/{systemId}/export`, {
+    params: { organizationId, projectId, systemId },
+    signal,
+  });
 }
 
 /** Sets the VEX status of one CVE of one component (S5.3); a Project admin only. */
