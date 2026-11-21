@@ -286,6 +286,31 @@ describe("resource limits", () => {
       (xml: string) => xml.replace(/<row r="2"/, '<row r="4000000000" r="1"'),
     ],
     [
+      "a prefixed r",
+      (xml: string) => xml.replace(/<row r="2"/, '<row x:r="4000000000"'),
+    ],
+    [
+      "a prefixed r on a cell",
+      (xml: string) => xml.replace(/ r="H2"/, ' x:r="ZZZZZZZZ2"'),
+    ],
+    [
+      "an r with an empty prefix",
+      (xml: string) => xml.replace(/<row r="2"/, '<row :r="4000000000"'),
+    ],
+    [
+      "r then a prefixed r",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r="1" x:r="4000000000"'),
+    ],
+    [
+      "a prefixed r then r",
+      (xml: string) => xml.replace(/<row r="2"/, '<row x:r="4000000000" r="1"'),
+    ],
+    [
+      "a DOCTYPE",
+      (xml: string) =>
+        `<!DOCTYPE x [<!ENTITY a "<row r='4000000000'/>">]>${xml}`,
+    ],
+    [
       "an unquoted attribute",
       (xml: string) => xml.replace(/<row r="2"/, "<row r=4000000000"),
     ],

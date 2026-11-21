@@ -154,11 +154,17 @@ function assertSheetBounds(xml: Uint8Array): void {
   while (start !== -1) {
     const next = text.charAt(start + 1);
     if (next === "!" || next === "?" || next === "/") {
+      // A workbook has no DOCTYPE or other declaration, and the reader's handling
+      // of one is not ours to mirror, so only comments and CDATA are skipped.
       const closer = text.startsWith("<!--", start)
         ? "-->"
         : text.startsWith("<![CDATA[", start)
           ? "]]>"
-          : ">";
+          : next === "?"
+            ? "?>"
+            : next === "/"
+              ? ">"
+              : malformed();
       const end = text.indexOf(closer, start + 1);
       if (end === -1) return;
       start = text.indexOf("<", end + closer.length);
@@ -188,9 +194,12 @@ function assertSheetBounds(xml: Uint8Array): void {
       if (quote !== '"' && quote !== "'") malformed();
       const close = text.indexOf(quote, position + 1);
       if (close === -1 || close - start > MAX_TAG_LENGTH) malformed();
-      if (seen.has(attribute[0])) malformed();
-      seen.add(attribute[0]);
-      if (attribute[0] === "r") reference = text.slice(position + 1, close);
+      // The reader drops everything up to the first ":" of an attribute name, so
+      // x:r and :r are r, and two names that strip to the same one are a repeat.
+      const attributeName = attribute[0].slice(attribute[0].indexOf(":") + 1);
+      if (seen.has(attributeName)) malformed();
+      seen.add(attributeName);
+      if (attributeName === "r") reference = text.slice(position + 1, close);
       position = close + 1;
     }
     if ((local === "row" || local === "c") && reference !== undefined) {
