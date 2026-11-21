@@ -110,6 +110,16 @@ async function seed() {
             ($1, $2, $3, 'CVE-2024-0002', '{nvd}', null, null, null, null)`,
     [org, projectId, units.Redis],
   );
+  // A later scan found these for Redis; the baseline is what the first finished run found.
+  await pool.query(
+    `insert into vulnerability_seen (tenant_id, project_id, mapping_id, version, cve_id, baseline, cvss_severity, kev, first_seen_at)
+     select $1, $2, m.id, '7.2.4', v.cve_id, false, v.severity, v.kev, now() - v.age::interval
+     from inventory_mappings m,
+          (values ('CVE-2024-0001', 'critical', true, '3 hours'),
+                  ('CVE-2024-8888', 'low', false, '2 days')) as v(cve_id, severity, kev, age)
+     where m.project_id = $2 and m.product_key = 'redis'`,
+    [org, projectId],
+  );
 }
 
 test.beforeAll(async () => {
@@ -173,6 +183,31 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("vuln-tile-kev")).toContainText("1");
       await shot(page, `vulnerabilities-${theme}`);
     });
+
+    test("lists what the scans saw first, reached from the findings page", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(page_());
+      await page.getByTestId("vuln-new-link").click();
+      await expect(page).toHaveURL(/\/vulnerabilities\/new$/);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+
+      const found = page.getByTestId("new-cve-CVE-2024-0001");
+      await expect(found).toContainText("Redis · Redis");
+      await expect(found).toContainText("อยู่ใน KEV");
+      await expect(found).toContainText("ยังพบในการตรวจล่าสุด");
+      await expect(page.getByTestId("new-cve-CVE-2024-8888")).toContainText(
+        "ไม่พบแล้วในการตรวจล่าสุด",
+      );
+      await expect(page.getByTestId("new-cve-checked")).toContainText(
+        "ตรวจล่าสุดเสร็จเมื่อ",
+      );
+      await expect(page.getByTestId("new-cve-none")).toHaveCount(0);
+      await shot(page, `vulnerabilities-new-${theme}`);
+      await page.getByTestId("new-cve-back").click();
+      await expect(page).toHaveURL(/\/vulnerabilities$/);
+    });
   });
 }
 
@@ -216,4 +251,17 @@ test("a check with no confirmed product finishes at once and says there is nothi
   await page.getByTestId("vuln-run").click();
   await expect(page.getByTestId("vuln-feeds")).toBeVisible();
   await expect(page.getByTestId("vuln-progress")).toHaveCount(0);
+});
+
+test("a Project with no finished scan warns instead of saying there is no new CVE", async ({
+  page,
+}) => {
+  const fresh = await createProject(pool, org, `Fresh ${run}`);
+  await signIn(page, owner);
+  await page.goto(
+    `/organizations/${org}/projects/${fresh}/vulnerabilities/new`,
+  );
+
+  await expect(page.getByTestId("new-cve-warning-no_scan")).toBeVisible();
+  await expect(page.getByTestId("new-cve-none")).toHaveCount(0);
 });

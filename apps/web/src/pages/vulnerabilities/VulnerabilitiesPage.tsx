@@ -316,6 +316,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
 
   if (switched) return null;
   const inventoryPath = `/organizations/${organizationId}/projects/${projectId}/inventory`;
+  const vulnerabilitiesPath = `/organizations/${organizationId}/projects/${projectId}/vulnerabilities`;
   const run = data?.run ?? null;
   const systems = new Map<
     string,
@@ -343,6 +344,14 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
         description="CVE ที่ตรงกับ component ใน inventory ของ Project ข้อมูลมาจากไฟล์ที่ Organization แจ้งเอง ไม่ได้มาจากการตรวจจริง ผลที่ไม่พบ CVE ไม่ได้หมายความว่าปลอดภัย"
         actions={
           <>
+            <Button variant="outline" asChild>
+              <Link
+                data-testid="vuln-new-link"
+                to={`${vulnerabilitiesPath}/new`}
+              >
+                CVE ใหม่
+              </Link>
+            </Button>
             <Button variant="outline" asChild>
               <Link data-testid="vuln-inventory-link" to={inventoryPath}>
                 จัดการ inventory
