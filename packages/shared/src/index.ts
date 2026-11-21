@@ -35,3 +35,4 @@ export {
   type StsVerifier,
 } from "./aws/sts";
 export * from "./vulnerability";
+export * from "./rate-limit";
