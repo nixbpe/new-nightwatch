@@ -778,7 +778,7 @@ function NotificationsPageForOrganization({
                 <dd data-testid="notification-vulnerability-counts">
                   {detail.subject.cveCount} CVE ใน{" "}
                   {detail.subject.componentCount} component รวมเฉพาะ CVE
-                  ที่วิกฤตหรืออยู่ใน KEV ที่พบครั้งแรกในรอบนี้
+                  ที่ผลของรอบนี้แสดงว่าวิกฤตหรืออยู่ใน KEV และยังไม่เคยแจ้ง
                 </dd>
               </>
             ) : null}
