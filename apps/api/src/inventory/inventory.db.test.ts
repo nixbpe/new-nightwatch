@@ -2,11 +2,13 @@ import {
   inventoryRejectedRowsSchema,
   inventorySummarySchema,
 } from "@nightwatch/api-contract";
+import { AppError } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import readExcelFile from "read-excel-file/universal";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createRedisClient } from "../rate-limit";
+import { uploadInventory } from "./service";
 import {
   openMonitorTestContext,
   type MonitorTestContext,
@@ -267,6 +269,12 @@ describe("inventory upload", () => {
       expect([401, 403, 404]).toContain(write.status);
     }
     expect((await ctx.call(outsider, "GET", path())).status).toBe(404);
+    expect(
+      (await upload(outsider, [HEADER, GOOD("Nope")].join("\n"))).status,
+    ).toBe(404);
+    expect((await upload(null, [HEADER, GOOD("Nope")].join("\n"))).status).toBe(
+      401,
+    );
     expect((await storedRows()).some((row) => row.name === "Nope")).toBe(false);
   });
 
@@ -337,11 +345,75 @@ describe("inventory upload", () => {
     const keys = await redis.keys(`rl:inventory-upload:u:${org.users.owner}:*`);
     if (keys.length > 0) await redis.del(...keys);
     const csv = [HEADER, GOOD("Limiter")].join("\n");
-    let last = 200;
+    const statuses: number[] = [];
     for (let i = 0; i < 11; i += 1) {
-      last = (await upload(org.users.owner, csv)).status;
+      statuses.push((await upload(org.users.owner, csv)).status);
     }
-    expect(last).toBe(429);
+    expect(statuses).toEqual([...Array<number>(10).fill(200), 429]);
+  });
+
+  it("fails closed and writes nothing when the limiter is missing or down", async () => {
+    const before = await storedRows();
+    const audits = () =>
+      ctx.owner.sql.query(
+        "select 1 from audit_events where tenant_id = $1 and action = 'organization.project.inventory.upload'",
+        [org.id],
+      );
+    const auditCount = (await audits()).rowCount;
+    const input = {
+      organizationId: org.id,
+      projectId,
+      actorUserId: org.users.owner,
+    };
+    const file = {
+      name: "inventory.csv",
+      bytes: new TextEncoder().encode(`${HEADER}\n${GOOD("Down")}`),
+    };
+    const down = {
+      consumeRateLimit: () => Promise.reject(new Error("redis down")),
+      consumeRateLimits: () =>
+        Promise.reject(
+          new AppError(
+            503,
+            "RATE_LIMIT_UNAVAILABLE",
+            "rate limiter is unavailable",
+          ),
+        ),
+    };
+    for (const rateLimiter of [undefined, down]) {
+      await expect(
+        uploadInventory(
+          { database: ctx.runtime, ...(rateLimiter && { rateLimiter }) },
+          input,
+          file,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: 503,
+        code: "RATE_LIMIT_UNAVAILABLE",
+      });
+    }
+    expect(await storedRows()).toEqual(before);
+    expect((await audits()).rowCount).toBe(auditCount);
+  });
+
+  it("refuses an upload from another origin or without one before parsing the body", async () => {
+    const before = await storedRows();
+    for (const origin of ["https://evil.example", null]) {
+      const response = await ctx.app.request(path(), {
+        method: "POST",
+        headers: {
+          "x-test-user": org.users.owner,
+          "content-type": "multipart/form-data; boundary=b",
+          ...(origin && { origin }),
+        },
+        body: "--b--\r\n",
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: { code: "ORIGIN_DENIED" },
+      });
+    }
+    expect(await storedRows()).toEqual(before);
   });
 });
 

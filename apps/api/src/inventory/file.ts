@@ -32,9 +32,16 @@ export type ParsedFile =
   { ok: true; rows: RawRow[] } | { ok: false; rejection: FileRejection };
 
 const SHEET_NAME = "inventory";
-// A real workbook is a handful of XML parts; the cap only stops a zip bomb.
+// A real workbook is a handful of XML parts and 5000 rows are about 1 MB of sheet
+// XML, so these caps only stop a zip bomb.
 const MAX_ZIP_ENTRIES = 200;
-const MAX_UNZIPPED_BYTES = 32 * 1024 * 1024;
+const MAX_UNZIPPED_BYTES = 16 * 1024 * 1024;
+// The sheet reader fills the gap to a far row or column number with empty cells,
+// so the numbers in the sheet XML are bounded before the reader sees them.
+const MAX_SHEET_ROW_NUMBER = 20_000;
+const MAX_SHEET_COLUMN_NUMBER = 64;
+const MAX_CSV_RECORDS = 20_000;
+const MAX_REPORTED_NAMES = 20;
 const NO_NAME = "(ไม่มีชื่อ)";
 
 const reject = (rejection: FileRejection): ParsedFile => ({
@@ -58,7 +65,12 @@ export async function parseInventoryFile(
     } catch {
       return reject({ code: "csv_not_utf8" });
     }
-    return toRows(parseCsv(text));
+    try {
+      return toRows(parseCsv(text, MAX_CSV_RECORDS));
+    } catch (error) {
+      if (error instanceof RangeError) return reject({ code: "too_many_rows" });
+      throw error;
+    }
   }
   const table = await readWorkbook(bytes);
   return "ok" in table ? table : toRows(table);
@@ -68,17 +80,19 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
   try {
     let entries = 0;
     let unzipped = 0;
-    // The filter rejects every entry, so only the zip directory is read here.
-    unzipSync(bytes, {
+    // fflate sizes each inflate buffer from the declared size, so the declared
+    // total bounds what is inflated; only sheet parts are inflated here.
+    const parts = unzipSync(bytes, {
       filter: (file) => {
         entries += 1;
         unzipped += file.originalSize;
         if (entries > MAX_ZIP_ENTRIES || unzipped > MAX_UNZIPPED_BYTES) {
           throw new Error("zip limits exceeded");
         }
-        return false;
+        return /^xl\/worksheets\/[^/]+\.xml$/i.test(file.name);
       },
     });
+    for (const xml of Object.values(parts)) assertSheetBounds(xml);
     const sheets = await readExcelFile(new Blob([bytes]));
     const named = sheets.find(
       (sheet) => sheet.sheet.trim().toLowerCase() === SHEET_NAME,
@@ -92,8 +106,29 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
   }
 }
 
+function columnNumber(letters: string): number {
+  let value = 0;
+  for (const letter of letters) value = value * 26 + letter.charCodeAt(0) - 64;
+  return value;
+}
+
+function assertSheetBounds(xml: Uint8Array): void {
+  const text = new TextDecoder().decode(xml);
+  for (const match of text.matchAll(/<row\b[^>]*?\sr="(\d+)"/g)) {
+    if (Number(match[1]) > MAX_SHEET_ROW_NUMBER) throw new Error("row number");
+  }
+  for (const match of text.matchAll(/<c\b[^>]*?\sr="([A-Za-z]+)(\d+)"/g)) {
+    if (
+      Number(match[2]) > MAX_SHEET_ROW_NUMBER ||
+      columnNumber((match[1] ?? "").toUpperCase()) > MAX_SHEET_COLUMN_NUMBER
+    ) {
+      throw new Error("cell reference");
+    }
+  }
+}
+
 // RFC 4180: quoted fields may hold commas, quotes ("") and line breaks.
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, maxRecords = Infinity): string[][] {
   const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   const table: string[][] = [];
   let row: string[] = [];
@@ -115,6 +150,7 @@ export function parseCsv(text: string): string[][] {
       if (char === "\r" && source.charAt(i + 1) === "\n") i += 1;
       row.push(field);
       table.push(row);
+      if (table.length > maxRecords) throw new RangeError("too many records");
       row = [];
       field = "";
     } else field += char;
@@ -132,8 +168,27 @@ const blank = (cell: Cell | undefined): boolean =>
   (typeof cell === "string" && cell.trim() === "");
 
 function toRows(table: Cell[][]): ParsedFile {
-  const header = table[0] ?? [];
-  const body = table.slice(1);
+  const body = table
+    .slice(1)
+    .map((cells, offset) => ({ cells, line: offset + 2 }))
+    .filter(({ cells }) => !cells.every(blank));
+  if (body.length > INVENTORY_MAX_ROWS)
+    return reject({ code: "too_many_rows" });
+  const filled = new Set<number>();
+  for (const { cells } of body) {
+    cells.forEach((cell, index) => {
+      if (!blank(cell)) filled.add(index);
+    });
+  }
+  // Trailing header cells that are empty and have no data below are padding.
+  const header = [...(table[0] ?? [])];
+  while (
+    header.length > 0 &&
+    blank(header.at(-1)) &&
+    !filled.has(header.length - 1)
+  ) {
+    header.pop();
+  }
   const columnOf = new Map<InventoryColumn, number>();
   const unexpected: string[] = [];
   const known = new Map(
@@ -142,27 +197,32 @@ function toRows(table: Cell[][]): ParsedFile {
   header.forEach((cell, index) => {
     const label = blank(cell) ? "" : String(cell).trim();
     const column = known.get(label.toLowerCase());
-    if (column && !columnOf.has(column)) columnOf.set(column, index);
-    else if (label !== "") unexpected.push(label);
-    else if (body.some((line) => !blank(line[index]))) unexpected.push(NO_NAME);
+    const extra =
+      column && !columnOf.has(column)
+        ? undefined
+        : label !== ""
+          ? label
+          : filled.has(index)
+            ? NO_NAME
+            : undefined;
+    if (column && extra === undefined) columnOf.set(column, index);
+    else if (extra !== undefined && unexpected.length < MAX_REPORTED_NAMES) {
+      unexpected.push(extra);
+    }
   });
   const missing = INVENTORY_COLUMNS.filter((name) => !columnOf.has(name));
   if (missing.length > 0 || unexpected.length > 0) {
     return reject({ code: "columns_mismatch", missing, unexpected });
   }
-  const rows: RawRow[] = [];
-  body.forEach((line, offset) => {
+  if (body.length === 0) return reject({ code: "no_rows" });
+  const rows = body.map(({ cells: line, line: number }): RawRow => {
     const cells = Object.fromEntries(
       INVENTORY_COLUMNS.map((name) => [
         name,
         line[columnOf.get(name) ?? -1] ?? null,
       ]),
     ) as Record<InventoryColumn, Cell>;
-    if (Object.values(cells).every(blank)) return;
-    rows.push({ line: offset + 2, cells });
+    return { line: number, cells };
   });
-  if (rows.length > INVENTORY_MAX_ROWS)
-    return reject({ code: "too_many_rows" });
-  if (rows.length === 0) return reject({ code: "no_rows" });
   return { ok: true, rows };
 }

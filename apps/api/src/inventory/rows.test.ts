@@ -33,6 +33,11 @@ describe("versionIssue", () => {
     ["Ubuntu", "22.04", "version_not_patch_level"],
     ["Redis", "7", "version_not_patch_level"],
     ["Nginx", "1.25.x", "version_not_patch_level"],
+    ["Ubuntu", "22.04-LTS", "version_not_patch_level"],
+    ["MySQL", "8.0-beta", "version_not_patch_level"],
+    ["MySQL", "10.1-community", "version_not_patch_level"],
+    ["Nginx", "1.25+", "version_not_patch_level"],
+    ["Perl", "5.36~rc1", null],
     ["Nginx", "latest", "version_not_a_number"],
     ["Nginx", "N/A", "version_not_a_number"],
     ["Nginx", "1.2.3 beta!", "version_not_a_number"],
@@ -95,6 +100,11 @@ describe("validateRow", () => {
     const row = validateRow(raw({ Owner: "ก".repeat(201) }));
     expect(Array.from(row.owner)).toHaveLength(200);
     expect(row.issues).toEqual([{ column: "Owner", code: "too_long" }]);
+  });
+
+  it("keeps the System key within the 200 characters the column holds", () => {
+    const row = validateRow(raw({ System: "İ".repeat(200) }));
+    expect(Array.from(row.systemKey).length).toBeLessThanOrEqual(200);
   });
 
   it("keeps a row without a System name in the empty-name group", () => {

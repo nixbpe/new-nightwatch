@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { INVENTORY_MAX_FILE_BYTES } from "@nightwatch/api-contract";
+import { unzipSync, zipSync } from "fflate";
 import writeXlsxFile from "write-excel-file/universal";
 import { describe, expect, it } from "vitest";
 
@@ -202,3 +203,107 @@ describe("parseInventoryFile for .xlsx", () => {
     });
   });
 });
+
+describe("resource limits", () => {
+  const zipWith = (parts: Record<string, Uint8Array>) => zipSync(parts);
+
+  async function withSheet(edit: (xml: string) => string) {
+    const valid = await workbook([
+      {
+        sheet: "Inventory",
+        rows: [
+          HEADER.split(","),
+          ["A", "B", "C", "D", "1.2.3", "OS", "Production", "Internal"],
+        ],
+      },
+    ]);
+    const parts = unzipSync(valid);
+    const name = Object.keys(parts).find((part) =>
+      part.includes("worksheets/sheet1"),
+    );
+    if (!name || !parts[name]) throw new Error("sheet part missing");
+    parts[name] = encode(edit(new TextDecoder().decode(parts[name])));
+    return zipSync(parts);
+  }
+
+  it("reads the valid workbook the cases below are derived from", async () => {
+    const bytes = await withSheet((xml) => xml);
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it.each([
+    [
+      "a far row number",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r="4000000000"'),
+    ],
+    [
+      "a far cell row",
+      (xml: string) => xml.replace(/ r="A2"/, ' r="A2147483647"'),
+    ],
+    ["a far column", (xml: string) => xml.replace(/ r="H2"/, ' r="ZZZZZZZZ2"')],
+  ])("rejects an xlsx with %s without reading it", async (_name, edit) => {
+    const bytes = await withSheet(edit);
+    const started = performance.now();
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("rejects a zip with more than 200 entries", async () => {
+    const parts: Record<string, Uint8Array> = {};
+    for (let i = 0; i < 201; i += 1)
+      parts[`part${String(i)}.xml`] = encode("x");
+    expect(await parseInventoryFile("inv.xlsx", zipWith(parts))).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+  });
+
+  it("rejects a zip whose declared size is above 16 MB although it is small", async () => {
+    const bytes = zipWith({ "xl/big.bin": new Uint8Array(17 * 1024 * 1024) });
+    expect(bytes.byteLength).toBeLessThan(INVENTORY_MAX_FILE_BYTES);
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+  });
+
+  it("answers quickly for a csv with many empty header cells and blank lines", async () => {
+    const csv = `${HEADER}${",".repeat(100_000)}\n${"\n".repeat(1_800_000)}`;
+    const started = performance.now();
+    const parsed = await parseInventoryFile("inv.csv", encode(csv));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(parsed).toEqual({
+      ok: false,
+      rejection: { code: "too_many_rows" },
+    });
+  });
+
+  it("answers quickly for a csv of empty records", async () => {
+    const csv = `${HEADER}\n${",,,,,,,\n".repeat(200_000)}`;
+    const started = performance.now();
+    const parsed = await parseInventoryFile("inv.csv", encode(csv));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(parsed).toEqual({
+      ok: false,
+      rejection: { code: "too_many_rows" },
+    });
+  });
+
+  it("finds the empty header cells of a normal csv in one pass", async () => {
+    const csv = `${HEADER}${",".repeat(50_000)}\n${row("A")}\n`;
+    const started = performance.now();
+    expect(await parseInventoryFile("inv.csv", encode(csv))).toMatchObject({
+      ok: true,
+    });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+function row(system: string): string {
+  return `${system},B,C,D,1.2.3,OS,Production,Internal`;
+}

@@ -506,6 +506,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       auth,
       database,
       logger: deps.logger,
+      trustedOrigin: deps.authEnv.CORS_ORIGIN,
       ...(deps.redis && {
         rateLimiter: createRateLimiter({
           redis: deps.redis,

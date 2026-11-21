@@ -52,7 +52,11 @@ const uploadBody = z.object({
 
 export function registerInventoryRoutes(
   app: OpenAPIHono,
-  deps: InventoryDeps & { auth: Auth; logger: Logger },
+  deps: InventoryDeps & {
+    auth: Auth;
+    logger: Logger;
+    trustedOrigin: string;
+  },
 ) {
   const run = async <T>(
     headers: Headers,
@@ -94,8 +98,39 @@ export function registerInventoryRoutes(
       ),
   );
 
+  // multipart/form-data is a content type a cross-site form can send without a
+  // preflight, so the Origin is checked, then the session and the role, before any
+  // of the body is parsed.
   app.post(
     base.replaceAll(/\{(\w+)\}/g, ":$1"),
+    async (c, next) => {
+      if (c.req.header("origin") !== deps.trustedOrigin) {
+        throw new AppError(
+          403,
+          "ORIGIN_DENIED",
+          "ไม่อนุญาตคำขอจากแหล่งที่มานี้",
+        );
+      }
+      const ids = params.safeParse({
+        organizationId: c.req.param("organizationId"),
+        projectId: c.req.param("projectId"),
+      });
+      if (!ids.success) {
+        throw new AppError(
+          400,
+          "VALIDATION_ERROR",
+          "Request validation failed",
+        );
+      }
+      await run(
+        c.req.raw.headers,
+        ids.data,
+        c.get("requestId"),
+        "inventory.write",
+        (input) => authorizeUpload(deps, input),
+      );
+      await next();
+    },
     bodyLimit({
       maxSize: BODY_LIMIT_BYTES,
       onError: () => {
@@ -136,13 +171,11 @@ export function registerInventoryRoutes(
         c.req.valid("param"),
         c.get("requestId"),
         "inventory.write",
-        async (input) => {
-          await authorizeUpload(deps, input);
-          return uploadInventory(deps, input, {
+        async (input) =>
+          uploadInventory(deps, input, {
             name: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
-          });
-        },
+          }),
       );
       if ("retryAfterSeconds" in result) {
         return c.json(

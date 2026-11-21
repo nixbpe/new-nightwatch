@@ -58,7 +58,7 @@ export function versionIssue(
   );
   if (!match) return "version_not_a_number";
   const numbers = (match[1] ?? "").split(".").length;
-  const revision = /[-+~]/.test(match[2] ?? "");
+  const revision = /[-+~](?:\d|[A-Za-z]+\d)/.test(match[2] ?? "");
   if (numbers >= 3 || (numbers === 2 && revision)) return null;
   if (numbers === 2 && TWO_PART_PATCH_PRODUCTS.has(product.toLowerCase())) {
     return null;
@@ -110,7 +110,10 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    systemKey: row.system.toLowerCase(),
+    // Lower-casing can lengthen a name, and the key column holds 200 characters.
+    systemKey: Array.from(row.system.toLowerCase())
+      .slice(0, INVENTORY_FIELD_MAX_LENGTH)
+      .join(""),
     ...row,
     issues,
   };

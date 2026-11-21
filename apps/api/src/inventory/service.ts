@@ -136,7 +136,7 @@ async function limitUploads(deps: InventoryDeps, input: ProjectIdentity) {
   });
 }
 
-/** Refuses before the body is read: unseen Projects stay 404, non-admins 403. */
+/** Unseen Projects answer 404 and non-admins 403; the route runs it before the body is parsed. */
 export function authorizeUpload(deps: InventoryDeps, input: ProjectIdentity) {
   return withProjectAccess(deps.database, input, "inventory.write", false, () =>
     Promise.resolve(),
@@ -282,11 +282,23 @@ export function getRejectedRows(
   );
 }
 
+// Excel allows 31 UTF-16 units and no leading or trailing apostrophe; the writer
+// counts units, so the name is cut by units without splitting a code point.
+function cutUnits(value: string, units: number): string {
+  let result = "";
+  for (const char of value) {
+    if (result.length + char.length > units) break;
+    result += char;
+  }
+  return result;
+}
+
 const sheetName = (owner: string, used: Set<string>): string => {
-  const base =
-    Array.from(owner.replace(SHEET_NAME_FORBIDDEN, " ").trim() || NO_OWNER)
-      .slice(0, 28)
-      .join("") || NO_OWNER;
+  const cleaned = owner
+    .replace(SHEET_NAME_FORBIDDEN, " ")
+    .replace(/^'+|'+$/g, "")
+    .trim();
+  const base = cutUnits(cleaned || NO_OWNER, 28).trim() || NO_OWNER;
   let name = base;
   for (let n = 2; used.has(name.toLowerCase()); n += 1)
     name = `${base} ${String(n)}`;
