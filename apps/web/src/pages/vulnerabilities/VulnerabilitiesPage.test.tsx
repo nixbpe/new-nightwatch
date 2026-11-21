@@ -26,6 +26,7 @@ const PROJECT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SYSTEM = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
 const RUN = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 const AT = "2026-11-21T10:00:00.000Z";
+const MAPPING = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1";
 
 vi.mock("../../lib/tenant/useLeaveOnOrganizationSwitch", () => ({
   useLeaveOnOrganizationSwitch: () => false,
@@ -75,6 +76,7 @@ const component = (
   vendor: "Redis",
   product: "Redis",
   version: "7.2.4",
+  mappingId: MAPPING,
   exposure: "Internal",
   state: "none_found",
   checkedSources: ["nvd"],
@@ -113,6 +115,7 @@ function list(overrides: Partial<VulnerabilityList> = {}): VulnerabilityList {
             backport: false,
             advisoryId: null,
             backportReason: null,
+            triage: null,
           },
           {
             cveId: "CVE-2024-0002",
@@ -125,6 +128,7 @@ function list(overrides: Partial<VulnerabilityList> = {}): VulnerabilityList {
             backport: false,
             advisoryId: null,
             backportReason: null,
+            triage: null,
           },
           {
             cveId: "CVE-2024-0003",
@@ -138,6 +142,7 @@ function list(overrides: Partial<VulnerabilityList> = {}): VulnerabilityList {
             advisoryId: "UBUNTU-CVE-2024-0003",
             backportReason:
               "distro advisory: fixed in openssl 3.0.2-0ubuntu1.12",
+            triage: null,
           },
         ],
       }),
@@ -326,6 +331,48 @@ describe("VulnerabilitiesPage findings", () => {
     renderPage();
     await screen.findByTestId("vuln-feeds");
     expect(screen.queryByTestId("vuln-run")).toBeNull();
+  });
+});
+
+describe("VEX on the findings page", () => {
+  it("shows the status of a triaged CVE, gives an admin the control, and no control to a member or on a backport row", async () => {
+    const triaged = list();
+    const first = triaged.components[0]?.findings[0];
+    if (!first) throw new Error("fixture has no finding");
+    first.triage = {
+      status: "not_affected",
+      reason: "ไม่ได้เปิดใช้ module นี้",
+      changedBy: "Somchai",
+      changedAt: AT,
+    };
+    fetchMock.mockResolvedValue(triaged);
+    renderPage();
+    const row = await screen.findByTestId(`vuln-finding-${first.cveId}`);
+    expect(row).toHaveTextContent("ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module นี้");
+    expect(row).toHaveTextContent("โดย Somchai");
+    expect(
+      within(row).getByTestId(
+        `triage-not-affected-${first.cveId}-${MAPPING}-7.2.4`,
+      ),
+    ).toBeVisible();
+    // A CVE filtered as a backport is not triaged.
+    expect(
+      within(screen.getByTestId("vuln-finding-CVE-2024-0003")).queryByTestId(
+        /^triage-affected-/,
+      ),
+    ).toBeNull();
+  });
+
+  it("gives a member the status and no control", async () => {
+    fetchMock.mockResolvedValue(list({ canManage: false }));
+    renderPage();
+    await screen.findByTestId("vuln-finding-CVE-2024-0001");
+    expect(screen.queryByTestId(/^triage-affected-/)).toBeNull();
+    expect(
+      within(screen.getByTestId("vuln-finding-CVE-2024-0001")).getByText(
+        "ยังไม่ triage",
+      ),
+    ).toBeVisible();
   });
 });
 

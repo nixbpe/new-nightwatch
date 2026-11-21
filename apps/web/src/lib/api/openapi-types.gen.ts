@@ -5362,7 +5362,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5549,7 +5549,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -7697,6 +7697,8 @@ export interface paths {
                                 vendor: string;
                                 product: string;
                                 version: string;
+                                /** Format: uuid */
+                                mappingId: string | null;
                                 /** @enum {string} */
                                 exposure: "Internet-facing" | "Internal" | "Isolated";
                                 /** @enum {string} */
@@ -7716,6 +7718,14 @@ export interface paths {
                                     backport: boolean;
                                     advisoryId: string | null;
                                     backportReason: string | null;
+                                    triage: {
+                                        /** @enum {string} */
+                                        status: "affected" | "not_affected";
+                                        reason: string | null;
+                                        changedBy: string | null;
+                                        /** Format: date-time */
+                                        changedAt: string;
+                                    } | null;
                                 }[];
                             }[];
                         };
@@ -7967,6 +7977,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{organizationId}/projects/{projectId}/vulnerabilities/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        mappingId: string;
+                        version: string;
+                        cveId: string;
+                        /** @enum {string} */
+                        status: "affected" | "not_affected";
+                        reason?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description The VEX status as set */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            status: "affected" | "not_affected";
+                            reason: string | null;
+                            changedBy: string | null;
+                            /** Format: date-time */
+                            changedAt: string;
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{organizationId}/projects/{projectId}/vulnerabilities/priority": {
         parameters: {
             query?: never;
@@ -7993,10 +8150,21 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            canManage: boolean;
                             /** Format: date-time */
                             checkedAt: string | null;
                             items: {
                                 rank: number;
+                                /** Format: uuid */
+                                mappingId: string | null;
+                                triage: {
+                                    /** @enum {string} */
+                                    status: "affected" | "not_affected";
+                                    reason: string | null;
+                                    changedBy: string | null;
+                                    /** Format: date-time */
+                                    changedAt: string;
+                                } | null;
                                 /** Format: uuid */
                                 systemId: string;
                                 system: string;
@@ -8013,6 +8181,32 @@ export interface paths {
                                 kev: boolean | null;
                                 reasons: ("kev" | "exposure" | "epss" | "cvss")[];
                                 provisional: ("kev" | "epss" | "cvss")[];
+                            }[];
+                            notAffected: {
+                                /** Format: uuid */
+                                mappingId: string | null;
+                                triage: {
+                                    /** @enum {string} */
+                                    status: "affected" | "not_affected";
+                                    reason: string | null;
+                                    changedBy: string | null;
+                                    /** Format: date-time */
+                                    changedAt: string;
+                                } | null;
+                                /** Format: uuid */
+                                systemId: string;
+                                system: string;
+                                vendor: string;
+                                product: string;
+                                version: string;
+                                /** @enum {string} */
+                                exposure: "Internet-facing" | "Internal" | "Isolated";
+                                cveId: string;
+                                cvssScore: number | null;
+                                /** @enum {string|null} */
+                                cvssSeverity: "none" | "low" | "medium" | "high" | "critical" | null;
+                                epss: number | null;
+                                kev: boolean | null;
                             }[];
                         };
                     };

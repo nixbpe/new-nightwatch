@@ -91,6 +91,8 @@ Email ของแจ้งเตือน CVE ใหม่ (S4.3): [worker ส�
 
 [ลำดับ KEV, Exposure, EPSS, CVSS](../apps/api/src/vulnerability/priority.ts), [แถวของไฟล์ Excel ราย System](../apps/api/src/vulnerability/export.ts), [service และ route](../apps/api/src/vulnerability/service.ts), [สัญญา](../packages/api-contract/src/vulnerability.ts), [Web](../apps/web/src/pages/vulnerabilities/PriorityPage.tsx), [คำเตือนเกณฑ์ false positive](../apps/web/src/pages/vulnerabilities/SamplePanel.tsx), [browser test](../e2e/tests/vulnerabilities.spec.ts).
 
+VEX triage (S5.3): [บันทึกสถานะ](../apps/api/src/vulnerability/service.ts) (`setTriage`), [ตารางสถานะและ log](../packages/db/migrations/0036_vulnerability_triage.sql), [ลบเมื่อคู่ component กับ CVE หายไป](../packages/db/src/vulnerability-run.ts), [ปุ่มและแสดงสถานะ](../apps/web/src/pages/vulnerabilities/TriageControl.tsx).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

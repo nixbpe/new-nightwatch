@@ -26,8 +26,12 @@ vi.mock("../../lib/api/vulnerabilities", async (importOriginal) => ({
 
 const fetchMock = vi.mocked(fetchPriority);
 
+const MAPPING = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1";
+
 const item = (overrides: Partial<PriorityItem>): PriorityItem => ({
   rank: 1,
+  mappingId: MAPPING,
+  triage: null,
   systemId: SYSTEM,
   system: "Billing API",
   vendor: "Redis",
@@ -45,8 +49,10 @@ const item = (overrides: Partial<PriorityItem>): PriorityItem => ({
 });
 
 const list = (overrides: Partial<PriorityList> = {}): PriorityList => ({
+  canManage: false,
   checkedAt: AT,
   items: [],
+  notAffected: [],
   ...overrides,
 });
 
@@ -140,6 +146,73 @@ describe("PriorityPage", () => {
     expect(screen.getByTestId("priority-reason-1")).not.toHaveTextContent(
       "EPSS 0",
     );
+  });
+
+  it("lists a not-affected CVE apart from the ordering with its reason, and gives an admin the control", async () => {
+    fetchMock.mockResolvedValue(
+      list({
+        canManage: true,
+        items: [item({})],
+        notAffected: [
+          {
+            mappingId: MAPPING,
+            triage: {
+              status: "not_affected",
+              reason: "ไม่ได้เปิดใช้ module นี้",
+              changedBy: "Somchai",
+              changedAt: AT,
+            },
+            systemId: SYSTEM,
+            system: "Billing API",
+            vendor: "Redis",
+            product: "Redis",
+            version: "7.2.4",
+            exposure: "Internal",
+            cveId: "CVE-2026-9000",
+            cvssScore: 7,
+            cvssSeverity: "high",
+            epss: 0.1,
+            kev: false,
+          },
+        ],
+      }),
+    );
+    renderPage();
+    const section = await screen.findByTestId("priority-not-affected");
+    expect(section).toHaveTextContent("1 รายการ");
+    expect(
+      screen.getByTestId("priority-not-affected-CVE-2026-9000"),
+    ).toHaveTextContent("ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module นี้");
+    // It is not one of the ranked items.
+    expect(screen.getByTestId("priority-item-1")).not.toHaveTextContent(
+      "CVE-2026-9000",
+    );
+    expect(
+      screen.getAllByTestId(/^triage-affected-/).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives a member the status and no control", async () => {
+    fetchMock.mockResolvedValue(
+      list({
+        canManage: false,
+        items: [
+          item({
+            triage: {
+              status: "affected",
+              reason: null,
+              changedBy: "Somchai",
+              changedAt: AT,
+            },
+          }),
+        ],
+      }),
+    );
+    renderPage();
+    expect(await screen.findByTestId("priority-item-1")).toHaveTextContent(
+      "ได้รับผลกระทบ",
+    );
+    expect(screen.queryByTestId(/^triage-affected-/)).toBeNull();
   });
 
   it("says there is nothing yet before the first scan, and that none found is not safe after it", async () => {

@@ -283,6 +283,69 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
+test("an admin marks a CVE not affected with a reason; it leaves the ordering, stays open to view and a member only reads it", async ({
+  page,
+}) => {
+  await signIn(page, owner);
+  await page.goto(`${page_()}/priority`);
+  // Rank 1 is CVE-2024-0001. Mark it not affected: a reason is required first.
+  const key = `CVE-2024-0001-`;
+  const control = page
+    .locator(`[data-testid^="triage-not-affected-${key}"]`)
+    .first();
+  await control.click();
+  const save = page.locator(`[data-testid^="triage-save-${key}"]`).first();
+  await expect(save).toBeDisabled();
+  await page
+    .locator(`[data-testid^="triage-reason-${key}"]`)
+    .first()
+    .fill("ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+  await save.click();
+
+  // It left the ordering and is listed apart with its reason, who and when.
+  const apart = page.getByTestId("priority-not-affected");
+  await expect(apart).toContainText("1 รายการ");
+  await apart.locator("summary").click();
+  await expect(
+    page.getByTestId("priority-not-affected-CVE-2024-0001"),
+  ).toContainText("ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+  await expect(page.getByTestId("priority-item-1")).not.toContainText(
+    "CVE-2024-0001",
+  );
+  await shot(page, "vulnerabilities-priority-not-affected");
+
+  // A member reads the same and has no control.
+  await page.context().clearCookies();
+  await signIn(page, member);
+  await page.goto(`${page_()}/priority`);
+  await expect(page.getByTestId("priority-not-affected")).toContainText(
+    "1 รายการ",
+  );
+  await expect(page.locator('[data-testid^="triage-affected-"]')).toHaveCount(
+    0,
+  );
+  await page.goto(page_());
+  await expect(page.getByTestId("vuln-finding-CVE-2024-0001")).toContainText(
+    "ไม่ได้รับผลกระทบ",
+  );
+
+  // Put it back for the tests that follow.
+  await page.context().clearCookies();
+  await signIn(page, owner);
+  await page.goto(`${page_()}/priority`);
+  await page.getByTestId("priority-not-affected").locator("summary").click();
+  await page
+    .getByTestId("priority-not-affected-CVE-2024-0001")
+    .locator('[data-testid^="triage-affected-"]')
+    .click();
+  await expect(page.getByTestId("priority-item-1")).toContainText(
+    "CVE-2024-0001",
+  );
+  await expect(page.getByTestId("priority-item-1")).toContainText(
+    "ได้รับผลกระทบ",
+  );
+});
+
 test("an admin draws a sample, marks results and sees the false-positive rate", async ({
   page,
 }) => {

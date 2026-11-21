@@ -29,6 +29,7 @@ import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { formatUploadedAt, NO_SYSTEM_NAME } from "../inventory/format";
 import { SamplePanel } from "./SamplePanel";
+import { TriageControl } from "./TriageControl";
 
 type Scope = { organizationId: string; projectId: string };
 
@@ -108,7 +109,14 @@ function severityPill(finding: VulnerabilityFinding) {
   );
 }
 
-function FindingRow({ finding }: { finding: VulnerabilityFinding }) {
+function FindingRow({
+  finding,
+  triage,
+}: {
+  finding: VulnerabilityFinding;
+  /** The VEX control; absent for a CVE a person cannot triage (filtered as a backport). */
+  triage: ReactNode;
+}) {
   return (
     <tr
       data-testid={`vuln-finding-${finding.cveId}`}
@@ -148,6 +156,7 @@ function FindingRow({ finding }: { finding: VulnerabilityFinding }) {
           "พบ"
         )}
       </td>
+      <td className="px-4 py-2">{triage}</td>
     </tr>
   );
 }
@@ -539,20 +548,26 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                       <span className="sr-only"> ของ {system.name}</span>
                     </a>
                   </div>
-                  <table className="w-full min-w-[760px] text-left text-sm">
+                  <table className="w-full min-w-[1000px] text-left text-sm">
                     <thead className="text-xs text-foreground-secondary">
                       <tr>
-                        {["CVE", "CVSS", "EPSS", "KEV", "แหล่ง", "สถานะ"].map(
-                          (head) => (
-                            <th
-                              key={head}
-                              scope="col"
-                              className="h-9 px-4 font-medium"
-                            >
-                              {head}
-                            </th>
-                          ),
-                        )}
+                        {[
+                          "CVE",
+                          "CVSS",
+                          "EPSS",
+                          "KEV",
+                          "แหล่ง",
+                          "สถานะ",
+                          "VEX",
+                        ].map((head) => (
+                          <th
+                            key={head}
+                            scope="col"
+                            className="h-9 px-4 font-medium"
+                          >
+                            {head}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     {system.components.map((component) => (
@@ -562,7 +577,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                       >
                         <tr className="border-t border-foreground/10 bg-foreground/4">
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-4 py-2 text-left font-normal"
                           >
                             <span className="font-medium">
@@ -582,7 +597,30 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                           </td>
                         </tr>
                         {component.findings.map((finding) => (
-                          <FindingRow key={finding.cveId} finding={finding} />
+                          <FindingRow
+                            key={finding.cveId}
+                            finding={finding}
+                            triage={
+                              finding.backport ||
+                              component.mappingId === null ? (
+                                <span className="text-foreground-secondary">
+                                  —
+                                </span>
+                              ) : (
+                                <TriageControl
+                                  organizationId={organizationId}
+                                  projectId={projectId}
+                                  canManage={canManage}
+                                  target={{
+                                    mappingId: component.mappingId,
+                                    version: component.version,
+                                    cveId: finding.cveId,
+                                  }}
+                                  triage={finding.triage}
+                                />
+                              )
+                            }
+                          />
                         ))}
                       </tbody>
                     ))}
