@@ -73,7 +73,7 @@ export function versionIssue(
 // key, so a longer key is replaced by its hash. The hash key starts with a control
 // character, which a normalized name never contains, so a hash key can never equal
 // the key of a name typed as that text.
-export function systemKeyOf(system: string): string {
+export function identityKey(system: string): string {
   const lower = system.toLowerCase();
   return Array.from(lower).length <= INVENTORY_FIELD_MAX_LENGTH
     ? lower
@@ -124,7 +124,7 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    systemKey: systemKeyOf(row.system),
+    systemKey: identityKey(row.system),
     ...row,
     issues,
   };

@@ -26,6 +26,8 @@ import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerAuditLogReadRoutes } from "./audit/routes";
 import { registerAwsConnectionRoutes } from "./aws-connection/routes";
+import { createNvdCpeSearch } from "./inventory/cpe";
+import { registerInventoryMappingRoutes } from "./inventory/mapping-routes";
 import { registerInventoryRoutes } from "./inventory/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
@@ -504,18 +506,26 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
     });
-    registerInventoryRoutes(app, {
+    const inventory = {
       auth,
       database,
       logger: deps.logger,
-      trustedOrigin: deps.authEnv.CORS_ORIGIN,
+      cpeSearch: createNvdCpeSearch({
+        outbound: deps.outbound,
+        logger: deps.logger,
+      }),
       ...(deps.redis && {
         rateLimiter: createRateLimiter({
           redis: deps.redis,
           logger: deps.logger,
         }),
       }),
+    };
+    registerInventoryRoutes(app, {
+      ...inventory,
+      trustedOrigin: deps.authEnv.CORS_ORIGIN,
     });
+    registerInventoryMappingRoutes(app, inventory);
     registerProjectRoutes(app, {
       auth,
       database,

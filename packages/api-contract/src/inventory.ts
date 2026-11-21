@@ -68,8 +68,18 @@ export const inventorySystemSchema = z.object({
 });
 export type InventorySystem = z.infer<typeof inventorySystemSchema>;
 
+export const inventoryMappingCountsSchema = z.object({
+  pending: z.number().int().nonnegative(),
+  confirmed: z.number().int().nonnegative(),
+  unmapped: z.number().int().nonnegative(),
+});
+export type InventoryMappingCounts = z.infer<
+  typeof inventoryMappingCountsSchema
+>;
+
 export const inventorySummarySchema = z.object({
   canUpload: z.boolean(),
+  mappings: inventoryMappingCountsSchema,
   systemCount: z.number().int().nonnegative(),
   totalRows: z.number().int().nonnegative(),
   usableRows: z.number().int().nonnegative(),

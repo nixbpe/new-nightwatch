@@ -32,6 +32,7 @@ const uploadMock = vi.mocked(uploadInventory);
 function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
   return {
     canUpload: true,
+    mappings: { pending: 0, confirmed: 0, unmapped: 0 },
     systemCount: 2,
     totalRows: 40,
     usableRows: 36,
@@ -119,6 +120,20 @@ describe("InventoryPage", () => {
     ).toHaveAttribute(
       "href",
       `/organizations/${ORG}/projects/${PROJECT}/inventory/systems/${HR}`,
+    );
+  });
+
+  it("links the pending CPE/purl count to the review queue", async () => {
+    fetchMock.mockResolvedValue(
+      summary({ mappings: { pending: 5, confirmed: 3, unmapped: 1 } }),
+    );
+    renderPage();
+
+    const tile = await screen.findByTestId("inventory-tile-mappings");
+    expect(tile).toHaveTextContent("5");
+    expect(within(tile).getByTestId("inventory-mappings-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/inventory/mappings`,
     );
   });
 
