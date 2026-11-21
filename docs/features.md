@@ -87,6 +87,10 @@
 
 Email ของแจ้งเตือน CVE ใหม่ (S4.3): [worker ส่งอีเมล](../apps/worker/src/vulnerability/email.ts) (role `notification-email`, ดู [runbook](runbooks/uptime-monitor.md#run-the-worker-roles)), [คิวและฟังก์ชัน claim](../packages/db/migrations/0035_notification_email_jobs.sql), [mailer ที่ใช้ร่วมกับ API](../packages/shared/src/mailer.ts).
 
+## ลำดับที่ต้องแก้และส่งออก Excel (E-005 F-021)
+
+[ลำดับ KEV, Exposure, EPSS, CVSS](../apps/api/src/vulnerability/priority.ts), [แถวของไฟล์ Excel ราย System](../apps/api/src/vulnerability/export.ts), [service และ route](../apps/api/src/vulnerability/service.ts), [สัญญา](../packages/api-contract/src/vulnerability.ts), [Web](../apps/web/src/pages/vulnerabilities/PriorityPage.tsx), [คำเตือนเกณฑ์ false positive](../apps/web/src/pages/vulnerabilities/SamplePanel.tsx), [browser test](../e2e/tests/vulnerabilities.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

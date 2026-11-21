@@ -217,6 +217,45 @@ for (const theme of ["light", "dark"] as const) {
       await shot(page, `vulnerabilities-${theme}`);
     });
 
+    test("orders what to fix with the reason of each place, and exports a System as Excel", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(page_());
+      await page.getByTestId("vuln-priority-link").click();
+      await expect(page).toHaveURL(/\/vulnerabilities\/priority$/);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+
+      // The KEV CVE leads, with the facts that placed it; the CVE with no score is provisional.
+      await expect(page.getByTestId("priority-item-1")).toContainText(
+        "CVE-2024-0001",
+      );
+      await expect(page.getByTestId("priority-reason-1")).toContainText(
+        "อยู่ใน KEV · ภายใน · EPSS 42% · CVSS 9.8",
+      );
+      await expect(page.getByTestId("priority-item-2")).toContainText(
+        "CVE-2024-0002",
+      );
+      await expect(page.getByTestId("priority-provisional-2")).toContainText(
+        "ชั่วคราว: ยังไม่ทราบ",
+      );
+      await expect(page.getByTestId("priority-checked")).toContainText(
+        "จากการตรวจที่เสร็จเมื่อ",
+      );
+      await shot(page, `vulnerabilities-priority-${theme}`);
+
+      await page.getByTestId("priority-back").click();
+      const link = page.getByTestId(`vuln-export-${systemId}`);
+      const href = await link.getAttribute("href");
+      expect(href).toContain(`/systems/${systemId}/export`);
+      const download = await page.request.get(href ?? "");
+      expect(download.status()).toBe(200);
+      expect(download.headers()["content-type"]).toContain(
+        "spreadsheetml.sheet",
+      );
+      expect((await download.body()).byteLength).toBeGreaterThan(1000);
+    });
+
     test("lists what the scans saw first, reached from the findings page", async ({
       page,
     }) => {

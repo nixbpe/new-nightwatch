@@ -55,11 +55,13 @@ import {
   inventoryRejectedRowsLoader,
 } from "./lib/auth/loaders/inventory";
 import { newVulnerabilitiesLoader } from "./lib/auth/loaders/newVulnerabilities";
+import { priorityLoader } from "./lib/auth/loaders/priority";
 import { vulnerabilitiesLoader } from "./lib/auth/loaders/vulnerabilities";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
 import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
 import { NewVulnerabilitiesPage } from "./pages/vulnerabilities/NewVulnerabilitiesPage";
+import { PriorityPage } from "./pages/vulnerabilities/PriorityPage";
 import { VulnerabilitiesPage } from "./pages/vulnerabilities/VulnerabilitiesPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -190,6 +192,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
             loader: vulnerabilitiesLoader,
             element: <VulnerabilitiesPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/priority",
+            loader: priorityLoader,
+            element: <PriorityPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/new",

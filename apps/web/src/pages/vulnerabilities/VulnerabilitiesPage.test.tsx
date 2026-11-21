@@ -75,6 +75,7 @@ const component = (
   vendor: "Redis",
   product: "Redis",
   version: "7.2.4",
+  exposure: "Internal",
   state: "none_found",
   checkedSources: ["nvd"],
   failedSources: [],
@@ -328,6 +329,21 @@ describe("VulnerabilitiesPage findings", () => {
   });
 });
 
+describe("links of the findings page", () => {
+  it("links to the priority list and offers each System's findings as Excel", async () => {
+    fetchMock.mockResolvedValue(list());
+    renderPage();
+    expect(await screen.findByTestId("vuln-priority-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/vulnerabilities/priority`,
+    );
+    expect(await screen.findByTestId(`vuln-export-${SYSTEM}`)).toHaveAttribute(
+      "href",
+      `/api/organizations/${ORG}/projects/${PROJECT}/vulnerabilities/systems/${SYSTEM}/export`,
+    );
+  });
+});
+
 describe("running a check", () => {
   it("starts a run on request", async () => {
     fetchMock.mockResolvedValueOnce(list());
@@ -517,6 +533,53 @@ describe("review sample", () => {
     );
     expect(screen.queryByTestId("vuln-sample-draw")).toBeNull();
     expect(screen.queryByTestId("vuln-sample-true_positive-1")).toBeNull();
+  });
+
+  it("warns when the reviewed false-positive rate is over the limit, only once enough are reviewed", async () => {
+    fetchMock.mockResolvedValue(list());
+    // 30 reviewed, 7 false positives: 23%, over 20%.
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 30,
+        falsePositives: 7,
+        falsePositiveRate: 7 / 30,
+      }),
+    });
+    renderPage();
+    expect(
+      await screen.findByTestId("vuln-sample-over-limit"),
+    ).toHaveTextContent("เกินเกณฑ์ 20% (Q-14)");
+  });
+
+  it("does not warn at the limit, or while fewer than 30 are reviewed", async () => {
+    fetchMock.mockResolvedValue(list());
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 30,
+        falsePositives: 6,
+        falsePositiveRate: 0.2,
+      }),
+    });
+    renderPage();
+    await screen.findByTestId("vuln-sample-rate");
+    expect(screen.queryByTestId("vuln-sample-over-limit")).toBeNull();
+  });
+
+  it("does not warn on a high rate of a few reviewed results", async () => {
+    fetchMock.mockResolvedValue(list());
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 10,
+        falsePositives: 8,
+        falsePositiveRate: 0.8,
+      }),
+    });
+    renderPage();
+    await screen.findByTestId("vuln-sample-rate");
+    expect(screen.queryByTestId("vuln-sample-over-limit")).toBeNull();
   });
 
   it("says when there is nothing to draw from", async () => {

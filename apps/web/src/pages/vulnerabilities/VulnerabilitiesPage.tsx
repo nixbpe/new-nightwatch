@@ -21,6 +21,7 @@ import {
   advanceVulnerabilityRun,
   fetchVulnerabilities,
   startVulnerabilityRun,
+  systemExportHref,
   vulnerabilityErrorMessage,
   vulnerabilityKeys,
 } from "../../lib/api/vulnerabilities";
@@ -346,6 +347,14 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
           <>
             <Button variant="outline" asChild>
               <Link
+                data-testid="vuln-priority-link"
+                to={`${vulnerabilitiesPath}/priority`}
+              >
+                ลำดับที่ต้องแก้
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link
                 data-testid="vuln-new-link"
                 to={`${vulnerabilitiesPath}/new`}
               >
@@ -513,9 +522,23 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                   key={systemId}
                   className="overflow-x-auto rounded-md border border-foreground/10 bg-surface"
                 >
-                  <h3 className="border-b border-foreground/10 px-4 py-3 text-sm font-semibold text-heading">
-                    {system.name}
-                  </h3>
+                  <div className="flex items-center justify-between gap-3 border-b border-foreground/10 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-heading">
+                      {system.name}
+                    </h3>
+                    <a
+                      data-testid={`vuln-export-${systemId}`}
+                      href={systemExportHref(
+                        organizationId,
+                        projectId,
+                        systemId,
+                      )}
+                      className="text-xs text-primary underline-offset-4 hover:underline"
+                    >
+                      ส่งออก Excel
+                      <span className="sr-only"> ของ {system.name}</span>
+                    </a>
+                  </div>
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="text-xs text-foreground-secondary">
                       <tr>

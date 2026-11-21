@@ -1,5 +1,6 @@
 import {
   newCveListSchema,
+  priorityListSchema,
   vulnerabilityAdvanceSchema,
   vulnerabilityListSchema,
   vulnerabilityRunSchema,
@@ -24,6 +25,8 @@ export const vulnerabilityKeys = {
     ] as const,
   list: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "list"] as const,
+  priority: (organizationId: string, projectId: string) =>
+    [...vulnerabilityKeys.all(organizationId, projectId), "priority"] as const,
   newCves: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "new"] as const,
   sample: (organizationId: string, projectId: string) =>
@@ -50,6 +53,26 @@ export function fetchNewVulnerabilities(
     params: { organizationId, projectId },
     signal,
   });
+}
+
+export function fetchPriority(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(`${base}/priority`, priorityListSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+/** The download of one System's findings as Excel (S5.2); the browser fetches it with its session. */
+export function systemExportHref(
+  organizationId: string,
+  projectId: string,
+  systemId: string,
+): string {
+  return `/api/organizations/${organizationId}/projects/${projectId}/vulnerabilities/systems/${systemId}/export`;
 }
 
 export function startVulnerabilityRun(
