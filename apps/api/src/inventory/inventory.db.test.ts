@@ -210,6 +210,28 @@ describe("inventory upload", () => {
     });
   });
 
+  it("keeps two long names that lower-case alike as two Systems", async () => {
+    const long = "İ".repeat(100);
+    const response = await upload(
+      org.users.owner,
+      [HEADER, GOOD(`${long}one`), GOOD(`${long}two`)].join("\n"),
+    );
+    expect(response.status).toBe(200);
+    const summary = inventorySummarySchema.parse(response.json);
+    expect(
+      summary.systems.filter((system) => system.name.startsWith(long)),
+    ).toHaveLength(2);
+    const after = await upload(
+      org.users.owner,
+      [HEADER, GOOD(`${long}one`, "24.04.1")].join("\n"),
+    );
+    expect(
+      inventorySummarySchema
+        .parse(after.json)
+        .systems.filter((system) => system.name.startsWith(long)),
+    ).toHaveLength(2);
+  });
+
   it("rejects the whole file and keeps the earlier data when a column is missing", async () => {
     const before = await storedRows();
     const response = await upload(

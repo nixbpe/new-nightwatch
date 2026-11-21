@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   INVENTORY_ENVIRONMENTS,
   INVENTORY_EXPOSURES,
@@ -66,6 +68,16 @@ export function versionIssue(
   return "version_not_patch_level";
 }
 
+// The Project-wide identity of a System. Lower-casing can lengthen a name past the
+// 200 characters the key column holds, and cutting it would give two names one
+// key, so a longer key is replaced by its hash.
+export function systemKeyOf(system: string): string {
+  const lower = system.toLowerCase();
+  return Array.from(lower).length <= INVENTORY_FIELD_MAX_LENGTH
+    ? lower
+    : `sha256:${createHash("sha256").update(lower).digest("hex")}`;
+}
+
 export function validateRow(raw: RawRow): InventoryRow {
   const issues: InventoryIssue[] = [];
   const read = (column: InventoryColumn): string => {
@@ -110,10 +122,7 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    // Lower-casing can lengthen a name, and the key column holds 200 characters.
-    systemKey: Array.from(row.system.toLowerCase())
-      .slice(0, INVENTORY_FIELD_MAX_LENGTH)
-      .join(""),
+    systemKey: systemKeyOf(row.system),
     ...row,
     issues,
   };

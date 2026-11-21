@@ -319,6 +319,13 @@ function toRows(table: Cell[][]): ParsedFile {
       unexpected.push(extra);
     }
   });
+  // Data in a column to the right of the last header cell has no name at all.
+  if (
+    [...filled].some((index) => index >= header.length) &&
+    unexpected.length < MAX_REPORTED_NAMES
+  ) {
+    unexpected.push(NO_NAME);
+  }
   const missing = INVENTORY_COLUMNS.filter((name) => !columnOf.has(name));
   if (missing.length > 0 || unexpected.length > 0) {
     return reject({ code: "columns_mismatch", missing, unexpected });

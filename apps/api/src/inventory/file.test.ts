@@ -94,6 +94,18 @@ describe("parseInventoryFile for .csv", () => {
     );
   });
 
+  it("rejects a data field to the right of the last header cell", async () => {
+    const csv = `${HEADER}\nA,B,C,D,1.2.3,OS,Production,Internal,EXTRA\n`;
+    expect(await parseInventoryFile("inv.csv", encode(csv))).toEqual({
+      ok: false,
+      rejection: {
+        code: "columns_mismatch",
+        missing: [],
+        unexpected: ["(ไม่มีชื่อ)"],
+      },
+    });
+  });
+
   it("ignores a trailing empty column", async () => {
     const csv = `${HEADER},\nA,B,C,D,1.2.3,OS,Production,Internal,\n`;
     expect(await parseInventoryFile("inv.csv", encode(csv))).toMatchObject({

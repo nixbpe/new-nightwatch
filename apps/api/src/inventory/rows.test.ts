@@ -107,6 +107,15 @@ describe("validateRow", () => {
     expect(Array.from(row.systemKey).length).toBeLessThanOrEqual(200);
   });
 
+  it("gives two long names that lower-case alike distinct keys", () => {
+    const one = validateRow(raw({ System: `${"İ".repeat(100)}one` }));
+    const two = validateRow(raw({ System: `${"İ".repeat(100)}two` }));
+    expect(one.systemKey).not.toBe(two.systemKey);
+    expect(
+      validateRow(raw({ System: `${"İ".repeat(100)}one` })).systemKey,
+    ).toBe(one.systemKey);
+  });
+
   it("keeps a row without a System name in the empty-name group", () => {
     const row = validateRow(raw({ System: "" }));
     expect(row.systemKey).toBe("");
