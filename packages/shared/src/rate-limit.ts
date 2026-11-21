@@ -5,6 +5,13 @@ import type { Logger } from "./logger";
 
 export const RATE_LIMIT_TIMEOUT_MS = 2000;
 
+/**
+ * One bucket for every call to NVD, CPE dictionary and CVE API alike: it allows 5 requests
+ * per 30 s without an API key and sees one egress address, so 4 are shared by every
+ * Organization and every consumer.
+ */
+export const NVD_GLOBAL_LIMIT = { key: "rl:nvd:global", limit: 4 } as const;
+
 /** The one Redis command the limiter needs, so no workspace has to import ioredis here. */
 export type RateLimitRedis = {
   eval(

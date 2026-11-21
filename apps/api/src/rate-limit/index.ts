@@ -1,6 +1,7 @@
 export {
   consumeAwsTestRateLimit,
   consumeMonitorTestRateLimit,
+  NVD_GLOBAL_LIMIT,
   createRateLimiter,
   type RateLimitFailureReason,
   type RateLimitGroup,

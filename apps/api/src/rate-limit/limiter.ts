@@ -2,6 +2,7 @@ import { type RateLimiter, type RateLimitResult } from "@nightwatch/shared";
 
 export {
   createRateLimiter,
+  NVD_GLOBAL_LIMIT,
   rateLimitUnavailable,
   type RateLimitFailureReason,
   type RateLimitGroup,
