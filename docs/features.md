@@ -67,6 +67,10 @@
 - Contract: [Filter/count shapes](../packages/api-contract/src/notification.ts) (`notificationListResponseSchema`, `notificationCountResponseSchema`), [hostname snapshot migration](../packages/db/migrations/0027_notification_monitor_hostname.sql).
 - Focused tests: [API service](../apps/api/src/notifications/service.db.test.ts), [Web inbox](../apps/web/src/pages/NotificationsPage.test.tsx), [loaders](../apps/web/src/lib/auth/loaders.test.tsx).
 
+## Inventory ของ Project (E-005 F-017)
+
+[API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0030_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

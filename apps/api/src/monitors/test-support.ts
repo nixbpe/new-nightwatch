@@ -376,6 +376,7 @@ export async function openMonitorTestContext(options?: {
       createProject,
       rotateDefaultProject,
       call,
+      app,
       close,
       logRecords: () =>
         lines.map((line) => JSON.parse(line) as Record<string, unknown>),
