@@ -250,6 +250,7 @@ describe("owned PostgreSQL fixture", () => {
         "0031_identifier_mappings.sql",
         "0032_vulnerability_matching.sql",
         "0033_vulnerability_monitoring.sql",
+        "0034_vulnerability_notifications.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -313,6 +314,15 @@ describe("owned PostgreSQL fixture", () => {
           expect(
             await hasColumn(fixture, "org_aws_connections", "revision"),
           ).toBe(false);
+        }
+        if (stage === "0034_vulnerability_notifications.sql") {
+          expect(
+            await hasColumn(
+              fixture,
+              "notification_inbox_items",
+              "vulnerability_cve_count",
+            ),
+          ).toBe(true);
         }
         if (stage === "0033_vulnerability_monitoring.sql") {
           expect(

@@ -700,6 +700,9 @@ describe("monitor notification schema", () => {
             : "notification_inbox_monitor_hostname_event",
           `${table}_monitor_project_check`,
           `${table}_scope_check`,
+          table === "notification_intents"
+            ? "notification_intents_vulnerability_subject"
+            : "notification_inbox_items_vulnerability_subject",
         ].sort(),
       );
       for (const row of result.rows.filter(
@@ -710,6 +713,53 @@ describe("monitor notification schema", () => {
         for (const type of MONITOR_EVENT_TYPES) expect(row.def).toContain(type);
       }
     }
+  });
+
+  it("accepts the new-CVE event in tenant scope with its Project and counts, and nowhere else", async () => {
+    const insert = (
+      scope: "tenant" | "account",
+      values: {
+        name: string | null;
+        cves: number | null;
+        components: number | null;
+      },
+      project: string | null = projectM,
+    ): Promise<unknown> =>
+      owner.query(
+        `insert into notification_intents
+           (id, scope_kind, tenant_id, user_id, origin, event_type, occurred_at,
+            subject_project_id, subject_project_name, vulnerability_cve_count,
+            vulnerability_component_count)
+         values ($1, $2, $3, $4, $5, 'VULNERABILITY_NEW', now(), $6, $7, $8, $9)`,
+        [
+          randomUUID(),
+          scope,
+          scope === "tenant" ? tenantM : null,
+          scope === "account" ? users.owner : null,
+          `vulnerability-check-${randomUUID()}`,
+          project,
+          values.name,
+          values.cves,
+          values.components,
+        ],
+      );
+    const full = { name: "Payments", cves: 2, components: 1 };
+    await insert("tenant", full);
+    await expect(insert("account", full)).rejects.toThrow(
+      "notification_intents_scope_check",
+    );
+    await expect(insert("tenant", full, null)).rejects.toThrow(
+      "notification_intents_vulnerability_subject",
+    );
+    await expect(insert("tenant", { ...full, name: null })).rejects.toThrow(
+      "notification_intents_vulnerability_subject",
+    );
+    await expect(insert("tenant", { ...full, cves: 0 })).rejects.toThrow(
+      "notification_intents_vulnerability_subject",
+    );
+    await expect(
+      insert("tenant", { ...full, components: null }),
+    ).rejects.toThrow("notification_intents_vulnerability_subject");
   });
 
   it("accepts old event types and monitor types in tenant scope only", async () => {
