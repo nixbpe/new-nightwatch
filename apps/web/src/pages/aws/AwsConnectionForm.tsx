@@ -17,6 +17,7 @@ import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { Input } from "../../components/ui/input";
+import { isAwsAccessDenied } from "../../lib/api/aws";
 import { ApiError } from "../../lib/api/client";
 
 type Failed = Extract<AwsTestResult, { ok: false }>["code"];
@@ -34,7 +35,7 @@ export function awsRequestError(error: unknown) {
     if (error.status === 403 || error.status === 404)
       return "คุณเข้าถึงการเชื่อมต่อนี้ไม่ได้";
     if (error.code === "AWS_CONNECTION_CHANGED")
-      return "การตั้งค่าเปลี่ยนแล้ว โปรดโหลดใหม่";
+      return "การตั้งค่าถูกแก้ไขจากคำขออื่น โหลดข้อมูลล่าสุดแล้ว ตรวจค่าที่กรอกแล้วทดสอบอีกครั้ง";
     if (error.code === "AWS_HUB_REQUIRED")
       return "ตั้งค่าบัญชีกลางขององค์กรก่อน";
     if (error.status === 429) return "ทดสอบบ่อยเกินไป โปรดลองใหม่ภายหลัง";
@@ -78,16 +79,21 @@ type State =
 
 export function AwsConnectionForm({
   initialRoleArn,
+  revision,
   canTest = true,
   saved,
   affected,
   check,
   disconnect,
   changed,
+  onDenied,
   access,
   disconnectFocus,
 }: {
   initialRoleArn: string | null;
+  /** Settings revision of the loaded data; enables the concurrent-change notice (AC-11). */
+  revision?: string;
+  onDenied?: () => void;
   disconnectFocus?: RefObject<HTMLElement | null>;
   canTest?: boolean;
   saved: boolean;
@@ -134,7 +140,20 @@ export function AwsConnectionForm({
   const valid = access
     ? awsProjectAccessKeySchema.safeParse(keyDraft).success
     : awsRoleArnSchema.safeParse(roleArn).success;
-  const canSave = state.phase === "tested" && state.result.ok;
+  // `base` is the revision the draft and its test belong to (AC-11). When the
+  // loaded revision moves, an untouched form (including one just saved or
+  // disconnected) takes the new value silently; over a draft, a test result
+  // or a pending request, the change is announced.
+  const [edited, setEdited] = useState(false);
+  const dirty = edited || busy || state.phase === "tested";
+  const [base, setBase] = useState(revision);
+  useEffect(() => {
+    if (revision === base || dirty) return;
+    setBase(revision);
+    setRoleArn(initialRoleArn ?? "");
+  }, [dirty, revision, base, initialRoleArn]);
+  const outdated = revision !== base && dirty && !busy;
+  const canSave = state.phase === "tested" && state.result.ok && !outdated;
   async function run(action: "test" | "save" | "disconnect") {
     if (
       flight.current ||
@@ -144,6 +163,7 @@ export function AwsConnectionForm({
       return;
     const abort = new AbortController();
     flight.current = abort;
+    setBase(revision);
     setState({
       phase:
         action === "test"
@@ -161,6 +181,7 @@ export function AwsConnectionForm({
         }
         if (abort.signal.aborted) return;
         setOpener(null);
+        setEdited(false);
         setRoleArn("");
         setKeyDraft({ ...keyDraft, accessKeyId: "", secretAccessKey: "" });
         setState({ phase: "idle" });
@@ -171,13 +192,25 @@ export function AwsConnectionForm({
         if (abort.signal.aborted) return;
         if (action === "save" && result.ok) {
           setKeyDraft({ ...keyDraft, accessKeyId: "", secretAccessKey: "" });
+          setEdited(false);
           setState({ phase: "saved" });
           await changed();
         } else setState({ phase: "tested", result });
       }
     } catch (error) {
-      if (!abort.signal.aborted)
-        setState({ phase: "error", message: awsRequestError(error) });
+      if (abort.signal.aborted) return;
+      setState({ phase: "error", message: awsRequestError(error) });
+      if (
+        error instanceof ApiError &&
+        error.code === "AWS_CONNECTION_CHANGED"
+      ) {
+        // The reload below shows the new value; the dialog would otherwise
+        // disconnect it straight away. Its opener may leave with the
+        // connection, so focus returns to the form (AC-13).
+        disconnected.current = true;
+        setOpener(null);
+        void changed();
+      } else if (isAwsAccessDenied(error)) onDenied?.();
     } finally {
       flight.current = null;
     }
@@ -223,18 +256,41 @@ export function AwsConnectionForm({
               spellCheck={false}
               data-testid="aws-role-arn"
               aria-invalid={roleArn.length > 0 && !valid}
-              aria-describedby="aws-role-format"
+              aria-describedby={
+                roleArn.length > 0 && !valid
+                  ? "aws-role-error aws-role-format"
+                  : "aws-role-format"
+              }
               onChange={(event) => {
                 setRoleArn(event.target.value);
+                setEdited(true);
                 setState({ phase: "idle" });
               }}
             />
           </label>
+          {roleArn.length > 0 && !valid && (
+            <p
+              id="aws-role-error"
+              data-testid="aws-role-arn-error"
+              className="text-sm text-danger"
+            >
+              Role ARN ไม่ถูกรูปแบบ
+            </p>
+          )}
           <p id="aws-role-format" className="text-sm text-muted-foreground">
             รูปแบบ: arn:aws:iam::123456789012:role/NightWatchRole
           </p>
         </>
       )}
+      <p
+        role="status"
+        data-testid="aws-connection-changed"
+        className="text-sm text-caution"
+      >
+        {outdated &&
+          state.phase !== "error" &&
+          "การตั้งค่าถูกแก้ไขจากคำขออื่น ข้อมูลด้านบนเป็นค่าล่าสุดแล้ว ตรวจค่าที่กรอกแล้วทดสอบอีกครั้งก่อนบันทึก"}
+      </p>
       {state.phase === "tested" &&
         (state.result.ok ? (
           <Alert tone="warning" role="status" data-testid="aws-test-passed">

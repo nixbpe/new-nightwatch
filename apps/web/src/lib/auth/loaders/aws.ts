@@ -1,6 +1,11 @@
 import type { LoaderFunctionArgs } from "react-router";
 
-import { awsKeys, fetchOrganizationAws, fetchProjectAws } from "../../api/aws";
+import {
+  awsKeys,
+  fetchOrganizationAws,
+  fetchProjectAws,
+  isAwsAccessDenied,
+} from "../../api/aws";
 import { resolveQueryClientForIdentity } from "../../queryClient";
 import { gateVerifiedSession, prefetchMeContext } from "./session";
 
@@ -32,7 +37,12 @@ export async function awsLoader({ params, request }: LoaderFunctionArgs) {
         queryFn: ({ signal }) => fetchOrganizationAws(organizationId, signal),
         staleTime: 0,
       })
-      .catch(() => undefined);
+      .catch(async (error: unknown) => {
+        // The context just said Owner/Admin, so a denial means it is out of
+        // date: load it again so the shell drops the menu entry. The page
+        // treats this cached denial as handled (AC-08).
+        if (isAwsAccessDenied(error)) await prefetchMeContext(session.user.id);
+      });
   }
   return null;
 }

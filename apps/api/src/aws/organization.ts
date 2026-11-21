@@ -8,7 +8,11 @@ import {
 } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
-import { recordAuditEvent, type AuditAction } from "../audit/record";
+import {
+  recordAuditEvent,
+  type AuditAction,
+  type AuditChange,
+} from "../audit/record";
 import { normalizeOrganizationRole } from "../me/service";
 import { assertMemberBeforeTenantContext } from "../organization-notifications/service";
 import type { RateLimiter } from "../rate-limit";
@@ -180,18 +184,23 @@ async function readHub(
   return hub;
 }
 
+function arnValue(roleArn: string | null): AuditChange["before"] {
+  return roleArn === null ? null : { kind: "value", value: roleArn };
+}
+
 async function auditHub(
   client: PoolClient,
   input: OrganizationIdentity,
   actorRole: "owner" | "admin",
   action: AuditAction,
+  changes: AuditChange[] = [],
 ) {
   await recordAuditEvent(client, {
     ...input,
     actorRole,
     action,
     target: { type: "aws_connection" },
-    changes: [],
+    changes,
   });
 }
 
@@ -213,6 +222,7 @@ export function getOrganizationAws(deps: AwsDeps, input: OrganizationIdentity) {
       [input.organizationId, hub.revision, hub.role_arn],
     );
     return {
+      revision: hub.revision,
       roleArn: hub.role_arn,
       accountId: hub.account_id,
       lastTestAt: hub.last_test_at?.toISOString() ?? null,
@@ -232,11 +242,13 @@ export async function checkOrganizationAws(
   deps: AwsDeps,
   input: OrganizationIdentity,
   roleArn: string,
+  revision: string,
   save: boolean,
 ) {
   const snapshot = await withOwner(deps, input, (client, _role, slug) =>
     readHub(client, input.organizationId, slug, false),
   );
+  if (snapshot.revision !== revision) staleConnection();
   const st = requireSts(deps);
   const limit = await limitAws(deps, input);
   if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
@@ -256,12 +268,29 @@ export async function checkOrganizationAws(
         revision = case when role_arn is distinct from $2 then gen_random_uuid() else revision end where tenant_id = $1`,
         [input.organizationId, roleArn, outcome.accountId, input.actorUserId],
       );
-      await auditHub(
-        client,
-        input,
-        actorRole,
-        "organization.aws_connection.update",
-      );
+      // AC-09: an update records the value it changed; saving the same ARN
+      // again only refreshes the test time, so it is recorded as a test.
+      if (current.role_arn === roleArn)
+        await auditHub(
+          client,
+          input,
+          actorRole,
+          "organization.aws_connection.test",
+        );
+      else
+        await auditHub(
+          client,
+          input,
+          actorRole,
+          "organization.aws_connection.update",
+          [
+            {
+              field: "roleArn",
+              before: arnValue(current.role_arn),
+              after: arnValue(roleArn),
+            },
+          ],
+        );
     } else {
       await auditHub(
         client,
@@ -277,19 +306,23 @@ export async function checkOrganizationAws(
 export function disconnectOrganizationAws(
   deps: AwsDeps,
   input: OrganizationIdentity,
+  revision: string,
 ) {
-  return withOwner(deps, input, async (client, actorRole) => {
-    const result = await client.query(
+  return withOwner(deps, input, async (client, actorRole, slug) => {
+    const current = await readHub(client, input.organizationId, slug, true);
+    if (current.revision !== revision) staleConnection();
+    if (current.role_arn === null) return;
+    await client.query(
       `update org_aws_connections set role_arn = null, account_id = null, last_test_at = null,
-      revision = gen_random_uuid(), updated_at = now(), updated_by = $2 where tenant_id = $1 and role_arn is not null`,
+      revision = gen_random_uuid(), updated_at = now(), updated_by = $2 where tenant_id = $1`,
       [input.organizationId, input.actorUserId],
     );
-    if (result.rowCount)
-      await auditHub(
-        client,
-        input,
-        actorRole,
-        "organization.aws_connection.delete",
-      );
+    await auditHub(
+      client,
+      input,
+      actorRole,
+      "organization.aws_connection.delete",
+      [{ field: "roleArn", before: arnValue(current.role_arn), after: null }],
+    );
   });
 }

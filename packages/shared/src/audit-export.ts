@@ -106,7 +106,8 @@ export type AuditChange = {
     | "alertFailureThreshold"
     | "alertDownEnabled"
     | "alertSslEnabled"
-    | "alertSslCautionDays";
+    | "alertSslCautionDays"
+    | "roleArn";
   key?: string | undefined;
   before: AuditValue | null;
   after: AuditValue | null;

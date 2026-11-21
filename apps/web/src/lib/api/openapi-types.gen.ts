@@ -5562,7 +5562,7 @@ export interface paths {
                                 };
                                 changes: {
                                     /** @enum {string} */
-                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "description" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays";
+                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "description" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays" | "roleArn";
                                     key?: string;
                                     before: ({
                                         /** @enum {string} */
@@ -6278,6 +6278,8 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            /** Format: uuid */
+                            revision: string;
                             roleArn: string | null;
                             accountId: string | null;
                             /** Format: date-time */
@@ -6402,6 +6404,8 @@ export interface paths {
                 content: {
                     "application/json": {
                         roleArn: string;
+                        /** Format: uuid */
+                        revision: string;
                     };
                 };
             };
@@ -6535,7 +6539,9 @@ export interface paths {
         post?: never;
         delete: {
             parameters: {
-                query?: never;
+                query: {
+                    revision: string;
+                };
                 header?: never;
                 path: {
                     organizationId: string;
@@ -6670,6 +6676,8 @@ export interface paths {
                 content: {
                     "application/json": {
                         roleArn: string;
+                        /** Format: uuid */
+                        revision: string;
                     };
                 };
             };

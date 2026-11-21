@@ -6,7 +6,7 @@ import {
 } from "@nightwatch/api-contract";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
-import { request } from "./client";
+import { ApiError, request } from "./client";
 
 const org = "/api/organizations/{organizationId}/aws-connection";
 const project =
@@ -19,6 +19,12 @@ export const awsKeys = {
   project: (organizationId: string, projectId: string) =>
     [...awsKeys.all(organizationId), "project", projectId] as const,
 };
+export function isAwsAccessDenied(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "MEMBERSHIP_DENIED" || error.code === "PERMISSION_DENIED")
+  );
+}
 export function fetchOrganizationAws(
   organizationId: string,
   signal?: AbortSignal,
@@ -31,11 +37,12 @@ export function fetchOrganizationAws(
 export function checkOrganizationAws(
   organizationId: string,
   roleArn: string,
+  revision: string,
   save: boolean,
   signal: AbortSignal,
 ) {
   const params = { organizationId };
-  const body = { roleArn };
+  const body = { roleArn, revision };
   return save
     ? request(org, awsTestResultSchema, { method: "PUT", params, body, signal })
     : request(`${org}/test`, awsTestResultSchema, {
@@ -91,11 +98,13 @@ export function disconnectProjectAws(
 
 export function disconnectOrganizationAws(
   organizationId: string,
+  revision: string,
   signal: AbortSignal,
 ) {
   return request(org, undefined, {
     method: "DELETE",
     params: { organizationId },
+    query: { revision },
     signal,
   });
 }

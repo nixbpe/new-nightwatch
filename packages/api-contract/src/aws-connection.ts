@@ -6,9 +6,14 @@ export const awsRoleArnSchema = z
   .regex(/^arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+$/);
 const accountId = z.string().regex(/^\d{12}$/);
 const testAt = z.iso.datetime();
+// `revision` is the settings revision the caller last read; a request made
+// against an older one is refused with 409 instead of overwriting (AC-11).
 export const awsOrganizationInputSchema = z
-  .object({ roleArn: awsRoleArnSchema })
+  .object({ roleArn: awsRoleArnSchema, revision: z.uuid() })
   .strict();
+export const awsOrganizationDisconnectQuerySchema = z.object({
+  revision: z.uuid(),
+});
 
 export const awsTestResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), accountId, arn: z.string() }),
@@ -25,6 +30,7 @@ export const awsTestResultSchema = z.discriminatedUnion("ok", [
 ]);
 
 export const awsOrganizationSchema = z.object({
+  revision: z.uuid(),
   roleArn: awsRoleArnSchema.nullable(),
   accountId: accountId.nullable(),
   lastTestAt: testAt.nullable(),
@@ -44,9 +50,9 @@ export const awsOrganizationSchema = z.object({
 export type AwsOrganization = z.infer<typeof awsOrganizationSchema>;
 export type AwsTestResult = z.infer<typeof awsTestResultSchema>;
 
-const awsProjectRoleInputSchema = awsOrganizationInputSchema.extend({
-  method: z.literal("assume_role"),
-});
+const awsProjectRoleInputSchema = z
+  .object({ roleArn: awsRoleArnSchema, method: z.literal("assume_role") })
+  .strict();
 export const awsProjectAccessKeySchema = z
   .object({
     method: z.literal("access_key"),

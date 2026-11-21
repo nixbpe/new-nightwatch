@@ -1,5 +1,6 @@
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import {
+  awsOrganizationDisconnectQuerySchema,
   awsOrganizationInputSchema,
   awsOrganizationSchema,
   awsProjectInputSchema,
@@ -118,6 +119,7 @@ export function registerAwsRoutes(
             deps,
             input,
             c.req.valid("json").roleArn,
+            c.req.valid("json").revision,
             method === "put",
           ),
         c.get("requestId"),
@@ -141,7 +143,7 @@ export function registerAwsRoutes(
       method: "delete",
       path,
       tags,
-      request: { params },
+      request: { params, query: awsOrganizationDisconnectQuerySchema },
       responses: { ...errors, 204: { description: "Disconnected" } },
     }),
     async (c) => {
@@ -149,7 +151,8 @@ export function registerAwsRoutes(
         c.req.raw.headers,
         c.req.valid("param").organizationId,
         "organization.aws_connection.delete",
-        (input) => disconnectOrganizationAws(deps, input),
+        (input) =>
+          disconnectOrganizationAws(deps, input, c.req.valid("query").revision),
         c.get("requestId"),
       );
       return c.body(null, 204);

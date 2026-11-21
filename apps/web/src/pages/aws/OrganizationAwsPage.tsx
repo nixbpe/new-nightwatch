@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -9,6 +10,7 @@ import {
   checkOrganizationAws,
   disconnectOrganizationAws,
   fetchOrganizationAws,
+  isAwsAccessDenied,
 } from "../../lib/api/aws";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
@@ -28,15 +30,31 @@ export function OrganizationAwsPage() {
 function OrganizationAws({ organizationId }: { organizationId: string }) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const queryClient = useQueryClient();
-  const { me, mePending } = useTenant();
+  const { me, mePending, refreshMembershipContext } = useTenant();
   const role = me?.organizations.find((org) => org.id === organizationId)?.role;
   const canManage = role === "owner" || role === "admin";
+  const queryKey = awsKeys.organization(organizationId);
   const query = useQuery({
-    queryKey: awsKeys.organization(organizationId),
+    queryKey,
     queryFn: ({ signal }) => fetchOrganizationAws(organizationId, signal),
-    enabled: !switched && canManage,
+    // A cached denial stops automatic refetches (mount, focus, invalidation):
+    // the shell remounts this page while the context reloads, and a context
+    // that still says Owner must not repeat the request.
+    enabled: (cached) =>
+      !switched && canManage && !isAwsAccessDenied(cached.state.error),
     retry: false,
   });
+  // A denial refreshes the context so the menu entry goes away (AC-08). Only
+  // one that arrived while this page was mounted counts: a cached one was
+  // handled by whoever stored it (the route loader or an earlier mount).
+  const [errorsAtMount] = useState(
+    () => queryClient.getQueryState(queryKey)?.errorUpdateCount ?? 0,
+  );
+  const freshDenial =
+    isAwsAccessDenied(query.error) && query.errorUpdateCount > errorsAtMount;
+  useEffect(() => {
+    if (freshDenial) void refreshMembershipContext();
+  }, [freshDenial, refreshMembershipContext]);
   if (switched) return null;
   const connection = query.data;
   return (
@@ -50,7 +68,7 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
         </Alert>
       ) : query.isPending ? (
         <p role="status">กำลังโหลดการเชื่อมต่อ AWS…</p>
-      ) : query.isError ? (
+      ) : query.isError && (!connection || isAwsAccessDenied(query.error)) ? (
         <Alert tone="error" role="alert">
           {awsRequestError(query.error)}{" "}
           <Button variant="outline" onClick={() => void query.refetch()}>
@@ -60,6 +78,15 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
       ) : (
         connection && (
           <div className="space-y-6">
+            {query.isError && (
+              // A failed refetch keeps the form and its draft (AC-07, AC-11).
+              <Alert tone="error" role="alert" data-testid="aws-refresh-error">
+                โหลดข้อมูลล่าสุดไม่สำเร็จ ข้อมูลด้านล่างอาจไม่ใช่สถานะปัจจุบัน{" "}
+                <Button variant="outline" onClick={() => void query.refetch()}>
+                  ลองใหม่
+                </Button>
+              </Alert>
+            )}
             <p>
               {connection.accountId
                 ? `บัญชี AWS ${connection.accountId}`
@@ -84,15 +111,27 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
             )}
             <AwsConnectionForm
               initialRoleArn={connection.roleArn}
+              revision={connection.revision}
               canTest={connection.trustPolicy !== null}
               saved={connection.roleArn !== null}
               affected={`มี ${String(connection.projects.length)} โปรเจกต์แบบ assume role ที่ต้องตั้งค่าบัญชีกลางและทดสอบใหม่`}
               check={(arn, save, signal) =>
-                checkOrganizationAws(organizationId, arn, save, signal)
+                checkOrganizationAws(
+                  organizationId,
+                  arn,
+                  connection.revision,
+                  save,
+                  signal,
+                )
               }
               disconnect={(signal) =>
-                disconnectOrganizationAws(organizationId, signal)
+                disconnectOrganizationAws(
+                  organizationId,
+                  connection.revision,
+                  signal,
+                )
               }
+              onDenied={() => void refreshMembershipContext()}
               changed={() =>
                 queryClient.invalidateQueries({
                   queryKey: awsKeys.all(organizationId),
