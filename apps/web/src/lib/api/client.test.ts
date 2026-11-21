@@ -356,6 +356,7 @@ describe("requestUpload", () => {
   const params = { organizationId: "org-1", projectId: "project-1" };
   const summary = {
     canUpload: true,
+    mappings: { pending: 0, confirmed: 0, unmapped: 0 },
     systemCount: 0,
     totalRows: 0,
     usableRows: 0,

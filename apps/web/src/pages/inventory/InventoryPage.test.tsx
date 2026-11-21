@@ -32,6 +32,7 @@ const uploadMock = vi.mocked(uploadInventory);
 function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
   return {
     canUpload: true,
+    mappings: { pending: 0, confirmed: 0, unmapped: 0 },
     systemCount: 2,
     totalRows: 40,
     usableRows: 36,

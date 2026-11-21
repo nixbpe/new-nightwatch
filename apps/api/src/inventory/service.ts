@@ -65,6 +65,21 @@ async function summarize(
      where s.tenant_id = $1 and s.project_id = $2 order by s.name_key`,
     [tenant, project],
   );
+  const counts = await client.query<{ status: string; total: number }>(
+    `select status, count(*)::int as total from inventory_mappings
+     where tenant_id = $1 and project_id = $2 group by status`,
+    [tenant, project],
+  );
+  const mappings = { pending: 0, confirmed: 0, unmapped: 0 };
+  for (const row of counts.rows) {
+    if (
+      row.status === "pending" ||
+      row.status === "confirmed" ||
+      row.status === "unmapped"
+    ) {
+      mappings[row.status] = row.total;
+    }
+  }
   const systems = rows.map(toSystem);
   const last = rows.reduce<SystemRow | undefined>(
     (latest, row) =>
@@ -73,6 +88,7 @@ async function summarize(
   );
   return {
     canUpload,
+    mappings,
     systemCount: systems.length,
     totalRows: systems.reduce((sum, system) => sum + system.totalRows, 0),
     usableRows: systems.reduce((sum, system) => sum + system.usableRows, 0),
