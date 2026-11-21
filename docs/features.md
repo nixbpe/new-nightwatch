@@ -77,7 +77,11 @@
 
 ## ช่องโหว่ของ Project (E-005 F-019)
 
-[API](../apps/api/src/vulnerability/), [client ดึง feed](../apps/api/src/vulnerability/feeds.ts), [match ราย product](../apps/api/src/vulnerability/matcher.ts), [สัญญา](../packages/api-contract/src/vulnerability.ts), [Web](../apps/web/src/pages/vulnerabilities/VulnerabilitiesPage.tsx), [migration](../packages/db/migrations/0032_vulnerability_matching.sql), [browser test](../e2e/tests/vulnerabilities.spec.ts).
+[API](../apps/api/src/vulnerability/), [client ดึง feed](../packages/shared/src/vulnerability/feeds.ts), [match ราย product](../packages/shared/src/vulnerability/matcher.ts), [SQL ของ run](../packages/db/src/vulnerability-run.ts), [สัญญา](../packages/api-contract/src/vulnerability.ts), [Web](../apps/web/src/pages/vulnerabilities/VulnerabilitiesPage.tsx), [migration](../packages/db/migrations/0032_vulnerability_matching.sql), [browser test](../e2e/tests/vulnerabilities.spec.ts).
+
+## ตรวจ CVE ต่อเนื่อง (E-005 F-020)
+
+[scanner ใน worker](../apps/worker/src/vulnerability/scanner.ts) (role `vulnerability-scanner`, ดู [runbook](runbooks/uptime-monitor.md#run-the-worker-roles)), [SQL ของ run และ schedule](../packages/db/src/vulnerability-run.ts), [loop ประมวลผล unit และ KEV](../packages/shared/src/vulnerability/process.ts), [limiter ของ NVD](../packages/shared/src/rate-limit.ts), [API CVE ใหม่](../apps/api/src/vulnerability/service.ts), [Web](../apps/web/src/pages/vulnerabilities/NewVulnerabilitiesPage.tsx), [migration](../packages/db/migrations/0033_vulnerability_monitoring.sql), [browser test](../e2e/tests/vulnerabilities.spec.ts).
 
 ## สัญญา API
 
