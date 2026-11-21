@@ -92,9 +92,22 @@ test("owner connects a hub and a Project with both STS methods; Project member c
     );
 
     const secondSession = await signInApi(owner);
+    // A write names the settings revision it was made against (AC-11).
+    const hubRevision = async () => {
+      const { body } = await secondSession.request(
+        "GET",
+        `/api${org}/aws-connection`,
+      );
+      expect(body).toMatchObject({ revision: expect.any(String) });
+      return (body as { revision: string }).revision;
+    };
     expect(
-      (await secondSession.request("DELETE", `/api${org}/aws-connection`))
-        .status,
+      (
+        await secondSession.request(
+          "DELETE",
+          `/api${org}/aws-connection?revision=${await hubRevision()}`,
+        )
+      ).status,
     ).toBe(204);
     await page.getByTestId("project-aws-card").getByRole("link").click();
     await expect(page.getByTestId("aws-connection-status")).toContainText(
@@ -147,6 +160,7 @@ test("owner connects a hub and a Project with both STS methods; Project member c
       (
         await secondSession.request("PUT", `/api${org}/aws-connection`, {
           roleArn: hubRole,
+          revision: await hubRevision(),
         })
       ).body,
     ).toMatchObject({ ok: true });

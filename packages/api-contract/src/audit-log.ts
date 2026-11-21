@@ -120,6 +120,7 @@ export const AUDIT_CHANGE_FIELDS = [
   "alertDownEnabled",
   "alertSslEnabled",
   "alertSslCautionDays",
+  "roleArn",
 ] as const;
 export type AuditChangeField = (typeof AUDIT_CHANGE_FIELDS)[number];
 

@@ -22,6 +22,7 @@ const organizationId = randomUUID();
 const actorUserId = randomUUID();
 const viewer = randomUUID();
 const input = { organizationId, actorUserId, requestId: randomUUID() };
+const revision = async () => (await getOrganizationAws(deps, input)).revision;
 const roleArn = "arn:aws:iam::123456789012:role/Hub";
 const identity = {
   accountId: "123456789012",
@@ -92,16 +93,20 @@ it("keeps drafts separate from the saved hub and redacts audit metadata", async 
     getOrganizationAws(deps, { ...input, actorUserId: viewer }),
   ).rejects.toMatchObject({ statusCode: 403 });
   await expect(
-    checkOrganizationAws(deps, input, roleArn, false),
+    checkOrganizationAws(deps, input, roleArn, await revision(), false),
   ).resolves.toEqual({ ok: true, ...identity });
   expect((await getOrganizationAws(deps, input)).roleArn).toBeNull();
   await expect(
-    checkOrganizationAws(deps, input, roleArn, true),
+    checkOrganizationAws(deps, input, roleArn, await revision(), true),
+  ).resolves.toEqual({ ok: true, ...identity });
+  // Saving the same ARN again changes nothing but the test time.
+  await expect(
+    checkOrganizationAws(deps, input, roleArn, await revision(), true),
   ).resolves.toEqual({ ok: true, ...identity });
   const other = "arn:aws:iam::222222222222:role/Other";
-  await expect(checkOrganizationAws(deps, input, other, true)).resolves.toEqual(
-    { ok: false, code: "AWS_ACCOUNT_MISMATCH" },
-  );
+  await expect(
+    checkOrganizationAws(deps, input, other, await revision(), true),
+  ).resolves.toEqual({ ok: false, code: "AWS_ACCOUNT_MISMATCH" });
   expect((await getOrganizationAws(deps, input)).roleArn).toBe(roleArn);
   const calls = organization.mock.calls.length;
   consumeRateLimits.mockResolvedValueOnce({
@@ -109,10 +114,10 @@ it("keeps drafts separate from the saved hub and redacts audit metadata", async 
     retryAfterSeconds: 12,
   });
   await expect(
-    checkOrganizationAws(deps, input, roleArn, true),
+    checkOrganizationAws(deps, input, roleArn, await revision(), true),
   ).resolves.toEqual({ retryAfterSeconds: 12 });
   expect(organization).toHaveBeenCalledTimes(calls);
-  await disconnectOrganizationAws(deps, input);
+  await disconnectOrganizationAws(deps, input, await revision());
   expect(await getOrganizationAws(deps, input)).toMatchObject({
     roleArn: null,
     externalId: first.externalId,
@@ -123,14 +128,54 @@ it("keeps drafts separate from the saved hub and redacts audit metadata", async 
       [organizationId],
     ),
   );
+  const arn = { kind: "value", value: roleArn };
   expect(audit.rows).toEqual(
-    ["test", "update", "test", "delete"].map((action) => ({
+    (
+      [
+        ["test", []],
+        ["update", [{ field: "roleArn", before: null, after: arn }]],
+        ["test", []],
+        ["test", []],
+        ["delete", [{ field: "roleArn", before: arn, after: null }]],
+      ] as const
+    ).map(([action, changes]) => ({
       action: `organization.aws_connection.${action}`,
       request_id: input.requestId,
       target_attributes: {},
-      changes: [],
+      changes,
     })),
   );
+});
+
+it("F-013 AC-11 refuses a test, save or disconnect made against an older revision", async () => {
+  const start = await getOrganizationAws(deps, input);
+  if (start.roleArn !== null)
+    await disconnectOrganizationAws(deps, input, start.revision);
+  // Saving an ARN over no connection moves the revision.
+  const seen = await revision();
+  await checkOrganizationAws(deps, input, roleArn, seen, true);
+  const current = await getOrganizationAws(deps, input);
+  expect(current.revision).not.toBe(seen);
+  const calls = organization.mock.calls.length;
+  const limits = consumeRateLimits.mock.calls.length;
+  const other = "arn:aws:iam::123456789012:role/Other";
+  for (const save of [false, true])
+    await expect(
+      checkOrganizationAws(deps, input, other, seen, save),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "AWS_CONNECTION_CHANGED",
+    });
+  await expect(
+    disconnectOrganizationAws(deps, input, seen),
+  ).rejects.toMatchObject({ statusCode: 409, code: "AWS_CONNECTION_CHANGED" });
+  expect(organization).toHaveBeenCalledTimes(calls);
+  expect(consumeRateLimits).toHaveBeenCalledTimes(limits);
+  expect(await getOrganizationAws(deps, input)).toMatchObject({
+    revision: current.revision,
+    roleArn,
+  });
+  await disconnectOrganizationAws(deps, input, current.revision);
 });
 
 it("rejects late Project verification after a hub change and retains historical state", async () => {
@@ -153,7 +198,7 @@ it("rejects late Project verification after a hub change and retains historical 
   await expect(
     checkProjectAws(deps, reader, projectConfig, true),
   ).rejects.toMatchObject({ statusCode: 403 });
-  await checkOrganizationAws(deps, input, roleArn, true);
+  await checkOrganizationAws(deps, input, roleArn, await revision(), true);
   await checkProjectAws(deps, projectInput, projectConfig, true);
   expect(await getProjectAws(deps, reader)).toMatchObject({
     state: "connected",
@@ -170,7 +215,7 @@ it("rejects late Project verification after a hub change and retains historical 
   ).rejects.toMatchObject({ statusCode: 409, code: "AWS_CONNECTION_CHANGED" });
   await started.promise;
   try {
-    await disconnectOrganizationAws(deps, input);
+    await disconnectOrganizationAws(deps, input, await revision());
   } finally {
     late.resolve(identity);
   }
@@ -180,7 +225,7 @@ it("rejects late Project verification after a hub change and retains historical 
     method: "assume_role",
     settings: { hubConnected: false, roleArn },
   });
-  await checkOrganizationAws(deps, input, roleArn, true);
+  await checkOrganizationAws(deps, input, roleArn, await revision(), true);
   await checkProjectAws(deps, projectInput, projectConfig, false);
   expect(await getProjectAws(deps, reader)).toMatchObject({
     state: "needs_retest",
