@@ -3,7 +3,7 @@ import type {
   OrganizationAwsProject,
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -54,10 +54,26 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
   const query = useQuery({
     queryKey,
     queryFn: () => fetchOrganizationAwsConnection(organizationId),
-    enabled: allowed && deniedByServer === null,
+    // A cached denial stops every automatic refetch (mount, focus,
+    // invalidation): the shell remounts this page while the context reloads,
+    // and a context that still says Owner must not repeat the request.
+    enabled: (cached) =>
+      allowed && deniedByServer === null && !isDenied(cached.state.error),
     retry: false,
   });
   const queryDenied = isDenied(query.error) ? query.error.code : null;
+  // Only a denial that arrived while this page was mounted refreshes the
+  // context (hiding the menu entry, AC-08); one restored from the cache after
+  // that refresh does not, so a context that still says Owner cannot loop.
+  const [errorsAtMount] = useState(
+    () => queryClient.getQueryState(queryKey)?.errorUpdateCount ?? 0,
+  );
+  const freshDenial =
+    queryDenied !== null && query.errorUpdateCount > errorsAtMount;
+  useEffect(() => {
+    if (freshDenial)
+      void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+  }, [freshDenial, queryClient]);
   // A Test, Save or Disconnect denial latches, drops the cached settings and
   // refreshes the context, which then hides the menu entry (AC-08, AC-11).
   const denyAction = (code: DeniedCode) => {

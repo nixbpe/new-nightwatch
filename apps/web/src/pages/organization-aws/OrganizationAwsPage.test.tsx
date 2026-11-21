@@ -231,6 +231,67 @@ describe("F-013 AC-08 organization menu and access", () => {
     expect(screen.queryByTestId("aws-connection-card")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("R-WEB-7 AC-08 a server 403 on the first load refreshes the context and hides the menu entry", async () => {
+    fetchMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "denied", 403),
+    );
+    // The first context load says Owner; the refresh learns the new role.
+    fetchMeContextMock
+      .mockResolvedValueOnce(meContext("owner"))
+      .mockResolvedValueOnce(meContext("viewer"));
+    renderPage();
+    expect(await screen.findByTestId("aws-denied")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("shell-navigation")).queryByTestId(AWS_LEAF),
+      ).toBeNull();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R-WEB-7 AC-08 a refreshed context that still says Owner does not repeat the settings request", async () => {
+    fetchMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "denied", 403),
+    );
+    renderPage();
+    expect(await screen.findByTestId("aws-denied")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.getByTestId("aws-denied")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("R-WEB-7 AC-08 a 403 on a refetch over loaded settings does not loop with a context that still says Owner", async () => {
+    fetchMock
+      .mockResolvedValueOnce(connected())
+      .mockRejectedValue(new ApiError("PERMISSION_DENIED", "denied", 403));
+    const { queryClient } = renderPage();
+    await screen.findByTestId("aws-connection-card");
+    await act(async () => {
+      await queryClient
+        .refetchQueries({ queryKey: ["tenant", "aws-connection", ORG_A] })
+        .catch(() => undefined);
+    });
+    expect(await screen.findByTestId("aws-denied")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.getByTestId("aws-denied")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("F-013 AC-10 page states", () => {
@@ -785,7 +846,77 @@ describe("F-013 repair round 1", () => {
     expect(screen.getByTestId("aws-test-passed")).toHaveTextContent(
       "ผลนี้ทดสอบกับข้อมูลก่อนโหลดใหม่",
     );
+    // The stale result already carries the change; no second notice.
+    expect(screen.queryByTestId("aws-connection-changed")).toBeNull();
     expect(screen.getByTestId("aws-connection-save")).toBeDisabled();
+  });
+
+  it.each(["new draft", "edit"] as const)(
+    "R-WEB-11 AC-11 another request changing the connection under an untested %s shows a notice",
+    async (kind) => {
+      const changed = connected({ revision: kind === "edit" ? 4 : 1 });
+      if (changed.connection !== null) {
+        changed.connection.roleArn = OTHER_ARN;
+        changed.connection.updatedBy = { id: "user-2", name: "วิภา ศรีสุข" };
+      }
+      fetchMock
+        .mockResolvedValueOnce(kind === "edit" ? connected() : notConnected())
+        .mockResolvedValue(changed);
+      testMock.mockResolvedValue(passed);
+      const { queryClient } = renderPage();
+      const user = userEvent.setup();
+      if (kind === "edit") {
+        await user.click(await screen.findByTestId("aws-connection-edit"));
+      } else {
+        await typeArn(ARN);
+      }
+      expect(screen.queryByTestId("aws-connection-changed")).toBeNull();
+      await act(async () => {
+        await queryClient.invalidateQueries({
+          queryKey: ["tenant", "aws-connection", ORG_A],
+        });
+      });
+      expect(
+        await screen.findByTestId("aws-connection-changed"),
+      ).toHaveTextContent("การเชื่อมต่อ AWS เพิ่งถูกแก้ไขจากคำขออื่น");
+      expect(screen.getByTestId("aws-connection-role-arn")).toHaveTextContent(
+        OTHER_ARN,
+      );
+      expect(screen.getByTestId("aws-role-arn")).toHaveValue(ARN);
+      // Testing against the latest data acknowledges the change.
+      await user.click(screen.getByTestId("aws-connection-test"));
+      expect(await screen.findByTestId("aws-test-passed")).toBeInTheDocument();
+      expect(screen.queryByTestId("aws-connection-changed")).toBeNull();
+      expect(screen.getByTestId("aws-connection-save")).toBeEnabled();
+    },
+  );
+
+  it("R-WEB-11 AC-11 a failed test result does not hide the change notice", async () => {
+    fetchMock
+      .mockResolvedValueOnce(notConnected())
+      .mockResolvedValue(connected({ revision: 1 }));
+    testMock.mockResolvedValue({ result: "failed", code: "AWS_ACCESS_DENIED" });
+    const { queryClient } = renderPage();
+    const { user } = await typeArn(OTHER_ARN);
+    await user.click(screen.getByTestId("aws-connection-test"));
+    expect(await screen.findByTestId("aws-test-failed")).toBeInTheDocument();
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tenant", "aws-connection", ORG_A],
+      });
+    });
+    expect(
+      await screen.findByTestId("aws-connection-changed"),
+    ).toBeInTheDocument();
+    // A failed test against the latest data still acknowledges the change.
+    await user.click(screen.getByTestId("aws-connection-test"));
+    await waitFor(() => {
+      expect(testMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("aws-connection-changed")).toBeNull();
+    });
+    expect(screen.getByTestId("aws-test-failed")).toBeInTheDocument();
   });
 
   it("R-WEB-3 a failed refetch keeps the card and offers an inline retry", async () => {

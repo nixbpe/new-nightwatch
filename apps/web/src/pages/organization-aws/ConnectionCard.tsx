@@ -75,6 +75,9 @@ export function ConnectionCard({
     error: string | null;
   } | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  // The revision a draft started from, or was last tested against; another
+  // request moving it past that point gets a notice (AC-11).
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
   // Every request takes a ticket; editing the ARN or leaving the page voids it,
   // so a late answer never replaces what the form now shows (AC-11).
   const ticket = useRef(0);
@@ -178,6 +181,7 @@ export function ConnectionCard({
     const id = begin({ kind: "testing", roleArn: arn });
     if (id === null) return;
     const revision = data.revision;
+    if (formOpen) setDraftRevision(revision);
     try {
       const result = await testOrganizationAwsConnection(organizationId, {
         roleArn: arn,
@@ -202,6 +206,7 @@ export function ConnectionCard({
       onUpdated(next);
       setEditing(false);
       setRoleArn("");
+      setDraftRevision(null);
       setAttempt({ kind: "saved" });
       heading.current?.focus();
     } catch (error) {
@@ -224,6 +229,7 @@ export function ConnectionCard({
       setAttempt({ kind: "idle" });
       setEditing(false);
       setRoleArn("");
+      setDraftRevision(null);
       setDisconnected(true);
     } catch (error) {
       if (id !== ticket.current) return;
@@ -252,6 +258,9 @@ export function ConnectionCard({
   function changeRoleArn(value: string) {
     setRoleArn(value);
     setFieldError(null);
+    setDraftRevision((current) =>
+      value === "" ? null : (current ?? data.revision),
+    );
     // A pending test, its result or a failed request (with its retry) all
     // belong to the old value.
     if (
@@ -268,6 +277,7 @@ export function ConnectionCard({
   function startEditing() {
     setEditing(true);
     setRoleArn(connection?.roleArn ?? "");
+    setDraftRevision(data.revision);
     setAttempt({ kind: "idle" });
     setDisconnected(false);
   }
@@ -277,6 +287,7 @@ export function ConnectionCard({
     busy.current = false;
     setEditing(false);
     setRoleArn("");
+    setDraftRevision(null);
     setFieldError(null);
     setAttempt({ kind: "idle" });
   }
@@ -287,8 +298,18 @@ export function ConnectionCard({
     attempt.roleArn === (formOpen ? roleArn : connection.roleArn)
       ? attempt
       : null;
+  // A passed result tested before the change already says it is stale; the
+  // 409 notice asks for a reload.
+  const draftOutdated =
+    roleArn !== "" &&
+    draftRevision !== null &&
+    draftRevision !== data.revision &&
+    !conflict &&
+    !pending &&
+    shownResult?.result.result !== "passed";
   const hasMessages =
     conflict ||
+    draftOutdated ||
     disconnected ||
     shownResult !== null ||
     (attempt.kind !== "idle" && attempt.kind !== "tested");
@@ -427,6 +448,15 @@ export function ConnectionCard({
             <Notice data-testid="aws-connection-disconnected" tone="success">
               ยกเลิกการเชื่อมต่อแล้ว External ID ยังเป็นค่าเดิม
             </Notice>
+          ) : null}
+          {draftOutdated ? (
+            <p
+              data-testid="aws-connection-changed"
+              className="text-sm text-caution"
+            >
+              การเชื่อมต่อ AWS เพิ่งถูกแก้ไขจากคำขออื่น
+              ข้อมูลด้านบนเป็นค่าล่าสุดแล้ว ตรวจ Role ARN ที่คุณกรอกก่อนทดสอบ
+            </p>
           ) : null}
           {shownResult === null ? null : (
             <TestResult
