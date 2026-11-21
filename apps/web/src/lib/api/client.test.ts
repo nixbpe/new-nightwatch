@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   invitationResponseSchema,
+  inventorySummarySchema,
   meContextResponseSchema,
   type MeContextResponse,
 } from "@nightwatch/api-contract";
-import { ApiError, request, requestFile } from "./client";
+import { ApiError, request, requestFile, requestUpload } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -176,6 +177,19 @@ describe.each([
       request("/api/me/context", meContextResponseSchema, { signal }),
   ],
   [
+    "requestUpload",
+    (signal?: AbortSignal) =>
+      requestUpload(
+        "/api/organizations/{organizationId}/projects/{projectId}/inventory",
+        inventorySummarySchema,
+        {
+          params: { organizationId: "org-1", projectId: "project-1" },
+          file: new File(["System"], "inventory.csv"),
+          signal,
+        },
+      ),
+  ],
+  [
     "requestFile",
     (signal?: AbortSignal) =>
       requestFile(
@@ -332,6 +346,65 @@ describe("requestFile", () => {
     await expect(requestFile(path, { params })).rejects.toMatchObject({
       code: "NETWORK_ERROR",
       status: 0,
+    });
+  });
+});
+
+describe("requestUpload", () => {
+  const path =
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory" as const;
+  const params = { organizationId: "org-1", projectId: "project-1" };
+  const summary = {
+    canUpload: true,
+    systemCount: 0,
+    totalRows: 0,
+    usableRows: 0,
+    lastUploadAt: null,
+    lastUploadFileName: null,
+    systems: [],
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the file as multipart field `file` with the boundary left to the browser", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, summary));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["System,Owner"], "inventory.csv", {
+      type: "text/csv",
+    });
+
+    const result = await requestUpload(path, inventorySummarySchema, {
+      params,
+      file,
+    });
+
+    expect(result).toEqual(summary);
+    const sent = issuedRequest(fetchMock);
+    expect(sent.method).toBe("POST");
+    expect(new URL(sent.url).pathname).toBe(
+      "/api/organizations/org-1/projects/project-1/inventory",
+    );
+    expect(sent.headers.get("content-type")).toMatch(
+      /^multipart\/form-data; boundary=/,
+    );
+    const form = await sent.formData();
+    const sentFile = form.get("file");
+    expect(sentFile).toBeInstanceOf(File);
+    expect((sentFile as File).name).toBe("inventory.csv");
+    await expect((sentFile as File).text()).resolves.toBe("System,Owner");
+  });
+
+  it("rejects a reply that does not match the contract", async () => {
+    stubFetch(jsonResponse(200, { systemCount: "many" }));
+    const failure: unknown = await requestUpload(path, inventorySummarySchema, {
+      params,
+      file: new File(["x"], "inventory.csv"),
+    }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "CONTRACT_MISMATCH",
+      status: 200,
     });
   });
 });

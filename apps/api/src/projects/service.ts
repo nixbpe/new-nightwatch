@@ -29,6 +29,7 @@ import {
   projectAccessOf,
   projectNotFound,
   type ProjectAction,
+  type ProjectAccess,
 } from "./access";
 
 export type Identity = {
@@ -160,7 +161,11 @@ async function lockProject(
   organizationRole: OrganizationRole,
   action: ProjectAction,
   exclusive = true,
-): Promise<{ name: string; description: string | null }> {
+): Promise<{
+  name: string;
+  description: string | null;
+  access: ProjectAccess;
+}> {
   const locked = await client.query<{
     name: string;
     description: string | null;
@@ -176,11 +181,9 @@ async function lockProject(
      where tenant_id = $1 and project_id = $2 and user_id = $3`,
     [identity.organizationId, projectId, identity.actorUserId],
   );
-  assertProjectAccess(
-    projectAccessOf(organizationRole, mine.rows[0]?.role ?? null),
-    action,
-  );
-  return row;
+  const access = projectAccessOf(organizationRole, mine.rows[0]?.role ?? null);
+  assertProjectAccess(access, action);
+  return { ...row, access };
 }
 
 function parseProjectId(raw: string): string {
@@ -414,7 +417,11 @@ export async function withProjectAccess<T>(
   exclusive: boolean,
   work: (
     client: PoolClient,
-    context: { projectId: string; actorRole: OrganizationRole },
+    context: {
+      projectId: string;
+      actorRole: OrganizationRole;
+      access: ProjectAccess;
+    },
   ) => Promise<T>,
 ): Promise<T> {
   await assertMemberBeforeTenantContext(
@@ -430,8 +437,15 @@ export async function withProjectAccess<T>(
       const actorRole = isReadAction(action)
         ? await readOrganizationRole(client, input)
         : await enterOrganization(client, input);
-      await lockProject(client, input, projectId, actorRole, action, exclusive);
-      return work(client, { projectId, actorRole });
+      const { access } = await lockProject(
+        client,
+        input,
+        projectId,
+        actorRole,
+        action,
+        exclusive,
+      );
+      return work(client, { projectId, actorRole, access });
     },
   );
 }

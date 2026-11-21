@@ -84,6 +84,7 @@ export {
 } from "./health";
 export { versionResponseSchema, type VersionResponse } from "./version";
 export * from "./audit-log";
+export * from "./inventory";
 export * from "./monitor";
 export * from "./project";
 export * from "./aws-connection";

@@ -49,6 +49,12 @@ import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
+import {
+  inventoryLoader,
+  inventoryRejectedRowsLoader,
+} from "./lib/auth/loaders/inventory";
+import { InventoryPage } from "./pages/inventory/InventoryPage";
+import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -173,6 +179,16 @@ export const routes: RouteObject[] = [
             path: "/workspace",
             loader: workspaceLoader,
             element: <WorkspaceEntryFallback />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory",
+            loader: inventoryLoader,
+            element: <InventoryPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",
+            loader: inventoryRejectedRowsLoader,
+            element: <RejectedRowsPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/overview",

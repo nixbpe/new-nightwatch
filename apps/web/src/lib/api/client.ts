@@ -232,9 +232,15 @@ type FileOperation<P extends keyof paths> = Exclude<
   undefined
 >;
 
+type FileContent =
+  | { "text/csv": string }
+  | {
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+    };
+
 type FilePaths = {
   [P in keyof paths]: FileOperation<P> extends {
-    responses: { 200: { content: { "text/csv": string } } };
+    responses: { 200: { content: FileContent } };
   }
     ? P
     : never;
@@ -291,4 +297,72 @@ export async function requestFile<P extends FilePaths>(
     blob: data instanceof Blob ? data : new Blob([]),
     filename: filenameOf(response.headers.get("Content-Disposition")),
   };
+}
+
+type UploadPaths = {
+  [P in keyof paths]: paths[P] extends {
+    post: { requestBody: { content: { "multipart/form-data": unknown } } };
+  }
+    ? P
+    : never;
+}[keyof paths];
+
+/**
+ * POSTs one file as `multipart/form-data` field `file` and validates the JSON reply;
+ * errors use the JSON envelope like `request`. The browser sets the boundary header.
+ */
+export async function requestUpload<P extends UploadPaths, TResult>(
+  path: P,
+  schema: ZodType<TResult>,
+  options: {
+    params: PathParamsFor<P, "POST">;
+    file: File;
+    signal?: AbortSignal;
+  },
+): Promise<TResult> {
+  const call = client.POST as unknown as (
+    url: string,
+    init: {
+      params: { path: Record<string, string> };
+      body: { file: File };
+      bodySerializer: (body: { file: File }) => FormData;
+      parseAs: "text";
+      signal?: AbortSignal;
+    },
+  ) => Promise<ClientOutcome>;
+  let outcome: ClientOutcome;
+  try {
+    outcome = await call(path, {
+      params: { path: options.params },
+      body: { file: options.file },
+      bodySerializer: (body) => {
+        const form = new FormData();
+        form.append("file", body.file);
+        return form;
+      },
+      parseAs: "text",
+      signal: options.signal,
+    });
+  } catch {
+    throw new ApiError("NETWORK_ERROR", "Could not reach the API", 0);
+  }
+  const { data, error, response } = outcome;
+  if (!response.ok) {
+    throw errorEnvelopeToApiError(error, response.status);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(typeof data === "string" ? data : "null");
+  } catch {
+    body = null;
+  }
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new ApiError(
+      "CONTRACT_MISMATCH",
+      "API response did not match the contract",
+      response.status,
+    );
+  }
+  return parsed.data;
 }
