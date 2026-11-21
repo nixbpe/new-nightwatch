@@ -95,15 +95,28 @@ export const authEnvSchema = z
  * What the Worker needs to send mail: the SMTP server, the sender and the browser origin
  * for links. The sender is required here; the API defaults it from the auth settings.
  */
-export const smtpEnvSchema = z.object({
-  APP_URL: z.url().default("http://localhost:5173"),
-  SMTP_HOST: z.string().min(1).default("127.0.0.1"),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
-  SMTP_SECURE: envBoolean.default(false),
-  SMTP_USER: z.string().min(1).optional(),
-  SMTP_PASSWORD: z.string().min(1).optional(),
-  SMTP_FROM: z.string().min(1),
-});
+// A container passes a variable that is not set as an empty string; it means "not set".
+const emptyAsUnset = (value: unknown) => (value === "" ? undefined : value);
+
+export const smtpEnvSchema = z
+  .object({
+    APP_URL: z.url().default("http://localhost:5173"),
+    SMTP_HOST: z.string().min(1).default("127.0.0.1"),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
+    SMTP_SECURE: z.preprocess(emptyAsUnset, envBoolean.default(false)),
+    SMTP_USER: z.preprocess(emptyAsUnset, z.string().min(1).optional()),
+    SMTP_PASSWORD: z.preprocess(emptyAsUnset, z.string().min(1).optional()),
+    SMTP_FROM: z.string().min(1),
+  })
+  .superRefine((value, ctx) => {
+    if (Boolean(value.SMTP_USER) !== Boolean(value.SMTP_PASSWORD)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [value.SMTP_USER ? "SMTP_PASSWORD" : "SMTP_USER"],
+        message: "SMTP_USER and SMTP_PASSWORD are set together",
+      });
+    }
+  });
 export type SmtpEnv = z.infer<typeof smtpEnvSchema>;
 
 export function loadSmtpEnv(source: NodeJS.ProcessEnv = process.env): SmtpEnv {
