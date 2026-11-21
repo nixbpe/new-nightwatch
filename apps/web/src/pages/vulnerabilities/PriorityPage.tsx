@@ -168,7 +168,7 @@ function Priority({
                 <tbody>
                   {data.items.map((item) => (
                     <tr
-                      key={String(item.rank)}
+                      key={`${item.cveId}|${item.systemId}|${item.vendor}|${item.product}|${item.version}`}
                       data-testid={`priority-item-${String(item.rank)}`}
                       className="border-t border-foreground/10 align-top"
                     >

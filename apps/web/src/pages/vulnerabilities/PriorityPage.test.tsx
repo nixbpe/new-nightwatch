@@ -1,6 +1,7 @@
 import type { PriorityItem, PriorityList } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -79,6 +80,7 @@ function renderPage() {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return client;
 }
 
 beforeEach(() => {
@@ -190,6 +192,37 @@ describe("PriorityPage", () => {
     expect(
       screen.getAllByTestId(/^triage-affected-/).length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps an open reason editor on its own finding when an earlier finding leaves the ranking", async () => {
+    const first = item({ rank: 1, cveId: "CVE-2026-1000" });
+    const second = item({ rank: 2, cveId: "CVE-2026-2000" });
+    fetchMock.mockResolvedValue(
+      list({ canManage: true, items: [first, second] }),
+    );
+    const client = renderPage();
+    await userEvent.click(
+      await screen.findByTestId(
+        `triage-not-affected-CVE-2026-2000-${MAPPING}-7.2.4`,
+      ),
+    );
+    await userEvent.type(
+      screen.getByTestId(`triage-reason-CVE-2026-2000-${MAPPING}-7.2.4`),
+      "ไม่ได้เปิดใช้",
+    );
+    // The first finding is triaged elsewhere: the second one moves up to rank 1.
+    fetchMock.mockResolvedValue(
+      list({ canManage: true, items: [{ ...second, rank: 1 }] }),
+    );
+    await client.invalidateQueries();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId(`triage-CVE-2026-1000-${MAPPING}-7.2.4`),
+      ).toBeNull();
+    });
+    expect(
+      screen.getByTestId(`triage-reason-CVE-2026-2000-${MAPPING}-7.2.4`),
+    ).toHaveValue("ไม่ได้เปิดใช้");
   });
 
   it("gives a member the status and no control", async () => {
