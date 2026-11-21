@@ -1,11 +1,15 @@
-import { CPE_NAME_PATTERN, type CpeCandidate } from "@nightwatch/api-contract";
+import {
+  CPE_NAME_PATTERN,
+  productCpe,
+  type CpeCandidate,
+} from "@nightwatch/api-contract";
 import {
   sendOutboundRequest,
   type OutboundDeps,
   type OutboundRequest,
   type OutboundResult,
 } from "@nightwatch/shared";
-import { AppError } from "@nightwatch/shared";
+import { AppError, type Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
 export type CpeName = { cpe: string; title: string | null };
@@ -92,7 +96,14 @@ export function rankCandidates(
   product: string,
   names: CpeName[],
 ): CpeCandidate[] {
-  return names
+  // The dictionary lists one name per release, so many names are one product. A
+  // mapping is for the product (productCpe), and the first title of a product is kept.
+  const products = new Map<string, CpeName>();
+  for (const name of names) {
+    const cpe = productCpe(name.cpe);
+    if (!products.has(cpe)) products.set(cpe, { cpe, title: name.title });
+  }
+  return [...products.values()]
     .map((name) => ({
       ...name,
       confidence: cpeConfidence(vendor, product, name.cpe),
@@ -108,6 +119,7 @@ export function rankCandidates(
 export function createNvdCpeSearch(options: {
   outbound?: OutboundDeps;
   send?: SendOutbound;
+  logger?: Logger;
 }): CpeSearch {
   const send = options.send ?? sendOutboundRequest;
   return async (query) => {
@@ -127,15 +139,24 @@ export function createNvdCpeSearch(options: {
       options.outbound,
     );
     const response = result.response;
-    if (!result.ok || !response || response.status !== 200) throw unavailable();
-    if (response.bodyTruncated) throw unavailable();
+    // Only the reason is logged: never the query text or the URL.
+    const fail = (reason: string) => {
+      options.logger?.warn({ reason }, "CPE dictionary request failed");
+      return unavailable();
+    };
+    if (!result.ok || !response) {
+      throw fail(result.failure?.reason ?? "no_response");
+    }
+    if (response.status !== 200)
+      throw fail(`status_${String(response.status)}`);
+    if (response.bodyTruncated) throw fail("body_truncated");
     let parsed: z.infer<typeof nvdResponseSchema>;
     try {
       parsed = nvdResponseSchema.parse(
         JSON.parse(response.body.toString("utf8")),
       );
     } catch {
-      throw unavailable();
+      throw fail("invalid_body");
     }
     return parsed.products
       .filter((product) => product.cpe.deprecated !== true)

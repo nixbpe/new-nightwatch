@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   cpeNameSchema,
   inventoryMappingUpdateSchema,
+  productCpe,
+  productPurl,
   purlSchema,
 } from "./inventory-mapping";
 
@@ -22,6 +24,8 @@ describe("cpeNameSchema", () => {
     ["too many components", "cpe:2.3:a:f5:big-ip:1:*:*:*:*:*:*:*:*"],
     ["an empty component", "cpe:2.3:a::big-ip:17.1.1:*:*:*:*:*:*:*"],
     ["a space", "cpe:2.3:a:f5:big ip:17.1.1:*:*:*:*:*:*:*"],
+    ["a NUL", "cpe:2.3:a:f5:big\u0000ip:17.1.1:*:*:*:*:*:*:*"],
+    ["a control character", "cpe:2.3:a:f5:big\u0007ip:17.1.1:*:*:*:*:*:*:*"],
     ["text before the prefix", "x cpe:2.3:a:f5:big-ip:1:*:*:*:*:*:*:*"],
   ])("rejects %s", (_name, value) => {
     expect(cpeNameSchema.safeParse(value).success).toBe(false);
@@ -68,5 +72,38 @@ describe("inventoryMappingUpdateSchema", () => {
     ]) {
       expect(inventoryMappingUpdateSchema.safeParse(body).success).toBe(false);
     }
+  });
+});
+
+describe("productCpe and productPurl", () => {
+  it("drops the version and what follows it from a CPE and keeps the product", () => {
+    expect(
+      productCpe(
+        "cpe:2.3:a:f5:big-ip_local_traffic_manager:17.1.1.3:p1:enterprise:en:*:linux:x64:*",
+      ),
+    ).toBe("cpe:2.3:a:f5:big-ip_local_traffic_manager:*:*:*:*:*:*:*:*");
+    expect(productCpe("cpe:2.3:a:ven\\:dor:prod:1:*:*:*:*:*:*:*")).toBe(
+      "cpe:2.3:a:ven\\:dor:prod:*:*:*:*:*:*:*:*",
+    );
+  });
+
+  it("leaves a name that is already for the product, and a string that is no CPE, alone", () => {
+    const product = "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*";
+    expect(productCpe(product)).toBe(product);
+    expect(productCpe("not a cpe")).toBe("not a cpe");
+  });
+
+  it("drops only the @version of a purl", () => {
+    expect(
+      productPurl(
+        "pkg:deb/ubuntu/openssl@3.0.2-0ubuntu1.10?distro=ubuntu-22.04",
+      ),
+    ).toBe("pkg:deb/ubuntu/openssl?distro=ubuntu-22.04");
+    expect(productPurl("pkg:npm/%40angular/core@16.0.0#sub")).toBe(
+      "pkg:npm/%40angular/core#sub",
+    );
+    expect(productPurl("pkg:deb/ubuntu/openssl")).toBe(
+      "pkg:deb/ubuntu/openssl",
+    );
   });
 });

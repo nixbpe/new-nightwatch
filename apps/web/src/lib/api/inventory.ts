@@ -150,8 +150,7 @@ export function inventoryErrorMessage(error: unknown): string {
     ) {
       return error.message;
     }
-    if (error.status === 403)
-      return "เฉพาะผู้ดูแลโปรเจกต์ upload inventory ได้";
+    if (error.status === 403) return "เฉพาะผู้ดูแลโปรเจกต์ทำรายการนี้ได้";
     if (error.status === 404) return "ไม่พบข้อมูลที่ขอ หรือคุณเข้าถึงไม่ได้";
     if (error.status === 429) return "ทำรายการบ่อยเกินไป โปรดลองใหม่ภายหลัง";
     if (error.status === 503) return "บริการ inventory ยังไม่พร้อม";

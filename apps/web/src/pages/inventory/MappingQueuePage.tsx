@@ -99,10 +99,20 @@ function MappingQueue({ organizationId, projectId }: Scope) {
         organizationId,
         projectId,
         input.item.id,
-        input.unmapped ? { action: "unmapped" } : { action: "confirm" },
+        input.unmapped
+          ? { action: "unmapped" }
+          : // The identifier on screen, so a suggestion replaced meanwhile is not confirmed unseen.
+            {
+              action: "confirm",
+              ...(input.item.cpe === null ? {} : { cpe: input.item.cpe }),
+              ...(input.item.cpe === null && input.item.purl !== null
+                ? { purl: input.item.purl }
+                : {}),
+            },
       ),
     onMutate: () => {
       setNotice(null);
+      suggest.reset();
     },
     onSuccess: (saved, input) => {
       changed(
@@ -118,6 +128,7 @@ function MappingQueue({ organizationId, projectId }: Scope) {
       suggestMapping(organizationId, projectId, item.id),
     onMutate: () => {
       setNotice(null);
+      decide.reset();
     },
     onSuccess: ({ item }) => {
       changed(

@@ -25,7 +25,8 @@ const line = (
   product: string,
   version = "1.2.3",
 ) => `${system},ทีม A,${vendor},${product},${version},OS,Production,Internal`;
-const REDIS = "cpe:2.3:a:redis:redis:7.2.4:*:*:*:*:*:*:*";
+const REDIS_RELEASE = "cpe:2.3:a:redis:redis:7.2.4:*:*:*:*:*:*:*";
+const REDIS = "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*";
 
 let ctx: MonitorTestContext;
 let redis: Redis;
@@ -158,9 +159,10 @@ describe("review decisions", () => {
       cpe: "cpe:/a:redis:redis",
     });
     expect(bad.status).toBe(400);
+    // The dictionary names one release; the mapping keeps the product.
     const ok = await decide(org.users.owner, redisItem.id, {
       action: "confirm",
-      cpe: REDIS,
+      cpe: REDIS_RELEASE,
     });
     expect(ok.status).toBe(200);
     expect(inventoryMappingSchema.parse(ok.json)).toMatchObject({
@@ -174,6 +176,55 @@ describe("review decisions", () => {
       [org.id],
     );
     expect(audit.rows).toEqual([{ actor_user_id: org.users.owner }]);
+  });
+
+  it("keeps a suggestion's source when the identifier on screen is confirmed, and takes a different one as typed", async () => {
+    const { items } = await mappings(org.users.owner);
+    const gadget = find(items, "F5", "BIG-IP LTM");
+    await ctx.owner.sql.query(
+      "update inventory_mappings set cpe = $2, confidence = 0.7, source = 'nvd' where id = $1",
+      [gadget.id, "cpe:2.3:a:acme:gadget:*:*:*:*:*:*:*:*"],
+    );
+    const same = await decide(org.users.owner, gadget.id, {
+      action: "confirm",
+      cpe: "cpe:2.3:a:acme:gadget:1.0:*:*:*:*:*:*:*",
+    });
+    expect(inventoryMappingSchema.parse(same.json)).toMatchObject({
+      status: "confirmed",
+      source: "nvd",
+      confidence: 0.7,
+    });
+    await ctx.owner.sql.query(
+      "update inventory_mappings set status = 'pending', confirmed_at = null, confirmed_by = null, cpe = $2 where id = $1",
+      [gadget.id, "cpe:2.3:a:acme:gadget_pro:*:*:*:*:*:*:*:*"],
+    );
+    // The reviewer saw gadget, but the stored suggestion became gadget_pro meanwhile.
+    const other = await decide(org.users.owner, gadget.id, {
+      action: "confirm",
+      cpe: "cpe:2.3:a:acme:gadget:*:*:*:*:*:*:*:*",
+    });
+    expect(inventoryMappingSchema.parse(other.json)).toMatchObject({
+      cpe: "cpe:2.3:a:acme:gadget:*:*:*:*:*:*:*:*",
+      source: "manual",
+      confidence: null,
+    });
+    await ctx.owner.sql.query(
+      "update inventory_mappings set status = 'pending', cpe = null, purl = null, confidence = null, source = null, confirmed_at = null, confirmed_by = null where id = $1",
+      [gadget.id],
+    );
+  });
+
+  it("refuses a CPE with a control character with 400, not 500", async () => {
+    const { items } = await mappings(org.users.owner);
+    const response = await decide(
+      org.users.owner,
+      find(items, "F5", "BIG-IP LTM").id,
+      {
+        action: "confirm",
+        cpe: "cpe:2.3:a:acme:gad\u0000get:*:*:*:*:*:*:*:*",
+      },
+    );
+    expect(response.status).toBe(400);
   });
 
   it("needs an identifier to confirm and clears it for unmapped", async () => {
@@ -258,6 +309,46 @@ describe("a later upload", () => {
     expect(items.some((item) => item.vendor === catalogVendor)).toBe(true);
   });
 
+  it("confirms a pending pair when an operator adds it to the catalog", async () => {
+    const vendor = `latecatalog${run}`;
+    await upload(
+      org.users.owner,
+      [
+        HEADER,
+        line("Late", vendor, "Gizmo"),
+        line("Late", "Acme", "Gadget"),
+      ].join("\n"),
+    );
+    expect(
+      find((await mappings(org.users.owner)).items, vendor, "Gizmo").status,
+    ).toBe("pending");
+    await ctx.owner.sql.query(
+      "insert into catalog_product_mappings (vendor_key, product_key, cpe) values ($1, 'gizmo', 'cpe:2.3:a:late:gizmo:*:*:*:*:*:*:*:*')",
+      [vendor],
+    );
+    try {
+      await upload(
+        org.users.owner,
+        [
+          HEADER,
+          line("Late", vendor, "Gizmo"),
+          line("Late", "Acme", "Gadget"),
+        ].join("\n"),
+      );
+      expect(
+        find((await mappings(org.users.owner)).items, vendor, "Gizmo"),
+      ).toMatchObject({
+        status: "confirmed",
+        source: "central",
+      });
+    } finally {
+      await ctx.owner.sql.query(
+        "delete from catalog_product_mappings where vendor_key = $1",
+        [vendor],
+      );
+    }
+  });
+
   it("removes mappings with their Project", async () => {
     await upload(
       org.users.owner,
@@ -315,7 +406,7 @@ describe("dictionary suggestions", () => {
     expect(result.candidates[0]).toMatchObject({ confidence: 1 });
     expect(result.item).toMatchObject({
       status: "pending",
-      cpe: "cpe:2.3:a:acme:gadget:3.1.4:*:*:*:*:*:*:*",
+      cpe: "cpe:2.3:a:acme:gadget:*:*:*:*:*:*:*:*",
       confidence: 1,
       source: "nvd",
     });
@@ -378,6 +469,70 @@ describe("dictionary suggestions", () => {
         suggestMapping(deps, { ...input(), mappingId: pending.id }),
       ).rejects.toMatchObject({ statusCode: 503 });
     }
+  });
+
+  it("refuses a member and a mapping of another Project for suggest and search", async () => {
+    const pending = find(
+      (await mappings(org.users.owner)).items,
+      "Acme",
+      "Gadget",
+    );
+    const otherProject = await ctx.createProject(
+      org.id,
+      "dictionary-other",
+      [],
+    );
+    for (const [method, suffix] of [
+      ["POST", "suggest"],
+      ["GET", "cpe-search?q=gadget"],
+    ] as const) {
+      const asMember = await ctx.call(
+        org.users.viewer,
+        method,
+        path(`/mappings/${pending.id}/${suffix}`),
+      );
+      expect(asMember.status).toBe(403);
+      const crossProject = await ctx.call(
+        org.users.owner,
+        method,
+        path(`/mappings/${pending.id}/${suffix}`, otherProject),
+      );
+      expect(crossProject.status).toBe(404);
+      const outside = await ctx.call(
+        outsider,
+        method,
+        path(`/mappings/${pending.id}/${suffix}`),
+      );
+      expect(outside.status).toBe(404);
+    }
+  });
+
+  it("answers 429 with Retry-After once the shared NVD quota is spent", async () => {
+    const pending = find(
+      (await mappings(org.users.owner)).items,
+      "Acme",
+      "Gadget",
+    );
+    const statuses: number[] = [];
+    let retryAfter: string | null = null;
+    for (let i = 0; i < 6; i += 1) {
+      const response = await ctx.call(
+        org.users.owner,
+        "GET",
+        path(`/mappings/${pending.id}/cpe-search?q=gadget`),
+      );
+      statuses.push(response.status);
+      if (response.status === 429) {
+        retryAfter = response.headers.get("retry-after");
+        expect(response.json).toMatchObject({
+          error: { code: "CPE_LOOKUP_RATE_LIMITED" },
+        });
+        break;
+      }
+    }
+    expect(statuses.at(-1)).toBe(429);
+    expect(Number(retryAfter)).toBeGreaterThan(0);
+    await redis.del("rl:nvd-cpe:global");
   });
 
   it("answers 502 in the envelope when the dictionary cannot be reached", async () => {

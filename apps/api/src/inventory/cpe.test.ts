@@ -71,9 +71,28 @@ describe("rankCandidates", () => {
     const ranked = rankCandidates("Redis", "Redis", names);
     expect(ranked).toHaveLength(10);
     expect(ranked[0]).toMatchObject({
-      cpe: "cpe:2.3:a:redis:redis:7.2.4:*:*:*:*:*:*:*",
+      cpe: "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*",
       confidence: 1,
     });
+  });
+});
+
+describe("rankCandidates for a product with many releases", () => {
+  it("offers each product once, without the version", () => {
+    const releases = Array.from({ length: 30 }, (_, i) => ({
+      cpe: `cpe:2.3:a:redis:redis:7.${String(i)}.0:*:*:*:*:*:*:*`,
+      title: `Redis 7.${String(i)}.0`,
+    }));
+    releases.push({
+      cpe: "cpe:2.3:a:redis:redis_enterprise:7.2:*:*:*:*:*:*:*",
+      title: "Redis Enterprise",
+    });
+    const ranked = rankCandidates("Redis", "Redis", releases);
+    expect(ranked.map((candidate) => candidate.cpe)).toEqual([
+      "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*",
+      "cpe:2.3:a:redis:redis_enterprise:*:*:*:*:*:*:*:*",
+    ]);
+    expect(ranked[0]).toMatchObject({ confidence: 1, title: "Redis 7.0.0" });
   });
 });
 
@@ -158,6 +177,16 @@ describe("createNvdCpeSearch", () => {
       statusCode: 502,
       code: "CPE_DICTIONARY_UNAVAILABLE",
     });
+  });
+
+  it("logs only the failure reason, never the query", async () => {
+    const lines: unknown[] = [];
+    const logger = { warn: (...args: unknown[]) => lines.push(args) } as never;
+    await expect(
+      createNvdCpeSearch({ send: reply({}, 403), logger })("secret product"),
+    ).rejects.toMatchObject({ code: "CPE_DICTIONARY_UNAVAILABLE" });
+    expect(JSON.stringify(lines)).toContain("status_403");
+    expect(JSON.stringify(lines)).not.toContain("secret");
   });
 
   it("treats an empty answer as no candidates", async () => {

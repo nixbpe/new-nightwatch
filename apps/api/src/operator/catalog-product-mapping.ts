@@ -1,4 +1,9 @@
-import { cpeNameSchema, purlSchema } from "@nightwatch/api-contract";
+import {
+  cpeNameSchema,
+  productCpe,
+  productPurl,
+  purlSchema,
+} from "@nightwatch/api-contract";
 import { createDatabase, type Database } from "@nightwatch/db";
 import { z } from "zod";
 
@@ -33,9 +38,11 @@ export function usage(): string {
     "Usage: catalog-product-mapping --vendor <vendor> --product <product> \\",
     "  [--cpe <CPE 2.3 name>] [--purl <purl>]",
     "",
-    "Confirms one vendor and product pair in the shared catalog. A Project that",
-    "uploads that pair next gets it confirmed without review. Re-running with the",
-    "same pair replaces its CPE and purl.",
+    "Confirms one vendor and product pair in the shared catalog. The CPE and purl",
+    "are kept for the product: the version is dropped. A pair a Project has not",
+    "seen is confirmed without review, and a pair already waiting in a Project's",
+    "queue is confirmed by its next upload. Re-running with the same pair",
+    "replaces its CPE and purl.",
   ].join("\n");
 }
 
@@ -80,7 +87,12 @@ export async function upsertCatalogMapping(
     `insert into catalog_product_mappings (vendor_key, product_key, cpe, purl)
      values ($1, $2, $3, $4)
      on conflict (vendor_key, product_key) do update set cpe = $3, purl = $4`,
-    [vendorKey, productKey, args.cpe ?? null, args.purl ?? null],
+    [
+      vendorKey,
+      productKey,
+      args.cpe === undefined ? null : productCpe(args.cpe),
+      args.purl === undefined ? null : productPurl(args.purl),
+    ],
   );
   return { vendorKey, productKey };
 }

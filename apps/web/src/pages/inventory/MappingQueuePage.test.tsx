@@ -177,11 +177,12 @@ describe("MappingQueuePage", () => {
     await waitFor(() => {
       expect(decideMock).toHaveBeenCalledTimes(1);
     });
+    // The identifier on screen goes with the confirmation, so a replaced suggestion is not confirmed unseen.
     expect(decideMock.mock.calls[0]?.slice(0, 4)).toEqual([
       ORG,
       PROJECT,
       A,
-      { action: "confirm" },
+      { action: "confirm", cpe: "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*" },
     ]);
     expect(await screen.findByTestId("mapping-notice")).toHaveTextContent(
       "ยืนยัน CPE/purl ของ Redis แล้ว",
@@ -246,6 +247,43 @@ describe("MappingQueuePage", () => {
   });
 });
 
+describe("messages", () => {
+  it("does not call a refused decision an upload problem", async () => {
+    fetchMock.mockResolvedValue(list());
+    decideMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-none-${B}`));
+
+    expect(await screen.findByTestId("mapping-error")).toHaveTextContent(
+      "เฉพาะผู้ดูแลโปรเจกต์ทำรายการนี้ได้",
+    );
+    expect(screen.getByTestId("mapping-error")).not.toHaveTextContent("upload");
+  });
+
+  it("drops an earlier failure when the next action succeeds", async () => {
+    fetchMock.mockResolvedValue(list());
+    suggestMock.mockRejectedValue(new ApiError("X", "x", 429));
+    decideMock.mockResolvedValue(
+      mapping(B, {
+        status: "unmapped",
+        confirmedAt: "2026-11-21T11:00:00.000Z",
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-suggest-${B}`));
+    expect(await screen.findByTestId("mapping-error")).toBeInTheDocument();
+    await user.click(screen.getByTestId(`mapping-none-${B}`));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("mapping-error")).toBeNull();
+    });
+  });
+});
+
 describe("MappingDialog", () => {
   it("searches the dictionary and confirms the chosen CPE", async () => {
     fetchMock.mockResolvedValue(list());
@@ -297,6 +335,47 @@ describe("MappingDialog", () => {
       B,
       "F5 BIG-IP LTM",
     ]);
+  });
+
+  it("does not carry the old purl into a new choice", async () => {
+    const withPurl = list();
+    withPurl.items = withPurl.items.map((item) =>
+      item.id === C
+        ? {
+            ...item,
+            cpe: null,
+            purl: "pkg:deb/ubuntu/openssl",
+            status: "confirmed" as const,
+          }
+        : item,
+    );
+    fetchMock.mockResolvedValue(withPurl);
+    searchMock.mockResolvedValue({
+      candidates: [{ cpe: F5, title: null, confidence: 0.9 }],
+    });
+    decideMock.mockResolvedValue(
+      mapping(C, {
+        status: "confirmed",
+        cpe: F5,
+        source: "manual",
+        confirmedAt: "2026-11-21T11:00:00.000Z",
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-edit-${C}`));
+    expect(screen.getByTestId("mapping-purl")).toHaveValue("");
+    await user.click(screen.getByTestId("mapping-search"));
+    await screen.findAllByTestId("mapping-candidate");
+    await user.click(screen.getByTestId("mapping-save"));
+
+    await waitFor(() => {
+      expect(decideMock.mock.calls[0]?.[3]).toEqual({
+        action: "confirm",
+        cpe: F5,
+      });
+    });
   });
 
   it("checks the format before saving and sends a typed purl on its own", async () => {

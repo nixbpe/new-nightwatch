@@ -10,7 +10,29 @@ import { inventoryMappingCountsSchema } from "./inventory";
 // non-empty and a colon inside it is written \:.
 export const CPE_NAME_PATTERN =
   /^cpe:2\.3:[aho](?::(?:\\.|[^:\\\s]){1,128}){10}$/;
-export const cpeNameSchema = z.string().max(512).regex(CPE_NAME_PATTERN);
+export const cpeNameSchema = z
+  .string()
+  .max(512)
+  .regex(CPE_NAME_PATTERN)
+  .refine((value) => !/\p{Cc}/u.test(value));
+
+/**
+ * A mapping names a product, not a release: the inventory row supplies the version
+ * when F-019 matches. A dictionary name carries one (`...:17.1.1.3:...`), and storing
+ * it would make a confirmed CPE miss every other version, so the version and the
+ * eight components after it become `*`.
+ */
+export function productCpe(cpe: string): string {
+  const parts = cpe.split(/(?<!\\):/);
+  return parts.length === 13
+    ? [...parts.slice(0, 5), ...Array<string>(8).fill("*")].join(":")
+    : cpe;
+}
+
+/** A purl without its `@version`; the type, namespace, name and qualifiers stay. */
+export function productPurl(purl: string): string {
+  return purl.replace(/@[^?#]*/, "");
+}
 
 // package-url: pkg:<type>/<namespace and name>[@version][?qualifiers][#subpath].
 export const PURL_PATTERN = /^pkg:[a-z][a-z0-9.+-]*\/[^\s/][^\s]*$/;

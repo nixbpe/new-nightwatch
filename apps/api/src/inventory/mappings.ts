@@ -1,4 +1,6 @@
 import {
+  productCpe,
+  productPurl,
   type CpeCandidate,
   type InventoryMapping,
   type InventoryMappingList,
@@ -84,6 +86,16 @@ export async function syncMappings(
       list.map((pair) => pair.vendor),
       list.map((pair) => pair.product),
     ],
+  );
+  // An operator may confirm a pair after it entered the queue; that confirmation wins.
+  await client.query(
+    `update inventory_mappings m
+     set status = 'confirmed', cpe = c.cpe, purl = c.purl, confidence = null,
+         source = 'central', confirmed_by = null, confirmed_at = now(), updated_at = now()
+     from catalog_product_mappings c
+     where m.tenant_id = $1 and m.project_id = $2 and m.status = 'pending'
+       and c.vendor_key = m.vendor_key and c.product_key = m.product_key`,
+    [tenant, project],
   );
   await client.query(
     `delete from inventory_mappings
@@ -230,9 +242,19 @@ export function updateMapping(
           [tenant, projectId, input.mappingId, input.actorUserId],
         );
       } else {
-        const typed = update.cpe !== undefined || update.purl !== undefined;
-        const cpe = typed ? (update.cpe ?? null) : current.cpe;
-        const purl = typed ? (update.purl ?? null) : current.purl;
+        // The page sends the identifier it displayed, so a stored suggestion that was
+        // replaced meanwhile is not confirmed unseen: a value that differs from the
+        // stored one counts as typed, and one that equals it keeps the suggestion's source.
+        const given = {
+          cpe: update.cpe === undefined ? undefined : productCpe(update.cpe),
+          purl:
+            update.purl === undefined ? undefined : productPurl(update.purl),
+        };
+        const typed =
+          (given.cpe !== undefined && given.cpe !== current.cpe) ||
+          (given.purl !== undefined && given.purl !== current.purl);
+        const cpe = typed ? (given.cpe ?? null) : current.cpe;
+        const purl = typed ? (given.purl ?? null) : current.purl;
         if (cpe === null && purl === null) {
           throw new AppError(
             400,
@@ -273,7 +295,11 @@ export function updateMapping(
   );
 }
 
-async function limitLookups(deps: InventoryDeps, input: ProjectIdentity) {
+async function limitLookups(
+  deps: InventoryDeps,
+  input: ProjectIdentity,
+  projectId: string,
+) {
   if (!deps.rateLimiter || !deps.cpeSearch) {
     throw new AppError(
       503,
@@ -288,7 +314,7 @@ async function limitLookups(deps: InventoryDeps, input: ProjectIdentity) {
     limits: [
       { key: "rl:nvd-cpe:global", limit: 4 },
       {
-        key: `rl:nvd-cpe:u:${input.actorUserId}:p:${input.projectId}`,
+        key: `rl:nvd-cpe:u:${input.actorUserId}:p:${projectId}`,
         limit: 8,
       },
     ],
@@ -318,7 +344,7 @@ async function candidatesFor(
       ),
     }),
   );
-  const limit = await limitLookups(deps, input);
+  const limit = await limitLookups(deps, input, found.projectId);
   if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
   const search = deps.cpeSearch;
   if (!search)

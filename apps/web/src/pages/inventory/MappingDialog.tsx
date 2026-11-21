@@ -57,11 +57,13 @@ export function MappingDialog({
   const descriptionId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState(`${mapping.vendor} ${mapping.product}`);
+  const [query, setQuery] = useState(
+    `${mapping.vendor} ${mapping.product}`.slice(0, 100),
+  );
   const [candidates, setCandidates] = useState<CpeCandidate[] | null>(null);
   const [picked, setPicked] = useState<string | null>(mapping.cpe);
   const [typedCpe, setTypedCpe] = useState("");
-  const [typedPurl, setTypedPurl] = useState(mapping.purl ?? "");
+  const [typedPurl, setTypedPurl] = useState("");
   const [errors, setErrors] = useState<{ cpe?: string; purl?: string }>({});
 
   useDialogFocusReturn(dialog, searchInput, opener, fallbackFocus);
@@ -211,7 +213,8 @@ export function MappingDialog({
               </legend>
               {candidates.length === 0 ? (
                 <p className="text-foreground-secondary">
-                  ไม่พบใน dictionary กรอก CPE หรือ purl เอง หรือเลือกว่าไม่มี
+                  ไม่พบใน dictionary กรอก CPE หรือ purl เอง หรือปิดแล้วเลือก
+                  "ไม่มี CPE/purl" ที่หน้าคิว
                 </p>
               ) : (
                 candidates.map((candidate) => (

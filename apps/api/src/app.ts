@@ -510,7 +510,10 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       auth,
       database,
       logger: deps.logger,
-      cpeSearch: createNvdCpeSearch({ outbound: deps.outbound }),
+      cpeSearch: createNvdCpeSearch({
+        outbound: deps.outbound,
+        logger: deps.logger,
+      }),
       ...(deps.redis && {
         rateLimiter: createRateLimiter({
           redis: deps.redis,
