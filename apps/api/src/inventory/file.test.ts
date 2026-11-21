@@ -360,6 +360,37 @@ describe("resource limits", () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  it("scans a sheet the workbook rels point at through an .xml.rels part", async () => {
+    const valid = await workbook([
+      {
+        sheet: "Inventory",
+        rows: [
+          HEADER.split(","),
+          ["A", "B", "C", "D", "1.2.3", "OS", "Production", "Internal"],
+        ],
+      },
+    ]);
+    const parts = unzipSync(valid);
+    const rels = Object.keys(parts).find((part) =>
+      part.endsWith("xl/_rels/workbook.xml.rels"),
+    );
+    if (!rels || !parts[rels]) throw new Error("workbook rels missing");
+    const text = new TextDecoder().decode(parts[rels]);
+    expect(text).toMatch(/Target="[^"]*sheet1\.xml"/);
+    parts[rels] = encode(
+      text.replace(/Target="[^"]*sheet1\.xml"/, 'Target="evil.xml.rels"'),
+    );
+    parts["xl/evil.xml.rels"] = encode(
+      '<worksheet><sheetData><row r="4000000000"/></sheetData></worksheet>',
+    );
+    const started = performance.now();
+    expect(await parseInventoryFile("inv.xlsx", zipSync(parts))).toEqual({
+      ok: false,
+      rejection: { code: "xlsx_unreadable" },
+    });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("scans a sheet that sits under a path the library reads from the workbook rels", async () => {
     const valid = await workbook([
       {

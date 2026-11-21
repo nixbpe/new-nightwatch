@@ -81,8 +81,9 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
     let entries = 0;
     let unzipped = 0;
     // fflate sizes each inflate buffer from the declared size, so the declared
-    // total bounds what is inflated; every XML part is inflated and scanned because the
-    // reader takes the sheet path from the workbook, not from a fixed name.
+    // total bounds what is inflated; every .xml and .rels part is inflated and scanned
+    // (a superset of what the reader unpacks) because the reader takes the sheet
+    // path from the workbook's rels, not from a fixed name.
     const parts = unzipSync(bytes, {
       filter: (file) => {
         entries += 1;
@@ -90,7 +91,7 @@ async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {
         if (entries > MAX_ZIP_ENTRIES || unzipped > MAX_UNZIPPED_BYTES) {
           throw new Error("zip limits exceeded");
         }
-        return /\.xml$/i.test(file.name);
+        return /\.(xml|rels)$/i.test(file.name);
       },
     });
     for (const xml of Object.values(parts)) assertSheetBounds(xml);
@@ -113,7 +114,7 @@ function columnNumber(letters: string): number {
   return value;
 }
 
-const MAX_TAG_LENGTH = 4096;
+const MAX_TAG_LENGTH = 32_768;
 const MAX_ATTRIBUTES = 64;
 const ELEMENT_NAME = /([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)/y;
 const ATTRIBUTE_NAME = /[A-Za-z_:][\w.:-]*/y;
