@@ -114,40 +114,89 @@ function columnNumber(letters: string): number {
 }
 
 const MAX_TAG_LENGTH = 4096;
-const REF_ATTRIBUTE = /\sr\s*=\s*(?:"([^"]*)"|'([^']*)')/;
-const TAG_NAME = /^([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)/;
+const MAX_ATTRIBUTES = 64;
+const ELEMENT_NAME = /([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)/y;
+const ATTRIBUTE_NAME = /[^\s=/>"'<]+/y;
+const BLANK = /\s*/y;
 
-// One linear pass over the tags of an XML part. A `row` or `c` element (with or
-// without a namespace prefix, either quote style) must carry a plain reference
-// within the caps; anything the reader could expand into a far row or column, or
-// any tag too long to be real, is refused before the reader sees the part.
+function skip(pattern: RegExp, text: string, from: number): number {
+  pattern.lastIndex = from;
+  pattern.exec(text);
+  return pattern.lastIndex;
+}
+
+function malformed(): never {
+  throw new Error("malformed or oversized tag");
+}
+
+function assertReference(local: "row" | "c", reference: string): void {
+  const parts =
+    local === "row"
+      ? /^()(\d{1,6})$/.exec(reference)
+      : /^([A-Za-z]{1,3})(\d{1,6})$/.exec(reference);
+  if (
+    !parts ||
+    Number(parts[2]) > MAX_SHEET_ROW_NUMBER ||
+    columnNumber((parts[1] ?? "").toUpperCase()) > MAX_SHEET_COLUMN_NUMBER
+  ) {
+    throw new Error("reference out of bounds");
+  }
+}
+
+// One linear pass that reads tags the way an XML parser does: attribute values are
+// quoted and may hold ">", comments and CDATA are skipped, a repeated attribute is
+// refused. A `row` or `c` element (any prefix, either quote) must carry a plain
+// reference within the caps, so the reader never fills the gap to a far row or
+// column. A tag that is too long or does not tokenize is refused.
 function assertSheetBounds(xml: Uint8Array): void {
   const text = new TextDecoder().decode(xml);
   let start = text.indexOf("<");
   while (start !== -1) {
-    const end = text.indexOf(">", start);
-    if (end === -1) return;
-    if (end - start > MAX_TAG_LENGTH) throw new Error("tag too long");
-    const tag = text.slice(start + 1, end);
-    const local = TAG_NAME.exec(tag)?.[2];
-    if (local === "row" || local === "c") {
-      const attribute = REF_ATTRIBUTE.exec(tag);
-      const reference = attribute?.[1] ?? attribute?.[2];
-      if (reference !== undefined) {
-        const parts =
-          local === "row"
-            ? /^()(\d{1,6})$/.exec(reference)
-            : /^([A-Za-z]{1,3})(\d{1,6})$/.exec(reference);
-        if (
-          !parts ||
-          Number(parts[2]) > MAX_SHEET_ROW_NUMBER ||
-          columnNumber((parts[1] ?? "").toUpperCase()) > MAX_SHEET_COLUMN_NUMBER
-        ) {
-          throw new Error("reference out of bounds");
-        }
-      }
+    const next = text.charAt(start + 1);
+    if (next === "!" || next === "?" || next === "/") {
+      const closer = text.startsWith("<!--", start)
+        ? "-->"
+        : text.startsWith("<![CDATA[", start)
+          ? "]]>"
+          : ">";
+      const end = text.indexOf(closer, start + 1);
+      if (end === -1) return;
+      start = text.indexOf("<", end + closer.length);
+      continue;
     }
-    start = text.indexOf("<", end + 1);
+    ELEMENT_NAME.lastIndex = start + 1;
+    const name = ELEMENT_NAME.exec(text);
+    if (!name) malformed();
+    const local = name[2];
+    let position = ELEMENT_NAME.lastIndex;
+    const seen = new Set<string>();
+    let reference: string | undefined;
+    for (;;) {
+      position = skip(BLANK, text, position);
+      if (position - start > MAX_TAG_LENGTH) malformed();
+      const char = text.charAt(position);
+      if (char === ">" || (char === "/" && text.charAt(position + 1) === ">")) {
+        break;
+      }
+      ATTRIBUTE_NAME.lastIndex = position;
+      const attribute = ATTRIBUTE_NAME.exec(text);
+      if (!attribute || seen.size >= MAX_ATTRIBUTES) malformed();
+      position = skip(BLANK, text, ATTRIBUTE_NAME.lastIndex);
+      if (text.charAt(position) !== "=") malformed();
+      position = skip(BLANK, text, position + 1);
+      const quote = text.charAt(position);
+      if (quote !== '"' && quote !== "'") malformed();
+      const close = text.indexOf(quote, position + 1);
+      if (close === -1 || close - start > MAX_TAG_LENGTH) malformed();
+      if (seen.has(attribute[0])) malformed();
+      seen.add(attribute[0]);
+      if (attribute[0] === "r") reference = text.slice(position + 1, close);
+      position = close + 1;
+    }
+    if ((local === "row" || local === "c") && reference !== undefined) {
+      assertReference(local, reference);
+    }
+    start = text.indexOf("<", position);
   }
 }
 

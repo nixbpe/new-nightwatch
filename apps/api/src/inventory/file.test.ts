@@ -233,6 +233,15 @@ describe("resource limits", () => {
     });
   });
 
+  it("scans past a far reference that only sits inside a comment", async () => {
+    const bytes = await withSheet((xml) =>
+      xml.replace("<sheetData>", '<!-- <row r="4000000000"> --><sheetData>'),
+    );
+    expect(await parseInventoryFile("inv.xlsx", bytes)).toMatchObject({
+      ok: true,
+    });
+  });
+
   it.each([
     [
       "a far row number",
@@ -258,6 +267,27 @@ describe("resource limits", () => {
     [
       "a numeric entity",
       (xml: string) => xml.replace(/<row r="2"/, '<row r="&#52;000000000"'),
+    ],
+    [
+      "a > inside an earlier attribute value",
+      (xml: string) => xml.replace(/<row r="2"/, '<row a=">" r="4000000000"'),
+    ],
+    [
+      "an r inside another attribute value",
+      (xml: string) =>
+        xml.replace(/<row r="2"/, `<row a=" r='1'" r="4000000000"`),
+    ],
+    [
+      "a repeated r, bad one last",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r="1" r="4000000000"'),
+    ],
+    [
+      "a repeated r, bad one first",
+      (xml: string) => xml.replace(/<row r="2"/, '<row r="4000000000" r="1"'),
+    ],
+    [
+      "an unquoted attribute",
+      (xml: string) => xml.replace(/<row r="2"/, "<row r=4000000000"),
     ],
     [
       "a tag too long to be real",
