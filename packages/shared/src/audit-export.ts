@@ -38,6 +38,8 @@ export const AUDIT_ACTIONS = [
   "organization.project.aws_connection.delete",
   "organization.project.inventory.upload",
   "organization.project.inventory.mapping.update",
+  "organization.project.vulnerability.run",
+  "organization.project.vulnerability.sample",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -89,6 +91,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.inventory.upload": "upload inventory ของโปรเจกต์",
   "organization.project.inventory.mapping.update":
     "ยืนยัน CPE/purl ของ inventory",
+  "organization.project.vulnerability.run": "ตรวจ CVE ของโปรเจกต์",
+  "organization.project.vulnerability.sample": "บันทึกผลสุ่มตรวจ CVE",
 };
 
 export type AuditValue =

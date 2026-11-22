@@ -1,0 +1,117 @@
+import {
+  vulnerabilityAdvanceSchema,
+  vulnerabilityListSchema,
+  vulnerabilityRunSchema,
+  vulnerabilitySampleResponseSchema,
+} from "@nightwatch/api-contract";
+
+import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
+import { ApiError, request } from "./client";
+
+const base =
+  "/api/organizations/{organizationId}/projects/{projectId}/vulnerabilities";
+const sample = `${base}/sample` as const;
+
+// Every key sits under TENANT_QUERY_PREFIX so switching Organization removes it (WEB-03).
+export const vulnerabilityKeys = {
+  all: (organizationId: string, projectId: string) =>
+    [
+      ...TENANT_QUERY_PREFIX,
+      "vulnerabilities",
+      organizationId,
+      projectId,
+    ] as const,
+  list: (organizationId: string, projectId: string) =>
+    [...vulnerabilityKeys.all(organizationId, projectId), "list"] as const,
+  sample: (organizationId: string, projectId: string) =>
+    [...vulnerabilityKeys.all(organizationId, projectId), "sample"] as const,
+};
+
+export function fetchVulnerabilities(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(base, vulnerabilityListSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function startVulnerabilityRun(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(`${base}/runs`, vulnerabilityRunSchema, {
+    method: "POST",
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function advanceVulnerabilityRun(
+  organizationId: string,
+  projectId: string,
+  runId: string,
+  signal?: AbortSignal,
+) {
+  return request(`${base}/runs/{runId}/advance`, vulnerabilityAdvanceSchema, {
+    method: "POST",
+    params: { organizationId, projectId, runId },
+    signal,
+  });
+}
+
+export function fetchSample(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(sample, vulnerabilitySampleResponseSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function drawSample(organizationId: string, projectId: string) {
+  return request(sample, vulnerabilitySampleResponseSchema, {
+    method: "POST",
+    params: { organizationId, projectId },
+  });
+}
+
+export function reviewSampleItem(
+  organizationId: string,
+  projectId: string,
+  sampleId: string,
+  position: number,
+  verdict: "true_positive" | "false_positive",
+) {
+  return request(
+    `${sample}/{sampleId}/items/{position}`,
+    vulnerabilitySampleResponseSchema,
+    {
+      method: "PUT",
+      params: {
+        organizationId,
+        projectId,
+        sampleId,
+        position,
+      },
+      body: { verdict },
+    },
+  );
+}
+
+/** The message the page shows for a failed read, run step or review. */
+export function vulnerabilityErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "VULNERABILITY_SAMPLE_EMPTY") return error.message;
+    if (error.status === 403) return "เฉพาะผู้ดูแลโปรเจกต์ทำรายการนี้ได้";
+    if (error.status === 404) return "ไม่พบข้อมูลที่ขอ หรือคุณเข้าถึงไม่ได้";
+    if (error.status === 429) return "ทำรายการบ่อยเกินไป โปรดลองใหม่ภายหลัง";
+    if (error.status === 503) return "บริการตรวจ CVE ยังไม่พร้อม";
+  }
+  return "ทำรายการไม่สำเร็จ โปรดลองใหม่";
+}

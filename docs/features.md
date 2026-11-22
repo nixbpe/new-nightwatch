@@ -75,6 +75,10 @@
 
 [API mapping](../apps/api/src/inventory/mappings.ts), [routes](../apps/api/src/inventory/mapping-routes.ts), [ค้น NVD CPE dictionary](../apps/api/src/inventory/cpe.ts), [คำสั่ง operator ของตารางกลาง](../apps/api/src/operator/catalog-product-mapping.ts), [สัญญา](../packages/api-contract/src/inventory-mapping.ts), [Web](../apps/web/src/pages/inventory/MappingQueuePage.tsx), [migration](../packages/db/migrations/0031_identifier_mappings.sql), [browser test](../e2e/tests/inventory-mappings.spec.ts).
 
+## ช่องโหว่ของ Project (E-005 F-019)
+
+[API](../apps/api/src/vulnerability/), [client ดึง feed](../apps/api/src/vulnerability/feeds.ts), [match ราย product](../apps/api/src/vulnerability/matcher.ts), [สัญญา](../packages/api-contract/src/vulnerability.ts), [Web](../apps/web/src/pages/vulnerabilities/VulnerabilitiesPage.tsx), [migration](../packages/db/migrations/0032_vulnerability_matching.sql), [browser test](../e2e/tests/vulnerabilities.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

@@ -13,6 +13,7 @@ import type { PoolClient } from "pg";
 
 import { recordAuditEvent } from "../audit/record";
 import { withProjectAccess } from "../projects/service";
+import { NVD_GLOBAL_LIMIT } from "../rate-limit";
 import { rankCandidates } from "./cpe";
 import { identityKey } from "./rows";
 import type { InventoryDeps, ProjectIdentity } from "./service";
@@ -387,7 +388,7 @@ async function limitLookups(
   return deps.rateLimiter.consumeRateLimits({
     windowMs: 30_000,
     limits: [
-      { key: "rl:nvd-cpe:global", limit: 4 },
+      NVD_GLOBAL_LIMIT,
       {
         key: `rl:nvd-cpe:u:${input.actorUserId}:p:${projectId}`,
         limit: 8,

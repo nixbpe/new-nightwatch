@@ -54,9 +54,11 @@ import {
   inventoryMappingsLoader,
   inventoryRejectedRowsLoader,
 } from "./lib/auth/loaders/inventory";
+import { vulnerabilitiesLoader } from "./lib/auth/loaders/vulnerabilities";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
 import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
+import { VulnerabilitiesPage } from "./pages/vulnerabilities/VulnerabilitiesPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -181,6 +183,11 @@ export const routes: RouteObject[] = [
             path: "/workspace",
             loader: workspaceLoader,
             element: <WorkspaceEntryFallback />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
+            loader: vulnerabilitiesLoader,
+            element: <VulnerabilitiesPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/inventory",
