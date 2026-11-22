@@ -66,7 +66,10 @@ Find supported roles through the [Worker runtime code index](../features.md#tool
   once per claim, so a Worker that stops between SMTP acceptance and the end of the claim sends it
   again after the 5 minute lease. A failed send is retried after 5 minutes times the attempts, up to
   5 attempts (an outage of about an hour makes the last attempt fail and the mail is dropped; the
-  in-app notification stays and the log says so). Each recipient is checked again when the mail is
+  in-app notification stays and the log says so). Interrupted fifth attempts are marked failed
+  after lease expiry and logged as a count without recipient data on the next email round.
+  Each round also removes up to 100 expired email jobs, sharing that limit with failed-lease
+  recovery and preserving live send leases. This cleanup does not purge the parent intents. Each recipient is checked again when the mail is
   sent. A send that does not end in 2 minutes is abandoned and retried; if the SMTP server accepts it later, that recipient gets one extra mail. The role refuses to start when SMTP cannot be verified and that ends the whole process, so run
   it in its own service, as `compose.worker.yaml` does.
 - After [local dependency setup](../../scripts/quality/README.md#local-development-dependencies-postgresql--mailpit--redis),

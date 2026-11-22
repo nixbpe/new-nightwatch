@@ -57,7 +57,8 @@ export function productPurl(purl: string): string {
 }
 
 // package-url: pkg:<type>/<namespace and name>[@version][?qualifiers][#subpath].
-export const PURL_PATTERN = /^pkg:[a-z][a-z0-9.+-]*\/[^\s/][^\s]*$/;
+export const PURL_PATTERN =
+  /^pkg:[a-z][a-z0-9.+-]*\/(?:[^\s/?#]+\/)*[^\s/@?#]+(?:@[^\s/?#]+)?(?:\?[^\s#]+)?(?:#[^\s]+)?$/;
 export const purlSchema = z
   .string()
   .max(512)

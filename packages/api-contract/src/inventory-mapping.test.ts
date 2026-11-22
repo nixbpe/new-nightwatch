@@ -48,6 +48,9 @@ describe("purlSchema", () => {
     ["a space", "pkg:deb/ubuntu/open ssl"],
     ["a control character", "pkg:deb/ubuntu/open\u0000ssl"],
     ["an empty name", "pkg:deb/"],
+    ["a namespaced empty name with version", "pkg:deb/ubuntu/@1.0"],
+    ["a namespaced empty name", "pkg:deb/ubuntu/"],
+    ["a namespaced empty name with qualifier", "pkg:deb/ubuntu/?distro=x"],
   ])("rejects %s", (_name, value) => {
     expect(purlSchema.safeParse(value).success).toBe(false);
   });

@@ -586,6 +586,21 @@ export type EmailJobClaim = {
   attemptCount: number;
 };
 
+/** Removes expired jobs and recovers exhausted leases in a bounded cross-tenant batch. */
+export async function maintainNotificationEmailJobs(
+  database: Database,
+  input: { limit: number },
+): Promise<{ expiredCount: number; failedCount: number }> {
+  const { rows } = await database.sql.query<{
+    expired_count: number;
+    failed_count: number;
+  }>("select * from maintain_notification_email_jobs($1)", [input.limit]);
+  return {
+    expiredCount: rows[0]?.expired_count ?? 0,
+    failedCount: rows[0]?.failed_count ?? 0,
+  };
+}
+
 /** Claims up to `limit` due mails across Organizations (bounded 1..100). */
 export async function claimNotificationEmailJobs(
   database: Database,
