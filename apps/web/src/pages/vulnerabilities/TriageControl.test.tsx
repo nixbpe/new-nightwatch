@@ -1,6 +1,6 @@
 import type { Triage } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,20 +71,72 @@ describe("TriageControl", () => {
     expect(screen.queryByTestId(`triage-not-affected-${KEY}`)).toBeNull();
   });
 
-  it("shows the status with the reason, who set it and when", () => {
+  it("shows the status with the reason, and who set it and when only in a tooltip", async () => {
     renderControl({ canManage: false, triage: triage() });
     const text = screen.getByTestId(`triage-status-${KEY}`);
     expect(text).toHaveTextContent(
       "ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module นี้",
     );
-    expect(text).toHaveTextContent("โดย Somchai");
+    expect(text).not.toHaveTextContent("Somchai");
+    const tip = screen.getByTestId(`triage-by-${KEY}`);
+    expect(tip.getAttribute("aria-label")).toMatch(/^ตั้งโดย Somchai เมื่อ /);
+    await userEvent.hover(tip);
+    expect(await screen.findByTestId("tooltip")).toHaveTextContent(
+      tip.getAttribute("aria-label") ?? "",
+    );
   });
 
   it("says unknown when the person who set it is no longer known", () => {
     renderControl({ canManage: false, triage: triage({ changedBy: null }) });
-    expect(screen.getByTestId(`triage-status-${KEY}`)).toHaveTextContent(
-      "ไม่ทราบผู้ทำรายการ",
+    expect(
+      screen.getByTestId(`triage-by-${KEY}`).getAttribute("aria-label"),
+    ).toContain("ไม่ทราบผู้ทำรายการ");
+  });
+
+  it("is one two-segment control that the keyboard reaches even before a status is set", async () => {
+    renderControl({ canManage: true, triage: null });
+    const group = screen.getByRole("group", {
+      name: "สถานะ VEX ของ CVE-2026-1000",
+    });
+    const buttons = within(group).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "ได้รับผลกระทบ",
+      "ไม่ได้รับผลกระทบ",
+    ]);
+    await userEvent.tab();
+    expect(buttons[0]).toHaveFocus();
+    await userEvent.tab();
+    expect(buttons[1]).toHaveFocus();
+    // Opening the reason row selects nothing until it is saved.
+    await userEvent.keyboard("{Enter}");
+    expect(buttons[1]).toHaveAttribute("aria-expanded", "true");
+    expect(buttons[1]).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("marks the current status as pressed", () => {
+    renderControl({ canManage: true, triage: triage() });
+    expect(screen.getByTestId(`triage-not-affected-${KEY}`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
+    expect(screen.getByTestId(`triage-affected-${KEY}`)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("announces the save as it runs and when it is done", async () => {
+    let finish: (value: Triage) => void = () => undefined;
+    putMock.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderControl({ canManage: true, triage: null });
+    await userEvent.click(screen.getByTestId(`triage-affected-${KEY}`));
+    expect(await screen.findByText("กำลังบันทึกสถานะ VEX")).toBeInTheDocument();
+    finish(triage({ status: "affected", reason: null }));
+    expect(await screen.findByText("บันทึกสถานะ VEX แล้ว")).toBeInTheDocument();
   });
 
   it("lets an admin mark a CVE affected at once, without a reason", async () => {

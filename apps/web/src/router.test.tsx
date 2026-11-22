@@ -79,3 +79,55 @@ describe("Projects route revalidation", () => {
     router.dispose();
   });
 });
+
+describe("Vulnerability routes", () => {
+  const PROJECT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const VULNERABILITIES = `${PROJECTS}/${PROJECT}/vulnerabilities`;
+
+  // The real routes of the two retired pages, with a bare target in place of the findings page.
+  function vulnerabilityRouter(entry: string) {
+    const real = routes
+      .flatMap((root) => root.children ?? [])
+      .flatMap((layout) => layout.children ?? [])
+      .filter((candidate) =>
+        [`${VULNERABILITIES}/new`, `${VULNERABILITIES}/priority`]
+          .map((path) =>
+            path.replace(ORG, ":organizationId").replace(PROJECT, ":projectId"),
+          )
+          .includes(candidate.path ?? ""),
+      );
+    expect(real).toHaveLength(2);
+    return createMemoryRouter(
+      [
+        ...real,
+        {
+          path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
+          element: null,
+        },
+      ],
+      { initialEntries: [entry] },
+    );
+  }
+
+  it.each([
+    [`${VULNERABILITIES}/new`, `${VULNERABILITIES}?new=1`],
+    [`${VULNERABILITIES}/priority`, VULNERABILITIES],
+    // What a link already sent carried stays, the filter is added or kept.
+    [`${VULNERABILITIES}/new?system=s1`, `${VULNERABILITIES}?system=s1&new=1`],
+    [`${VULNERABILITIES}/new?new=1`, `${VULNERABILITIES}?new=1`],
+    [`${VULNERABILITIES}/priority?kev=1`, `${VULNERABILITIES}?kev=1`],
+    // Decoded route params are encoded again: a slash or a question mark cannot change the path.
+    [`${PROJECTS}/${PROJECT}/vulnerabilities/new`, `${VULNERABILITIES}?new=1`],
+    [
+      `${PROJECTS.replace(ORG, "a%2Fb")}/p%3Fx/vulnerabilities/new`,
+      `${PROJECTS.replace(ORG, "a%2Fb")}/p%3Fx/vulnerabilities?new=1`,
+    ],
+  ])("sends %s to %s", async (from, to) => {
+    const router = vulnerabilityRouter(from);
+    await settled(router);
+    expect(router.state.location.pathname + router.state.location.search).toBe(
+      to,
+    );
+    router.dispose();
+  });
+});

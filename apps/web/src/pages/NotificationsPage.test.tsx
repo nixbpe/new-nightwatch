@@ -608,7 +608,7 @@ describe("NotificationsPage", () => {
       within(row).getByTestId("notification-vulnerability-link"),
     ).toHaveAttribute(
       "href",
-      `/organizations/${ORG_A}/projects/${P}/vulnerabilities/new`,
+      `/organizations/${ORG_A}/projects/${P}/vulnerabilities?new=1`,
     );
     expect(
       screen.getByTestId("notifications-filter-category-vulnerability"),
@@ -622,7 +622,7 @@ describe("NotificationsPage", () => {
       screen.getByTestId("notification-vulnerability-link"),
     ).toHaveAttribute(
       "href",
-      `/organizations/${ORG_A}/projects/${P}/vulnerabilities/new`,
+      `/organizations/${ORG_A}/projects/${P}/vulnerabilities?new=1`,
     );
   });
 

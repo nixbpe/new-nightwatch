@@ -145,9 +145,9 @@ function downReason(reason: string) {
 function monitorPath(item: MonitorNotificationItem) {
   return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/monitors/${item.subject.monitorId}`;
 }
-/** A new-CVE item links to the Project's new-CVE page. */
+/** A new-CVE item links to the Project's "new in 30 days" filter. */
 function newCvesPath(item: VulnerabilityNotificationItem) {
-  return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/vulnerabilities/new`;
+  return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/vulnerabilities?new=1`;
 }
 function auditExportPath(organizationId: string) {
   return `/organizations/${organizationId}/audit-log#my-exports`;

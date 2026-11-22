@@ -186,17 +186,58 @@ for (const theme of ["light", "dark"] as const) {
       }, theme);
     });
 
-    test("shows the findings, what is unknown, and what it will not claim", async ({
+    test("opens on what to fix, with the reason of each place and what it will not claim", async ({
       page,
     }) => {
       await signIn(page, owner);
       await page.goto(page_());
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
+      // The KEV CVE leads, with the facts that placed it; the CVE with no score is provisional.
+      const first = page.getByTestId("vuln-item-1");
+      await expect(first).toContainText("CVE-2024-0001");
+      await expect(first).toContainText("Redis · Redis 7.2.4");
+      await expect(first).toContainText("Billing API");
+      await expect(first).toContainText("9.8");
+      const reasons = page.getByTestId("vuln-reason-1");
+      for (const badge of ["อยู่ใน KEV", "ภายใน", "EPSS 42%", "CVSS 9.8"]) {
+        await expect(reasons).toContainText(badge);
+      }
+      await expect(page.getByTestId("vuln-item-2")).toContainText(
+        "CVE-2024-0002",
+      );
+      await expect(page.getByTestId("vuln-item-2")).toContainText("ไม่ทราบ");
+      await expect(page.getByTestId("vuln-provisional-2")).toContainText(
+        "ชั่วคราว: ยังไม่ทราบ",
+      );
+      await expect(page.getByTestId("vuln-trust")).toContainText(
+        "ไม่พบ CVE ไม่ได้แปลว่าปลอดภัย",
+      );
+      await expect(page.getByTestId("vuln-status")).toContainText("ตรวจล่าสุด");
+      await expect(page.getByTestId("vuln-coverage")).toContainText(
+        "ยังไม่ครอบคลุม 1 component",
+      );
+      await expect(page.getByTestId("vuln-tile-fix")).toContainText("2");
+      await expect(page.getByTestId("vuln-tile-kev")).toContainText("1");
+      await expect(page.getByTestId("vuln-tile-new")).toContainText("1");
+      await expect(page.locator("body")).not.toContainText(
+        /\b(?:Q-\d{2}|P[1-4]|F-\d{3})\b/,
+      );
+      await shot(page, `vulnerabilities-${theme}`);
+    });
+
+    test("shows each System with the state of its components, and exports it as Excel", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(page_());
+      await page.getByTestId("vuln-tab-systems").click();
+      await expect(page).toHaveURL(/\/vulnerabilities\?view=systems$/);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+
       const redis = page.getByTestId(`vuln-component-${systemId}-Redis-7.2.4`);
-      await expect(
-        redis.getByTestId("vuln-finding-CVE-2024-0001"),
-      ).toContainText("9.8");
+      await expect(redis).toContainText("พบ 2 CVE");
+      await redis.locator("summary").first().click();
       await expect(
         redis.getByTestId("vuln-finding-CVE-2024-0001"),
       ).toContainText("อยู่ใน KEV");
@@ -207,45 +248,14 @@ for (const theme of ["light", "dark"] as const) {
         page
           .getByTestId(`vuln-component-${systemId}-Thing-1.0.0`)
           .getByTestId("vuln-none-found"),
-      ).toContainText("ไม่ได้หมายความว่าปลอดภัย");
+      ).toContainText("ไม่พบ CVE");
       await expect(
         page
           .getByTestId(`vuln-component-${systemId}-agent-1.2.3`)
           .getByTestId("vuln-not-covered"),
       ).toContainText("ยังไม่ครอบคลุม");
-      await expect(page.getByTestId("vuln-tile-cves")).toContainText("2");
-      await expect(page.getByTestId("vuln-tile-kev")).toContainText("1");
-      await shot(page, `vulnerabilities-${theme}`);
-    });
+      await shot(page, `vulnerabilities-systems-${theme}`);
 
-    test("orders what to fix with the reason of each place, and exports a System as Excel", async ({
-      page,
-    }) => {
-      await signIn(page, owner);
-      await page.goto(page_());
-      await page.getByTestId("vuln-priority-link").click();
-      await expect(page).toHaveURL(/\/vulnerabilities\/priority$/);
-      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-
-      // The KEV CVE leads, with the facts that placed it; the CVE with no score is provisional.
-      await expect(page.getByTestId("priority-item-1")).toContainText(
-        "CVE-2024-0001",
-      );
-      await expect(page.getByTestId("priority-reason-1")).toContainText(
-        "อยู่ใน KEV · ภายใน · EPSS 42% · CVSS 9.8",
-      );
-      await expect(page.getByTestId("priority-item-2")).toContainText(
-        "CVE-2024-0002",
-      );
-      await expect(page.getByTestId("priority-provisional-2")).toContainText(
-        "ชั่วคราว: ยังไม่ทราบ",
-      );
-      await expect(page.getByTestId("priority-checked")).toContainText(
-        "จากการตรวจที่เสร็จเมื่อ",
-      );
-      await shot(page, `vulnerabilities-priority-${theme}`);
-
-      await page.getByTestId("priority-back").click();
       const [download] = await Promise.all([
         page.waitForEvent("download"),
         page.getByTestId(`vuln-export-${systemId}`).click(),
@@ -255,29 +265,42 @@ for (const theme of ["light", "dark"] as const) {
       expect((await readFile(path)).byteLength).toBeGreaterThan(1000);
     });
 
-    test("lists what the scans saw first, reached from the findings page", async ({
+    test("keeps what the old new-CVE page showed under the filter, reached from the old URL", async ({
       page,
     }) => {
       await signIn(page, owner);
-      await page.goto(page_());
-      await page.getByTestId("vuln-new-link").click();
-      await expect(page).toHaveURL(/\/vulnerabilities\/new$/);
+      await page.goto(`${page_()}/new`);
+      await expect(page).toHaveURL(/\/vulnerabilities\?new=1$/);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
-      const found = page.getByTestId("new-cve-CVE-2024-0001");
-      await expect(found).toContainText("Redis · Redis");
-      await expect(found).toContainText("อยู่ใน KEV");
-      await expect(found).toContainText("ยังพบในการตรวจล่าสุด");
-      await expect(page.getByTestId("new-cve-CVE-2024-8888")).toContainText(
-        "ไม่พบแล้วในการตรวจล่าสุด",
+      const found = page.getByTestId("vuln-item-1");
+      await expect(found).toContainText("CVE-2024-0001");
+      await expect(found).toContainText("พบครั้งแรก");
+      await expect(page.getByTestId("vuln-item-2")).toHaveCount(0);
+      await expect(page.getByTestId("vuln-new-total")).toContainText(
+        "2 รายการ",
       );
-      await expect(page.getByTestId("new-cve-checked")).toContainText(
-        "ตรวจล่าสุดเสร็จเมื่อ",
+      await expect(page.getByTestId("vuln-new-gone")).toContainText(
+        "ใหม่แต่ไม่พบแล้ว 1 รายการ",
       );
-      await expect(page.getByTestId("new-cve-none")).toHaveCount(0);
+      await page.getByTestId("vuln-new-gone").locator("summary").click();
+      await expect(
+        page.getByTestId("vuln-new-gone-CVE-2024-8888"),
+      ).toBeVisible();
+      await expect(page.getByTestId("vuln-new-none")).toHaveCount(0);
       await shot(page, `vulnerabilities-new-${theme}`);
-      await page.getByTestId("new-cve-back").click();
+      await page.getByTestId("vuln-filter-clear").click();
       await expect(page).toHaveURL(/\/vulnerabilities$/);
+      await expect(page.getByTestId("vuln-item-2")).toBeVisible();
+    });
+
+    test("sends the old priority URL to the findings page", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(`${page_()}/priority`);
+      await expect(page).toHaveURL(/\/vulnerabilities$/);
+      await expect(page.getByTestId("vuln-item-1")).toBeVisible();
     });
   });
 }
@@ -286,7 +309,7 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   page,
 }) => {
   await signIn(page, owner);
-  await page.goto(`${page_()}/priority`);
+  await page.goto(page_());
   // Rank 1 is CVE-2024-0001. Mark it not affected: a reason is required first.
   const key = `CVE-2024-0001-`;
   const control = page
@@ -302,28 +325,31 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   await save.click();
 
   // It left the ordering and is listed apart with its reason, who and when.
-  const apart = page.getByTestId("priority-not-affected");
+  const apart = page.getByTestId("vuln-not-affected");
   await expect(apart).toContainText("1 รายการ");
   await apart.locator("summary").click();
   await expect(
-    page.getByTestId("priority-not-affected-CVE-2024-0001"),
+    page.getByTestId("vuln-not-affected-CVE-2024-0001"),
   ).toContainText("ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
-  await expect(page.getByTestId("priority-item-1")).not.toContainText(
+  await expect(page.getByTestId("vuln-item-1")).not.toContainText(
     "CVE-2024-0001",
   );
-  await shot(page, "vulnerabilities-priority-not-affected");
+  await shot(page, "vulnerabilities-not-affected");
 
   // A member reads the same and has no control.
   await page.context().clearCookies();
   await signIn(page, member);
-  await page.goto(`${page_()}/priority`);
-  await expect(page.getByTestId("priority-not-affected")).toContainText(
-    "1 รายการ",
-  );
+  await page.goto(page_());
+  await expect(page.getByTestId("vuln-not-affected")).toContainText("1 รายการ");
   await expect(page.locator('[data-testid^="triage-affected-"]')).toHaveCount(
     0,
   );
-  await page.goto(page_());
+  await page.goto(`${page_()}?view=systems`);
+  await page
+    .getByTestId(`vuln-component-${systemId}-Redis-7.2.4`)
+    .locator("summary")
+    .first()
+    .click();
   await expect(page.getByTestId("vuln-finding-CVE-2024-0001")).toContainText(
     "ไม่ได้รับผลกระทบ",
   );
@@ -331,25 +357,26 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   // Put it back for the tests that follow.
   await page.context().clearCookies();
   await signIn(page, owner);
-  await page.goto(`${page_()}/priority`);
-  await page.getByTestId("priority-not-affected").locator("summary").click();
+  await page.goto(page_());
+  await page.getByTestId("vuln-not-affected").locator("summary").click();
   await page
-    .getByTestId("priority-not-affected-CVE-2024-0001")
+    .getByTestId("vuln-not-affected-CVE-2024-0001")
     .locator('[data-testid^="triage-affected-"]')
     .click();
-  await expect(page.getByTestId("priority-item-1")).toContainText(
-    "CVE-2024-0001",
-  );
-  await expect(page.getByTestId("priority-item-1")).toContainText(
-    "ได้รับผลกระทบ",
-  );
+  await expect(page.getByTestId("vuln-item-1")).toContainText("CVE-2024-0001");
+  await expect(page.getByTestId("vuln-item-1")).toContainText("ได้รับผลกระทบ");
 });
 
-test("an admin draws a sample, marks results and sees the false-positive rate", async ({
+test("an admin opens the sample page from the findings page, draws, marks results and sees the false-positive rate", async ({
   page,
 }) => {
   await signIn(page, owner);
   await page.goto(page_());
+  await page.getByTestId("vuln-sample-link").click();
+  await expect(page).toHaveURL(/\/vulnerabilities\/sample$/);
+  await expect(page.getByTestId("vuln-sample-empty")).toContainText(
+    "ยังไม่มีผลสุ่มตรวจ",
+  );
 
   await page.getByTestId("vuln-sample-draw").click();
   await expect(page.getByTestId("vuln-sample-item-1")).toBeVisible();
@@ -358,20 +385,38 @@ test("an admin draws a sample, marks results and sees the false-positive rate", 
   await page.getByTestId("vuln-sample-true_positive-1").click();
   await page.getByTestId("vuln-sample-false_positive-2").click();
   await expect(page.getByTestId("vuln-sample-rate")).toContainText("1 (50%)");
+  await expect(page.locator("body")).not.toContainText(
+    /\b(?:Q-\d{2}|P[1-4]|F-\d{3})\b/,
+  );
   await shot(page, "vulnerabilities-sample");
 });
 
-test("a Project member reads findings and the sample but cannot start or review", async ({
+test("a Project member reads findings but sees no run, no sample link, and a restricted sample page", async ({
   page,
 }) => {
   await signIn(page, member);
   await page.goto(page_());
 
-  await expect(page.getByTestId("vuln-tile-cves")).toContainText("2");
+  await expect(page.getByTestId("vuln-tile-fix")).toContainText("2");
   await expect(page.getByTestId("vuln-run")).toHaveCount(0);
+  await expect(page.getByTestId("vuln-sample-link")).toHaveCount(0);
+
+  await page.goto(`${page_()}/sample`);
+  await expect(page.getByTestId("vuln-sample-restricted")).toBeVisible();
+  await expect(page.getByTestId("vuln-sample-item-1")).toHaveCount(0);
   await expect(page.getByTestId("vuln-sample-draw")).toHaveCount(0);
-  await expect(page.getByTestId("vuln-sample-rate")).toContainText("1 (50%)");
-  await expect(page.getByTestId("vuln-sample-true_positive-1")).toHaveCount(0);
+  await shot(page, "vulnerabilities-sample-restricted");
+
+  // The API says the same: the sampled results are the Project admin's.
+  const sample = await page.request.get(
+    `/api/organizations/${org}/projects/${projectId}/vulnerabilities/sample`,
+  );
+  expect(sample.status()).toBe(403);
+  const findings = await page.request.get(
+    `/api/organizations/${org}/projects/${projectId}/vulnerabilities`,
+  );
+  expect(findings.status()).toBe(200);
+  expect(await findings.json()).toHaveProperty("falsePositive");
 });
 
 test("a check with no confirmed product finishes at once and says there is nothing yet", async ({
@@ -396,11 +441,12 @@ test("a Project with no finished scan warns instead of saying there is no new CV
     `/organizations/${org}/projects/${fresh}/vulnerabilities/new`,
   );
 
-  await expect(page.getByTestId("new-cve-warning-no_scan")).toBeVisible();
-  await expect(page.getByTestId("new-cve-none")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/vulnerabilities\?new=1$/);
+  await expect(page.getByTestId("vuln-new-warning-no_scan")).toBeVisible();
+  await expect(page.getByTestId("vuln-new-none")).toHaveCount(0);
 });
 
-test("a new-CVE notification reaches the inbox and opens the Project's new-CVE page", async ({
+test("a new-CVE notification reaches the inbox and opens the Project's new-in-30-days filter", async ({
   page,
 }) => {
   await signIn(page, member);
@@ -411,7 +457,7 @@ test("a new-CVE notification reaches the inbox and opens the Project's new-CVE p
   await expect(row).toContainText("3 รายการ (2 component)");
   await page.getByTestId("notification-vulnerability-link").first().click();
   await expect(page).toHaveURL(
-    new RegExp(`/projects/${projectId}/vulnerabilities/new$`),
+    new RegExp(`/projects/${projectId}/vulnerabilities\\?new=1$`),
   );
-  await expect(page.getByTestId("new-cve-checked")).toBeVisible();
+  await expect(page.getByTestId("vuln-new-total")).toBeVisible();
 });

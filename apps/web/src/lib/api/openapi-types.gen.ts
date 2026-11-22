@@ -9829,7 +9829,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Findings of the Project */
+                /** @description Findings of the Project, with the false-positive rate of the latest review sample */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -9915,6 +9915,12 @@ export interface paths {
                                 notCovered: number;
                                 checkFailed: number;
                             };
+                            falsePositive: {
+                                reviewed: number;
+                                falsePositives: number;
+                                falsePositiveRate: number | null;
+                                overLimit: boolean;
+                            } | null;
                             components: {
                                 /** Format: uuid */
                                 systemId: string;
@@ -10088,6 +10094,8 @@ export interface paths {
                             warnings: ("no_scan" | "run_failed" | "units_failed" | "feed_down" | "stale")[];
                             items: {
                                 cveId: string;
+                                /** Format: uuid */
+                                mappingId: string;
                                 vendor: string;
                                 product: string;
                                 version: string;
@@ -11012,7 +11020,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description The latest review sample */
+                /** @description The latest review sample (Project admin only; a member gets 403 and reads the rate in the findings) */
                 200: {
                     headers: {
                         [name: string]: unknown;
