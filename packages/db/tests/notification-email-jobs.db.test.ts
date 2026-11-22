@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   claimNotificationEmailJobs,
+  maintainNotificationEmailJobs,
   finishNotificationEmailJob,
   insertVulnerabilityNotificationIntent,
   withTenantContextRaw,
@@ -218,6 +219,9 @@ describe("notification email jobs", () => {
       await owner.query(
         "update notification_email_jobs set claimed_until = now() - interval '1 minute'",
       );
+      expect(
+        await maintainNotificationEmailJobs(fixture.runtime, { limit: 1 }),
+      ).toEqual({ expiredCount: 0, failedCount: 1 });
       // Out of attempts: ended as failed, not claimed.
       expect(
         await claimNotificationEmailJobs(fixture.runtime, { limit: 1 }),
@@ -231,6 +235,108 @@ describe("notification email jobs", () => {
           outcome: "later" as never,
         }),
       ).rejects.toThrow(/outcome/);
+    } finally {
+      await fixture.close();
+    }
+  }, 120_000);
+
+  it("bounds expiry cleanup, preserves live leases and fences tokens after final-attempt recovery", async () => {
+    const fixture = await openTestPostgres("email-maintenance");
+    try {
+      const ids = await seed(fixture);
+      const maintain = async (limit: number) =>
+        (
+          await fixture.runtime.sql.query<{
+            expired_count: number;
+            failed_count: number;
+          }>("select * from maintain_notification_email_jobs($1)", [limit])
+        ).rows;
+      await fixture.owner.sql.query(
+        "update notification_intents set expires_at = now() - interval '1 day' where id = $1",
+        [ids.intent],
+      );
+      const [claim] = await claimNotificationEmailJobs(fixture.runtime, {
+        limit: 1,
+      });
+      if (!claim) throw new Error("no claim");
+      await fixture.owner.sql.query(
+        "update notification_email_jobs set attempt_count = 5 where claim_token = $1",
+        [claim.claimToken],
+      );
+      expect(await maintain(1)).toEqual([
+        { expired_count: 1, failed_count: 0 },
+      ]);
+      expect(await maintain(1)).toEqual([
+        { expired_count: 0, failed_count: 0 },
+      ]);
+      await fixture.owner.sql.query(
+        "update notification_email_jobs set claimed_until = now() - interval '1 minute'",
+      );
+      expect(await maintain(1)).toEqual([
+        { expired_count: 0, failed_count: 1 },
+      ]);
+      expect(
+        await finishNotificationEmailJob(fixture.runtime, {
+          intentId: claim.intentId,
+          recipientUserId: claim.recipientUserId,
+          claimToken: claim.claimToken,
+          outcome: "sent",
+        }),
+      ).toBe(false);
+      expect(await maintain(1)).toEqual([
+        { expired_count: 1, failed_count: 0 },
+      ]);
+      expect(await maintain(1)).toEqual([
+        { expired_count: 0, failed_count: 0 },
+      ]);
+      expect(
+        (
+          await fixture.owner.sql.query(
+            "select * from notification_intents where id = $1",
+            [ids.intent],
+          )
+        ).rowCount,
+      ).toBe(1);
+      await expect(maintain(0)).rejects.toThrow(/limit/);
+      await expect(maintain(101)).rejects.toThrow(/limit/);
+    } finally {
+      await fixture.close();
+    }
+  }, 120_000);
+
+  it("cleans terminal jobs only after expiry and skips rows locked by another worker", async () => {
+    const fixture = await openTestPostgres("email-expiry-lock");
+    try {
+      const ids = await seed(fixture);
+      await fixture.owner.sql.query(
+        `update notification_email_jobs set state = case when recipient_user_id = $1 then 'sent' else 'skipped' end,
+         sent_at = case when recipient_user_id = $1 then now() end`,
+        [ids.owner],
+      );
+      expect(
+        await maintainNotificationEmailJobs(fixture.runtime, { limit: 100 }),
+      ).toEqual({ expiredCount: 0, failedCount: 0 });
+      await fixture.owner.sql.query(
+        "update notification_intents set expires_at = now() - interval '1 day' where id = $1",
+        [ids.intent],
+      );
+      const lock = await fixture.owner.sql.connect();
+      try {
+        await lock.query("begin");
+        await lock.query("select 1 from notification_email_jobs for update");
+        expect(
+          await maintainNotificationEmailJobs(fixture.runtime, { limit: 100 }),
+        ).toEqual({ expiredCount: 0, failedCount: 0 });
+      } finally {
+        await lock.query("rollback");
+        lock.release();
+      }
+      expect(
+        await maintainNotificationEmailJobs(fixture.runtime, { limit: 1 }),
+      ).toEqual({ expiredCount: 1, failedCount: 0 });
+      expect(
+        await maintainNotificationEmailJobs(fixture.runtime, { limit: 1 }),
+      ).toEqual({ expiredCount: 1, failedCount: 0 });
     } finally {
       await fixture.close();
     }
@@ -273,6 +379,40 @@ describe("notification email jobs", () => {
             [column],
           )
         ).rows[0]?.ok;
+      expect(
+        (
+          await fixture.owner.sql.query(`
+        select r.rolname as owner, r.rolcanlogin as login, r.rolsuper as superuser,
+               r.rolbypassrls as bypass, p.prosecdef as definer, p.proconfig as config,
+               has_function_privilege('nightwatch', p.oid, 'EXECUTE') as runtime_execute
+        from pg_proc p join pg_roles r on r.oid = p.proowner
+        where p.oid = 'maintain_notification_email_jobs(integer)'::regprocedure
+      `)
+        ).rows,
+      ).toEqual([
+        {
+          owner: "nightwatch_email_job_owner",
+          login: false,
+          superuser: false,
+          bypass: false,
+          definer: true,
+          config: ["search_path=pg_catalog, public"],
+          runtime_execute: true,
+        },
+      ]);
+      expect(
+        (
+          await fixture.owner.sql.query(`
+        select has_column_privilege('nightwatch_email_job_owner', 'notification_intents', 'expires_at', 'SELECT') as expiry,
+               has_column_privilege('nightwatch_email_job_owner', 'notification_intents', 'subject_project_name', 'SELECT') as content,
+               has_table_privilege('nightwatch', 'notification_email_jobs', 'DELETE') as runtime_delete,
+               relforcerowsecurity as forced
+        from pg_class where oid = 'notification_email_jobs'::regclass
+      `)
+        ).rows,
+      ).toEqual([
+        { expiry: true, content: false, runtime_delete: false, forced: true },
+      ]);
       expect(await privilege("state")).toBe(true);
       expect(await privilege("claim_token")).toBe(true);
       expect(await privilege("recipient_user_id")).toBe(false);

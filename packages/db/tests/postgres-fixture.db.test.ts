@@ -252,6 +252,7 @@ describe("owned PostgreSQL fixture", () => {
         "0033_vulnerability_monitoring.sql",
         "0034_vulnerability_notifications.sql",
         "0035_notification_email_jobs.sql",
+        "0037_email_job_maintenance.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();

@@ -14,6 +14,7 @@ export {
   insertAccountNotificationIntent,
   insertAuditExportNotificationIntent,
   claimNotificationEmailJobs,
+  maintainNotificationEmailJobs,
   finishNotificationEmailJob,
   insertMonitorNotificationIntent,
   insertVulnerabilityNotificationIntent,
