@@ -1,7 +1,9 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { PageState } from "../../components/shell/PageState";
+import { Alert } from "../../components/ui";
+import { Button } from "../../components/ui/button";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -38,7 +40,11 @@ export function ImportHistory({
     placeholderData: keepPreviousData,
     retry: false,
   });
-  const data = history.data;
+  // The last page that loaded stays on screen when the next fetch fails, marked as possibly
+  // outdated, and is never read as the current or an empty history (CMP-01).
+  const loaded = useRef(history.data);
+  if (history.data !== undefined) loaded.current = history.data;
+  const data = history.data ?? (history.isError ? loaded.current : undefined);
   const pages =
     data === undefined ? 1 : Math.max(1, Math.ceil(data.total / data.pageSize));
 
@@ -52,26 +58,39 @@ export function ImportHistory({
         id="inventory-import-history-heading"
         title="ประวัติ import"
       />
-      {history.isPending ? (
-        <PageState
-          kind="loading"
-          label="กำลังโหลดประวัติ import"
-          layout="lines"
-        />
-      ) : history.isError && data === undefined ? (
-        <PageState
-          kind="error"
-          message={inventoryErrorMessage(history.error)}
-          retryLabel="ลองใหม่"
-          onRetry={() => void history.refetch()}
-        />
-      ) : data === undefined || data.total === 0 ? (
-        <p
-          data-testid="inventory-import-history-empty"
-          className="text-sm text-foreground-secondary"
-        >
-          ยังไม่มีประวัติ import
-        </p>
+      {history.isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Alert tone="error" data-testid="inventory-import-history-error">
+            {inventoryErrorMessage(history.error)}
+            {data === undefined ? "" : " ข้อมูลด้านล่างอาจไม่เป็นปัจจุบัน"}
+          </Alert>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="inventory-import-history-retry"
+            onClick={() => void history.refetch()}
+          >
+            ลองใหม่
+          </Button>
+        </div>
+      ) : null}
+      {data === undefined ? (
+        history.isPending ? (
+          <PageState
+            kind="loading"
+            label="กำลังโหลดประวัติ import"
+            layout="lines"
+          />
+        ) : null
+      ) : data.total === 0 ? (
+        history.isError ? null : (
+          <p
+            data-testid="inventory-import-history-empty"
+            className="text-sm text-foreground-secondary"
+          >
+            ยังไม่มีประวัติ import
+          </p>
+        )
       ) : (
         <>
           <DataTable

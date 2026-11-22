@@ -534,6 +534,47 @@ describe("ImportPage history", () => {
     expect(historyMock.mock.calls.length).toBeGreaterThan(1);
   });
 
+  it("returns the history to page 1 after a confirmation made while page 2 was open", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockResolvedValue(result());
+    const record = (n: number) => ({
+      importedAt: "2026-11-20T10:00:00.000Z",
+      importedBy: "สมชาย",
+      added: 4,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      failed: 1,
+      id: `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, "0")}`,
+      fileName: `inventory-${String(n)}.csv`,
+    });
+    historyMock.mockImplementation((_org, _project, query) =>
+      Promise.resolve(
+        query.page === 2
+          ? { imports: [record(21)], total: 21, page: 2, pageSize: 20 }
+          : {
+              imports: Array.from({ length: 20 }, (_, n) => record(n + 1)),
+              total: 21,
+              page: 1,
+              pageSize: 20,
+            },
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "หน้าถัดไป" }));
+    expect(await screen.findByText("inventory-21.csv")).toBeVisible();
+    await user.click(await screen.findByTestId("inventory-import-confirm"));
+
+    await screen.findByTestId("inventory-import-result");
+    expect(await screen.findByText("inventory-1.csv")).toBeVisible();
+    expect(screen.queryByText("inventory-21.csv")).toBeNull();
+    expect(
+      screen.getByTestId("inventory-import-history-page"),
+    ).toHaveTextContent("1-20 จาก 21 · หน้า 1/2");
+  });
+
   it("does not ask for the history when the Project cannot be read", async () => {
     summaryMock.mockRejectedValue(new ApiError("PROJECT_NOT_FOUND", "x", 404));
     renderPage();

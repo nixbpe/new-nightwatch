@@ -3,7 +3,7 @@ import type {
   InventoryImportRecord,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,11 +49,14 @@ function renderHistory() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>
-      <ImportHistory organizationId={ORG} projectId={PROJECT} />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <ImportHistory organizationId={ORG} projectId={PROJECT} />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 beforeEach(() => {
@@ -232,5 +235,87 @@ describe("ImportHistory", () => {
     ).not.toBeNull();
     expect(next).toBeDisabled();
     expect(previous).toBeEnabled();
+  });
+});
+
+describe("ImportHistory when a fetch fails (CMP-01)", () => {
+  const failure = () => new ApiError("INTERNAL", "x", 500);
+  const refresh = (client: QueryClient) =>
+    act(() => client.invalidateQueries());
+
+  it("keeps the rows it has, says they may be outdated and offers a retry when a refresh fails", async () => {
+    fetchMock.mockResolvedValueOnce(list([record(1)]));
+    const { client } = renderHistory();
+    await screen.findByRole("table");
+
+    fetchMock.mockRejectedValueOnce(failure());
+    await refresh(client);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("อาจไม่เป็นปัจจุบัน");
+    expect(screen.getByRole("button", { name: "ลองใหม่" })).toBeVisible();
+    expect(screen.getByRole("table")).toBeVisible();
+    expect(screen.getByText("inventory-q4.csv")).toBeVisible();
+  });
+
+  it("never says the history is empty when the refresh after an import failed", async () => {
+    fetchMock.mockResolvedValueOnce(list([]));
+    const { client } = renderHistory();
+    await screen.findByTestId("inventory-import-history-empty");
+
+    fetchMock.mockRejectedValueOnce(failure());
+    await refresh(client);
+
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.queryByTestId("inventory-import-history-empty")).toBeNull();
+    expect(screen.getByRole("button", { name: "ลองใหม่" })).toBeVisible();
+  });
+
+  it("clears the error when the retry succeeds", async () => {
+    fetchMock.mockResolvedValueOnce(list([]));
+    const { client } = renderHistory();
+    await screen.findByTestId("inventory-import-history-empty");
+    fetchMock.mockRejectedValueOnce(failure());
+    await refresh(client);
+    await screen.findByRole("alert");
+
+    fetchMock.mockResolvedValueOnce(list([record(1)]));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองใหม่" }));
+
+    expect(await screen.findByRole("table")).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("inventory-import-history-empty")).toBeNull();
+  });
+
+  it("shows the error and keeps page 1 when page 2 cannot be fetched", async () => {
+    const first = Array.from({ length: 20 }, (_, n) => record(n + 1));
+    fetchMock.mockResolvedValueOnce(list(first, 25, 1));
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByRole("table");
+
+    fetchMock.mockRejectedValueOnce(failure());
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.getAllByTestId(/^inventory-import-record-/)).toHaveLength(20);
+    expect(screen.getByRole("button", { name: "ลองใหม่" })).toBeVisible();
+  });
+
+  it("keeps the table and the pager mounted while the next page is pending", async () => {
+    const first = Array.from({ length: 20 }, (_, n) => record(n + 1));
+    fetchMock.mockResolvedValueOnce(list(first, 25, 1));
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByRole("table");
+
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+
+    expect(screen.getByRole("table")).toBeVisible();
+    expect(screen.getByTestId("inventory-import-history-nav")).toBeVisible();
+    expect(screen.getAllByTestId(/^inventory-import-record-/)).toHaveLength(20);
   });
 });
