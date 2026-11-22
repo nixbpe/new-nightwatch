@@ -67,9 +67,13 @@ export function selectFix(
     systems.add(component.systemId);
     systemsOf.set(key, systems);
   }
+  // The latest scan's word on a new CVE decides where it sits (S8.3): found, it is in the
+  // ranking; gone or not known, it is in its group, never in both.
+  const isFoundNew = (item: Placed) =>
+    news.get(itemKey(item))?.stillFound === true;
   const passes = (item: Placed) =>
     (filters.system === null || item.systemId === filters.system) &&
-    (!filters.isNew || news.has(itemKey(item))) &&
+    (!filters.isNew || isFoundNew(item)) &&
     (!filters.kev || item.kev === true) &&
     (!filters.severe || isSevere(item.cvssSeverity)) &&
     (!filters.untriaged || item.triage === null);
@@ -108,7 +112,7 @@ export function selectFix(
       kev: priority.items.filter((item) => item.kev === true).length,
       severe: priority.items.filter((item) => isSevere(item.cvssSeverity))
         .length,
-      fresh: priority.items.filter((item) => news.has(itemKey(item))).length,
+      fresh: priority.items.filter(isFoundNew).length,
     },
     newTotal: fresh.items.length,
     empty: priority.items.length === 0 && priority.notAffected.length === 0,

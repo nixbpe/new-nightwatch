@@ -677,6 +677,42 @@ describe("the By-System view", () => {
   });
 });
 
+describe("an error only counts in the view that reads it", () => {
+  it.each([
+    [
+      "the ranking",
+      () => priorityMock.mockRejectedValue(new ApiError("X", "x", 500)),
+    ],
+    [
+      "the new-CVE list",
+      () => freshMock.mockRejectedValue(new ApiError("X", "x", 500)),
+    ],
+  ])(
+    "shows the By-System view when %s failed on the Needs-fix view",
+    async (_name, fail) => {
+      fail();
+      renderAt(BASE);
+      expect(
+        await screen.findByText("ทำรายการไม่สำเร็จ โปรดลองใหม่"),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByTestId("vuln-tab-systems"));
+      expect(
+        await screen.findByTestId(`vuln-system-${SYSTEM}`),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId(`vuln-export-${SYSTEM}`)).toBeInTheDocument();
+      expect(screen.queryByText("ทำรายการไม่สำเร็จ โปรดลองใหม่")).toBeNull();
+    },
+  );
+
+  it("shows the error of the list in the By-System view", async () => {
+    listMock.mockRejectedValue(new ApiError("X", "x", 500));
+    renderAt(`${BASE}?view=systems`);
+    expect(
+      await screen.findByText("ทำรายการไม่สำเร็จ โปรดลองใหม่"),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("terms and document codes", () => {
   const terms: Term[] = [
     "kev",

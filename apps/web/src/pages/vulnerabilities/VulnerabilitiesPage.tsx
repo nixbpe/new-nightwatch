@@ -217,9 +217,9 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
   const loading =
     query.isPending ||
     (view === "fix" && (priorityQuery.isPending || freshQuery.isPending));
-  const failed = [query, priorityQuery, freshQuery].find(
-    (candidate) => candidate.isError,
-  );
+  // A disabled query keeps its last error, so only the queries this view reads can fail it.
+  const active = view === "fix" ? [query, priorityQuery, freshQuery] : [query];
+  const failed = active.find((candidate) => candidate.isError);
   const content = (
     <>
       {data === undefined ? null : view === "systems" ? (
@@ -415,7 +415,7 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
           message={vulnerabilityErrorMessage(failed.error)}
           retryLabel="ลองใหม่"
           onRetry={() => {
-            for (const candidate of [query, priorityQuery, freshQuery]) {
+            for (const candidate of active) {
               if (candidate.isError) void candidate.refetch();
             }
           }}

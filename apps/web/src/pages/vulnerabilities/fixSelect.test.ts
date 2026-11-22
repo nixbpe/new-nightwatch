@@ -99,4 +99,37 @@ describe("selectFix", () => {
     );
     expect(view.gone).toEqual([]);
   });
+
+  it.each([
+    ["unknown", null],
+    ["gone", false],
+  ] as const)(
+    "shows a ranked CVE the latest scan reports as %s once, in its group, and keeps the total",
+    (_name, stillFound) => {
+      // The ranking comes from the earlier finished run; the new list from a newer failed one.
+      const view = selectFix(
+        priority(),
+        list(),
+        fresh({ items: [newItem("CVE-2024-0001", { stillFound })] }),
+        { ...NO_FILTERS, isNew: true },
+      );
+      expect(view.ranked).toEqual([]);
+      expect(view.notAffected).toEqual([]);
+      expect(view.gone.length + view.unknown.length).toBe(1);
+      expect(view.newTotal).toBe(1);
+      expect(view.tiles.fresh).toBe(0);
+    },
+  );
+
+  it("keeps a still-found ranked CVE in the ranking and out of the groups", () => {
+    const view = selectFix(
+      priority(),
+      list(),
+      fresh({ items: [newItem("CVE-2024-0001")] }),
+      { ...NO_FILTERS, isNew: true },
+    );
+    expect(view.ranked.map((item) => item.cveId)).toEqual(["CVE-2024-0001"]);
+    expect(view.gone.length + view.unknown.length).toBe(0);
+    expect(view.tiles.fresh).toBe(1);
+  });
 });
