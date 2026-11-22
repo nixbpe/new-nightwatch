@@ -3,16 +3,17 @@ import {
   inventoryMappingListSchema,
   inventoryMappingSchema,
   inventoryMappingSuggestionSchema,
-  inventoryRejectedRowsSchema,
   inventoryRowInvalidDetailsSchema,
   inventoryRowListSchema,
   inventoryRowSchema,
   inventorySummarySchema,
+  inventorySystemSchema,
   type InventoryIssue,
   type InventoryMappingUpdate,
   type InventoryRowCreate,
   type InventoryRowInput,
   type InventoryRowsQuery,
+  type InventorySystemCreate,
 } from "@nightwatch/api-contract";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
@@ -26,7 +27,9 @@ import {
 
 const base =
   "/api/organizations/{organizationId}/projects/{projectId}/inventory";
-const rejected = `${base}/systems/{systemId}/rejected-rows` as const;
+const systems = `${base}/systems` as const;
+const system = `${systems}/{systemId}` as const;
+const rejectedExport = `${system}/rejected-rows/export` as const;
 const rows = `${base}/rows` as const;
 const row = `${rows}/{rowId}` as const;
 const mappings = `${base}/mappings` as const;
@@ -47,12 +50,6 @@ export const inventoryKeys = {
   ) => [...inventoryKeys.allRows(organizationId, projectId), query] as const,
   mappings: (organizationId: string, projectId: string) =>
     [...inventoryKeys.all(organizationId, projectId), "mappings"] as const,
-  rejected: (organizationId: string, projectId: string, systemId: string) =>
-    [
-      ...inventoryKeys.all(organizationId, projectId),
-      "rejected",
-      systemId,
-    ] as const,
 };
 
 export function fetchInventory(
@@ -130,15 +127,40 @@ export function deleteRow(
   });
 }
 
-export function fetchRejectedRows(
+export function createSystem(
+  organizationId: string,
+  projectId: string,
+  body: InventorySystemCreate,
+) {
+  return request(systems, inventorySystemSchema, {
+    method: "POST",
+    params: { organizationId, projectId },
+    body,
+  });
+}
+
+export function renameSystem(
   organizationId: string,
   projectId: string,
   systemId: string,
-  signal?: AbortSignal,
+  body: { name: string; revision: number },
 ) {
-  return request(rejected, inventoryRejectedRowsSchema, {
+  return request(system, inventorySystemSchema, {
+    method: "PATCH",
     params: { organizationId, projectId, systemId },
-    signal,
+    body,
+  });
+}
+
+export function deleteSystem(
+  organizationId: string,
+  projectId: string,
+  target: { id: string; revision: number; totalRows: number },
+) {
+  return request(system, undefined, {
+    method: "DELETE",
+    params: { organizationId, projectId, systemId: target.id },
+    query: { revision: target.revision, rows: target.totalRows },
   });
 }
 
@@ -148,7 +170,7 @@ export function downloadRejectedRows(
   systemId: string,
   signal?: AbortSignal,
 ): Promise<DownloadedFile> {
-  return requestFile(`${rejected}/export`, {
+  return requestFile(rejectedExport, {
     params: { organizationId, projectId, systemId },
     signal,
   });
@@ -215,6 +237,8 @@ export function inventoryErrorMessage(error: unknown): string {
       error.code === "INVENTORY_ROW_INVALID" ||
       error.code === "INVENTORY_ROW_DUPLICATE" ||
       error.code === "INVENTORY_ROW_STALE" ||
+      error.code === "INVENTORY_SYSTEM_NAME_TAKEN" ||
+      error.code === "INVENTORY_SYSTEM_STALE" ||
       error.code === "CPE_DICTIONARY_UNAVAILABLE" ||
       error.code === "MAPPING_IDENTIFIER_REQUIRED"
     ) {

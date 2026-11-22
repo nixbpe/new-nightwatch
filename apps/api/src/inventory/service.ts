@@ -3,8 +3,6 @@ import {
   INVENTORY_QUALITY_THRESHOLD_PERCENT,
   inventoryIssueMessage,
   type InventoryIssue,
-  type InventoryRejectedRow,
-  type InventoryRejectedRows,
   type InventorySummary,
   type InventorySystem,
 } from "@nightwatch/api-contract";
@@ -34,8 +32,9 @@ type SystemRow = {
   name: string;
   total_rows: number;
   usable_rows: number;
-  file_name: string;
+  file_name: string | null;
   uploaded_at: Date;
+  revision: number;
   owners: string[];
 };
 
@@ -43,7 +42,7 @@ const MAX_OWNERS_SHOWN = 5;
 const NO_OWNER = "(ไม่ระบุ Owner)";
 const SHEET_NAME_FORBIDDEN = /[[\]:*?/\\]/g;
 
-const toSystem = (row: SystemRow): InventorySystem => ({
+export const toSystem = (row: SystemRow): InventorySystem => ({
   id: row.id,
   name: row.name,
   owners: row.owners,
@@ -54,9 +53,10 @@ const toSystem = (row: SystemRow): InventorySystem => ({
     INVENTORY_QUALITY_THRESHOLD_PERCENT * row.total_rows,
   fileName: row.file_name,
   uploadedAt: row.uploaded_at.toISOString(),
+  revision: row.revision,
 });
 
-const SYSTEM_COLUMNS = `s.id, s.name, s.total_rows, s.usable_rows, s.file_name, s.uploaded_at,
+export const SYSTEM_COLUMNS = `s.id, s.name, s.total_rows, s.usable_rows, s.file_name, s.uploaded_at, s.revision,
   array(select o.owner from (select distinct r.owner from inventory_rows r
     where r.system_id = s.id order by r.owner limit ${String(MAX_OWNERS_SHOWN)}) o) as owners`;
 
@@ -87,9 +87,13 @@ async function summarize(
     }
   }
   const systems = rows.map(toSystem);
+  // A System created in the system came from no file, so it is not an upload.
   const last = rows.reduce<SystemRow | undefined>(
     (latest, row) =>
-      !latest || row.uploaded_at > latest.uploaded_at ? row : latest,
+      row.file_name !== null &&
+      (!latest || row.uploaded_at > latest.uploaded_at)
+        ? row
+        : latest,
     undefined,
   );
   return {
@@ -275,49 +279,6 @@ function systemNotFound(): never {
   throw new AppError(404, "INVENTORY_SYSTEM_NOT_FOUND", "ไม่พบ System");
 }
 
-export function getRejectedRows(
-  deps: InventoryDeps,
-  input: ProjectIdentity & { systemId: string },
-): Promise<InventoryRejectedRows> {
-  return withProjectAccess(
-    deps.database,
-    input,
-    "inventory.read",
-    false,
-    async (client, { projectId }) => {
-      const tenant = input.organizationId;
-      const system = await client.query<SystemRow>(
-        `select ${SYSTEM_COLUMNS} from inventory_systems s
-         where s.tenant_id = $1 and s.project_id = $2 and s.id = $3`,
-        [tenant, projectId, input.systemId],
-      );
-      const found = system.rows[0];
-      if (!found) systemNotFound();
-      const { rows } = await client.query<RejectedRow>(
-        `select line_no, owner, vendor, product, version, layer, environment, exposure, issues
-         from inventory_rows
-         where tenant_id = $1 and project_id = $2 and system_id = $3 and not usable
-         order by line_no`,
-        [tenant, projectId, input.systemId],
-      );
-      return {
-        system: toSystem(found),
-        rows: rows.map((row): InventoryRejectedRow => ({
-          line: row.line_no,
-          owner: row.owner,
-          vendor: row.vendor,
-          product: row.product,
-          version: row.version,
-          layer: row.layer,
-          environment: row.environment,
-          exposure: row.exposure,
-          issues: row.issues,
-        })),
-      };
-    },
-  );
-}
-
 // Excel allows 31 UTF-16 units and no leading or trailing apostrophe; the writer
 // counts units, so the name is cut by units without splitting a code point.
 function cutUnits(value: string, units: number): string {
@@ -347,8 +308,31 @@ export async function exportRejectedRows(
   deps: InventoryDeps,
   input: ProjectIdentity & { systemId: string },
 ) {
-  const { system, rows } = await getRejectedRows(deps, input);
-  const byOwner = new Map<string, InventoryRejectedRow[]>();
+  const { system, rows } = await withProjectAccess(
+    deps.database,
+    input,
+    "inventory.read",
+    false,
+    async (client, { projectId }) => {
+      const tenant = input.organizationId;
+      const found = await client.query<{ name: string }>(
+        `select name from inventory_systems
+         where tenant_id = $1 and project_id = $2 and id = $3`,
+        [tenant, projectId, input.systemId],
+      );
+      const name = found.rows[0]?.name;
+      if (name === undefined) systemNotFound();
+      const { rows } = await client.query<RejectedRow>(
+        `select line_no, owner, vendor, product, version, layer, environment, exposure, issues
+         from inventory_rows
+         where tenant_id = $1 and project_id = $2 and system_id = $3 and not usable
+         order by line_no`,
+        [tenant, projectId, input.systemId],
+      );
+      return { system: { name }, rows };
+    },
+  );
+  const byOwner = new Map<string, RejectedRow[]>();
   for (const row of rows) {
     const group = byOwner.get(row.owner);
     if (group) group.push(row);
@@ -365,7 +349,7 @@ export async function exportRejectedRows(
     data: [
       header,
       ...group.map((row) => [
-        { value: row.line, type: Number },
+        { value: row.line_no, type: Number },
         ...[
           system.name,
           row.owner,

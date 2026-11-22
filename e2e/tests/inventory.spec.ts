@@ -50,10 +50,11 @@ async function signIn(page: Page, person: Person) {
   );
 }
 
-// A dialog fades in; a screenshot taken meanwhile shows it half transparent.
+// A dialog fades in; a screenshot taken meanwhile shows it half transparent. A transition
+// cancelled by a later style change rejects `finished`, and a cancelled animation is over too.
 const settled = (page: Page) =>
   page.evaluate(() =>
-    Promise.all(
+    Promise.allSettled(
       document.getAnimations().map((animation) => animation.finished),
     ),
   );
@@ -152,19 +153,21 @@ for (const theme of ["light", "dark"] as const) {
 
       // The System name opens the System page, where the Owner download stays.
       await table.getByRole("link", { name: "HR Portal" }).first().click();
-      await expect(page.getByTestId("inventory-rejected-status")).toContainText(
-        "ใช้งานได้ 1 จาก 4 แถว (25%, ต่ำกว่า 95%)",
+      await expect(page.getByTestId("page-title")).toHaveText("HR Portal");
+      await expect(page.getByTestId("inventory-system-owners")).toContainText(
+        "ทีม HR Portal",
       );
-      await expect(page.getByTestId("inventory-issue-5-Version")).toContainText(
-        "ไม่ถึง patch level",
+      await expect(page.getByTestId("inventory-system-rows")).toContainText(
+        "4",
       );
-      await expect(page.getByTestId("inventory-issue-6-Version")).toContainText(
-        "ต้องเป็นเลขเวอร์ชัน",
+      await expect(page.getByTestId("inventory-system-usable")).toContainText(
+        "1 · 25%",
       );
-      await expect(
-        page.getByTestId("inventory-issue-7-Exposure"),
-      ).toContainText("ค่าไม่อยู่ในรายการ");
-      await shot(page, `inventory-rejected-rows-${theme}`);
+      await expect(page.getByTestId("inventory-system-quality")).toContainText(
+        "คุณภาพต่ำ",
+      );
+      await expect(page.getByText("Export Excel")).toHaveCount(0);
+      await shot(page, `inventory-system-${theme}`);
 
       const download = page.waitForEvent("download");
       const downloadButton = page.getByTestId("inventory-download-button");
@@ -172,6 +175,13 @@ for (const theme of ["light", "dark"] as const) {
       await expect(downloadButton).toBeFocused();
       await page.keyboard.press("Enter");
       expect((await download).suggestedFilename()).toBe("rejected-rows.xlsx");
+
+      // The rows list with its reasons is the overview table filtered by this System.
+      await page.getByTestId("inventory-system-rows-link").click();
+      await expect(page).toHaveURL(/inventory\?system=[0-9a-f-]+$/);
+      await expect(
+        page.getByTestId("inventory-rows-table").locator("tbody tr"),
+      ).toHaveCount(4);
     });
 
     test("owner adds, edits and deletes a row and a stale save is refused", async ({
@@ -321,6 +331,90 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
     });
 
+    test("owner adds, renames and deletes a System", async ({ page }) => {
+      await signIn(page, owner);
+      await page.goto(inventoryUrl());
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+
+      // Add: a name another System has is refused under the name field, typed values stay.
+      await page.getByTestId("inventory-add-system").click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByTestId("inventory-row-name")).toBeFocused();
+      await dialog.getByTestId("inventory-row-name").fill(" billing API ");
+      await dialog.getByTestId("inventory-row-owner").fill("ทีม Cache");
+      await dialog.getByTestId("inventory-row-vendor").fill("Redis Ltd");
+      await dialog.getByTestId("inventory-row-product").fill("Redis");
+      await dialog.getByTestId("inventory-row-version").fill("7.2.4");
+      await dialog
+        .getByTestId("inventory-row-layer")
+        .selectOption("Middleware");
+      await dialog
+        .getByTestId("inventory-row-environment")
+        .selectOption("Production");
+      await dialog
+        .getByTestId("inventory-row-exposure")
+        .selectOption("Internal");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(
+        dialog.getByTestId("inventory-row-name-error"),
+      ).toContainText("มี System ชื่อ billing API");
+      await expect(dialog.getByTestId("inventory-row-owner")).toHaveValue(
+        "ทีม Cache",
+      );
+      await settled(page);
+      await shot(page, `inventory-system-dialog-${theme}`);
+      await dialog.getByTestId("inventory-row-name").fill("Cache");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(page.getByTestId("inventory-success")).toContainText(
+        "เพิ่ม System แล้ว",
+      );
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("7");
+      const cache = page.getByTestId(/^inventory-open-system-/).filter({
+        hasText: "Cache",
+      });
+      await expect(cache).toHaveCount(1);
+
+      // Rename in the form of the page: the name another System has is refused.
+      await cache.click();
+      await expect(page.getByTestId("page-title")).toHaveText("Cache");
+      const name = page.getByRole("textbox", { name: "ชื่อ System" });
+      await name.fill(" hr portal ");
+      await page.getByTestId("inventory-system-rename").click();
+      await expect(
+        page.getByTestId("inventory-system-name-error"),
+      ).toContainText("มี System ชื่อ hr portal");
+      await name.fill("Cache DB");
+      await page.getByTestId("inventory-system-rename").click();
+      await expect(page.getByTestId("inventory-system-success")).toContainText(
+        "เปลี่ยนชื่อ System แล้ว",
+      );
+      await expect(page.getByTestId("page-title")).toHaveText("Cache DB");
+      await expect(page.getByTestId("inventory-system-quality")).toContainText(
+        "ผ่าน",
+      );
+
+      // Delete: the dialog names the System and its rows, and the overview confirms.
+      const remove = page.getByTestId("inventory-system-delete");
+      await remove.click();
+      await expect(dialog).toContainText("Cache DB");
+      await expect(
+        dialog.getByTestId("inventory-system-delete-confirm"),
+      ).toHaveText("ลบ System และ 1 แถว");
+      await settled(page);
+      await shot(page, `inventory-system-delete-dialog-${theme}`);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(remove).toBeFocused();
+      await remove.click();
+      await dialog.getByTestId("inventory-system-delete-confirm").click();
+      await expect(page).toHaveURL(/inventory$/);
+      await expect(page.getByTestId("inventory-success")).toContainText(
+        "ลบ System Cache DB และ 1 แถวแล้ว",
+      );
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+      await expect(page.getByTestId(/^inventory-open-system-/)).toHaveCount(2);
+    });
+
     test("a file with the wrong columns is rejected and the earlier data stays", async ({
       page,
     }) => {
@@ -362,4 +456,24 @@ test("a Project member reads the inventory but cannot upload", async ({
   await expect(page.getByRole("button", { name: /^(แก้|ลบ)แถว/ })).toHaveCount(
     0,
   );
+});
+
+test("a Project member reads a System page without the controls that change it", async ({
+  page,
+}) => {
+  const hr = await pool.query<{ id: string }>(
+    "select id from inventory_systems where project_id = $1 and name = 'HR Portal'",
+    [projectId],
+  );
+  await signIn(page, member);
+  await page.goto(`${inventoryUrl()}/systems/${hr.rows[0]?.id ?? ""}`);
+
+  await expect(page.getByTestId("page-title")).toHaveText("HR Portal");
+  await expect(page.getByTestId("inventory-system-restricted")).toBeVisible();
+  await expect(page.getByTestId("inventory-system-delete")).toHaveCount(0);
+  await expect(page.getByTestId("inventory-system-rename")).toHaveCount(0);
+  await expect(page.getByTestId("inventory-download-button")).toBeVisible();
+  await page.goto(inventoryUrl());
+  await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+  await expect(page.getByTestId("inventory-add-system")).toHaveCount(0);
 });

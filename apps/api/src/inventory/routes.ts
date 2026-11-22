@@ -2,7 +2,6 @@ import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   INVENTORY_MAX_FILE_BYTES,
   errorResponseSchema,
-  inventoryRejectedRowsSchema,
   inventoryRowCreateSchema,
   inventoryRowDeleteQuerySchema,
   inventoryRowListSchema,
@@ -10,6 +9,10 @@ import {
   inventoryRowsQuerySchema,
   inventoryRowUpdateSchema,
   inventorySummarySchema,
+  inventorySystemCreateSchema,
+  inventorySystemDeleteQuerySchema,
+  inventorySystemRenameSchema,
+  inventorySystemSchema,
 } from "@nightwatch/api-contract";
 import { AppError, type Logger } from "@nightwatch/shared";
 import { bodyLimit } from "hono/body-limit";
@@ -22,11 +25,11 @@ import {
   authorizeUpload,
   exportRejectedRows,
   getInventory,
-  getRejectedRows,
   uploadInventory,
   type InventoryDeps,
   type ProjectIdentity,
 } from "./service";
+import { createSystem, deleteSystem, renameSystem } from "./system-edit";
 
 const XLSX_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -323,17 +326,58 @@ export function registerInventoryRoutes(
 
   app.openapi(
     createRoute({
-      method: "get",
-      path: `${base}/systems/{systemId}/rejected-rows`,
+      method: "post",
+      path: `${base}/systems`,
       tags,
-      request: { params: systemParams },
+      request: {
+        params,
+        body: {
+          required: true,
+          content: {
+            "application/json": { schema: inventorySystemCreateSchema },
+          },
+        },
+      },
+      responses: {
+        ...errors,
+        201: {
+          description: "The System that was created with its first row",
+          content: { "application/json": { schema: inventorySystemSchema } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await run(
+          c.req.raw.headers,
+          c.req.valid("param"),
+          c.get("requestId"),
+          "inventory.write",
+          (input) => createSystem(deps, input, c.req.valid("json")),
+        ),
+        201,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: `${base}/systems/{systemId}`,
+      tags,
+      request: {
+        params: systemParams,
+        body: {
+          required: true,
+          content: {
+            "application/json": { schema: inventorySystemRenameSchema },
+          },
+        },
+      },
       responses: {
         ...errors,
         200: {
-          description: "Rows of one System that failed the template rules",
-          content: {
-            "application/json": { schema: inventoryRejectedRowsSchema },
-          },
+          description: "The System after the rename",
+          content: { "application/json": { schema: inventorySystemSchema } },
         },
       },
     }),
@@ -344,11 +388,40 @@ export function registerInventoryRoutes(
           c.req.raw.headers,
           ids,
           c.get("requestId"),
-          "inventory.read",
-          (input) => getRejectedRows(deps, { ...input, systemId }),
+          "inventory.write",
+          (input) =>
+            renameSystem(deps, { ...input, systemId }, c.req.valid("json")),
         ),
         200,
       );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: `${base}/systems/{systemId}`,
+      tags,
+      request: {
+        params: systemParams,
+        query: inventorySystemDeleteQuerySchema,
+      },
+      responses: {
+        ...errors,
+        204: { description: "The System and its rows were deleted" },
+      },
+    }),
+    async (c) => {
+      const { systemId, ...ids } = c.req.valid("param");
+      await run(
+        c.req.raw.headers,
+        ids,
+        c.get("requestId"),
+        "inventory.write",
+        (input) =>
+          deleteSystem(deps, { ...input, systemId }, c.req.valid("query")),
+      );
+      return c.body(null, 204);
     },
   );
 

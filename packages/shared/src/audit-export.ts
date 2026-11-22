@@ -41,6 +41,9 @@ export const AUDIT_ACTIONS = [
   "organization.project.inventory.row.create",
   "organization.project.inventory.row.update",
   "organization.project.inventory.row.delete",
+  "organization.project.inventory.system.create",
+  "organization.project.inventory.system.rename",
+  "organization.project.inventory.system.delete",
   "organization.project.vulnerability.run",
   "organization.project.vulnerability.sample",
   "organization.project.vulnerability.triage",
@@ -98,6 +101,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.inventory.row.create": "เพิ่มแถว inventory ของโปรเจกต์",
   "organization.project.inventory.row.update": "แก้แถว inventory ของโปรเจกต์",
   "organization.project.inventory.row.delete": "ลบแถว inventory ของโปรเจกต์",
+  "organization.project.inventory.system.create":
+    "เพิ่ม System ใน inventory ของโปรเจกต์",
+  "organization.project.inventory.system.rename":
+    "เปลี่ยนชื่อ System ใน inventory ของโปรเจกต์",
+  "organization.project.inventory.system.delete":
+    "ลบ System จาก inventory ของโปรเจกต์",
   "organization.project.vulnerability.run": "ตรวจ CVE ของโปรเจกต์",
   "organization.project.vulnerability.sample": "บันทึกผลสุ่มตรวจ CVE",
   "organization.project.vulnerability.triage": "ทำ triage (VEX) ของ CVE",

@@ -30,6 +30,7 @@ import {
 import { ApiError } from "../../lib/api/client";
 import {
   createRow,
+  createSystem,
   inventoryErrorMessage,
   inventoryRowIssues,
   updateRow,
@@ -91,10 +92,12 @@ const LIST_FIELDS: { key: FieldKey; label: string }[] = [
 
 type Mode =
   | { kind: "add"; systems: InventorySystem[] }
-  | { kind: "edit"; row: InventoryRowItem };
+  | { kind: "edit"; row: InventoryRowItem }
+  // A new System: its name and its first row in one step.
+  | { kind: "system" };
 
 /**
- * Adds a row to a System or edits one. The server applies the upload's rules and answers
+ * Adds a row to a System, edits one, or creates a System with its first row. The server applies the upload's rules and answers
  * per column, so the reasons sit under their fields and what was typed stays. An edit
  * carries the revision of the row as it was when the dialog opened: if someone changed or
  * deleted the row since, the save is refused and nothing is overwritten.
@@ -149,6 +152,8 @@ export function RowDialog({
       return first;
     },
   );
+  const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<string | null>(null);
   const [general, setGeneral] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -156,23 +161,35 @@ export function RowDialog({
   useDialogFocusReturn(dialog, firstField, opener, fallbackFocus);
 
   const save = useMutation({
-    mutationFn: () =>
-      editing === null
-        ? createRow(scope.organizationId, scope.projectId, {
-            systemId,
+    mutationFn: (): Promise<unknown> =>
+      mode.kind === "system"
+        ? createSystem(scope.organizationId, scope.projectId, {
+            name,
             ...values,
           })
-        : updateRow(scope.organizationId, scope.projectId, editing.id, {
-            ...values,
-            revision: editing.revision,
-          }),
+        : editing === null
+          ? createRow(scope.organizationId, scope.projectId, {
+              systemId,
+              ...values,
+            })
+          : updateRow(scope.organizationId, scope.projectId, editing.id, {
+              ...values,
+              revision: editing.revision,
+            }),
     onMutate: () => {
+      setNameError(null);
       setErrors({});
       setDuplicate(null);
       setGeneral(null);
     },
     onSuccess: () => {
-      onSaved(editing === null ? "เพิ่มแถวแล้ว" : "บันทึกแถวแล้ว");
+      onSaved(
+        mode.kind === "system"
+          ? "เพิ่ม System แล้ว"
+          : editing === null
+            ? "เพิ่มแถวแล้ว"
+            : "บันทึกแถวแล้ว",
+      );
     },
     onError: (error) => {
       const issues = inventoryRowIssues(error);
@@ -182,11 +199,21 @@ export function RowDialog({
         for (const issue of issues) {
           const field = COLUMN_FIELD[issue.column];
           const message = inventoryIssueMessage(issue);
-          if (field === undefined) other.push(`${issue.column}: ${message}`);
-          else next[field] ??= message;
+          if (mode.kind === "system" && issue.column === "System") {
+            setNameError(message);
+          } else if (field === undefined) {
+            other.push(`${issue.column}: ${message}`);
+          } else {
+            next[field] ??= message;
+          }
         }
         setErrors(next);
         setGeneral(other.length === 0 ? null : other.join(" · "));
+      } else if (
+        error instanceof ApiError &&
+        error.code === "INVENTORY_SYSTEM_NAME_TAKEN"
+      ) {
+        setNameError(error.message);
       } else if (
         error instanceof ApiError &&
         error.code === "INVENTORY_ROW_DUPLICATE"
@@ -246,10 +273,7 @@ export function RowDialog({
     }
   };
   const keyInvalid = duplicate !== null;
-  const system =
-    mode.kind === "edit"
-      ? mode.row.systemName
-      : (mode.systems.find((item) => item.id === systemId)?.name ?? "");
+  const system = mode.kind === "edit" ? mode.row.systemName : null;
 
   return createPortal(
     <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
@@ -271,7 +295,11 @@ export function RowDialog({
         >
           <div className="px-4 pt-4 sm:px-6 sm:pt-6">
             <h2 id={titleId} className="text-lg font-semibold text-heading">
-              {editing === null ? "เพิ่มแถว" : "แก้แถว"}
+              {mode.kind === "system"
+                ? "เพิ่ม System"
+                : editing === null
+                  ? "เพิ่มแถว"
+                  : "แก้แถว"}
             </h2>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
@@ -280,7 +308,28 @@ export function RowDialog({
                 {general}
               </Alert>
             )}
-            {mode.kind === "add" ? (
+            {mode.kind === "system" ? (
+              <Field
+                label="ชื่อ System"
+                error={nameError}
+                errorId="inventory-row-name-error"
+                errorTestId="inventory-row-name-error"
+              >
+                <Input
+                  ref={firstField}
+                  data-testid="inventory-row-name"
+                  value={name}
+                  aria-invalid={nameError === null ? undefined : true}
+                  aria-describedby={
+                    nameError === null ? undefined : "inventory-row-name-error"
+                  }
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setNameError(null);
+                  }}
+                />
+              </Field>
+            ) : mode.kind === "add" ? (
               <Field label="System">
                 <select
                   data-testid="inventory-row-system"
@@ -304,7 +353,7 @@ export function RowDialog({
                   data-testid="inventory-row-system-name"
                   className="font-medium text-foreground"
                 >
-                  {system === "" ? NO_SYSTEM_NAME : system}
+                  {system === "" || system === null ? NO_SYSTEM_NAME : system}
                 </span>
               </p>
             )}
@@ -332,7 +381,11 @@ export function RowDialog({
                     }
                   >
                     <Input
-                      ref={index === 0 ? firstField : undefined}
+                      ref={
+                        index === 0 && mode.kind !== "system"
+                          ? firstField
+                          : undefined
+                      }
                       data-testid={`inventory-row-${key}`}
                       value={values[key]}
                       aria-invalid={invalid ? true : undefined}

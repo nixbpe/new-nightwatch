@@ -1,5 +1,5 @@
 import {
-  inventoryRejectedRowsSchema,
+  inventoryRowListSchema,
   inventorySummarySchema,
 } from "@nightwatch/api-contract";
 import { createHash } from "node:crypto";
@@ -162,29 +162,20 @@ describe("inventory upload", () => {
       path(
         projectId,
         org.id,
-        `/systems/${systemId(summary, "HR Portal")}/rejected-rows`,
+        `/rows?system=${systemId(summary, "HR Portal")}&status=rejected`,
       ),
     );
     expect(rejected.status).toBe(200);
-    expect(inventoryRejectedRowsSchema.parse(rejected.json).rows).toMatchObject(
+    expect(
+      inventoryRowListSchema.parse(rejected.json).rows.map((row) => row.issues),
+    ).toEqual([
+      [{ column: "Version", code: "version_not_patch_level" }],
+      [{ column: "Version", code: "version_not_a_number" }],
       [
-        {
-          line: 5,
-          issues: [{ column: "Version", code: "version_not_patch_level" }],
-        },
-        {
-          line: 6,
-          issues: [{ column: "Version", code: "version_not_a_number" }],
-        },
-        {
-          line: 7,
-          issues: [
-            { column: "Layer", code: "not_in_list" },
-            { column: "Version", code: "version_not_patch_level" },
-          ],
-        },
+        { column: "Layer", code: "not_in_list" },
+        { column: "Version", code: "version_not_patch_level" },
       ],
-    );
+    ]);
   });
 
   it("replaces only the Systems named in the file and records one audit event", async () => {
@@ -346,7 +337,7 @@ describe("inventory upload", () => {
       path(
         otherProject,
         org.id,
-        `/systems/${systemId(summary, "billing api")}/rejected-rows`,
+        `/systems/${systemId(summary, "billing api")}/rejected-rows/export`,
       ),
     );
     expect(response.status).toBe(404);

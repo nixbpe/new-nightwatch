@@ -199,6 +199,32 @@ describe("inventory tenant isolation", () => {
     expect(counters.rowCount).toBe(0);
   });
 
+  it("cannot rename the other tenant's System or rewrite what a rename may not touch", async () => {
+    const renamed = await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        "update inventory_systems set name = 'hijacked', name_key = 'hijacked', revision = revision + 1 where tenant_id = $1",
+        [tenantB],
+      ),
+    );
+    expect(renamed.rowCount).toBe(0);
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          "update inventory_systems set project_id = $1 where tenant_id = $2",
+          [projectA, tenantA],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          "update inventory_systems set file_name = 'x.csv' where tenant_id = $1",
+          [tenantA],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+
   it("cannot delete the other tenant's System", async () => {
     const deleted = await withTenantContextRaw(database, tenantA, (client) =>
       client.query("delete from inventory_systems where tenant_id = $1", [
@@ -226,6 +252,36 @@ describe("inventory constraints", () => {
         insertSystem(client, scope, " partner portal "),
       ),
     ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("lets a System created in the system have no file and keeps the file name and revision checks", async () => {
+    const scope = { tenant: tenantA, project: projectEdit };
+    const withoutFile = (name: string, file: string | null) =>
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into inventory_systems
+             (tenant_id, project_id, name_key, name, file_name, uploaded_by, total_rows, usable_rows)
+           values ($1, $2, $3, $3, $4, 'user-1', 0, 0)`,
+          [scope.tenant, scope.project, name, file],
+        ),
+      );
+    await withoutFile("manual-system", null);
+    await expect(withoutFile("empty-file", "")).rejects.toMatchObject({
+      code: "23514",
+    });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          "update inventory_systems set revision = 0 where tenant_id = $1 and name_key = 'manual-system'",
+          [tenantA],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    const stored = await owner.query<{ revision: number }>(
+      "select revision from inventory_systems where project_id = $1 and name_key = 'manual-system'",
+      [projectEdit],
+    );
+    expect(stored.rows[0]?.revision).toBe(1);
   });
 
   it("requires usable to match the absence of issues", async () => {
@@ -352,7 +408,11 @@ describe("inventory catalog", () => {
         )
       ).rows.map((row) => row.column_name);
     // Tenant, Project, System, line and the generated key are never rewritten.
+    // A rename rewrites the name, its key and the revision; counters follow row changes.
     expect(await updatable("inventory_systems")).toEqual([
+      "name",
+      "name_key",
+      "revision",
       "total_rows",
       "usable_rows",
     ]);
@@ -384,6 +444,9 @@ describe("inventory catalog", () => {
       "organization.project.inventory.row.create",
       "organization.project.inventory.row.update",
       "organization.project.inventory.row.delete",
+      "organization.project.inventory.system.create",
+      "organization.project.inventory.system.rename",
+      "organization.project.inventory.system.delete",
     ]) {
       expect(result.rows[0]?.definition).toContain(action);
     }
