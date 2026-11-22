@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api/client";
 import {
   deleteSystem,
+  downloadInventory,
   downloadRejectedRows,
   fetchInventory,
   renameSystem,
@@ -32,12 +33,14 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   renameSystem: vi.fn(),
   deleteSystem: vi.fn(),
   downloadRejectedRows: vi.fn(),
+  downloadInventory: vi.fn(),
 }));
 
 const fetchMock = vi.mocked(fetchInventory);
 const renameMock = vi.mocked(renameSystem);
 const deleteMock = vi.mocked(deleteSystem);
 const downloadMock = vi.mocked(downloadRejectedRows);
+const exportMock = vi.mocked(downloadInventory);
 
 function system(overrides: Partial<InventorySummary["systems"][number]> = {}) {
   return {
@@ -117,6 +120,7 @@ beforeEach(() => {
   renameMock.mockReset();
   deleteMock.mockReset();
   downloadMock.mockReset();
+  exportMock.mockReset();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -148,7 +152,9 @@ describe("SystemPage", () => {
     expect(screen.getByTestId("inventory-download-button")).toHaveTextContent(
       "ดาวน์โหลดแถวที่ไม่ผ่านตาม Owner",
     );
-    expect(screen.queryByText(/Export Excel/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Export Excel" }),
+    ).toHaveAttribute("aria-label", "Export Excel");
   });
 
   it("shows an empty System as having no rows rather than as passing, and still lets it be renamed or deleted", async () => {
@@ -422,6 +428,65 @@ describe("SystemPage", () => {
     expect(downloadMock.mock.calls[0]?.slice(0, 3)).toEqual([ORG, PROJECT, HR]);
     expect(create).toHaveBeenCalledWith(blob);
     expect(revoke).toHaveBeenCalledWith("blob:rejected");
+  });
+
+  it("exports this System's rows from an icon button whose tooltip is its label, also for a member who cannot edit", async () => {
+    fetchMock.mockResolvedValue(summary(system(), { canUpload: false }));
+    const blob = new Blob(["xlsx"]);
+    exportMock.mockResolvedValue({
+      blob,
+      filename: "inventory-payments-HR-Portal-2026-11-22.xlsx",
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:inventory");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const button = await screen.findByRole("button", { name: "Export Excel" });
+    expect(button).toHaveTextContent("");
+    await user.hover(button);
+    expect(screen.getByTestId("tooltip")).toHaveTextContent("Export Excel");
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(names).toEqual(["inventory-payments-HR-Portal-2026-11-22.xlsx"]);
+    });
+    expect(exportMock.mock.calls[0]?.slice(0, 3)).toEqual([ORG, PROJECT, HR]);
+  });
+
+  it("disables the export while the file is built and shows a failure as an alert", async () => {
+    fetchMock.mockResolvedValue(summary());
+    let fail: (error: Error) => void = () => {
+      throw new Error("the export has not started");
+    };
+    exportMock.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    const button = await screen.findByTestId("inventory-export");
+    await user.click(button);
+    await waitFor(() => {
+      expect(button).toBeDisabled();
+    });
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(exportMock).toHaveBeenCalledTimes(1);
+
+    fail(new ApiError("X", "x", 503));
+    expect(
+      await screen.findByTestId("inventory-export-error"),
+    ).toHaveTextContent("บริการ inventory ยังไม่พร้อม");
+    expect(button).toBeEnabled();
+    expect(screen.getByTestId("page-title")).toHaveTextContent("HR Portal");
   });
 
   it("shows a download failure without losing the page", async () => {

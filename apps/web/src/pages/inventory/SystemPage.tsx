@@ -26,6 +26,7 @@ import {
   renameSystem,
 } from "../../lib/api/inventory";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
+import { ExportButton, ExportStatus, useInventoryExport } from "./ExportButton";
 import {
   NO_SYSTEM_NAME,
   QUALITY_THRESHOLD,
@@ -174,6 +175,7 @@ function ProjectSystem(scope: Scope) {
       saveBlob(blob, filename ?? "rejected-rows.xlsx");
     },
   });
+  const exporter = useInventoryExport(organizationId, projectId, systemId);
   const system = query.data?.systems.find((item) => item.id === systemId);
   const remove = useMutation({
     mutationFn: (target: InventorySystem) =>
@@ -271,6 +273,7 @@ function ProjectSystem(scope: Scope) {
             </Button>
             {system === undefined ? null : (
               <>
+                <ExportButton exporter={exporter} testId="inventory-export" />
                 {system.usableRows < system.totalRows ? (
                   <Button
                     variant="outline"
@@ -319,6 +322,7 @@ function ProjectSystem(scope: Scope) {
             {failure}
           </Alert>
         )}
+        <ExportStatus exporter={exporter} testId="inventory-export-error" />
         {download.isError ? (
           <Alert tone="error" data-testid="inventory-download-error">
             {inventoryErrorMessage(download.error)}

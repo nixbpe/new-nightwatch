@@ -32,11 +32,13 @@ export type FileRejection =
 export type ParsedFile =
   { ok: true; rows: RawRow[] } | { ok: false; rejection: FileRejection };
 
-const SHEET_NAME = "inventory";
+/** The sheet an export writes; the reader matches it without regard to case. */
+export const INVENTORY_SHEET_NAME = "Inventory";
+const SHEET_NAME = INVENTORY_SHEET_NAME.toLowerCase();
 // A real workbook is a handful of XML parts and 5000 rows are about 1 MB of sheet
 // XML, so these caps only stop a zip bomb.
 const MAX_ZIP_ENTRIES = 200;
-const MAX_UNZIPPED_BYTES = 16 * 1024 * 1024;
+export const MAX_UNZIPPED_BYTES = 16 * 1024 * 1024;
 // The sheet reader fills the gap to a far row or column number with empty cells,
 // so the numbers in the sheet XML are bounded before the reader sees them.
 const MAX_SHEET_ROW_NUMBER = 20_000;
@@ -76,6 +78,18 @@ export async function parseInventoryFile(
   }
   const table = await readWorkbook(bytes);
   return "ok" in table ? table : toRows(table);
+}
+
+/** The total the reader limits: the sum of every entry's declared uncompressed size. */
+export function unzippedBytes(bytes: Uint8Array): number {
+  let total = 0;
+  unzipSync(bytes, {
+    filter: (file) => {
+      total += file.originalSize;
+      return false;
+    },
+  });
+  return total;
 }
 
 async function readWorkbook(bytes: Uint8Array): Promise<Cell[][] | ParsedFile> {

@@ -77,6 +77,8 @@
 
 Import แบบ preview แล้วยืนยัน (E-005 F-022 S7.3, แทน upload ที่มีผลทันทีของ F-017): [กฎ merge ของ preview และการยืนยัน](../apps/api/src/inventory/import-plan.ts), [สร้าง, อ่าน, ยกเลิกและยืนยัน preview](../apps/api/src/inventory/import.ts), [routes](../apps/api/src/inventory/routes.ts), [สัญญา](../packages/api-contract/src/inventory-import.ts), [หน้า Import](../apps/web/src/pages/inventory/ImportPage.tsx), [ตาราง preview, ประวัติ import และฟังก์ชันลบ preview ที่หมดอายุ](../packages/db/migrations/0040_inventory_import_preview.sql), [Worker role `inventory-maintenance`](../apps/worker/src/inventory/maintenance.ts) (ดู [runbook](runbooks/uptime-monitor.md#run-the-worker-roles)), [integration test](../apps/api/src/inventory/import.db.test.ts).
 
+Export inventory ปัจจุบัน (E-005 F-022 S7.4): [workbook, ขนาดสูงสุด และชื่อไฟล์](../apps/api/src/inventory/export.ts), [routes](../apps/api/src/inventory/routes.ts), [ปุ่ม Export Excel](../apps/web/src/pages/inventory/ExportButton.tsx), [integration test รวม round trip ผ่าน preview จริง](../apps/api/src/inventory/export.db.test.ts).
+
 ## ยืนยัน CPE/purl ของ inventory (E-005 F-018)
 
 [API mapping](../apps/api/src/inventory/mappings.ts), [routes](../apps/api/src/inventory/mapping-routes.ts), [ค้น NVD CPE dictionary](../apps/api/src/inventory/cpe.ts), [คำสั่ง operator ของตารางกลาง](../apps/api/src/operator/catalog-product-mapping.ts), [สัญญา](../packages/api-contract/src/inventory-mapping.ts), [Web](../apps/web/src/pages/inventory/MappingQueuePage.tsx), [migration](../packages/db/migrations/0031_identifier_mappings.sql), [browser test](../e2e/tests/inventory-mappings.spec.ts).

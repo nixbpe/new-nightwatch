@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api/client";
 import {
   createSystem,
+  downloadInventory,
   fetchInventory,
   fetchRows,
 } from "../../lib/api/inventory";
@@ -29,11 +30,13 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   fetchInventory: vi.fn(),
   fetchRows: vi.fn(),
   createSystem: vi.fn(),
+  downloadInventory: vi.fn(),
 }));
 
 const fetchMock = vi.mocked(fetchInventory);
 const rowsMock = vi.mocked(fetchRows);
 const createMock = vi.mocked(createSystem);
+const exportMock = vi.mocked(downloadInventory);
 
 function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
   return {
@@ -111,6 +114,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   rowsMock.mockReset();
   createMock.mockReset();
+  exportMock.mockReset();
   rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
 });
 
@@ -455,5 +459,126 @@ describe("InventoryPage", () => {
         screen.getByTestId(`inventory-open-system-${BILLING}`),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("InventoryPage export", () => {
+  it("offers Export Excel to a member who cannot change the inventory, as an icon button whose tooltip is its label", async () => {
+    fetchMock.mockResolvedValue(summary({ canUpload: false }));
+    const user = userEvent.setup();
+    renderPage();
+
+    const button = await screen.findByRole("button", { name: "Export Excel" });
+    expect(button).toHaveAttribute("aria-label", "Export Excel");
+    expect(button).toHaveTextContent("");
+    expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+    expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+    await user.hover(button);
+    expect(screen.getByTestId("tooltip")).toHaveTextContent(
+      button.getAttribute("aria-label") ?? "",
+    );
+  });
+
+  it("keeps Import and the System button beside it for a maintainer", async () => {
+    fetchMock.mockResolvedValue(summary());
+    renderPage();
+
+    expect(await screen.findByTestId("inventory-import-link")).toBeVisible();
+    expect(screen.getByTestId("inventory-add-system")).toBeVisible();
+    expect(screen.getByTestId("inventory-export")).toBeVisible();
+  });
+
+  it("offers the file of a Project without inventory", async () => {
+    fetchMock.mockResolvedValue(
+      summary({ systemCount: 0, totalRows: 0, usableRows: 0, systems: [] }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId("inventory-export")).toBeEnabled();
+  });
+
+  it("downloads the Project's file under the name the server gives, and blocks a second click while it is built", async () => {
+    fetchMock.mockResolvedValue(summary());
+    let finish: (file: { blob: Blob; filename: string }) => void = () => {
+      throw new Error("the download has not started");
+    };
+    exportMock.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const blob = new Blob(["xlsx"]);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:inventory");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const anchors: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      anchors.push(this.download);
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const button = await screen.findByTestId("inventory-export");
+    await user.click(button);
+    await waitFor(() => {
+      expect(button).toBeDisabled();
+    });
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await user.click(button);
+    expect(exportMock).toHaveBeenCalledTimes(1);
+    expect(exportMock.mock.calls[0]?.slice(0, 3)).toEqual([
+      ORG,
+      PROJECT,
+      undefined,
+    ]);
+
+    finish({ blob, filename: "inventory-payments-2026-11-22.xlsx" });
+    await waitFor(() => {
+      expect(button).toBeEnabled();
+    });
+    expect(anchors).toEqual(["inventory-payments-2026-11-22.xlsx"]);
+  });
+
+  it("shows why the file could not be made as an alert and lets the member try again", async () => {
+    fetchMock.mockResolvedValue(summary());
+    exportMock.mockRejectedValueOnce(
+      new ApiError(
+        "INVENTORY_EXPORT_TOO_LARGE",
+        "inventory ของ Project ใหญ่เกินกว่าจะ export",
+        409,
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("inventory-export"));
+
+    expect(
+      await screen.findByTestId("inventory-export-error"),
+    ).toHaveTextContent("ใหญ่เกินกว่าจะ export");
+    expect(screen.getByTestId("inventory-export")).toBeEnabled();
+    expect(screen.getByTestId("inventory-tile-total")).toBeInTheDocument();
+  });
+
+  it("shows the stale-rows message of a refused export as an alert", async () => {
+    fetchMock.mockResolvedValue(summary());
+    exportMock.mockRejectedValueOnce(
+      new ApiError(
+        "INVENTORY_EXPORT_STALE_ROWS",
+        "2 แถวยังมีข้อผิดพลาดของช่อง System จากก่อนเปลี่ยนชื่อ System",
+        409,
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("inventory-export"));
+
+    expect(
+      await screen.findByTestId("inventory-export-error"),
+    ).toHaveTextContent("2 แถวยังมีข้อผิดพลาดของช่อง System");
+    expect(screen.getByTestId("inventory-export")).toBeEnabled();
+    expect(screen.getByTestId("inventory-tile-total")).toBeInTheDocument();
   });
 });

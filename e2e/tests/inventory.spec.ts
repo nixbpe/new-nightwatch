@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
@@ -206,7 +207,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("inventory-system-quality")).toContainText(
         "คุณภาพต่ำ",
       );
-      await expect(page.getByText("Export Excel")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Export Excel" }),
+      ).toBeVisible();
       await shot(page, `inventory-system-${theme}`);
 
       const download = page.waitForEvent("download");
@@ -215,6 +218,32 @@ for (const theme of ["light", "dark"] as const) {
       await expect(downloadButton).toBeFocused();
       await page.keyboard.press("Enter");
       expect((await download).suggestedFilename()).toBe("rejected-rows.xlsx");
+
+      // The System's own export, rows that passed and rows that failed, imports back through
+      // the Import page without a change.
+      const systemUrl = page.url();
+      const exportButton = page.getByRole("button", { name: "Export Excel" });
+      const exportDownload = page.waitForEvent("download");
+      await exportButton.focus();
+      await expect(exportButton).toBeFocused();
+      await page.keyboard.press("Enter");
+      const exported = await exportDownload;
+      expect(exported.suggestedFilename()).toMatch(
+        /^inventory-.+-HR-Portal-\d{4}-\d{2}-\d{2}\.xlsx$/,
+      );
+      await page.goto(`${inventoryUrl()}/import`);
+      // The browser keeps the download under a temporary name, so the file goes in under its own.
+      await page.getByTestId("inventory-file-input").setInputFiles({
+        name: exported.suggestedFilename(),
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buffer: await readFile(await exported.path()),
+      });
+      await expect(
+        page.getByTestId("inventory-import-previewed"),
+      ).toContainText("เพิ่ม 0 · อัปเดต 0 · ไม่เปลี่ยน 4 · ข้าม 0 · ไม่ผ่าน 0");
+      await page.getByTestId("inventory-import-cancel").click();
+      await page.goto(systemUrl);
 
       // The rows list with its reasons is the overview table filtered by this System.
       await page.getByTestId("inventory-system-rows-link").click();
@@ -575,7 +604,18 @@ test("a Project member reads a System page without the controls that change it",
   await expect(page.getByTestId("inventory-system-delete")).toHaveCount(0);
   await expect(page.getByTestId("inventory-system-rename")).toHaveCount(0);
   await expect(page.getByTestId("inventory-download-button")).toBeVisible();
+  // Reading is enough to export: a member downloads the System's file and the Project's.
+  const systemExport = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Excel" }).click();
+  expect((await systemExport).suggestedFilename()).toMatch(
+    /^inventory-.+-HR-Portal-\d{4}-\d{2}-\d{2}\.xlsx$/,
+  );
   await page.goto(inventoryUrl());
   await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
   await expect(page.getByTestId("inventory-add-system")).toHaveCount(0);
+  const projectExport = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Excel" }).click();
+  expect((await projectExport).suggestedFilename()).toMatch(
+    /^inventory-.+-\d{4}-\d{2}-\d{2}\.xlsx$/,
+  );
 });
