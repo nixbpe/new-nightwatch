@@ -117,7 +117,12 @@ for (const theme of ["light", "dark"] as const) {
       );
       await shot(page, `inventory-${theme}`);
 
-      await hr.getByRole("link", { name: "ดูแถวที่ไม่ผ่าน" }).click();
+      const rejectedLink = hr.getByRole("link", { name: "ดูแถวที่ไม่ผ่าน" });
+      await rejectedLink.focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      await expect(rejectedLink).toBeFocused();
+      await page.keyboard.press("Enter");
       await expect(page.getByTestId("inventory-rejected-status")).toContainText(
         "ใช้งานได้ 1 จาก 4 แถว (25%, ต่ำกว่า 95%)",
       );
@@ -133,7 +138,10 @@ for (const theme of ["light", "dark"] as const) {
       await shot(page, `inventory-rejected-rows-${theme}`);
 
       const download = page.waitForEvent("download");
-      await page.getByTestId("inventory-download-button").click();
+      const downloadButton = page.getByTestId("inventory-download-button");
+      await downloadButton.focus();
+      await expect(downloadButton).toBeFocused();
+      await page.keyboard.press("Enter");
       expect((await download).suggestedFilename()).toBe("rejected-rows.xlsx");
     });
 

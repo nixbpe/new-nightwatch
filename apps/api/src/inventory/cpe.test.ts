@@ -12,6 +12,11 @@ import {
 const F5 = "cpe:2.3:a:f5:big-ip_local_traffic_manager:17.1.1.3:*:*:*:*:*:*:*";
 
 describe("cpeVendorProduct", () => {
+  it("reads the product after a vendor ending in an escaped backslash", () => {
+    expect(
+      cpeVendorProduct(String.raw`cpe:2.3:a:vendor\\:product:*:*:*:*:*:*:*:*`),
+    ).toEqual([String.raw`vendor\\`, "product"]);
+  });
   it("reads vendor and product, with _ read as a space", () => {
     expect(cpeVendorProduct(F5)).toEqual([
       "f5",
