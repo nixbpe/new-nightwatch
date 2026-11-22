@@ -107,6 +107,36 @@ export const inventoryImportResultSchema = z.object({
 });
 export type InventoryImportResult = z.infer<typeof inventoryImportResultSchema>;
 
+/** The history lists this many confirmed imports per page (S7.5). */
+export const INVENTORY_IMPORTS_PAGE_SIZE = 20;
+
+export const inventoryImportsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+});
+export type InventoryImportsQuery = Partial<
+  z.infer<typeof inventoryImportsQuerySchema>
+>;
+
+// One confirmed import: who, when, which file and the counts. Never the file or its rows.
+export const inventoryImportRecordSchema = inventoryImportCountsSchema.extend({
+  id: z.uuid(),
+  fileName: z.string(),
+  importedAt: timestamp,
+  // Null when the person's account no longer exists.
+  importedBy: z.string().nullable(),
+});
+export type InventoryImportRecord = z.infer<typeof inventoryImportRecordSchema>;
+
+export const inventoryImportListSchema = z.object({
+  // Newest first.
+  imports: z.array(inventoryImportRecordSchema),
+  total: count,
+  // The page returned; a request past the last page gets the last one.
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+});
+export type InventoryImportList = z.infer<typeof inventoryImportListSchema>;
+
 /** The reason shown next to a skipped or failed row of a preview. */
 export function inventoryImportReasonMessage(
   reason: InventoryImportReason,

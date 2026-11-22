@@ -13,10 +13,7 @@ import { PageState } from "../../components/shell/PageState";
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "../../components/ui/data-table";
+import { DataTable } from "../../components/ui/data-table";
 import { HairlineGrid } from "../../components/ui/hairline-grid";
 import { InfoTip } from "../../components/ui/icon-button";
 import { Notice } from "../../components/ui/notice";
@@ -36,16 +33,10 @@ import { usePreferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import templateUrl from "../../../../../docs/templates/inventory-template.xlsx?url";
 import { formatUploadedAt, NO_SYSTEM_NAME } from "./format";
+import { COUNT_LABELS, countColumns } from "./importCounts";
+import { ImportHistory } from "./ImportHistory";
 
 type Scope = { organizationId: string; projectId: string };
-
-const COUNT_LABELS: [keyof InventoryImportCounts, string][] = [
-  ["added", "เพิ่ม"],
-  ["updated", "อัปเดต"],
-  ["unchanged", "ไม่เปลี่ยน"],
-  ["skipped", "ข้าม"],
-  ["failed", "ไม่ผ่าน"],
-];
 
 const FORMAT_HINT =
   "รับ .xlsx (sheet ชื่อ Inventory) หรือ .csv UTF-8 คอลัมน์ System, Owner, Vendor, Product, Version, Layer, Environment, Exposure ระบบไม่เก็บไฟล์ต้นฉบับ";
@@ -91,17 +82,6 @@ function CountTiles({ counts }: { counts: InventoryImportCounts }) {
     </HairlineGrid>
   );
 }
-
-const countColumns = <
-  Row extends InventoryImportCounts,
->(): DataTableColumn<Row>[] =>
-  COUNT_LABELS.map(([key, label]) => ({
-    key,
-    header: label,
-    align: "end" as const,
-    mono: true,
-    cell: (row: Row) => String(row[key]),
-  }));
 
 function Choose({
   disabled,
@@ -640,6 +620,13 @@ function ProjectImport({ organizationId, projectId }: Scope) {
           />
         </section>
       )}
+      {summary.isSuccess ? (
+        <ImportHistory
+          key={result?.importedAt ?? "history"}
+          organizationId={organizationId}
+          projectId={projectId}
+        />
+      ) : null}
     </Page>
   );
 }

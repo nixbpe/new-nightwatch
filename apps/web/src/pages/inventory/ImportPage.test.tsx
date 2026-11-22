@@ -15,6 +15,7 @@ import {
   confirmImport,
   createImportPreview,
   fetchImportPreview,
+  fetchImports,
   fetchInventory,
   inventoryKeys,
 } from "../../lib/api/inventory";
@@ -36,6 +37,7 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchInventory: vi.fn(),
   fetchImportPreview: vi.fn(),
+  fetchImports: vi.fn(),
   createImportPreview: vi.fn(),
   confirmImport: vi.fn(),
   cancelImportPreview: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
 
 const summaryMock = vi.mocked(fetchInventory);
 const pendingMock = vi.mocked(fetchImportPreview);
+const historyMock = vi.mocked(fetchImports);
 const createMock = vi.mocked(createImportPreview);
 const confirmMock = vi.mocked(confirmImport);
 const cancelMock = vi.mocked(cancelImportPreview);
@@ -166,6 +169,7 @@ beforeEach(() => {
   for (const mock of [
     summaryMock,
     pendingMock,
+    historyMock,
     createMock,
     confirmMock,
     cancelMock,
@@ -174,6 +178,12 @@ beforeEach(() => {
   }
   summaryMock.mockResolvedValue(summary());
   pendingMock.mockResolvedValue({ preview: null });
+  historyMock.mockResolvedValue({
+    imports: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+  });
 });
 
 describe("ImportPage choose step", () => {
@@ -451,5 +461,126 @@ describe("ImportPage preview step", () => {
     );
 
     expect(await screen.findByText("Preview ของ second.csv")).toBeVisible();
+  });
+});
+
+describe("ImportPage history", () => {
+  const history = (importedBy: string | null = "สมชาย") => ({
+    imports: [
+      {
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        fileName: "inventory-q3.csv",
+        importedAt: "2026-11-20T10:00:00.000Z",
+        importedBy,
+        added: 4,
+        updated: 0,
+        unchanged: 0,
+        skipped: 0,
+        failed: 1,
+      },
+    ],
+    total: 1,
+    page: 1,
+    pageSize: 20,
+  });
+
+  it("lists the history below the file chooser", async () => {
+    historyMock.mockResolvedValue(history());
+    renderPage();
+
+    const chooser = await screen.findByLabelText("ไฟล์ inventory");
+    const section = await screen.findByTestId("inventory-import-history");
+    expect(
+      chooser.compareDocumentPosition(section) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(await within(section).findByText("inventory-q3.csv")).toBeVisible();
+    expect(historyMock.mock.calls[0]?.slice(0, 3)).toEqual([
+      ORG,
+      PROJECT,
+      { page: 1 },
+    ]);
+  });
+
+  it("shows the history to a member in the restricted state, with no file chooser", async () => {
+    summaryMock.mockResolvedValue(summary(false));
+    historyMock.mockResolvedValue(history(null));
+    renderPage();
+
+    const section = await screen.findByTestId("inventory-import-history");
+    expect(await within(section).findByText("inventory-q3.csv")).toBeVisible();
+    expect(within(section).getByText("ไม่ทราบผู้ทำรายการ")).toBeVisible();
+    expect(screen.getByTestId("inventory-import-restricted")).toBeVisible();
+    expect(screen.queryByLabelText("ไฟล์ inventory")).toBeNull();
+  });
+
+  it("keeps the history below a pending preview and reads it again after a confirmation", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockResolvedValue(result());
+    const user = userEvent.setup();
+    renderPage();
+
+    const shown = await screen.findByTestId("inventory-import-preview");
+    const section = await screen.findByTestId("inventory-import-history");
+    expect(
+      shown.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(historyMock).toHaveBeenCalledTimes(1);
+    historyMock.mockResolvedValue(history());
+    await user.click(screen.getByTestId("inventory-import-confirm"));
+
+    await screen.findByTestId("inventory-import-result");
+    expect(await screen.findByText("inventory-q3.csv")).toBeVisible();
+    expect(historyMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("returns the history to page 1 after a confirmation made while page 2 was open", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockResolvedValue(result());
+    const record = (n: number) => ({
+      importedAt: "2026-11-20T10:00:00.000Z",
+      importedBy: "สมชาย",
+      added: 4,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      failed: 1,
+      id: `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, "0")}`,
+      fileName: `inventory-${String(n)}.csv`,
+    });
+    historyMock.mockImplementation((_org, _project, query) =>
+      Promise.resolve(
+        query.page === 2
+          ? { imports: [record(21)], total: 21, page: 2, pageSize: 20 }
+          : {
+              imports: Array.from({ length: 20 }, (_, n) => record(n + 1)),
+              total: 21,
+              page: 1,
+              pageSize: 20,
+            },
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "หน้าถัดไป" }));
+    expect(await screen.findByText("inventory-21.csv")).toBeVisible();
+    await user.click(await screen.findByTestId("inventory-import-confirm"));
+
+    await screen.findByTestId("inventory-import-result");
+    expect(await screen.findByText("inventory-1.csv")).toBeVisible();
+    expect(screen.queryByText("inventory-21.csv")).toBeNull();
+    expect(
+      screen.getByTestId("inventory-import-history-page"),
+    ).toHaveTextContent("1-20 จาก 21 · หน้า 1/2");
+  });
+
+  it("does not ask for the history when the Project cannot be read", async () => {
+    summaryMock.mockRejectedValue(new ApiError("PROJECT_NOT_FOUND", "x", 404));
+    renderPage();
+
+    await screen.findByText("ไม่พบข้อมูลที่ขอ หรือคุณเข้าถึงไม่ได้");
+    expect(screen.queryByTestId("inventory-import-history")).toBeNull();
+    expect(historyMock).not.toHaveBeenCalled();
   });
 });

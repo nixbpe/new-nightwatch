@@ -112,6 +112,9 @@ for (const theme of ["light", "dark"] as const) {
       await pool.query("delete from inventory_systems where project_id = $1", [
         projectId,
       ]);
+      await pool.query("delete from inventory_imports where project_id = $1", [
+        projectId,
+      ]);
       await signIn(page, owner);
       await page.goto(inventoryUrl());
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -123,6 +126,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("page-title")).toHaveText(
         "Import inventory",
       );
+      await expect(
+        page.getByTestId("inventory-import-history-empty"),
+      ).toHaveText("ยังไม่มีประวัติ import");
       await shot(page, `inventory-import-choose-${theme}`);
       await page
         .getByTestId("inventory-file-input")
@@ -147,6 +153,10 @@ for (const theme of ["light", "dark"] as const) {
         "import ไฟล์ inventory-q4.csv แล้ว",
       );
       await expect(page.getByTestId("inventory-import-result")).toBeVisible();
+      const history = page.getByTestId("inventory-import-history");
+      await expect(history.getByRole("row")).toHaveCount(2);
+      await expect(history).toContainText("inventory-q4.csv");
+      await expect(history).toContainText("Monitor E2E inventory-owner");
       await shot(page, `inventory-import-result-${theme}`);
       await page.getByTestId("inventory-import-done").click();
       await expect(page).toHaveURL(/inventory$/);
@@ -566,6 +576,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("inventory-file-input")).toHaveCount(0);
       await expect(page.getByTestId("inventory-choose-button")).toHaveCount(0);
       await expect(page.getByTestId("inventory-template-link")).toBeVisible();
+      // A member reads the history, which the owner's import wrote, without the file chooser.
+      await expect(page.getByTestId("inventory-import-history")).toContainText(
+        "inventory-q4.csv",
+      );
       await shot(page, `inventory-import-restricted-${theme}`);
     });
   });
