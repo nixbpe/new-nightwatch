@@ -14,6 +14,10 @@ import {
 
 type Scope = { organizationId: string; projectId: string };
 
+/** Q-14 (delegated, not yet approved): over this share of the reviewed results, once enough are reviewed, the panel warns. */
+const FALSE_POSITIVE_LIMIT = 0.2;
+const FALSE_POSITIVE_MIN_REVIEWED = 30;
+
 const percent = (rate: number) => `${String(Math.round(rate * 1000) / 10)}%`;
 
 /** The false-positive baseline of Q-06: a sample of results, each marked right or wrong. */
@@ -93,6 +97,15 @@ export function SamplePanel({
                 : `${String(sample.falsePositives)} (${percent(sample.falsePositiveRate)})`}
             </span>
           </p>
+          {sample.falsePositiveRate !== null &&
+          sample.reviewed >= FALSE_POSITIVE_MIN_REVIEWED &&
+          sample.falsePositiveRate > FALSE_POSITIVE_LIMIT ? (
+            <Alert tone="warning" data-testid="vuln-sample-over-limit">
+              false positive {percent(sample.falsePositiveRate)} เกินเกณฑ์{" "}
+              {percent(FALSE_POSITIVE_LIMIT)} (Q-14) ผล match ของ Project
+              นี้อาจมี CVE ที่ไม่เกี่ยวข้องมากกว่าที่ยอมรับ
+            </Alert>
+          ) : null}
           <ul className="divide-y divide-foreground/10 rounded-md border border-foreground/10 bg-surface">
             {sample.items.map((item) => (
               <li

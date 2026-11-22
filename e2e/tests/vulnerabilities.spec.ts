@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
@@ -215,6 +216,43 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("vuln-tile-cves")).toContainText("2");
       await expect(page.getByTestId("vuln-tile-kev")).toContainText("1");
       await shot(page, `vulnerabilities-${theme}`);
+    });
+
+    test("orders what to fix with the reason of each place, and exports a System as Excel", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(page_());
+      await page.getByTestId("vuln-priority-link").click();
+      await expect(page).toHaveURL(/\/vulnerabilities\/priority$/);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+
+      // The KEV CVE leads, with the facts that placed it; the CVE with no score is provisional.
+      await expect(page.getByTestId("priority-item-1")).toContainText(
+        "CVE-2024-0001",
+      );
+      await expect(page.getByTestId("priority-reason-1")).toContainText(
+        "อยู่ใน KEV · ภายใน · EPSS 42% · CVSS 9.8",
+      );
+      await expect(page.getByTestId("priority-item-2")).toContainText(
+        "CVE-2024-0002",
+      );
+      await expect(page.getByTestId("priority-provisional-2")).toContainText(
+        "ชั่วคราว: ยังไม่ทราบ",
+      );
+      await expect(page.getByTestId("priority-checked")).toContainText(
+        "จากการตรวจที่เสร็จเมื่อ",
+      );
+      await shot(page, `vulnerabilities-priority-${theme}`);
+
+      await page.getByTestId("priority-back").click();
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.getByTestId(`vuln-export-${systemId}`).click(),
+      ]);
+      expect(download.suggestedFilename()).toBe("vulnerabilities.xlsx");
+      const path = await download.path();
+      expect((await readFile(path)).byteLength).toBeGreaterThan(1000);
     });
 
     test("lists what the scans saw first, reached from the findings page", async ({

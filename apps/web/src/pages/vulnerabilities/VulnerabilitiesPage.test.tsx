@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api/client";
 import {
   advanceVulnerabilityRun,
+  downloadSystemExport,
   drawSample,
   fetchSample,
   fetchVulnerabilities,
@@ -38,6 +39,7 @@ vi.mock("../../lib/api/vulnerabilities", async (importOriginal) => ({
   fetchVulnerabilities: vi.fn(),
   startVulnerabilityRun: vi.fn(),
   advanceVulnerabilityRun: vi.fn(),
+  downloadSystemExport: vi.fn(),
   fetchSample: vi.fn(),
   drawSample: vi.fn(),
   reviewSampleItem: vi.fn(),
@@ -46,6 +48,7 @@ vi.mock("../../lib/api/vulnerabilities", async (importOriginal) => ({
 const fetchMock = vi.mocked(fetchVulnerabilities);
 const startMock = vi.mocked(startVulnerabilityRun);
 const advanceMock = vi.mocked(advanceVulnerabilityRun);
+const exportMock = vi.mocked(downloadSystemExport);
 const sampleMock = vi.mocked(fetchSample);
 const drawMock = vi.mocked(drawSample);
 const reviewMock = vi.mocked(reviewSampleItem);
@@ -75,6 +78,7 @@ const component = (
   vendor: "Redis",
   product: "Redis",
   version: "7.2.4",
+  exposure: "Internal",
   state: "none_found",
   checkedSources: ["nvd"],
   failedSources: [],
@@ -212,6 +216,7 @@ beforeEach(() => {
     fetchMock,
     startMock,
     advanceMock,
+    exportMock,
     sampleMock,
     drawMock,
     reviewMock,
@@ -325,6 +330,57 @@ describe("VulnerabilitiesPage findings", () => {
     renderPage();
     await screen.findByTestId("vuln-feeds");
     expect(screen.queryByTestId("vuln-run")).toBeNull();
+  });
+});
+
+describe("links and downloads of the findings page", () => {
+  it("links to the priority list", async () => {
+    fetchMock.mockResolvedValue(list());
+    renderPage();
+    expect(await screen.findByTestId("vuln-priority-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/vulnerabilities/priority`,
+    );
+  });
+
+  it("downloads one System's findings through the API client under the name the server gives", async () => {
+    fetchMock.mockResolvedValue(list());
+    const blob = new Blob(["xlsx"]);
+    exportMock.mockResolvedValue({ blob, filename: "vulnerabilities.xlsx" });
+    const create = vi.fn(() => "blob:export");
+    const revoke = vi.fn();
+    vi.spyOn(URL, "createObjectURL").mockImplementation(create);
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(revoke);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId(`vuln-export-${SYSTEM}`));
+
+    await waitFor(() => {
+      expect(click).toHaveBeenCalledTimes(1);
+    });
+    expect(exportMock.mock.calls[0]?.slice(0, 3)).toEqual([
+      ORG,
+      PROJECT,
+      SYSTEM,
+    ]);
+    expect(create).toHaveBeenCalledWith(blob);
+    expect(revoke).toHaveBeenCalledWith("blob:export");
+  });
+
+  it("says a download failed next to its button and keeps the findings", async () => {
+    fetchMock.mockResolvedValue(list());
+    exportMock.mockRejectedValue(new ApiError("X", "x", 503));
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId(`vuln-export-${SYSTEM}`));
+
+    expect(
+      await screen.findByTestId(`vuln-export-error-${SYSTEM}`),
+    ).toHaveTextContent("บริการตรวจ CVE ยังไม่พร้อม");
+    expect(screen.getByTestId("vuln-finding-CVE-2024-0001")).toBeVisible();
   });
 });
 
@@ -517,6 +573,53 @@ describe("review sample", () => {
     );
     expect(screen.queryByTestId("vuln-sample-draw")).toBeNull();
     expect(screen.queryByTestId("vuln-sample-true_positive-1")).toBeNull();
+  });
+
+  it("warns when the reviewed false-positive rate is over the limit, only once enough are reviewed", async () => {
+    fetchMock.mockResolvedValue(list());
+    // 30 reviewed, 7 false positives: 23%, over 20%.
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 30,
+        falsePositives: 7,
+        falsePositiveRate: 7 / 30,
+      }),
+    });
+    renderPage();
+    expect(
+      await screen.findByTestId("vuln-sample-over-limit"),
+    ).toHaveTextContent("เกินเกณฑ์ 20% (Q-14)");
+  });
+
+  it("does not warn at the limit, or while fewer than 30 are reviewed", async () => {
+    fetchMock.mockResolvedValue(list());
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 30,
+        falsePositives: 6,
+        falsePositiveRate: 0.2,
+      }),
+    });
+    renderPage();
+    await screen.findByTestId("vuln-sample-rate");
+    expect(screen.queryByTestId("vuln-sample-over-limit")).toBeNull();
+  });
+
+  it("does not warn on a high rate of a few reviewed results", async () => {
+    fetchMock.mockResolvedValue(list());
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        size: 40,
+        reviewed: 10,
+        falsePositives: 8,
+        falsePositiveRate: 0.8,
+      }),
+    });
+    renderPage();
+    await screen.findByTestId("vuln-sample-rate");
+    expect(screen.queryByTestId("vuln-sample-over-limit")).toBeNull();
   });
 
   it("says when there is nothing to draw from", async () => {

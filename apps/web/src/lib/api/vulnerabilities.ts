@@ -1,5 +1,6 @@
 import {
   newCveListSchema,
+  priorityListSchema,
   vulnerabilityAdvanceSchema,
   vulnerabilityListSchema,
   vulnerabilityRunSchema,
@@ -7,7 +8,7 @@ import {
 } from "@nightwatch/api-contract";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
-import { ApiError, request } from "./client";
+import { ApiError, request, requestFile, type DownloadedFile } from "./client";
 
 const base =
   "/api/organizations/{organizationId}/projects/{projectId}/vulnerabilities";
@@ -24,6 +25,8 @@ export const vulnerabilityKeys = {
     ] as const,
   list: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "list"] as const,
+  priority: (organizationId: string, projectId: string) =>
+    [...vulnerabilityKeys.all(organizationId, projectId), "priority"] as const,
   newCves: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "new"] as const,
   sample: (organizationId: string, projectId: string) =>
@@ -48,6 +51,30 @@ export function fetchNewVulnerabilities(
 ) {
   return request(`${base}/new`, newCveListSchema, {
     params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function fetchPriority(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(`${base}/priority`, priorityListSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+/** One System's findings as Excel (S5.2), through the credentialed API client like every other call. */
+export function downloadSystemExport(
+  organizationId: string,
+  projectId: string,
+  systemId: string,
+  signal?: AbortSignal,
+): Promise<DownloadedFile> {
+  return requestFile(`${base}/systems/{systemId}/export`, {
+    params: { organizationId, projectId, systemId },
     signal,
   });
 }
