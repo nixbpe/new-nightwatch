@@ -142,7 +142,7 @@ function RejectedRows({ organizationId, projectId, systemId }: Scope) {
             </span>
           )
         }
-        description="แถวที่ผ่านยังถูก match CVE ตามปกติ แถวด้านล่างจะไม่ถูกนำไป match จนกว่าจะแก้ ส่งไฟล์ Excel ให้ Owner แก้ แล้วผู้ดูแล Project upload ฉบับแก้ทั้ง System ระบบไม่ส่งข้อมูลถึง Owner โดยตรง"
+        description="แถวที่ผ่านพร้อมสำหรับการจับคู่ CVE แถวด้านล่างจะไม่ถูกนำไป match จนกว่าจะแก้ ส่งไฟล์ Excel ให้ Owner แก้ แล้วผู้ดูแล Project upload ฉบับแก้ทั้ง System ระบบไม่ส่งข้อมูลถึง Owner โดยตรง"
         actions={
           <>
             <Button variant="outline" asChild>
