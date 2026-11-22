@@ -51,6 +51,7 @@ function isCursorPayload(payload: unknown): payload is CursorPayload {
     (value.status === "all" || value.status === "unread") &&
     (value.category === null ||
       value.category === "monitor" ||
+      value.category === "vulnerability" ||
       value.category === "security" ||
       value.category === "organization") &&
     typeof value.occurredAt === "string" &&

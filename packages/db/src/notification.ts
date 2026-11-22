@@ -220,6 +220,44 @@ export async function recordAccountMfaTransition(
   return { transitioned: true };
 }
 
+/**
+ * Every member of the Project plus the Organization's owners and admins, once each:
+ * the recipients of a Project event (a monitor, a new CVE).
+ */
+async function snapshotProjectRecipients(
+  client: { query: PoolClient["query"] },
+  input: {
+    intentId: string;
+    origin: string;
+    tenantId: string;
+    projectId: string;
+  },
+): Promise<void> {
+  await client.query(
+    `insert into notification_intent_recipients
+       (intent_id, origin, recipient_user_id, scope_kind, tenant_id)
+     select $1, $2, member.user_id, 'tenant', $3
+     from member
+     where member.organization_id = $3
+       and (
+         exists (
+           select 1
+           from unnest(string_to_array(member.role, ',')) as role_token(value)
+           where btrim(role_token.value) in ('owner', 'admin')
+         )
+         or exists (
+           select 1
+           from project_members
+           where project_members.tenant_id = member.organization_id
+             and project_members.project_id = $4
+             and project_members.user_id = member.user_id
+         )
+       )
+     on conflict (origin, recipient_user_id) do nothing`,
+    [input.intentId, input.origin, input.tenantId, input.projectId],
+  );
+}
+
 export type MonitorNotificationEventType =
   | "MONITOR_DOWN"
   | "MONITOR_RECOVERED"
@@ -279,29 +317,12 @@ export async function insertMonitorNotificationIntent(
     ],
   );
   if (inserted.rowCount === 0) return false;
-  await client.query(
-    `insert into notification_intent_recipients
-       (intent_id, origin, recipient_user_id, scope_kind, tenant_id)
-     select $1, $2, member.user_id, 'tenant', $3
-     from member
-     where member.organization_id = $3
-       and (
-         exists (
-           select 1
-           from unnest(string_to_array(member.role, ',')) as role_token(value)
-           where btrim(role_token.value) in ('owner', 'admin')
-         )
-         or exists (
-           select 1
-           from project_members
-           where project_members.tenant_id = member.organization_id
-             and project_members.project_id = $4
-             and project_members.user_id = member.user_id
-         )
-       )
-     on conflict (origin, recipient_user_id) do nothing`,
-    [intentId, input.origin, input.tenantId, input.projectId],
-  );
+  await snapshotProjectRecipients(client, {
+    intentId,
+    origin: input.origin,
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+  });
   await client.query("select create_notification_dispatch($1, $2)", [
     crypto.randomUUID(),
     intentId,
@@ -488,4 +509,63 @@ function assertIntentInput(input: AccountNotificationIntentInput): void {
 
 function assertNonEmpty(value: string, name: string): void {
   if (!value) throw new Error(`${name} must not be empty`);
+}
+
+export type VulnerabilityNotificationInput = {
+  tenantId: string;
+  projectId: string;
+  projectName: string;
+  /** One notification per Project and run; a replay with the same run is a no-op. */
+  runId: string;
+  cveCount: number;
+  componentCount: number;
+  occurredAt: Date;
+};
+
+/**
+ * Writes the new-CVE intent, its recipient snapshot (the Project's members and the
+ * Organization's owners and admins) and the dispatch ledger row on the caller's open tenant
+ * transaction, so it commits with the first-seen rows it reports. Returns false when the
+ * run already raised one.
+ */
+export async function insertVulnerabilityNotificationIntent(
+  client: { query: PoolClient["query"] },
+  input: VulnerabilityNotificationInput,
+): Promise<boolean> {
+  assertNonEmpty(input.tenantId, "tenantId");
+  assertNonEmpty(input.projectId, "projectId");
+  assertNonEmpty(input.runId, "runId");
+  const origin = `vulnerability:${input.projectId}:${input.runId}`;
+  const intentId = crypto.randomUUID();
+  const inserted = await client.query(
+    `insert into notification_intents
+       (id, scope_kind, tenant_id, origin, event_type, occurred_at,
+        subject_project_id, subject_project_name,
+        vulnerability_cve_count, vulnerability_component_count)
+     values ($1, 'tenant', $2, $3, 'VULNERABILITY_NEW', $4, $5, $6, $7, $8)
+     on conflict (origin) do nothing
+     returning id`,
+    [
+      intentId,
+      input.tenantId,
+      origin,
+      input.occurredAt,
+      input.projectId,
+      input.projectName.slice(0, 200),
+      input.cveCount,
+      input.componentCount,
+    ],
+  );
+  if (inserted.rowCount === 0) return false;
+  await snapshotProjectRecipients(client, {
+    intentId,
+    origin,
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+  });
+  await client.query("select create_notification_dispatch($1, $2)", [
+    crypto.randomUUID(),
+    intentId,
+  ]);
+  return true;
 }

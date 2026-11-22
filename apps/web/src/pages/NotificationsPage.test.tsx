@@ -564,6 +564,68 @@ describe("NotificationsPage", () => {
     );
   });
 
+  it("shows a new-CVE item with the Project, the counts and a link to the Project's new-CVE page, and opens its detail", async () => {
+    const item: NotificationItem = {
+      id: "30000000-0000-4000-8000-000000000001",
+      scope: "organization",
+      organizationId: ORG_A,
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      eventType: "VULNERABILITY_NEW",
+      category: "vulnerability",
+      subject: {
+        projectId: P,
+        projectName: "Payments Platform",
+        cveCount: 3,
+        componentCount: 2,
+      },
+    };
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [item],
+      nextCursor: null,
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
+      unreadCount: 1,
+    });
+    openNotificationMock.mockResolvedValue({
+      ...item,
+      readAt: "2026-09-25T03:01:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = await screen.findByTestId(`notification-row-${item.id}`);
+    expect(row).toHaveAttribute("data-event-type", "VULNERABILITY_NEW");
+    expect(row).toHaveAttribute("data-category", "vulnerability");
+    expect(within(row).getByTestId("notification-title")).toHaveTextContent(
+      "Payments Platform",
+    );
+    expect(within(row).getByTestId("notification-title")).toHaveTextContent(
+      "3 รายการ (2 component)",
+    );
+    expect(
+      within(row).getByTestId("notification-vulnerability-link"),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects/${P}/vulnerabilities/new`,
+    );
+    expect(
+      screen.getByTestId("notifications-filter-category-vulnerability"),
+    ).toBeVisible();
+
+    await user.click(screen.getByTestId(`notification-open-${item.id}`));
+    expect(
+      await screen.findByTestId("notification-vulnerability-counts"),
+    ).toHaveTextContent("3 CVE ใน 2 component");
+    expect(
+      screen.getByTestId("notification-vulnerability-link"),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects/${P}/vulnerabilities/new`,
+    );
+  });
+
   it("opens a monitor notification with its subject, reason and link", async () => {
     const down = monitorNotifications[0] as NotificationItem;
     fetchNotificationsMock.mockResolvedValue({

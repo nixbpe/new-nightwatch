@@ -122,6 +122,38 @@ async function seed() {
   );
 }
 
+// The notification the scan raises, written as the worker leaves it once materialized.
+async function seedNotification() {
+  const intent = randomUUID();
+  const origin = `vulnerability:${projectId}:${randomUUID()}`;
+  await pool.query(
+    `insert into notification_intents
+       (id, scope_kind, tenant_id, origin, event_type, occurred_at, subject_project_id,
+        subject_project_name, vulnerability_cve_count, vulnerability_component_count)
+     values ($1, 'tenant', $2, $3, 'VULNERABILITY_NEW', now(), $4, 'Payments', 3, 2)`,
+    [intent, org, origin, projectId],
+  );
+  await pool.query(
+    `insert into notification_dispatch_ledger (id, intent_id, scope_kind, tenant_id, status)
+     values ($1, $2, 'tenant', $3, 'completed')`,
+    [randomUUID(), intent, org],
+  );
+  for (const user of [owner.userId, member.userId]) {
+    await pool.query(
+      `insert into notification_intent_recipients (intent_id, origin, recipient_user_id, scope_kind, tenant_id)
+       values ($1, $2, $3, 'tenant', $4)`,
+      [intent, origin, user, org],
+    );
+    await pool.query(
+      `insert into notification_inbox_items
+         (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id, event_type, occurred_at,
+          subject_project_id, subject_project_name, vulnerability_cve_count, vulnerability_component_count)
+       values ($1, $2, $3, $4, 'tenant', $5, 'VULNERABILITY_NEW', now(), $6, 'Payments', 3, 2)`,
+      [randomUUID(), intent, origin, user, org, projectId],
+    );
+  }
+}
+
 test.beforeAll(async () => {
   org = await createOrganization(pool, `E2E Vulnerabilities ${run}`);
   owner = await createPerson(pool, "vuln-owner", org);
@@ -132,6 +164,7 @@ test.beforeAll(async () => {
   projectId = await createProject(pool, org, `Payments ${run}`);
   await addProjectMember(pool, org, projectId, member.userId, "member");
   await seed();
+  await seedNotification();
 });
 
 test.afterAll(async () => {
@@ -264,4 +297,20 @@ test("a Project with no finished scan warns instead of saying there is no new CV
 
   await expect(page.getByTestId("new-cve-warning-no_scan")).toBeVisible();
   await expect(page.getByTestId("new-cve-none")).toHaveCount(0);
+});
+
+test("a new-CVE notification reaches the inbox and opens the Project's new-CVE page", async ({
+  page,
+}) => {
+  await signIn(page, member);
+  await page.goto("/notifications");
+
+  const row = page.locator('[data-event-type="VULNERABILITY_NEW"]').first();
+  await expect(row).toContainText("Payments");
+  await expect(row).toContainText("3 รายการ (2 component)");
+  await page.getByTestId("notification-vulnerability-link").first().click();
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${projectId}/vulnerabilities/new$`),
+  );
+  await expect(page.getByTestId("new-cve-checked")).toBeVisible();
 });
