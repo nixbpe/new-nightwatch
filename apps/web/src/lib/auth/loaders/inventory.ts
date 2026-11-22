@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs } from "react-router";
 
 import {
+  fetchImportPreview,
   fetchInventory,
   fetchMappings,
   fetchRows,
@@ -69,6 +70,27 @@ export function inventorySystemLoader(args: LoaderFunctionArgs) {
       staleTime: 0,
     }),
   );
+}
+
+// The Import page reads the summary, which says what the caller may do, and, for a maintainer,
+// the caller's own pending preview.
+export function inventoryImportLoader(args: LoaderFunctionArgs) {
+  return prefetch(args, async (client, { organizationId, projectId }) => {
+    const summary = await client.query({
+      queryKey: inventoryKeys.summary(organizationId, projectId),
+      queryFn: ({ signal }) =>
+        fetchInventory(organizationId, projectId, signal),
+      staleTime: 0,
+    });
+    // A member who may not import never asks for a preview, so no refused call is audited.
+    if (!summary.canUpload) return;
+    await client.query({
+      queryKey: inventoryKeys.importPreview(organizationId, projectId),
+      queryFn: ({ signal }) =>
+        fetchImportPreview(organizationId, projectId, signal),
+      staleTime: 0,
+    });
+  });
 }
 
 export function inventoryMappingsLoader(args: LoaderFunctionArgs) {

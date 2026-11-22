@@ -97,7 +97,7 @@ function systemMissing(): never {
   throw new AppError(
     404,
     "INVENTORY_SYSTEM_NOT_FOUND",
-    "ไม่พบ System นี้ อาจถูกแทนที่ด้วยการ upload โหลดตารางใหม่แล้วเลือก System อีกครั้ง",
+    "ไม่พบ System นี้ อาจถูกลบโดยคนอื่น โหลดตารางใหม่แล้วเลือก System อีกครั้ง",
   );
 }
 
@@ -240,7 +240,7 @@ async function assertKeyFree(
 }
 
 // The System's counters are what the quality label (Q-03) and the summary read.
-async function recount(
+export async function recount(
   client: PoolClient,
   tenant: string,
   project: string,
@@ -368,7 +368,7 @@ async function storedRow(
      where r.tenant_id = $1 and r.project_id = $2 and r.id = $3`,
     [tenant, project, rowId],
   );
-  // A row an upload replaced has a new id, so it is as gone as a deleted one.
+  // A row that is gone is as stale as a row that changed.
   const row = rows[0];
   if (!row || row.revision !== revision) stale();
   return row;
@@ -406,7 +406,7 @@ export function updateRow(
         `update inventory_rows
        set owner = $4, vendor = $5, product = $6, version = $7, layer = $8,
            environment = $9, exposure = $10, usable = true, issues = '[]'::jsonb,
-           revision = revision + 1, source_kind = 'manual', source_file_name = null,
+           revision = revision + 1, source_kind = 'manual', source_file_name = null, source_line = null,
            changed_by = $11, changed_at = now()
        where tenant_id = $1 and project_id = $2 and id = $3
        returning row_key`,

@@ -348,7 +348,7 @@ function ProjectSystem(scope: Scope) {
         <PageState
           kind="error"
           data-testid="inventory-system-missing"
-          message="ไม่พบ System นี้ อาจถูกลบหรือแทนที่ด้วยการ upload"
+          message="ไม่พบ System นี้ อาจถูกลบแล้ว"
         />
       ) : canEdit ? (
         <RenameForm

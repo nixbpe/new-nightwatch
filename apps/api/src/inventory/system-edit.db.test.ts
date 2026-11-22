@@ -9,6 +9,7 @@ import type { Redis } from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createRedisClient } from "../rate-limit";
+import { importResponse } from "./import-test-support";
 import {
   openMonitorTestContext,
   type MonitorTestContext,
@@ -64,16 +65,8 @@ const errorOf = (response: { json: unknown }) =>
   ).error;
 
 const projects: string[] = [];
-function upload(csv: string, fileName: string, project: string) {
-  const boundary = "----nightwatch-boundary";
-  const text =
-    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-    `Content-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`;
-  return ctx.call(org.users.owner, "POST", base(project), undefined, {
-    text,
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  });
-}
+const upload = (csv: string, fileName: string, project: string) =>
+  importResponse(ctx, org.users.owner, org.id, project, csv, fileName);
 
 async function newProject(label: string, csv?: string) {
   seq += 1;
@@ -137,11 +130,11 @@ afterAll(async () => {
     ...(
       await Promise.all(
         projects.map((project) =>
-          redis.keys(`rl:inventory-upload:u:*:p:${project}`),
+          redis.keys(`rl:inventory-import:u:*:p:${project}`),
         ),
       )
     ).flat(),
-    `rl:inventory-upload:o:${org.id}`,
+    `rl:inventory-import:o:${org.id}`,
   ];
   await redis.del(...keys);
   await ctx.close();
@@ -517,7 +510,7 @@ describe("deleting a System", () => {
     ]);
   });
 
-  it("refuses a delete when the System was renamed, grew a row, was replaced or is already gone", async () => {
+  it("refuses a delete when the System was renamed, grew a row by an add or an import, or is already gone", async () => {
     const project = await newProject(
       "stale-delete",
       [HEADER, GOOD("Billing API"), GOOD("HR Portal"), GOOD("Payroll")].join(
@@ -538,7 +531,7 @@ describe("deleting a System", () => {
       systemId: hr.id,
       ...fields(),
     });
-    // Replaced by an upload.
+    // A row added by an import after the dialog counted 1.
     await upload(
       [HEADER, GOOD("Payroll", "24.04.1")].join("\n"),
       "again.csv",
@@ -554,7 +547,7 @@ describe("deleting a System", () => {
       expect(response.status).toBe(409);
       expect(errorOf(response).code).toBe("INVENTORY_SYSTEM_STALE");
     }
-    expect((await rows(project)).length).toBe(4);
+    expect((await rows(project)).length).toBe(5);
 
     const current = await systemNamed(project, "HR Portal");
     expect(current.totalRows).toBe(2);
@@ -794,7 +787,7 @@ describe("System permissions", () => {
 });
 
 describe("System writers together", () => {
-  it("keeps one System per name when creates, renames and uploads race for the same name", async () => {
+  it("keeps one System per name when creates, renames and imports race for the same name", async () => {
     for (let round = 0; round < 4; round += 1) {
       const project = await newProject(
         `race-${String(round)}`,

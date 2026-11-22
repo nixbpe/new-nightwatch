@@ -568,9 +568,9 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                 ยังไม่มี component ใน inventory{" "}
                 <Link
                   className="text-primary underline-offset-4 hover:underline"
-                  to={inventoryPath}
+                  to={`${inventoryPath}/import`}
                 >
-                  upload inventory
+                  import inventory
                 </Link>
               </p>
             ) : (

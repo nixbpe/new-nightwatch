@@ -44,7 +44,7 @@ function notFound(): never {
  * One mapping per distinct vendor and product pair of the Project's usable rows. A
  * new pair is confirmed from the operator catalog when it has one (S2.3) and waits
  * for review otherwise; a pair no usable row uses any more is dropped. Runs in the
- * upload transaction and makes no outside call.
+ * transaction of the write that changed the rows and makes no outside call.
  */
 export async function syncMappings(
   client: PoolClient,

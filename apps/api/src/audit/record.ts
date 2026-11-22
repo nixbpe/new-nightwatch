@@ -42,6 +42,7 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.project.aws_connection.update": "project",
   "organization.project.aws_connection.delete": "project",
   "organization.project.inventory.upload": "project",
+  "organization.project.inventory.import": "project",
   "organization.project.inventory.mapping.update": "project",
   "organization.project.inventory.row.create": "project",
   "organization.project.inventory.row.update": "project",

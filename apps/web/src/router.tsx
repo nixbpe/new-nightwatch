@@ -50,6 +50,7 @@ import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import {
+  inventoryImportLoader,
   inventoryLoader,
   inventoryMappingsLoader,
   inventorySystemLoader,
@@ -57,6 +58,7 @@ import {
 import { newVulnerabilitiesLoader } from "./lib/auth/loaders/newVulnerabilities";
 import { priorityLoader } from "./lib/auth/loaders/priority";
 import { vulnerabilitiesLoader } from "./lib/auth/loaders/vulnerabilities";
+import { ImportPage } from "./pages/inventory/ImportPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
 import { SystemPage } from "./pages/inventory/SystemPage";
@@ -207,6 +209,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/projects/:projectId/inventory",
             loader: inventoryLoader,
             element: <InventoryPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory/import",
+            loader: inventoryImportLoader,
+            element: <ImportPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/inventory/mappings",

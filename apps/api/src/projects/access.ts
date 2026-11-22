@@ -91,7 +91,7 @@ const PROJECT_PERMISSIONS: Record<
 const DENIED_MESSAGES: Partial<Record<ProjectAction, string>> = {
   "monitor.readResponse": "คุณไม่มีสิทธิ์ดูการตอบกลับของมอนิเตอร์นี้",
   "monitor.write": "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ของโปรเจกต์นี้",
-  "inventory.write": "เฉพาะผู้ดูแลโปรเจกต์ upload inventory ได้",
+  "inventory.write": "เฉพาะผู้ดูแลโปรเจกต์ import หรือแก้ inventory ได้",
 };
 
 export function projectAccessOf(

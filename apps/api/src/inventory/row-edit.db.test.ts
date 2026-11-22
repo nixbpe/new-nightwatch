@@ -9,6 +9,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createRedisClient } from "../rate-limit";
 import {
+  importResponse,
+  previewFile,
+  confirmPreview,
+} from "./import-test-support";
+import {
   openMonitorTestContext,
   type MonitorTestContext,
   type TestOrganization,
@@ -43,16 +48,8 @@ const base = (project = projectId, organization = org.id) =>
 const rowsPath = (project = projectId, organization = org.id) =>
   `${base(project, organization)}/rows`;
 
-function upload(csv: string, fileName: string, project = projectId) {
-  const boundary = "----nightwatch-boundary";
-  const text =
-    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-    `Content-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`;
-  return ctx.call(org.users.owner, "POST", base(project), undefined, {
-    text,
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  });
-}
+const upload = (csv: string, fileName: string, project = projectId) =>
+  importResponse(ctx, org.users.owner, org.id, project, csv, fileName);
 
 async function newProject(label: string, csv?: string) {
   const project = await ctx.createProject(org.id, label, [
@@ -127,8 +124,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const keys = [
-    ...(await redis.keys(`rl:inventory-upload:u:*:p:${projectId}`)),
-    `rl:inventory-upload:o:${org.id}`,
+    ...(await redis.keys(`rl:inventory-import:u:*:p:${projectId}`)),
+    `rl:inventory-import:o:${org.id}`,
   ];
   await redis.del(...keys);
   await ctx.close();
@@ -645,14 +642,21 @@ describe("inventory row writes", () => {
   });
 
   it("labels rows that share a key after an earlier upload and keeps them editable and deletable", async () => {
-    const project = await newProject(
-      "legacy-duplicates",
-      [
-        HEADER,
-        GOOD("Billing API"),
-        GOOD("Billing API").replace("ทีม A", "ทีม B"),
-        GOOD("Billing API", "24.04.1"),
-      ].join("\n"),
+    // An import keeps one row per key, so the pair is written as an upload before F-022 left it.
+    const project = await newProject("legacy-duplicates");
+    await ctx.owner.sql.query(
+      `with s as (
+         insert into inventory_systems
+           (tenant_id, project_id, name_key, name, file_name, uploaded_by, total_rows, usable_rows)
+         values ($1, $2, 'billing api', 'Billing API', 'old.csv', 'u', 3, 3) returning id)
+       insert into inventory_rows
+         (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer,
+          environment, exposure, usable, source_kind, source_file_name, changed_by)
+       select $1, $2, s.id, v.line, v.owner, 'Canonical', 'Ubuntu', v.version, 'OS',
+              'Production', 'Internal', true, 'import', 'old.csv', 'u'
+       from s, (values (2, 'ทีม A', '22.04.4'), (3, 'ทีม B', '22.04.4'), (4, 'ทีม A', '24.04.1'))
+         as v(line, owner, version)`,
+      [org.id, project],
     );
     const list = await listRows("", project);
     expect(list.rows.map((row) => row.duplicate)).toEqual([true, true, false]);
@@ -899,9 +903,9 @@ describe("inventory row edge cases", () => {
     expect(errorOf(response).code).toBe("INVENTORY_ROW_DUPLICATE");
   });
 
-  it("answers 404 for a System an upload replaced, writing nothing", async () => {
+  it("keeps a System's id through an import, so a dialog opened before it still saves", async () => {
     const project = await newProject(
-      "replaced",
+      "merged",
       [HEADER, GOOD("Billing API")].join("\n"),
     );
     const old = (await summary(project)).systems[0];
@@ -914,6 +918,7 @@ describe("inventory row edge cases", () => {
         )
       ).status,
     ).toBe(200);
+    expect((await summary(project)).systems[0]?.id).toBe(old?.id);
     const response = await ctx.call(
       org.users.owner,
       "POST",
@@ -923,9 +928,8 @@ describe("inventory row edge cases", () => {
         ...input({ product: "Redis", version: "7.2.4" }),
       },
     );
-    expect(response.status).toBe(404);
-    expect(errorOf(response).code).toBe("INVENTORY_SYSTEM_NOT_FOUND");
-    expect((await listRows("", project)).total).toBe(1);
+    expect(response.status).toBe(201);
+    expect((await listRows("", project)).total).toBe(3);
   });
 
   it("never reaches a row or System of another Project of the same Organization", async () => {
@@ -963,39 +967,51 @@ describe("inventory row edge cases", () => {
     expect((await listRows("", mine)).total).toBe(1);
   });
 
-  it("keeps System counters and rows consistent when an upload and a row write race on one System", async () => {
+  it("keeps System counters and rows consistent when a confirmed import and a row write race on one System", async () => {
     for (let round = 0; round < 3; round += 1) {
       const project = await newProject(
-        `race-upload-${String(round)}`,
+        `race-import-${String(round)}`,
         [HEADER, GOOD("Billing API")].join("\n"),
       );
       const system = (await summary(project)).systems[0];
-      const [uploaded, created] = await Promise.all([
-        upload(
-          [
-            HEADER,
-            GOOD("Billing API", "24.04.1"),
-            GOOD("Billing API", "24.04.2"),
-          ].join("\n"),
-          "race.csv",
+      const previewed = await previewFile(
+        ctx,
+        org.users.owner,
+        org.id,
+        project,
+        [
+          HEADER,
+          GOOD("Billing API", "24.04.1"),
+          GOOD("Billing API", "24.04.2"),
+        ].join("\n"),
+        "race.csv",
+      );
+      expect(previewed.status).toBe(201);
+      const [confirmed, created] = await Promise.all([
+        confirmPreview(
+          ctx,
+          org.users.owner,
+          org.id,
           project,
+          (previewed.json as { id: string }).id,
         ),
         ctx.call(org.users.owner, "POST", rowsPath(project), {
           systemId: system?.id,
           ...input({ product: "Redis", version: "7.2.4" }),
         }),
       ]);
-      expect(uploaded.status).toBe(200);
-      // Either the row was written first and the upload replaced it, or the System was gone.
-      expect([201, 404]).toContain(created.status);
+      // The row written first makes the preview stale; the import first leaves the System in place.
+      expect(created.status).toBe(201);
+      expect([200, 409]).toContain(confirmed.status);
       const systems = (await summary(project)).systems;
       const rows = await listRows("", project);
+      const expected = confirmed.status === 200 ? 4 : 2;
       expect(systems).toHaveLength(1);
-      expect(rows.total).toBe(2);
-      expect(systems[0]).toMatchObject({ totalRows: 2, usableRows: 2 });
-      expect(rows.rows.every((row) => row.source.fileName === "race.csv")).toBe(
-        true,
-      );
+      expect(rows.total).toBe(expected);
+      expect(systems[0]).toMatchObject({
+        totalRows: expected,
+        usableRows: expected,
+      });
     }
   });
 });

@@ -11,14 +11,10 @@ import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 import writeXlsxFile from "write-excel-file/universal";
 
-import { recordAuditEvent } from "../audit/record";
 import { withProjectAccess, type Identity } from "../projects/service";
 import type { RateLimiter } from "../rate-limit";
 import type { CpeSearch } from "./cpe";
-import { parseInventoryFile } from "./file";
-import { inventoryFileRejected } from "./messages";
-import { ensureMappings, syncMappings } from "./mappings";
-import { validateRow, type InventoryRow } from "./rows";
+import { ensureMappings } from "./mappings";
 
 export type InventoryDeps = {
   database: Database;
@@ -87,14 +83,25 @@ async function summarize(
     }
   }
   const systems = rows.map(toSystem);
-  // A System created in the system came from no file, so it is not an upload.
-  const last = rows.reduce<SystemRow | undefined>(
+  // The last import is the later of the newest import record and, for a Project that was
+  // uploaded before imports were recorded, the newest System that came from a file. A System
+  // created on the screen came from no file.
+  const recorded = await client.query<{ file_name: string; imported_at: Date }>(
+    `select file_name, imported_at from inventory_imports
+     where tenant_id = $1 and project_id = $2 order by imported_at desc limit 1`,
+    [tenant, project],
+  );
+  const last = rows.reduce<{ file_name: string; at: Date } | undefined>(
     (latest, row) =>
-      row.file_name !== null &&
-      (!latest || row.uploaded_at > latest.uploaded_at)
-        ? row
+      row.file_name !== null && (!latest || row.uploaded_at > latest.at)
+        ? { file_name: row.file_name, at: row.uploaded_at }
         : latest,
-    undefined,
+    recorded.rows[0]
+      ? {
+          file_name: recorded.rows[0].file_name,
+          at: recorded.rows[0].imported_at,
+        }
+      : undefined,
   );
   return {
     canUpload,
@@ -102,7 +109,7 @@ async function summarize(
     systemCount: systems.length,
     totalRows: systems.reduce((sum, system) => sum + system.totalRows, 0),
     usableRows: systems.reduce((sum, system) => sum + system.usableRows, 0),
-    lastUploadAt: last?.uploaded_at.toISOString() ?? null,
+    lastUploadAt: last?.at.toISOString() ?? null,
     lastUploadFileName: last?.file_name ?? null,
     systems,
   };
@@ -130,141 +137,8 @@ export function getInventory(deps: InventoryDeps, input: ProjectIdentity) {
   );
 }
 
-// The file name is shown back to members, so it is reduced to a plain name.
-function displayName(fileName: string): string {
-  const base = fileName.split(/[\\/]/).pop() ?? "";
-  const clean = Array.from(base.replace(/\p{Cc}/gu, " ").trim())
-    .slice(0, 255)
-    .join("");
-  return clean === "" ? "inventory" : clean;
-}
-
-function groupBySystem(rows: InventoryRow[]) {
-  const groups = new Map<string, InventoryRow[]>();
-  for (const row of rows) {
-    const group = groups.get(row.systemKey);
-    if (group) group.push(row);
-    else groups.set(row.systemKey, [row]);
-  }
-  return [...groups.values()];
-}
-
-async function limitUploads(deps: InventoryDeps, input: ProjectIdentity) {
-  if (!deps.rateLimiter) {
-    throw new AppError(
-      503,
-      "RATE_LIMIT_UNAVAILABLE",
-      "บริการ upload inventory ยังไม่พร้อม",
-    );
-  }
-  return deps.rateLimiter.consumeRateLimits({
-    windowMs: 60_000,
-    limits: [
-      {
-        key: `rl:inventory-upload:u:${input.actorUserId}:p:${input.projectId.toLowerCase()}`,
-        limit: 10,
-      },
-      {
-        key: `rl:inventory-upload:o:${input.organizationId.toLowerCase()}`,
-        limit: 60,
-      },
-    ],
-  });
-}
-
-/** Unseen Projects answer 404 and non-admins 403; the route runs it before the body is parsed. */
-export function authorizeUpload(deps: InventoryDeps, input: ProjectIdentity) {
-  return withProjectAccess(deps.database, input, "inventory.write", false, () =>
-    Promise.resolve(),
-  );
-}
-
-export async function uploadInventory(
-  deps: InventoryDeps,
-  input: ProjectIdentity,
-  file: { name: string; bytes: Uint8Array },
-): Promise<InventorySummary | { retryAfterSeconds: number }> {
-  const limit = await limitUploads(deps, input);
-  if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
-  const fileName = displayName(file.name);
-  // Parsing is CPU work on untrusted bytes, so it runs outside the transaction (REQ-01).
-  const parsed = await parseInventoryFile(fileName, file.bytes);
-  if (!parsed.ok) throw inventoryFileRejected(fileName, parsed.rejection);
-  const groups = groupBySystem(parsed.rows.map(validateRow));
-  return withProjectAccess(
-    deps.database,
-    input,
-    "inventory.write",
-    true,
-    async (client, { projectId, actorRole }) => {
-      const tenant = input.organizationId;
-      await client.query(
-        "delete from inventory_systems where tenant_id = $1 and project_id = $2 and name_key = any($3::text[])",
-        [tenant, projectId, groups.map(([first]) => first?.systemKey)],
-      );
-      const systems = await client.query<{ id: string; name_key: string }>(
-        `insert into inventory_systems
-           (tenant_id, project_id, name_key, name, file_name, uploaded_by, total_rows, usable_rows)
-         select $1, $2, s.key, s.name, $3, $4, s.total, s.usable
-         from unnest($5::text[], $6::text[], $7::int[], $8::int[]) as s(key, name, total, usable)
-         returning id, name_key`,
-        [
-          tenant,
-          projectId,
-          fileName,
-          input.actorUserId,
-          groups.map(([first]) => first?.systemKey),
-          groups.map(([first]) => first?.system),
-          groups.map((group) => group.length),
-          groups.map(
-            (group) => group.filter((row) => row.issues.length === 0).length,
-          ),
-        ],
-      );
-      const idOf = new Map(systems.rows.map((row) => [row.name_key, row.id]));
-      const rows = groups.flat();
-      await client.query(
-        `insert into inventory_rows
-           (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
-            layer, environment, exposure, usable, issues, source_kind, source_file_name, changed_by)
-         select $1, $2, r.system_id, r.line, r.owner, r.vendor, r.product, r.version,
-                r.layer, r.environment, r.exposure, r.issues = '[]', r.issues::jsonb,
-                'import', $13, $14
-         from unnest($3::uuid[], $4::int[], $5::text[], $6::text[], $7::text[], $8::text[],
-                     $9::text[], $10::text[], $11::text[], $12::text[])
-           as r(system_id, line, owner, vendor, product, version, layer, environment, exposure, issues)`,
-        [
-          tenant,
-          projectId,
-          rows.map((row) => idOf.get(row.systemKey)),
-          rows.map((row) => row.line),
-          rows.map((row) => row.owner),
-          rows.map((row) => row.vendor),
-          rows.map((row) => row.product),
-          rows.map((row) => row.version),
-          rows.map((row) => row.layer),
-          rows.map((row) => row.environment),
-          rows.map((row) => row.exposure),
-          rows.map((row) => JSON.stringify(row.issues)),
-          fileName,
-          input.actorUserId,
-        ],
-      );
-      await syncMappings(client, tenant, projectId);
-      await recordAuditEvent(client, {
-        ...input,
-        actorRole,
-        action: "organization.project.inventory.upload",
-        target: { type: "project", id: projectId },
-        changes: [],
-      });
-      return summarize(client, tenant, projectId, true);
-    },
-  );
-}
-
 type RejectedRow = {
-  line_no: number;
+  source_line: number | null;
   owner: string;
   vendor: string;
   product: string;
@@ -323,7 +197,7 @@ export async function exportRejectedRows(
       const name = found.rows[0]?.name;
       if (name === undefined) systemNotFound();
       const { rows } = await client.query<RejectedRow>(
-        `select line_no, owner, vendor, product, version, layer, environment, exposure, issues
+        `select source_line, owner, vendor, product, version, layer, environment, exposure, issues
          from inventory_rows
          where tenant_id = $1 and project_id = $2 and system_id = $3 and not usable
          order by line_no`,
@@ -349,7 +223,10 @@ export async function exportRejectedRows(
     data: [
       header,
       ...group.map((row) => [
-        { value: row.line_no, type: Number },
+        // A row written on the screen has no line in any file.
+        row.source_line === null
+          ? { value: "", type: String }
+          : { value: row.source_line, type: Number },
         ...[
           system.name,
           row.owner,

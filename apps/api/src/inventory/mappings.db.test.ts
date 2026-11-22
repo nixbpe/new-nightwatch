@@ -13,6 +13,7 @@ import {
   type TestOrganization,
 } from "../monitors/test-support";
 import { createRedisClient } from "../rate-limit";
+import { importResponse } from "./import-test-support";
 import { suggestMapping } from "./mappings";
 import { identityKey } from "./rows";
 
@@ -42,16 +43,8 @@ const catalogVendor = `catalogco${run}`;
 const path = (suffix = "", project = projectId, organization = org.id) =>
   `/api/organizations/${organization}/projects/${project}/inventory${suffix}`;
 
-function upload(userId: string | null, csv: string, project = projectId) {
-  const boundary = "----nightwatch-boundary";
-  const text =
-    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="inventory.csv"\r\n` +
-    `Content-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`;
-  return ctx.call(userId, "POST", path("", project), undefined, {
-    text,
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  });
-}
+const upload = (userId: string | null, csv: string, project = projectId) =>
+  importResponse(ctx, userId, org.id, project, csv, "inventory.csv");
 
 async function mappings(userId: string, project = projectId) {
   const response = await ctx.call(userId, "GET", path("/mappings", project));
@@ -99,16 +92,16 @@ afterAll(async () => {
   );
   // Only this suite's keys: other suites share the Redis and the global NVD key.
   const keys = [
-    ...(await redis.keys(`rl:inventory-upload:u:*:p:${projectId}`)),
+    ...(await redis.keys(`rl:inventory-import:u:*:p:${projectId}`)),
     ...(await redis.keys(`rl:nvd-cpe:u:*:p:${projectId}`)),
-    `rl:inventory-upload:o:${org.id}`,
+    `rl:inventory-import:o:${org.id}`,
   ];
   await redis.del(...keys);
   await ctx.close();
   redis.disconnect();
 });
 
-describe("mappings created by an upload", () => {
+describe("mappings created by an import", () => {
   it("makes one pending mapping per vendor and product pair of the usable rows", async () => {
     const response = await upload(
       org.users.owner,
@@ -121,7 +114,8 @@ describe("mappings created by an upload", () => {
       ].join("\n"),
     );
     expect(response.status).toBe(200);
-    expect(inventorySummarySchema.parse(response.json).mappings).toEqual({
+    const summary = await ctx.call(org.users.owner, "GET", path());
+    expect(inventorySummarySchema.parse(summary.json).mappings).toEqual({
       pending: 2,
       confirmed: 0,
       unmapped: 0,
@@ -385,7 +379,7 @@ describe("a Project that uploaded before mappings existed", () => {
   });
 });
 
-describe("a later upload", () => {
+describe("a later import", () => {
   it("keeps decisions, adds new pairs as pending and drops pairs no row uses", async () => {
     await upload(
       org.users.owner,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   invitationResponseSchema,
-  inventorySummarySchema,
+  inventoryImportPreviewSchema,
   meContextResponseSchema,
   type MeContextResponse,
 } from "@nightwatch/api-contract";
@@ -180,8 +180,8 @@ describe.each([
     "requestUpload",
     (signal?: AbortSignal) =>
       requestUpload(
-        "/api/organizations/{organizationId}/projects/{projectId}/inventory",
-        inventorySummarySchema,
+        "/api/organizations/{organizationId}/projects/{projectId}/inventory/import-previews",
+        inventoryImportPreviewSchema,
         {
           params: { organizationId: "org-1", projectId: "project-1" },
           file: new File(["System"], "inventory.csv"),
@@ -352,17 +352,17 @@ describe("requestFile", () => {
 
 describe("requestUpload", () => {
   const path =
-    "/api/organizations/{organizationId}/projects/{projectId}/inventory" as const;
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory/import-previews" as const;
   const params = { organizationId: "org-1", projectId: "project-1" };
   const summary = {
-    canUpload: true,
-    mappings: { pending: 0, confirmed: 0, unmapped: 0 },
-    systemCount: 0,
-    totalRows: 0,
-    usableRows: 0,
-    lastUploadAt: null,
-    lastUploadFileName: null,
+    id: "5b2c8f0e-8b4f-4c36-9a53-1f4d5e6a7b8c",
+    fileName: "inventory.csv",
+    createdAt: "2026-11-22T10:00:00.000Z",
+    expiresAt: "2026-11-22T10:30:00.000Z",
+    totals: { added: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 },
     systems: [],
+    rows: [],
+    warnings: [],
   };
 
   afterEach(() => {
@@ -376,7 +376,7 @@ describe("requestUpload", () => {
       type: "text/csv",
     });
 
-    const result = await requestUpload(path, inventorySummarySchema, {
+    const result = await requestUpload(path, inventoryImportPreviewSchema, {
       params,
       file,
     });
@@ -385,7 +385,7 @@ describe("requestUpload", () => {
     const sent = issuedRequest(fetchMock);
     expect(sent.method).toBe("POST");
     expect(new URL(sent.url).pathname).toBe(
-      "/api/organizations/org-1/projects/project-1/inventory",
+      "/api/organizations/org-1/projects/project-1/inventory/import-previews",
     );
     expect(sent.headers.get("content-type")).toMatch(
       /^multipart\/form-data; boundary=/,
@@ -398,11 +398,15 @@ describe("requestUpload", () => {
   });
 
   it("rejects a reply that does not match the contract", async () => {
-    stubFetch(jsonResponse(200, { systemCount: "many" }));
-    const failure: unknown = await requestUpload(path, inventorySummarySchema, {
-      params,
-      file: new File(["x"], "inventory.csv"),
-    }).catch((error: unknown) => error);
+    stubFetch(jsonResponse(200, { totals: "many" }));
+    const failure: unknown = await requestUpload(
+      path,
+      inventoryImportPreviewSchema,
+      {
+        params,
+        file: new File(["x"], "inventory.csv"),
+      },
+    ).catch((error: unknown) => error);
     expect(failure).toMatchObject({
       code: "CONTRACT_MISMATCH",
       status: 200,

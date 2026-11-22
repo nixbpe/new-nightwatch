@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "WORKER_ROLES=consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter,vulnerability-scanner,notification-email bun --watch src/index.ts",
+    "dev": "WORKER_ROLES=consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter,vulnerability-scanner,notification-email,inventory-maintenance bun --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",
     "typecheck": "bun check -p tsconfig.json",
     "test": "vitest run --exclude 'src/**/*.db.test.ts'",
-    "test:integration": "vitest run --maxWorkers=2 src/materialize.db.test.ts src/dispatch.db.test.ts src/monitor/scheduler.db.test.ts src/monitor/checker.db.test.ts src/monitor/checker-process.db.test.ts src/monitor/checker-ssl.db.test.ts src/monitor/notifications.db.test.ts src/audit/exporter.db.test.ts src/vulnerability/scanner.db.test.ts src/vulnerability/notification.db.test.ts src/vulnerability/email.db.test.ts",
+    "test:integration": "vitest run --maxWorkers=2 src/materialize.db.test.ts src/dispatch.db.test.ts src/monitor/scheduler.db.test.ts src/monitor/checker.db.test.ts src/monitor/checker-process.db.test.ts src/monitor/checker-ssl.db.test.ts src/monitor/notifications.db.test.ts src/audit/exporter.db.test.ts src/vulnerability/scanner.db.test.ts src/vulnerability/notification.db.test.ts src/vulnerability/email.db.test.ts src/inventory/maintenance.db.test.ts",
     "test:bun": "bun --bun vitest run src/monitor/checker.db.test.ts src/monitor/checker-ssl.db.test.ts",
     "test:coverage": "vitest run --coverage"
   },

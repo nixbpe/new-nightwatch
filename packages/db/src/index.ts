@@ -48,6 +48,7 @@ export {
   purgeExpiredAuditEvents,
   type AuditExportClaim,
 } from "./audit";
+export { purgeExpiredInventoryPreviews } from "./inventory-preview";
 export {
   claimDueMonitorChecks,
   purgeExpiredMonitorData,

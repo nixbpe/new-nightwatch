@@ -10,7 +10,6 @@ import {
   createSystem,
   fetchInventory,
   fetchRows,
-  uploadInventory,
 } from "../../lib/api/inventory";
 import { InventoryPage } from "./InventoryPage";
 
@@ -29,12 +28,10 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchInventory: vi.fn(),
   fetchRows: vi.fn(),
-  uploadInventory: vi.fn(),
   createSystem: vi.fn(),
 }));
 
 const fetchMock = vi.mocked(fetchInventory);
-const uploadMock = vi.mocked(uploadInventory);
 const rowsMock = vi.mocked(fetchRows);
 const createMock = vi.mocked(createSystem);
 
@@ -102,17 +99,16 @@ function renderPage(state?: unknown) {
       ],
     },
   );
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return router;
+  return Object.assign(router, { unmount: view.unmount });
 }
 
 beforeEach(() => {
   fetchMock.mockReset();
-  uploadMock.mockReset();
   rowsMock.mockReset();
   createMock.mockReset();
   rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
@@ -192,134 +188,24 @@ describe("InventoryPage", () => {
     );
   });
 
-  it("uploads the chosen file for the current Project and shows the new totals", async () => {
-    fetchMock.mockResolvedValue(
-      summary({
-        totalRows: 0,
-        usableRows: 0,
-        systems: [],
-        systemCount: 0,
-        lastUploadAt: null,
-        lastUploadFileName: null,
-      }),
-    );
-    uploadMock.mockResolvedValue(summary());
-    const user = userEvent.setup();
-    renderPage();
-
-    const file = new File(["System,Owner"], "inventory-q4.csv", {
-      type: "text/csv",
-    });
-    await user.upload(await screen.findByTestId("inventory-file-input"), file);
-
-    await waitFor(() => {
-      expect(uploadMock).toHaveBeenCalledTimes(1);
-    });
-    expect(uploadMock.mock.calls[0]?.slice(0, 3)).toEqual([ORG, PROJECT, file]);
-    expect(
-      await screen.findByTestId("inventory-upload-success"),
-    ).toHaveTextContent(
-      "นำเข้าไฟล์ inventory-q4.csv แล้ว: 40 แถว ใช้งานได้ 36 แถว",
-    );
-    expect(screen.getByTestId("inventory-tile-total")).toHaveTextContent("40");
-  });
-
-  it("reloads the rows table after an upload replaced the rows it was showing", async () => {
-    const before = {
-      id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
-      systemId: BILLING,
-      systemName: "Billing API",
-      owner: "ทีม Payment",
-      vendor: "Canonical",
-      product: "Ubuntu",
-      version: "22.04.4",
-      layer: "OS",
-      environment: "Production",
-      exposure: "Internal",
-      usable: true,
-      issues: [],
-      duplicate: false,
-      revision: 1,
-      source: {
-        kind: "import" as const,
-        fileName: "old.csv",
-        changedBy: "สมชาย",
-        changedAt: "2026-11-20T09:42:00.000Z",
-      },
-    };
-    const after = {
-      ...before,
-      id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc9",
-      source: { ...before.source, fileName: "new.csv" },
-    };
+  it("offers Import as the first header action to a maintainer, and nothing to import to a member", async () => {
     fetchMock.mockResolvedValue(summary());
-    rowsMock.mockResolvedValueOnce({
-      rows: [before],
-      total: 1,
-      page: 1,
-      pageSize: 25,
-    });
-    rowsMock.mockResolvedValue({
-      rows: [after],
-      total: 1,
-      page: 1,
-      pageSize: 25,
-    });
-    uploadMock.mockResolvedValue(summary());
-    const user = userEvent.setup();
-    renderPage();
-    expect(
-      await screen.findByTestId(`inventory-row-source-${before.id}`),
-    ).toHaveTextContent("old.csv");
+    const maintainer = renderPage();
 
-    await user.upload(
-      await screen.findByTestId("inventory-file-input"),
-      new File(["x"], "new.csv"),
+    const link = await screen.findByTestId("inventory-import-link");
+    expect(link).toHaveTextContent("Import");
+    expect(link).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/inventory/import`,
     );
+    expect(screen.queryByTestId("inventory-file-input")).toBeNull();
+    maintainer.unmount();
 
-    expect(
-      await screen.findByTestId(`inventory-row-source-${after.id}`),
-    ).toHaveTextContent("new.csv");
-    expect(
-      screen.queryByTestId(`inventory-row-source-${before.id}`),
-    ).toBeNull();
-  });
-
-  it("shows the reason a file was rejected and preserves earlier inventory totals", async () => {
-    fetchMock.mockResolvedValue(summary());
-    uploadMock.mockRejectedValue(
-      new ApiError(
-        "INVENTORY_FILE_REJECTED",
-        "ไฟล์ draft.xlsx ถูกปฏิเสธ ไม่มีข้อมูลใดถูกนำเข้า: ขาดคอลัมน์ Exposure",
-        400,
-      ),
-    );
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.upload(
-      await screen.findByTestId("inventory-file-input"),
-      new File(["x"], "draft.xlsx"),
-    );
-
-    expect(
-      await screen.findByTestId("inventory-upload-error"),
-    ).toHaveTextContent(
-      "ไฟล์ draft.xlsx ถูกปฏิเสธ ไม่มีข้อมูลใดถูกนำเข้า: ขาดคอลัมน์ Exposure",
-    );
-    expect(screen.getByTestId("inventory-tile-total")).toHaveTextContent("40");
-  });
-
-  it("offers no upload to a member who cannot manage the Project but keeps the template", async () => {
     fetchMock.mockResolvedValue(summary({ canUpload: false }));
     renderPage();
-
-    expect(await screen.findByTestId("inventory-template-link")).toBeVisible();
-    expect(screen.queryByTestId("inventory-file-input")).toBeNull();
-    expect(screen.queryByTestId("inventory-upload-button")).toBeNull();
-    expect(
-      screen.getByText("เฉพาะผู้ดูแล Project upload ได้"),
-    ).toBeInTheDocument();
+    await screen.findByTestId("inventory-tile-total");
+    expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+    expect(screen.queryByTestId("inventory-template-link")).toBeNull();
   });
 
   it("says there is no inventory yet instead of showing zero Systems as healthy", async () => {
@@ -338,6 +224,10 @@ describe("InventoryPage", () => {
     expect(
       await screen.findByText(/ยังไม่มี inventory ใน Project นี้/),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("inventory-empty-import-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/inventory/import`,
+    );
     expect(screen.getByTestId("inventory-tile-upload")).toHaveTextContent(
       "ยังไม่มี",
     );
