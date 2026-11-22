@@ -1,5 +1,7 @@
 import {
   newCveListSchema,
+  triageSchema,
+  type TriageInput,
   priorityListSchema,
   vulnerabilityAdvanceSchema,
   vulnerabilityListSchema,
@@ -79,6 +81,19 @@ export function downloadSystemExport(
   });
 }
 
+/** Sets the VEX status of one CVE of one component (S5.3); a Project admin only. */
+export function putTriage(
+  organizationId: string,
+  projectId: string,
+  input: TriageInput,
+) {
+  return request(`${base}/triage`, triageSchema, {
+    method: "PUT",
+    params: { organizationId, projectId },
+    body: input,
+  });
+}
+
 export function startVulnerabilityRun(
   organizationId: string,
   projectId: string,
@@ -149,6 +164,10 @@ export function reviewSampleItem(
 export function vulnerabilityErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "VULNERABILITY_SAMPLE_EMPTY") return error.message;
+    if (error.code === "VULNERABILITY_TRIAGE_REASON_REQUIRED")
+      return "ต้องระบุเหตุผลเมื่อเลือกไม่ได้รับผลกระทบ";
+    if (error.code === "VULNERABILITY_FINDING_NOT_FOUND")
+      return "ไม่พบ CVE นี้ในผลล่าสุดแล้ว โปรดโหลดหน้าใหม่";
     if (error.status === 403) return "เฉพาะผู้ดูแลโปรเจกต์ทำรายการนี้ได้";
     if (error.status === 404) return "ไม่พบข้อมูลที่ขอ หรือคุณเข้าถึงไม่ได้";
     if (error.status === 429) return "ทำรายการบ่อยเกินไป โปรดลองใหม่ภายหลัง";

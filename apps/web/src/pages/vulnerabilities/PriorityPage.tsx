@@ -13,6 +13,7 @@ import {
   vulnerabilityKeys,
 } from "../../lib/api/vulnerabilities";
 import { usePreferences } from "../../lib/preferences";
+import { TriageControl } from "./TriageControl";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { formatUploadedAt } from "../inventory/format";
 
@@ -142,7 +143,7 @@ function Priority({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
+              <table className="w-full min-w-[1100px] text-left text-sm">
                 <thead className="text-xs text-foreground-secondary">
                   <tr>
                     {[
@@ -152,6 +153,7 @@ function Priority({
                       "System",
                       "ความรุนแรง",
                       "เหตุผลของลำดับ",
+                      "VEX",
                     ].map((head) => (
                       <th
                         key={head}
@@ -166,7 +168,7 @@ function Priority({
                 <tbody>
                   {data.items.map((item) => (
                     <tr
-                      key={String(item.rank)}
+                      key={`${item.cveId}|${item.systemId}|${item.vendor}|${item.product}|${item.version}`}
                       data-testid={`priority-item-${String(item.rank)}`}
                       className="border-t border-foreground/10 align-top"
                     >
@@ -225,11 +227,72 @@ function Priority({
                           </span>
                         ) : null}
                       </td>
+                      <td className="px-4 py-2">
+                        {item.mappingId === null ? null : (
+                          <TriageControl
+                            organizationId={organizationId}
+                            projectId={projectId}
+                            canManage={data.canManage}
+                            target={{
+                              mappingId: item.mappingId,
+                              version: item.version,
+                              cveId: item.cveId,
+                            }}
+                            triage={item.triage}
+                          />
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          )}
+          {data.notAffected.length === 0 ? null : (
+            <details
+              className="rounded-md border border-foreground/10 bg-surface"
+              data-testid="priority-not-affected"
+            >
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+                ไม่ได้รับผลกระทบ (VEX) {data.notAffected.length} รายการ
+                อยู่นอกลำดับ
+              </summary>
+              <ul className="divide-y divide-foreground/10">
+                {data.notAffected.map((item) => (
+                  <li
+                    key={`${item.cveId}|${item.systemId}|${item.vendor}|${item.product}|${item.version}`}
+                    data-testid={`priority-not-affected-${item.cveId}`}
+                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <span>
+                      <span className="font-mono text-[13px]">
+                        {item.cveId}
+                      </span>{" "}
+                      {item.vendor} · {item.product}{" "}
+                      <span className="font-mono text-[13px]">
+                        {item.version}
+                      </span>{" "}
+                      <span className="text-foreground-secondary">
+                        ({item.system})
+                      </span>
+                    </span>
+                    {item.mappingId === null ? null : (
+                      <TriageControl
+                        organizationId={organizationId}
+                        projectId={projectId}
+                        canManage={data.canManage}
+                        target={{
+                          mappingId: item.mappingId,
+                          version: item.version,
+                          cveId: item.cveId,
+                        }}
+                        triage={item.triage}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </>
       )}

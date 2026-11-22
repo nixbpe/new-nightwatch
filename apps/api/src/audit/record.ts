@@ -45,6 +45,7 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.project.inventory.mapping.update": "project",
   "organization.project.vulnerability.run": "project",
   "organization.project.vulnerability.sample": "project",
+  "organization.project.vulnerability.triage": "project",
 };
 
 // What a writer passes; the read response shape is `AuditTarget` in the contract.
