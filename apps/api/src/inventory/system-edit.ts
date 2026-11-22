@@ -28,12 +28,12 @@ function nameTaken(name: string): never {
   );
 }
 
-// A missing System is as stale as a changed one: an upload replaces a System with a new id.
+// A missing System is as stale as a changed one.
 function stale(): never {
   throw new AppError(
     409,
     "INVENTORY_SYSTEM_STALE",
-    "System นี้ถูกเปลี่ยนชื่อ ลบ หรือแทนที่ด้วยการ upload โดยคนอื่น หรือจำนวนแถวเปลี่ยนไป หลังจากที่คุณเปิดหน้านี้ ไม่มีอะไรถูกบันทึก โหลดหน้าใหม่แล้วทำรายการอีกครั้ง",
+    "System นี้ถูกเปลี่ยนชื่อหรือลบโดยคนอื่น หรือจำนวนแถวเปลี่ยนไป (เช่น จากการ import) หลังจากที่คุณเปิดหน้านี้ ไม่มีอะไรถูกบันทึก โหลดหน้าใหม่แล้วทำรายการอีกครั้ง",
   );
 }
 

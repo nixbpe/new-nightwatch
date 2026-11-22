@@ -255,7 +255,7 @@ function MappingQueue({ organizationId, projectId }: Scope) {
         title="ยืนยัน CPE/purl"
         titleRef={heading}
         titleTabIndex={-1}
-        description='component ในคิวนี้ยังไม่ถูกนำไป match CVE และแสดงเป็น "ยังไม่ครอบคลุม" จนกว่าผู้ดูแล Project จะยืนยัน product ที่ยืนยันแล้วจะ map ให้อัตโนมัติในการ upload ครั้งถัดไป'
+        description='component ในคิวนี้ยังไม่ถูกนำไป match CVE และแสดงเป็น "ยังไม่ครอบคลุม" จนกว่าผู้ดูแล Project จะยืนยัน product ที่ยืนยันแล้วจะ map ให้อัตโนมัติในการ import ครั้งถัดไป'
         actions={
           <Button variant="outline" asChild>
             <Link

@@ -2,13 +2,17 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { guardUnassignedNetwork } from "../../../test/guard-network";
-import { fetchInventory, fetchRows } from "../../api/inventory";
+import {
+  fetchImportPreview,
+  fetchInventory,
+  fetchRows,
+} from "../../api/inventory";
 import { fetchMeContext } from "../../api/me";
 import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
 } from "../../queryClient";
-import { inventoryLoader } from "./inventory";
+import { inventoryImportLoader, inventoryLoader } from "./inventory";
 
 guardUnassignedNetwork();
 
@@ -29,11 +33,13 @@ vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchInventory: vi.fn(),
   fetchRows: vi.fn(),
+  fetchImportPreview: vi.fn(),
 }));
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const summaryMock = vi.mocked(fetchInventory);
 const rowsMock = vi.mocked(fetchRows);
+const previewMock = vi.mocked(fetchImportPreview);
 
 const owner: MeContextResponse = {
   user: {
@@ -97,5 +103,42 @@ describe("inventoryLoader", () => {
     await load("");
 
     expect(rowsMock.mock.calls[0]?.[2]).toEqual({ status: "all", page: 1 });
+  });
+});
+
+describe("inventoryImportLoader", () => {
+  const loadImport = () => {
+    const url = new URL(
+      `http://localhost/organizations/${ORG}/projects/${PROJECT}/inventory/import`,
+    );
+    return inventoryImportLoader({
+      request: new Request(url),
+      url,
+      pattern:
+        "/organizations/:organizationId/projects/:projectId/inventory/import",
+      params: { organizationId: ORG, projectId: PROJECT },
+      context: {},
+    });
+  };
+
+  it("prefetches the summary and the caller's own pending preview", async () => {
+    summaryMock.mockResolvedValue({
+      canUpload: true,
+    } as Awaited<ReturnType<typeof fetchInventory>>);
+    previewMock.mockResolvedValue({ preview: null });
+    await loadImport();
+
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(previewMock.mock.calls[0]?.slice(0, 2)).toEqual([ORG, PROJECT]);
+  });
+
+  it("asks a member who may not import for no preview", async () => {
+    summaryMock.mockResolvedValue({
+      canUpload: false,
+    } as Awaited<ReturnType<typeof fetchInventory>>);
+
+    await expect(loadImport()).resolves.toBeNull();
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(previewMock).not.toHaveBeenCalled();
   });
 });

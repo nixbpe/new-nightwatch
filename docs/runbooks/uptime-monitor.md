@@ -55,6 +55,11 @@ Find supported roles through the [Worker runtime code index](../features.md#tool
   supports multiple instances.
 - For in-app notifications, run `scheduler` and `consumer`.
 - For audit exports and audit retention, run `audit-exporter`.
+- For the removal of inventory import previews (F-022, S7.3), run `inventory-maintenance`. Every minute it
+  deletes previews past their 30 minutes, whether or not anyone opens the page. It needs only
+  `DATABASE_URL` (and `REDIS_URL`, which every role requires), and several instances are safe because
+  the deletion is idempotent. Without it an expired preview is still refused on confirm and hidden from
+  its owner, but its parsed rows stay in the database.
 - For the scheduled CVE scan (F-020), run `vulnerability-scanner`. It claims a due Project from
   PostgreSQL, scans it every 12 hours (retries after 1 hour when a scan does not finish) and spends
   from the same NVD limit as the API through Redis with the same `REDIS_KEY_PREFIX`. Run one

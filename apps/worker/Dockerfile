@@ -41,7 +41,7 @@ RUN mkdir -p /worker-flavor \
 # Required at container start:
 #   WORKER_ROLES                    comma list of consumer, scheduler,
 #                                   monitor-scheduler, monitor-checker,
-#                                   audit-exporter
+#                                   audit-exporter, inventory-maintenance
 #                                   (unset means consumer)
 #   DATABASE_URL                    runtime DB role (non-owner, NOBYPASSRLS)
 #   REDIS_URL                       non-cluster Redis

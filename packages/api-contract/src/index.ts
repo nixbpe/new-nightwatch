@@ -85,6 +85,7 @@ export {
 export { versionResponseSchema, type VersionResponse } from "./version";
 export * from "./audit-log";
 export * from "./inventory";
+export * from "./inventory-import";
 export * from "./inventory-mapping";
 export * from "./vulnerability";
 export * from "./monitor";

@@ -781,12 +781,12 @@ describe("InventoryRowsSection repairs", () => {
     expect(screen.queryByTestId("inventory-row-add")).toBeNull();
   });
 
-  it("stops saving when the System a new row was meant for was replaced by an upload", async () => {
+  it("stops saving when the System a new row was meant for was deleted", async () => {
     fetchMock.mockResolvedValue(list([row()]));
     createMock.mockRejectedValue(
       new ApiError(
         "INVENTORY_SYSTEM_NOT_FOUND",
-        "ไม่พบ System นี้ อาจถูกแทนที่ด้วยการ upload",
+        "ไม่พบ System นี้ อาจถูกลบโดยคนอื่น",
         404,
       ),
     );

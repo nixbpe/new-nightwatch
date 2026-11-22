@@ -102,14 +102,16 @@ for (const theme of ["light", "dark"] as const) {
         projectId,
       ]);
       await signIn(page, owner);
-      await page.goto(base());
+      await page.goto(`${base()}/import`);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await page.getByTestId("inventory-file-input").setInputFiles({
         name: "inventory.csv",
         mimeType: "text/csv",
         buffer: Buffer.from(CSV),
       });
-      // The catalog pair is confirmed on upload; the other two wait for review.
+      await page.getByTestId("inventory-import-confirm").click();
+      await page.getByTestId("inventory-import-done").click();
+      // The catalog pair is confirmed on import; the other two wait for review.
       await expect(page.getByTestId("inventory-tile-mappings")).toContainText(
         "2",
       );

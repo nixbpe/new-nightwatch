@@ -230,7 +230,7 @@ export function RowDialog({
         error instanceof ApiError &&
         error.code === "INVENTORY_SYSTEM_NOT_FOUND"
       ) {
-        // A new upload replaced the System the dialog was opened for.
+        // Someone deleted the System the dialog was opened for.
         setStale(true);
         onStale();
         setGeneral(error.message);

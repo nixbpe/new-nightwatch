@@ -3,7 +3,13 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDatabase, runMigrations, withTenantContextRaw } from "../src";
+import {
+  createDatabase,
+  purgeExpiredInventoryPreviews,
+  runMigrations,
+  withTenantContextRaw,
+  withTenantUserContextRaw,
+} from "../src";
 
 const runtimeUrl = process.env.DATABASE_URL;
 const ownerUrl = process.env.DATABASE_OWNER_URL;
@@ -428,6 +434,7 @@ describe("inventory catalog", () => {
       "revision",
       "source_file_name",
       "source_kind",
+      "source_line",
       "usable",
       "vendor",
       "version",
@@ -441,6 +448,7 @@ describe("inventory catalog", () => {
     );
     for (const action of [
       "organization.project.inventory.upload",
+      "organization.project.inventory.import",
       "organization.project.inventory.row.create",
       "organization.project.inventory.row.update",
       "organization.project.inventory.row.delete",
@@ -492,5 +500,304 @@ describe("inventory catalog", () => {
         );
       }),
     ).rejects.toThrow(/inventory_rows_source/);
+  });
+});
+
+describe("import previews and records", () => {
+  const projectImport = randomUUID();
+  const users = { a1: randomUUID(), a2: randomUUID(), b1: randomUUID() };
+
+  beforeAll(async () => {
+    await owner.query(
+      "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'import', $3)",
+      [projectImport, tenantA, `inv-import-${run}`],
+    );
+    for (const [key, id] of Object.entries(users)) {
+      await owner.query(
+        `insert into "user" (id, name, email, email_verified) values ($1, $2, $3, true)`,
+        [id, key, `${key}-${id}@example.test`],
+      );
+      await owner.query(
+        `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+         values ($1, $2, $3, 'viewer', now(), now())`,
+        [randomUUID(), key === "b1" ? tenantB : tenantA, id],
+      );
+    }
+  });
+
+  afterAll(async () => {
+    await owner.query('delete from "user" where id = any($1::text[])', [
+      Object.values(users),
+    ]);
+  });
+
+  const insertPreview = (
+    client: { query: Client["query"] },
+    tenant: string,
+    project: string,
+    userId: string,
+    minutes = 30,
+  ) =>
+    client.query(
+      `insert into inventory_previews
+         (tenant_id, project_id, created_by, file_name, rows, summary, fingerprints, expires_at)
+       values ($1, $2, $3, 'inventory.csv', '[]', '{}', '{}', now() + make_interval(mins => $4))
+       returning id`,
+      [tenant, project, userId, minutes],
+    );
+  const visible = (tenant: string, userId: string) =>
+    withTenantUserContextRaw(
+      database,
+      tenant,
+      userId,
+      async (client) =>
+        (await client.query("select id from inventory_previews")).rowCount,
+    );
+
+  it("shows a preview only to the user who made it, even inside the same Organization", async () => {
+    await withTenantUserContextRaw(database, tenantA, users.a1, (client) =>
+      insertPreview(client, tenantA, projectImport, users.a1),
+    );
+    expect(await visible(tenantA, users.a1)).toBe(1);
+    expect(await visible(tenantA, users.a2)).toBe(0);
+    expect(await visible(tenantB, users.b1)).toBe(0);
+    // The Organization context alone, or none, reads nothing.
+    const tenantOnly = await withTenantContextRaw(database, tenantA, (client) =>
+      client.query("select id from inventory_previews"),
+    );
+    expect(tenantOnly.rowCount).toBe(0);
+    const noContext = await database.sql.query(
+      "select id from inventory_previews",
+    );
+    expect(noContext.rowCount).toBe(0);
+    expect(await ownerCount("inventory_previews", tenantA)).toBe(1);
+  });
+
+  it("refuses to write a preview for another user, another tenant or without a user context", async () => {
+    await expect(
+      withTenantUserContextRaw(database, tenantA, users.a2, (client) =>
+        insertPreview(client, tenantA, projectImport, users.a1),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantUserContextRaw(database, tenantA, users.a2, (client) =>
+        insertPreview(client, tenantB, projectB, users.a2),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        insertPreview(client, tenantA, projectImport, users.a2),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("cannot delete or update another user's preview", async () => {
+    const deleted = await withTenantUserContextRaw(
+      database,
+      tenantA,
+      users.a2,
+      (client) => client.query("delete from inventory_previews"),
+    );
+    expect(deleted.rowCount).toBe(0);
+    await expect(
+      withTenantUserContextRaw(database, tenantA, users.a1, (client) =>
+        client.query("update inventory_previews set file_name = 'x.csv'"),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    expect(await ownerCount("inventory_previews", tenantA)).toBe(1);
+  });
+
+  it("keeps one preview per user and Project, and at most 30 minutes", async () => {
+    await expect(
+      withTenantUserContextRaw(database, tenantA, users.a1, (client) =>
+        insertPreview(client, tenantA, projectImport, users.a1),
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+    await expect(
+      withTenantUserContextRaw(database, tenantA, users.a2, (client) =>
+        insertPreview(client, tenantA, projectImport, users.a2, 31),
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await withTenantUserContextRaw(database, tenantA, users.a2, (client) =>
+      insertPreview(client, tenantA, projectImport, users.a2, 29),
+    );
+  });
+
+  it("removes a preview with its Project and with the person's membership", async () => {
+    const project = randomUUID();
+    await owner.query(
+      "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'gone', $3)",
+      [project, tenantA, `inv-gone-${run}`],
+    );
+    await withTenantUserContextRaw(
+      database,
+      tenantA,
+      users.a1,
+      async (client) => {
+        await insertPreview(client, tenantA, project, users.a1);
+        await client.query(
+          `insert into inventory_imports
+           (tenant_id, project_id, imported_by, file_name, added, updated, unchanged, skipped, failed)
+         values ($1, $2, $3, 'inventory.csv', 1, 2, 3, 4, 5)`,
+          [tenantA, project, users.a1],
+        );
+      },
+    );
+    await owner.query("delete from projects where id = $1", [project]);
+    for (const table of ["inventory_previews", "inventory_imports"]) {
+      const left = await owner.query(
+        `select 1 from ${table} where project_id = $1`,
+        [project],
+      );
+      expect(left.rowCount).toBe(0);
+    }
+    await owner.query(
+      "delete from member where organization_id = $1 and user_id = $2",
+      [tenantA, users.a2],
+    );
+    const remaining = await owner.query<{ created_by: string }>(
+      "select created_by from inventory_previews where tenant_id = $1",
+      [tenantA],
+    );
+    expect(remaining.rows.map((row) => row.created_by)).toEqual([users.a1]);
+  });
+
+  it("keeps import records per tenant, append only, with counts and no file content", async () => {
+    await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        `insert into inventory_imports
+           (tenant_id, project_id, imported_by, file_name, added, updated, unchanged, skipped, failed)
+         values ($1, $2, 'u', 'a.csv', 0, 0, 0, 0, 0)`,
+        [tenantA, projectImport],
+      ),
+    );
+    const asB = await withTenantContextRaw(database, tenantB, (client) =>
+      client.query("select id from inventory_imports where tenant_id = $1", [
+        tenantA,
+      ]),
+    );
+    expect(asB.rowCount).toBe(0);
+    await expect(
+      withTenantContextRaw(database, tenantB, (client) =>
+        client.query(
+          `insert into inventory_imports
+             (tenant_id, project_id, imported_by, file_name, added, updated, unchanged, skipped, failed)
+           values ($1, $2, 'u', 'a.csv', 0, 0, 0, 0, 0)`,
+          [tenantA, projectImport],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query("update inventory_imports set added = 1"),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query("delete from inventory_imports"),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into inventory_imports
+             (tenant_id, project_id, imported_by, file_name, added, updated, unchanged, skipped, failed)
+           values ($1, $2, 'u', 'a.csv', -1, 0, 0, 0, 0)`,
+          [tenantA, projectImport],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("enables and forces RLS, guards both contexts and grants the runtime role only what it uses", async () => {
+    const flags = await owner.query<{
+      relname: string;
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity from pg_class
+       where relnamespace = 'public'::regnamespace and relname in ('inventory_previews', 'inventory_imports')`,
+    );
+    expect(flags.rows).toHaveLength(2);
+    expect(
+      flags.rows.filter((r) => !r.relrowsecurity || !r.relforcerowsecurity),
+    ).toEqual([]);
+    const policies = await owner.query<{
+      tablename: string;
+      permissive: string;
+      roles: string[];
+      qual: string | null;
+    }>(
+      `select tablename, permissive, roles::text[] as roles, qual from pg_policies
+       where tablename in ('inventory_previews', 'inventory_imports')`,
+    );
+    const mine = (table: string, kind: string) =>
+      policies.rows.filter(
+        (r) =>
+          r.tablename === table &&
+          r.roles.includes("nightwatch") &&
+          r.permissive === kind,
+      );
+    expect(mine("inventory_previews", "RESTRICTIVE")).toHaveLength(2);
+    expect(mine("inventory_previews", "PERMISSIVE")).toHaveLength(1);
+    expect(mine("inventory_previews", "PERMISSIVE")[0]?.qual).toContain(
+      "app.user_id",
+    );
+    expect(mine("inventory_imports", "RESTRICTIVE")).toHaveLength(1);
+    expect(mine("inventory_imports", "PERMISSIVE")).toHaveLength(1);
+    const granted = async (table: string) =>
+      (
+        await owner.query<{ privilege: string }>(
+          `select p as privilege from unnest(array['select','insert','update','delete','truncate','references','trigger']) as p
+           where has_table_privilege('nightwatch', $1::regclass, p)`,
+          [table],
+        )
+      ).rows.map((row) => row.privilege);
+    expect(await granted("inventory_previews")).toEqual([
+      "select",
+      "insert",
+      "delete",
+    ]);
+    expect(await granted("inventory_imports")).toEqual(["select", "insert"]);
+  });
+
+  it("purges expired previews through a function whose owner sees only expired rows", async () => {
+    const meta = await owner.query<{
+      owner: string;
+      secdef: boolean;
+      config: string[] | null;
+    }>(
+      `select pg_get_userbyid(proowner) as owner, prosecdef as secdef, proconfig as config
+       from pg_proc where proname = 'purge_expired_inventory_previews'`,
+    );
+    expect(meta.rows).toEqual([
+      {
+        owner: "nightwatch_inventory_preview_owner",
+        secdef: true,
+        config: ["search_path=pg_catalog, public"],
+      },
+    ]);
+    const execute = await owner.query<{ runtime: boolean; everyone: boolean }>(
+      `select has_function_privilege('nightwatch', 'purge_expired_inventory_previews(integer)', 'execute') as runtime,
+              has_function_privilege('public', 'purge_expired_inventory_previews(integer)', 'execute') as everyone`,
+    );
+    expect(execute.rows).toEqual([{ runtime: true, everyone: false }]);
+    // Two previews exist from the tests above; only the expired one goes, and only once.
+    await owner.query(
+      `update inventory_previews set created_at = created_at - interval '40 minutes',
+         expires_at = expires_at - interval '40 minutes' where created_by = $1`,
+      [users.a1],
+    );
+    const before = await ownerCount("inventory_previews", tenantA);
+    expect(await purgeExpiredInventoryPreviews(database, { limit: 10 })).toBe(
+      1,
+    );
+    expect(await purgeExpiredInventoryPreviews(database, { limit: 10 })).toBe(
+      0,
+    );
+    expect(await ownerCount("inventory_previews", tenantA)).toBe(before - 1);
+    await expect(
+      purgeExpiredInventoryPreviews(database, { limit: 0 }),
+    ).rejects.toThrow(/limit/);
   });
 });

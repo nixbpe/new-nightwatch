@@ -28,7 +28,17 @@ const CSV = [
   row("HR Portal", "22.04.4"),
   row("HR Portal", "22.04"),
   row("HR Portal", "latest"),
-  row("HR Portal", "22.04.4", "public"),
+  row("HR Portal", "22.04.5", "public"),
+].join("\n");
+// Merges into the file above: one update, a new version of a Product the System has (a warning),
+// a repeated key, a failed row over a usable row, and a System the Project does not have yet.
+const MERGE_CSV = [
+  HEADER,
+  `Billing API,ทีม Payments,Canonical,Ubuntu,22.04.4,OS,Production,Internal`,
+  row("Billing API", "26.04.0"),
+  row("Billing API", "26.04.0"),
+  `HR Portal,ทีม HR Portal,Canonical,Ubuntu,22.04.4,Kernel,Production,Internal`,
+  row("Batch Jobs", "22.04.4"),
 ].join("\n");
 
 let org: string;
@@ -94,10 +104,10 @@ for (const theme of ["light", "dark"] as const) {
       }, theme);
     });
 
-    test("owner uploads a file, reads the quality and downloads the failed rows", async ({
+    test("owner imports a file through the preview, reads the quality and downloads the failed rows", async ({
       page,
     }) => {
-      // The light run leaves its upload behind, so each theme starts from an empty Project.
+      // The light run leaves its import behind, so each theme starts from an empty Project.
       await pool.query("delete from inventory_systems where project_id = $1", [
         projectId,
       ]);
@@ -105,12 +115,42 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(inventoryUrl());
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.getByText(/ยังไม่มี inventory/)).toBeVisible();
+      await shot(page, `inventory-empty-${theme}`);
 
+      await page.getByTestId("inventory-import-link").click();
+      await expect(page).toHaveURL(/inventory\/import$/);
+      await expect(page.getByTestId("page-title")).toHaveText(
+        "Import inventory",
+      );
+      await shot(page, `inventory-import-choose-${theme}`);
       await page
         .getByTestId("inventory-file-input")
         .setInputFiles(csvFile("inventory-q4.csv", CSV));
-      await expect(page.getByTestId("inventory-upload-success")).toContainText(
-        "6 แถว ใช้งานได้ 3 แถว",
+      await expect(
+        page.getByTestId("inventory-import-previewed"),
+      ).toContainText("เพิ่ม 3 · อัปเดต 0 · ไม่เปลี่ยน 0 · ข้าม 0 · ไม่ผ่าน 3");
+      await expect(page.getByTestId("inventory-import-row-5")).toContainText(
+        "ไม่ถึง patch level",
+      );
+      // Nothing is merged before the confirmation.
+      expect(
+        (
+          await pool.query(
+            "select 1 from inventory_systems where project_id = $1",
+            [projectId],
+          )
+        ).rowCount,
+      ).toBe(0);
+      await page.getByTestId("inventory-import-confirm").click();
+      await expect(page.getByTestId("inventory-import-success")).toContainText(
+        "import ไฟล์ inventory-q4.csv แล้ว",
+      );
+      await expect(page.getByTestId("inventory-import-result")).toBeVisible();
+      await shot(page, `inventory-import-result-${theme}`);
+      await page.getByTestId("inventory-import-done").click();
+      await expect(page).toHaveURL(/inventory$/);
+      await expect(page.getByTestId("inventory-tile-upload")).toContainText(
+        "inventory-q4.csv",
       );
       await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
       await expect(page.getByTestId("inventory-tile-usable")).toContainText(
@@ -415,13 +455,60 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId(/^inventory-open-system-/)).toHaveCount(2);
     });
 
-    test("a file with the wrong columns is rejected and the earlier data stays", async ({
+    test("a preview that merges warns about a new version and lists skipped rows, and cancel changes nothing", async ({
       page,
     }) => {
       await signIn(page, owner);
-      await page.goto(inventoryUrl());
-      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+      await page.goto(`${inventoryUrl()}/import`);
+      await page
+        .getByTestId("inventory-file-input")
+        .setInputFiles(csvFile("inventory-q1.csv", MERGE_CSV));
+      await expect(
+        page.getByTestId("inventory-import-previewed"),
+      ).toContainText("เพิ่ม 2 · อัปเดต 1 · ไม่เปลี่ยน 0 · ข้าม 2 · ไม่ผ่าน 0");
+      await expect(page.getByTestId("inventory-import-warning")).toContainText(
+        "Billing API: Canonical Ubuntu เพิ่มเวอร์ชัน 26.04.0 เวอร์ชันเดิม 22.04.4, 24.04.1 ยังอยู่",
+      );
+      await expect(page.getByTestId("inventory-import-row-4")).toContainText(
+        "ซ้ำกับแถวที่ 3 ในไฟล์",
+      );
+      await expect(page.getByTestId("inventory-import-row-5")).toContainText(
+        "แถวเดิมที่ใช้งานได้ key เดียวกันยังอยู่",
+      );
+      await expect(
+        page.getByTestId("inventory-import-system-batch jobs"),
+      ).toContainText("ใหม่");
+      await settled(page);
+      await shot(page, `inventory-import-preview-${theme}`);
+      // The preview survives a reload, and cancel deletes it at once.
+      await page.reload();
+      await expect(page.getByTestId("inventory-import-preview")).toBeVisible();
+      await page.getByTestId("inventory-import-cancel").click();
+      await expect(page.getByTestId("inventory-file-input")).toBeAttached();
+      await expect(page.getByTestId("inventory-import-preview")).toHaveCount(0);
+      expect(
+        (
+          await pool.query(
+            "select 1 from inventory_previews where project_id = $1",
+            [projectId],
+          )
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await pool.query(
+            "select 1 from inventory_rows where project_id = $1",
+            [projectId],
+          )
+        ).rowCount,
+      ).toBe(6);
+    });
 
+    test("a file with the wrong columns is rejected, no preview is made and the earlier data stays", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(`${inventoryUrl()}/import`);
       await page
         .getByTestId("inventory-file-input")
         .setInputFiles(
@@ -430,25 +517,40 @@ for (const theme of ["light", "dark"] as const) {
             "System,Owner,Vendor,Product,Version,Layer,Environment,Hostname\nA,B,C,D,1.2.3,OS,Production,h\n",
           ),
         );
-      await expect(page.getByTestId("inventory-upload-error")).toContainText(
+      await expect(page.getByTestId("inventory-import-error")).toContainText(
         "ขาดคอลัมน์ Exposure และมีคอลัมน์ที่ไม่อยู่ใน template: Hostname",
       );
-      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+      await expect(page.getByTestId("inventory-import-preview")).toHaveCount(0);
       await shot(page, `inventory-rejected-file-${theme}`);
+      await page.goto(inventoryUrl());
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+    });
+
+    test("a Project member sees the Import page restricted, with no file chooser", async ({
+      page,
+    }) => {
+      await signIn(page, member);
+      await page.goto(`${inventoryUrl()}/import`);
+      await expect(
+        page.getByTestId("inventory-import-restricted"),
+      ).toContainText("เฉพาะผู้ดูแล Project import ได้");
+      await expect(page.getByTestId("inventory-file-input")).toHaveCount(0);
+      await expect(page.getByTestId("inventory-choose-button")).toHaveCount(0);
+      await expect(page.getByTestId("inventory-template-link")).toBeVisible();
+      await shot(page, `inventory-import-restricted-${theme}`);
     });
   });
 }
 
-test("a Project member reads the inventory but cannot upload", async ({
+test("a Project member reads the inventory but has no Import or edit controls", async ({
   page,
 }) => {
   await signIn(page, member);
   await page.goto(inventoryUrl());
 
   await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
+  await expect(page.getByTestId("inventory-import-link")).toHaveCount(0);
   await expect(page.getByTestId("inventory-file-input")).toHaveCount(0);
-  await expect(page.getByTestId("inventory-upload-button")).toHaveCount(0);
-  await expect(page.getByTestId("inventory-template-link")).toBeVisible();
   await expect(
     page.getByTestId("inventory-rows-table").locator("tbody tr"),
   ).toHaveCount(6);

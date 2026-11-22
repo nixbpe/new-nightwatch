@@ -27,6 +27,7 @@ import {
 } from "./materialize";
 import { AuditExporter } from "./audit/exporter";
 import { startAuditMaintenance } from "./audit/maintenance";
+import { startInventoryMaintenance } from "./inventory/maintenance";
 import { assertMonitorCheckJob, processMonitorCheck } from "./monitor/checker";
 import { createEgressCanary } from "./monitor/egress-canary";
 import {
@@ -47,6 +48,7 @@ const WORKER_ROLES = [
   "audit-exporter",
   "vulnerability-scanner",
   "notification-email",
+  "inventory-maintenance",
 ] as const;
 type WorkerRole = (typeof WORKER_ROLES)[number];
 
@@ -109,6 +111,10 @@ auditExporter?.start();
 const stopAuditMaintenance = roles.has("audit-exporter")
   ? startAuditMaintenance(database, logger)
   : null;
+// Expired import previews are deleted from PostgreSQL by the database's clock; no queue.
+const stopInventoryMaintenance = roles.has("inventory-maintenance")
+  ? startInventoryMaintenance(database, logger)
+  : null;
 // The vulnerability scan claims from PostgreSQL and spends from the same NVD bucket as the
 // API, so it needs the Redis limiter with the same key prefix.
 const vulnerabilityRedis = roles.has("vulnerability-scanner")
@@ -148,6 +154,7 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
   stopAuditMaintenance?.();
+  stopInventoryMaintenance?.();
   await auditExporter?.stop();
   if (auditExporter) logger.info({}, "audit exporter stopped");
   await emailSender?.stop();

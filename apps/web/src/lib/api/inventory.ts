@@ -1,5 +1,8 @@
 import {
   cpeSearchResultSchema,
+  inventoryImportPendingSchema,
+  inventoryImportPreviewSchema,
+  inventoryImportResultSchema,
   inventoryMappingListSchema,
   inventoryMappingSchema,
   inventoryMappingSuggestionSchema,
@@ -32,6 +35,9 @@ const system = `${systems}/{systemId}` as const;
 const rejectedExport = `${system}/rejected-rows/export` as const;
 const rows = `${base}/rows` as const;
 const row = `${rows}/{rowId}` as const;
+const previews = `${base}/import-previews` as const;
+const currentPreview = `${previews}/current` as const;
+const preview = `${previews}/{previewId}` as const;
 const mappings = `${base}/mappings` as const;
 const mapping = `${mappings}/{mappingId}` as const;
 
@@ -50,6 +56,11 @@ export const inventoryKeys = {
   ) => [...inventoryKeys.allRows(organizationId, projectId), query] as const,
   mappings: (organizationId: string, projectId: string) =>
     [...inventoryKeys.all(organizationId, projectId), "mappings"] as const,
+  importPreview: (organizationId: string, projectId: string) =>
+    [
+      ...inventoryKeys.all(organizationId, projectId),
+      "import-preview",
+    ] as const,
 };
 
 export function fetchInventory(
@@ -63,16 +74,50 @@ export function fetchInventory(
   });
 }
 
-export function uploadInventory(
+/** Reads the file into a preview; nothing is merged until the preview is confirmed. */
+export function createImportPreview(
   organizationId: string,
   projectId: string,
   file: File,
   signal?: AbortSignal,
 ) {
-  return requestUpload(base, inventorySummarySchema, {
+  return requestUpload(previews, inventoryImportPreviewSchema, {
     params: { organizationId, projectId },
     file,
     signal,
+  });
+}
+
+export function fetchImportPreview(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(currentPreview, inventoryImportPendingSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function confirmImport(
+  organizationId: string,
+  projectId: string,
+  previewId: string,
+) {
+  return request(`${preview}/confirm`, inventoryImportResultSchema, {
+    method: "POST",
+    params: { organizationId, projectId, previewId },
+  });
+}
+
+export function cancelImportPreview(
+  organizationId: string,
+  projectId: string,
+  previewId: string,
+) {
+  return request(preview, undefined, {
+    method: "DELETE",
+    params: { organizationId, projectId, previewId },
   });
 }
 
@@ -229,7 +274,7 @@ export function searchCpe(
   });
 }
 
-/** The message the page shows for a failed read or upload. */
+/** The message the page shows for a failed read, import or save. */
 export function inventoryErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (
@@ -239,6 +284,9 @@ export function inventoryErrorMessage(error: unknown): string {
       error.code === "INVENTORY_ROW_STALE" ||
       error.code === "INVENTORY_SYSTEM_NAME_TAKEN" ||
       error.code === "INVENTORY_SYSTEM_STALE" ||
+      error.code === "INVENTORY_PREVIEW_NOT_FOUND" ||
+      error.code === "INVENTORY_PREVIEW_EXPIRED" ||
+      error.code === "INVENTORY_PREVIEW_STALE" ||
       error.code === "CPE_DICTIONARY_UNAVAILABLE" ||
       error.code === "MAPPING_IDENTIFIER_REQUIRED"
     ) {
@@ -252,7 +300,7 @@ export function inventoryErrorMessage(error: unknown): string {
   return "ทำรายการไม่สำเร็จ โปรดลองใหม่";
 }
 
-/** The columns a save was refused for, with the code an upload would have given them. */
+/** The columns a save was refused for, with the code an import would have given them. */
 export function inventoryRowIssues(error: unknown): InventoryIssue[] {
   if (!(error instanceof ApiError) || error.code !== "INVENTORY_ROW_INVALID") {
     return [];

@@ -2,6 +2,9 @@ import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   INVENTORY_MAX_FILE_BYTES,
   errorResponseSchema,
+  inventoryImportPendingSchema,
+  inventoryImportPreviewSchema,
+  inventoryImportResultSchema,
   inventoryRowCreateSchema,
   inventoryRowDeleteQuerySchema,
   inventoryRowListSchema,
@@ -20,12 +23,17 @@ import { bodyLimit } from "hono/body-limit";
 import { auditDenials } from "../audit/denials";
 import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
+import {
+  authorizeImport,
+  cancelImportPreview,
+  confirmImport,
+  createImportPreview,
+  getImportPreview,
+} from "./import";
 import { createRow, deleteRow, listRows, updateRow } from "./row-edit";
 import {
-  authorizeUpload,
   exportRejectedRows,
   getInventory,
-  uploadInventory,
   type InventoryDeps,
   type ProjectIdentity,
 } from "./service";
@@ -38,10 +46,12 @@ const BODY_LIMIT_BYTES = INVENTORY_MAX_FILE_BYTES + 64 * 1024;
 const tags = ["Inventory"];
 const base =
   "/api/organizations/{organizationId}/projects/{projectId}/inventory";
+const previews = `${base}/import-previews`;
 const params = z.object({
   organizationId: z.uuid(),
   projectId: z.string(),
 });
+const previewParams = params.extend({ previewId: z.uuid() });
 const systemParams = params.extend({ systemId: z.uuid() });
 const rowParams = params.extend({ rowId: z.uuid() });
 const errors = Object.fromEntries(
@@ -54,7 +64,7 @@ const errors = Object.fromEntries(
   ]),
 );
 const rateLimited = {
-  description: "Upload quota exceeded",
+  description: "Import quota exceeded",
   content: { "application/json": { schema: errorResponseSchema } },
 };
 const uploadBody = z.object({
@@ -113,7 +123,7 @@ export function registerInventoryRoutes(
   // preflight, so the Origin is checked, then the session and the role, before any
   // of the body is parsed.
   app.post(
-    base.replaceAll(/\{(\w+)\}/g, ":$1"),
+    previews.replaceAll(/\{(\w+)\}/g, ":$1"),
     async (c, next) => {
       if (c.req.header("origin") !== deps.trustedOrigin) {
         throw new AppError(
@@ -138,7 +148,7 @@ export function registerInventoryRoutes(
         ids.data,
         c.get("requestId"),
         "inventory.write",
-        (input) => authorizeUpload(deps, input),
+        (input) => authorizeImport(deps, input),
       );
       await next();
     },
@@ -157,7 +167,7 @@ export function registerInventoryRoutes(
   app.openapi(
     createRoute({
       method: "post",
-      path: base,
+      path: previews,
       tags,
       request: {
         params,
@@ -168,9 +178,12 @@ export function registerInventoryRoutes(
       },
       responses: {
         ...errors,
-        200: {
-          description: "Inventory after the upload replaced its Systems",
-          content: { "application/json": { schema: inventorySummarySchema } },
+        201: {
+          description:
+            "The preview of the file; no inventory changed. It replaces the caller's pending preview",
+          content: {
+            "application/json": { schema: inventoryImportPreviewSchema },
+          },
         },
         429: rateLimited,
       },
@@ -183,7 +196,7 @@ export function registerInventoryRoutes(
         c.get("requestId"),
         "inventory.write",
         async (input) =>
-          uploadInventory(deps, input, {
+          createImportPreview(deps, input, {
             name: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
           }),
@@ -193,14 +206,99 @@ export function registerInventoryRoutes(
           {
             error: {
               code: "INVENTORY_RATE_LIMITED",
-              message: "upload บ่อยเกินไป โปรดลองใหม่ภายหลัง",
+              message: "เลือกไฟล์บ่อยเกินไป โปรดลองใหม่ภายหลัง",
             },
           },
           429,
           { "Retry-After": String(result.retryAfterSeconds) },
         );
       }
-      return c.json(result, 200);
+      return c.json(result, 201);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: `${previews}/current`,
+      tags,
+      request: { params },
+      responses: {
+        ...errors,
+        200: {
+          description:
+            "The caller's own pending preview, or null; another person's is never returned",
+          content: {
+            "application/json": { schema: inventoryImportPendingSchema },
+          },
+        },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await run(
+          c.req.raw.headers,
+          c.req.valid("param"),
+          c.get("requestId"),
+          "inventory.write",
+          (input) => getImportPreview(deps, input),
+        ),
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: `${previews}/{previewId}/confirm`,
+      tags,
+      request: { params: previewParams },
+      responses: {
+        ...errors,
+        200: {
+          description: "The preview was merged into the Project's inventory",
+          content: {
+            "application/json": { schema: inventoryImportResultSchema },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { previewId, ...ids } = c.req.valid("param");
+      return c.json(
+        await run(
+          c.req.raw.headers,
+          ids,
+          c.get("requestId"),
+          "inventory.write",
+          (input) => confirmImport(deps, { ...input, previewId }),
+        ),
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: `${previews}/{previewId}`,
+      tags,
+      request: { params: previewParams },
+      responses: {
+        ...errors,
+        204: { description: "The preview was deleted" },
+      },
+    }),
+    async (c) => {
+      const { previewId, ...ids } = c.req.valid("param");
+      await run(
+        c.req.raw.headers,
+        ids,
+        c.get("requestId"),
+        "inventory.write",
+        (input) => cancelImportPreview(deps, { ...input, previewId }),
+      );
+      return c.body(null, 204);
     },
   );
 

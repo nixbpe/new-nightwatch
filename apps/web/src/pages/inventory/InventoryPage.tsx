@@ -1,15 +1,11 @@
-import type {
-  InventorySummary,
-  InventorySystem,
-} from "@nightwatch/api-contract";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, type DragEvent } from "react";
+import type { InventorySystem } from "@nightwatch/api-contract";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
-import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import {
   DataTable,
@@ -23,11 +19,9 @@ import {
   fetchInventory,
   inventoryErrorMessage,
   inventoryKeys,
-  uploadInventory,
 } from "../../lib/api/inventory";
 import { usePreferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
-import templateUrl from "../../../../../docs/templates/inventory-template.xlsx?url";
 import { InventoryRowsSection } from "./InventoryRowsSection";
 import { RowDialog } from "./RowDialog";
 import {
@@ -72,153 +66,6 @@ function Tile({
       </span>
       <span className="text-xs text-foreground-secondary">{note}</span>
     </div>
-  );
-}
-
-function UploadCard({
-  summary,
-  scope,
-}: {
-  summary: InventorySummary;
-  scope: Scope;
-}) {
-  const queryClient = useQueryClient();
-  const input = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const mutation = useMutation({
-    mutationFn: (file: File) =>
-      uploadInventory(scope.organizationId, scope.projectId, file),
-    onMutate: () => {
-      setNotice(null);
-    },
-    onSuccess: (next, file) => {
-      queryClient.setQueryData(
-        inventoryKeys.summary(scope.organizationId, scope.projectId),
-        next,
-      );
-      // An upload replaces the rows of its Systems with new ones, so the table shows dead rows
-      // until it reloads.
-      void queryClient.invalidateQueries({
-        queryKey: inventoryKeys.allRows(scope.organizationId, scope.projectId),
-      });
-      setNotice(
-        `นำเข้าไฟล์ ${file.name} แล้ว: ${String(next.totalRows)} แถว ใช้งานได้ ${String(next.usableRows)} แถว`,
-      );
-    },
-  });
-  const choose = (files: FileList | File[] | null) => {
-    const file = files?.[0];
-    if (file && !mutation.isPending) mutation.mutate(file);
-  };
-  const drop = (event: DragEvent) => {
-    event.preventDefault();
-    setDragging(false);
-    choose(event.dataTransfer.files);
-  };
-  return (
-    <section
-      aria-labelledby="inventory-upload-heading"
-      className="flex flex-wrap items-center gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div className="flex min-w-0 flex-1 basis-[420px] flex-col gap-2">
-        <h2
-          id="inventory-upload-heading"
-          className="text-base font-semibold text-heading"
-        >
-          Upload inventory
-        </h2>
-        <p className="text-sm text-foreground-secondary">
-          รับ <span className="font-mono text-foreground">.xlsx</span> (sheet
-          ชื่อ <span className="font-mono text-foreground">Inventory</span>)
-          หรือ <span className="font-mono text-foreground">.csv</span> UTF-8
-          คอลัมน์ System, Owner, Vendor, Product, Version, Layer, Environment,
-          Exposure
-        </p>
-        <p className="text-[13px] text-foreground-secondary">
-          {summary.canUpload
-            ? "ระบบไม่เก็บไฟล์ต้นฉบับหลังอ่านแล้ว upload ใหม่จะแทนที่ข้อมูลของ System ที่อยู่ในไฟล์"
-            : "เฉพาะผู้ดูแล Project upload ได้"}
-        </p>
-      </div>
-      <div
-        data-testid="inventory-dropzone"
-        onDragOver={(event) => {
-          if (summary.canUpload) {
-            event.preventDefault();
-            setDragging(true);
-          }
-        }}
-        onDragLeave={() => {
-          setDragging(false);
-        }}
-        onDrop={summary.canUpload ? drop : undefined}
-        className={`flex min-h-[120px] min-w-0 flex-1 basis-[360px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-control-border p-5 text-center ${dragging ? "surface-active" : ""}`}
-      >
-        {summary.canUpload ? (
-          <span className="text-sm">ลากไฟล์มาวางที่นี่ หรือ</span>
-        ) : null}
-        <div className="flex flex-wrap justify-center gap-2">
-          {summary.canUpload ? (
-            <>
-              <input
-                ref={input}
-                data-testid="inventory-file-input"
-                type="file"
-                accept=".xlsx,.csv"
-                aria-label="ไฟล์ inventory"
-                className="sr-only"
-                tabIndex={-1}
-                onChange={(event) => {
-                  choose(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-              <Button
-                data-testid="inventory-upload-button"
-                disabled={mutation.isPending}
-                onClick={() => input.current?.click()}
-              >
-                เลือกไฟล์
-              </Button>
-            </>
-          ) : null}
-          <Button variant="outline" asChild>
-            <a
-              data-testid="inventory-template-link"
-              href={templateUrl}
-              download="inventory-template.xlsx"
-            >
-              ดาวน์โหลด template
-            </a>
-          </Button>
-        </div>
-      </div>
-      <div className="basis-full space-y-2" aria-live="polite">
-        {mutation.isPending ? (
-          <Notice tone="pending" data-testid="inventory-upload-pending">
-            กำลังอ่านไฟล์…
-          </Notice>
-        ) : null}
-        {notice === null ? null : (
-          <Notice tone="success" data-testid="inventory-upload-success">
-            {notice}
-          </Notice>
-        )}
-        {mutation.isError ? (
-          <>
-            <Alert tone="error" data-testid="inventory-upload-error">
-              {inventoryErrorMessage(mutation.error)}
-            </Alert>
-            {summary.lastUploadAt === null ? null : (
-              <p className="text-[13px] text-foreground-secondary">
-                ข้อมูลเดิมยังพร้อมสำหรับการจับคู่ CVE
-              </p>
-            )}
-          </>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -345,7 +192,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
               </span>
               {summary.lastUploadAt === null ? null : (
                 <span data-testid="inventory-status-uploaded">
-                  upload ล่าสุด{" "}
+                  import ล่าสุด{" "}
                   <span className="font-mono">
                     {formatUploadedAt(summary.lastUploadAt, preferences)}
                   </span>{" "}
@@ -360,16 +207,26 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลมาจากไฟล์ที่ Organization แจ้งเอง ไม่ได้มาจากการตรวจจริง"
         actions={
           summary?.canUpload === true ? (
-            <Button
-              variant="secondary"
-              data-testid="inventory-add-system"
-              onClick={(event) => {
-                setAdded(null);
-                setAdding(event.currentTarget);
-              }}
-            >
-              เพิ่ม System
-            </Button>
+            <>
+              <Button asChild>
+                <Link
+                  data-testid="inventory-import-link"
+                  to={`/organizations/${organizationId}/projects/${projectId}/inventory/import`}
+                >
+                  Import
+                </Link>
+              </Button>
+              <Button
+                variant="secondary"
+                data-testid="inventory-add-system"
+                onClick={(event) => {
+                  setAdded(null);
+                  setAdding(event.currentTarget);
+                }}
+              >
+                เพิ่ม System
+              </Button>
+            </>
           ) : undefined
         }
       />
@@ -396,14 +253,10 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         />
       ) : (
         <>
-          <UploadCard
-            summary={query.data}
-            scope={{ organizationId, projectId }}
-          />
           <HairlineGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               testId="inventory-tile-upload"
-              label="upload ล่าสุด"
+              label="import ล่าสุด"
               value={
                 query.data.lastUploadAt === null
                   ? "ยังไม่มี"
@@ -453,7 +306,22 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
               rows={query.data.systems}
               rowKey={(system) => system.id}
               rowTestId={(system) => `inventory-system-${system.id}`}
-              empty="ยังไม่มี inventory ใน Project นี้ upload ไฟล์ตาม template เพื่อเริ่มต้น"
+              empty={
+                query.data.canUpload ? (
+                  <>
+                    ยังไม่มี inventory ใน Project นี้{" "}
+                    <Link
+                      data-testid="inventory-empty-import-link"
+                      className="text-primary underline-offset-4 hover:underline"
+                      to={`/organizations/${organizationId}/projects/${projectId}/inventory/import`}
+                    >
+                      ไปที่ Import
+                    </Link>
+                  </>
+                ) : (
+                  "ยังไม่มี inventory ใน Project นี้"
+                )
+              }
             />
           </section>
           {query.data.systemCount === 0 ? null : (

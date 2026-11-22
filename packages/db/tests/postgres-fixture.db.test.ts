@@ -256,6 +256,7 @@ describe("owned PostgreSQL fixture", () => {
         "0037_email_job_maintenance.sql",
         "0038_inventory_row_editing.sql",
         "0039_inventory_system_management.sql",
+        "0040_inventory_import_preview.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();

@@ -51,6 +51,7 @@ export const AUDIT_ACTIONS = [
   "organization.project.aws_connection.update",
   "organization.project.aws_connection.delete",
   "organization.project.inventory.upload",
+  "organization.project.inventory.import",
   "organization.project.inventory.mapping.update",
   "organization.project.inventory.row.create",
   "organization.project.inventory.row.update",
@@ -102,6 +103,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.aws_connection.delete":
     "ยกเลิกการเชื่อมต่อ AWS ของโปรเจกต์",
   "organization.project.inventory.upload": "upload inventory ของโปรเจกต์",
+  "organization.project.inventory.import": "import inventory ของโปรเจกต์",
   "organization.project.inventory.mapping.update":
     "ยืนยัน CPE/purl ของ inventory",
   "organization.project.inventory.row.create": "เพิ่มแถว inventory ของโปรเจกต์",
