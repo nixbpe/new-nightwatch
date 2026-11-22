@@ -51,6 +51,17 @@ beforeEach(() => {
 });
 
 describe("TriageControl", () => {
+  it("gives editors for the same finding independent accessible labels", async () => {
+    renderControl({ canManage: true, triage: null });
+    renderControl({ canManage: true, triage: null });
+    for (const button of screen.getAllByTestId(`triage-not-affected-${KEY}`)) {
+      await userEvent.click(button);
+    }
+    const editors = screen.getAllByTestId(`triage-reason-${KEY}`);
+    expect(editors).toHaveLength(2);
+    expect(new Set(editors.map((editor) => editor.id)).size).toBe(2);
+    for (const editor of editors) expect(editor).toHaveAccessibleName();
+  });
   it("says untriaged until a person decides, and gives a member no way to decide", () => {
     renderControl({ canManage: false, triage: null });
     expect(screen.getByTestId(`triage-${KEY}`)).toHaveTextContent(

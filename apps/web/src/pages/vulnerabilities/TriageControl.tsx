@@ -1,6 +1,6 @@
 import type { Triage, TriageInput } from "@nightwatch/api-contract";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -35,6 +35,7 @@ export function TriageControl({
 }) {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
+  const reasonId = useId();
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   const save = useMutation({
@@ -109,11 +110,11 @@ export function TriageControl({
             });
           }}
         >
-          <label className="sr-only" htmlFor={`triage-reason-${testId}`}>
+          <label className="sr-only" htmlFor={reasonId}>
             เหตุผลที่ไม่ได้รับผลกระทบ
           </label>
           <Input
-            id={`triage-reason-${testId}`}
+            id={reasonId}
             data-testid={`triage-reason-${testId}`}
             className="h-8 w-64 text-sm"
             maxLength={500}
