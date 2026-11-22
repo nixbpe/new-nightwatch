@@ -1,5 +1,6 @@
 import {
   INVENTORY_COLUMNS,
+  INVENTORY_FIELD_MAX_LENGTH,
   INVENTORY_MAX_FILE_BYTES,
   INVENTORY_MAX_ROWS,
   type InventoryIssue,
@@ -195,15 +196,17 @@ export async function exportInventory(
       };
     },
   );
-  // Renaming an unnamed System leaves its rows' `System: required` issue (and their failed
-  // state) as stored, so the file would carry the new name and read back as different rows.
-  // Saving a row again re-validates it.
-  const stale = rows.filter(
-    (row) =>
-      row.system.trim() !== "" &&
-      row.issues.some(
-        (issue) => issue.column === "System" && issue.code === "required",
-      ),
+  // Renaming a System leaves the System-column issue its rows stored (and their failed state),
+  // so a file with the new name would read back as different rows. Saving a row again
+  // re-validates it. A name still at the cap is the known limit above and is not refused.
+  const stale = rows.filter((row) =>
+    row.issues.some(
+      (issue) =>
+        issue.column === "System" &&
+        ((issue.code === "required" && row.system.trim() !== "") ||
+          (issue.code === "too_long" &&
+            Array.from(row.system).length < INVENTORY_FIELD_MAX_LENGTH)),
+    ),
   ).length;
   const what = systemName === undefined ? "inventory ของ Project" : "System";
   if (rows.length > INVENTORY_MAX_ROWS) tooLarge(what);

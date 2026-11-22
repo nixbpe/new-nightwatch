@@ -699,7 +699,7 @@ describe("inventory export", () => {
     });
   }, 120_000);
 
-  describe("a System that was named after its rows failed for having no name", () => {
+  describe("a System renamed after its rows failed on the System name", () => {
     const blank = (product: string) => [
       "",
       "ทีม N",
@@ -801,6 +801,72 @@ describe("inventory export", () => {
       expect(await reimports(project, bytes)).toEqual(unchangedTotals(2));
       // The other Project's unnamed System is not touched by the rename.
       expect((await exportRequest(org.users.owner, other)).status).toBe(200);
+    });
+
+    it("also refuses rows that failed for a name over 200 characters once the System has a short name", async () => {
+      const project = await newProject("export-renamed-long");
+      const long = "S".repeat(230);
+      const row = (product: string) => [
+        long,
+        "ทีม N",
+        "Canonical",
+        product,
+        "22.04.4",
+        "OS",
+        "Production",
+        "Internal",
+      ];
+      await confirmed(project, [row("Ubuntu"), row("Debian")]);
+      const found = await ctx.owner.sql.query<{ id: string; revision: number }>(
+        "select id, revision from inventory_systems where project_id = $1",
+        [project],
+      );
+      const system = found.rows[0];
+      if (!system) throw new Error("the System is missing");
+      const rename = await ctx.call(
+        org.users.owner,
+        "PATCH",
+        projectPath(project, org.id, `/systems/${system.id}`),
+        { name: "Short name", revision: system.revision },
+      );
+      expect(rename.status).toBe(200);
+      for (const id of [undefined, system.id]) {
+        const refused = await exportRequest(org.users.owner, project, id);
+        expect(refused.status).toBe(409);
+        const body = (await refused.json()) as {
+          error: { code: string; message: string };
+        };
+        expect(body.error.code).toBe("INVENTORY_EXPORT_STALE_ROWS");
+        expect(body.error.message).toContain("2 แถว");
+      }
+      const rows = await ctx.owner.sql.query<{
+        id: string;
+        revision: number;
+        product: string;
+      }>(
+        "select id, revision, product from inventory_rows where project_id = $1 order by line_no",
+        [project],
+      );
+      for (const stored of rows.rows) {
+        const saved = await ctx.call(
+          org.users.owner,
+          "PUT",
+          projectPath(project, org.id, `/rows/${stored.id}`),
+          {
+            owner: "ทีม N",
+            vendor: "Canonical",
+            product: stored.product,
+            version: "22.04.4",
+            layer: "OS",
+            environment: "Production",
+            exposure: "Internal",
+            revision: stored.revision,
+          },
+        );
+        expect(saved.status).toBe(200);
+      }
+      const { bytes } = await exported(project);
+      expect(await reimports(project, bytes)).toEqual(unchangedTotals(2));
     });
   });
 
