@@ -8,7 +8,11 @@ import { AppError } from "@nightwatch/shared";
 import writeXlsxFile from "write-excel-file/universal";
 
 import { withProjectAccess } from "../projects/service";
-import { INVENTORY_SHEET_NAME } from "./file";
+import {
+  INVENTORY_SHEET_NAME,
+  MAX_UNZIPPED_BYTES,
+  unzippedBytes,
+} from "./file";
 import type { InventoryDeps, ProjectIdentity } from "./service";
 
 export type StoredRow = {
@@ -210,8 +214,11 @@ export async function exportInventory(
     {},
   ).toBlob();
   if (blob.size > INVENTORY_MAX_FILE_BYTES) tooLarge(what);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  // An import also refuses a workbook that unpacks past a limit, however small the file is.
+  if (unzippedBytes(bytes) > MAX_UNZIPPED_BYTES) tooLarge(what);
   return {
-    bytes: new Uint8Array(await blob.arrayBuffer()),
+    bytes,
     names: exportFileNames(projectSlug, systemName, now),
   };
 }

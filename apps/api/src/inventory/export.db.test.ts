@@ -673,6 +673,32 @@ describe("inventory export", () => {
     });
   }, 120_000);
 
+  it("refuses 5000 rows whose file compresses under 2 MiB but is larger than an import unpacks", async () => {
+    const project = await newProject("export-uncompressed");
+    // Repetitive 200-character supplementary-plane strings, distinct per row and field: they
+    // compress to a small file, while their XML is about 28 MB unpacked, over the importer's 16 MiB.
+    const text = (code: number) =>
+      `repeat(chr(${String(code)}), 190) || to_char(n, 'FM0000000000')`;
+    await ctx.owner.sql.query(
+      `with s as (insert into inventory_systems
+         (tenant_id, project_id, name_key, name, file_name, uploaded_by, total_rows, usable_rows)
+         values ($1, $2, 'rep', 'Rep', 'x.csv', 'u', $3, 0) returning id)
+       insert into inventory_rows
+         (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer,
+          environment, exposure, usable, issues, source_kind, source_file_name, changed_by)
+       select $1, $2, s.id, n + 1, ${text(128512)}, ${text(128513)}, ${text(128514)},
+              ${text(128515)}, ${text(128516)}, ${text(128517)}, ${text(128518)},
+              false, '[{"column":"Layer","code":"not_in_list"}]'::jsonb, 'import', 'x.csv', 'u'
+       from s, generate_series(1, $3::int) n`,
+      [org.id, project, INVENTORY_MAX_ROWS],
+    );
+    const response = await exportRequest(org.users.owner, project);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: "INVENTORY_EXPORT_TOO_LARGE" },
+    });
+  }, 120_000);
+
   it.each([
     "00:00:00.001Z",
     "00:00:00.999Z",
