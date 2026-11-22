@@ -30,6 +30,7 @@ import {
   createImportPreview,
   getImportPreview,
 } from "./import";
+import { contentDisposition, exportInventory } from "./export";
 import { createRow, deleteRow, listRows, updateRow } from "./row-edit";
 import {
   exportRejectedRows,
@@ -555,6 +556,65 @@ export function registerInventoryRoutes(
         "Content-Disposition": 'attachment; filename="rejected-rows.xlsx"',
         "Cache-Control": "no-store",
       });
+    },
+  );
+
+  const exportResponse = {
+    ...errors,
+    200: {
+      description:
+        "The current inventory as Excel, usable and failed rows, in the import template's columns",
+      content: {
+        [XLSX_TYPE]: {
+          schema: z.string().openapi({ type: "string", format: "binary" }),
+        },
+      },
+    },
+  };
+  const exportHeaders = (names: { utf8: string; ascii: string }) => ({
+    "Content-Type": XLSX_TYPE,
+    "Content-Disposition": contentDisposition(names),
+    "Cache-Control": "no-store",
+  });
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: `${base}/export`,
+      tags,
+      request: { params },
+      responses: exportResponse,
+    }),
+    async (c) => {
+      const file = await run(
+        c.req.raw.headers,
+        c.req.valid("param"),
+        c.get("requestId"),
+        "inventory.read",
+        (input) => exportInventory(deps, input),
+      );
+      return c.body(file.bytes, 200, exportHeaders(file.names));
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: `${base}/systems/{systemId}/export`,
+      tags,
+      request: { params: systemParams },
+      responses: exportResponse,
+    }),
+    async (c) => {
+      const { systemId, ...ids } = c.req.valid("param");
+      const file = await run(
+        c.req.raw.headers,
+        ids,
+        c.get("requestId"),
+        "inventory.read",
+        (input) => exportInventory(deps, { ...input, systemId }),
+      );
+      return c.body(file.bytes, 200, exportHeaders(file.names));
     },
   );
 }

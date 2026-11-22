@@ -33,6 +33,8 @@ const base =
 const systems = `${base}/systems` as const;
 const system = `${systems}/{systemId}` as const;
 const rejectedExport = `${system}/rejected-rows/export` as const;
+const projectExport = `${base}/export` as const;
+const systemExport = `${system}/export` as const;
 const rows = `${base}/rows` as const;
 const row = `${rows}/{rowId}` as const;
 const previews = `${base}/import-previews` as const;
@@ -221,6 +223,24 @@ export function downloadRejectedRows(
   });
 }
 
+/** The Project's inventory, or one System's when `systemId` is given, as the template workbook. */
+export function downloadInventory(
+  organizationId: string,
+  projectId: string,
+  systemId?: string,
+  signal?: AbortSignal,
+): Promise<DownloadedFile> {
+  return systemId === undefined
+    ? requestFile(projectExport, {
+        params: { organizationId, projectId },
+        signal,
+      })
+    : requestFile(systemExport, {
+        params: { organizationId, projectId, systemId },
+        signal,
+      });
+}
+
 export function fetchMappings(
   organizationId: string,
   projectId: string,
@@ -287,6 +307,7 @@ export function inventoryErrorMessage(error: unknown): string {
       error.code === "INVENTORY_PREVIEW_NOT_FOUND" ||
       error.code === "INVENTORY_PREVIEW_EXPIRED" ||
       error.code === "INVENTORY_PREVIEW_STALE" ||
+      error.code === "INVENTORY_EXPORT_TOO_LARGE" ||
       error.code === "CPE_DICTIONARY_UNAVAILABLE" ||
       error.code === "MAPPING_IDENTIFIER_REQUIRED"
     ) {

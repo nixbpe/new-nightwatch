@@ -22,6 +22,7 @@ import {
 } from "../../lib/api/inventory";
 import { usePreferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
+import { ExportButton, ExportStatus, useInventoryExport } from "./ExportButton";
 import { InventoryRowsSection } from "./InventoryRowsSection";
 import { RowDialog } from "./RowDialog";
 import {
@@ -169,6 +170,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
     enabled: !switched,
     retry: false,
   });
+  const exporter = useInventoryExport(organizationId, projectId);
   if (switched) return null;
   const summary = query.data;
   return (
@@ -206,31 +208,37 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         titleTabIndex={-1}
         description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลมาจากไฟล์ที่ Organization แจ้งเอง ไม่ได้มาจากการตรวจจริง"
         actions={
-          summary?.canUpload === true ? (
+          summary === undefined ? undefined : (
             <>
-              <Button asChild>
-                <Link
-                  data-testid="inventory-import-link"
-                  to={`/organizations/${organizationId}/projects/${projectId}/inventory/import`}
-                >
-                  Import
-                </Link>
-              </Button>
-              <Button
-                variant="secondary"
-                data-testid="inventory-add-system"
-                onClick={(event) => {
-                  setAdded(null);
-                  setAdding(event.currentTarget);
-                }}
-              >
-                เพิ่ม System
-              </Button>
+              {summary.canUpload ? (
+                <>
+                  <Button asChild>
+                    <Link
+                      data-testid="inventory-import-link"
+                      to={`/organizations/${organizationId}/projects/${projectId}/inventory/import`}
+                    >
+                      Import
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    data-testid="inventory-add-system"
+                    onClick={(event) => {
+                      setAdded(null);
+                      setAdding(event.currentTarget);
+                    }}
+                  >
+                    เพิ่ม System
+                  </Button>
+                </>
+              ) : null}
+              <ExportButton exporter={exporter} testId="inventory-export" />
             </>
-          ) : undefined
+          )
         }
       />
-      <div aria-live="polite" className="empty:hidden">
+      <div aria-live="polite" className="space-y-2 empty:hidden">
+        <ExportStatus exporter={exporter} testId="inventory-export-error" />
         {(added ?? carried) ? (
           <Notice tone="success" data-testid="inventory-success">
             {added ?? carried}

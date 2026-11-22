@@ -32,7 +32,9 @@ export type FileRejection =
 export type ParsedFile =
   { ok: true; rows: RawRow[] } | { ok: false; rejection: FileRejection };
 
-const SHEET_NAME = "inventory";
+/** The sheet an export writes; the reader matches it without regard to case. */
+export const INVENTORY_SHEET_NAME = "Inventory";
+const SHEET_NAME = INVENTORY_SHEET_NAME.toLowerCase();
 // A real workbook is a handful of XML parts and 5000 rows are about 1 MB of sheet
 // XML, so these caps only stop a zip bomb.
 const MAX_ZIP_ENTRIES = 200;
