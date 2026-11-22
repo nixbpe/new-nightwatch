@@ -17,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-sts": "3.1173.0",
     "@smithy/types": "4.20.0",
+    "nodemailer": "^10.0.1",
     "pino": "^10.0.0",
     "zod": "^4.6.7"
   },

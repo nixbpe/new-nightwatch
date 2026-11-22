@@ -68,3 +68,20 @@ services:
     environment:
       <<: *worker-env
       WORKER_ROLES: vulnerability-scanner
+
+  # Needs migration 0035 and a reachable SMTP server (checked at startup, OUT-02). Sends the
+  # new-CVE mail to the recipients of the notification who may still receive it.
+  notification-email:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: notification-email
+      # The Mailpit of compose.yaml, over the Compose network (its host port is per worktree).
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      # An authenticated or implicit-TLS server: unset means none (empty is read as unset).
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-nightwatch@localhost}
+      APP_URL: ${APP_URL:-http://localhost:5173}

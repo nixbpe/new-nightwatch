@@ -563,9 +563,82 @@ export async function insertVulnerabilityNotificationIntent(
     tenantId: input.tenantId,
     projectId: input.projectId,
   });
+  // One mail per recipient of the snapshot, queued in the same transaction.
+  await client.query(
+    `insert into notification_email_jobs (intent_id, origin, recipient_user_id, tenant_id)
+     select intent_id, origin, recipient_user_id, tenant_id
+     from notification_intent_recipients where intent_id = $1
+     on conflict do nothing`,
+    [intentId],
+  );
   await client.query("select create_notification_dispatch($1, $2)", [
     crypto.randomUUID(),
     intentId,
   ]);
   return true;
+}
+
+export type EmailJobClaim = {
+  intentId: string;
+  recipientUserId: string;
+  tenantId: string;
+  claimToken: string;
+  attemptCount: number;
+};
+
+/** Removes expired jobs and recovers exhausted leases in a bounded cross-tenant batch. */
+export async function maintainNotificationEmailJobs(
+  database: Database,
+  input: { limit: number },
+): Promise<{ expiredCount: number; failedCount: number }> {
+  const { rows } = await database.sql.query<{
+    expired_count: number;
+    failed_count: number;
+  }>("select * from maintain_notification_email_jobs($1)", [input.limit]);
+  return {
+    expiredCount: rows[0]?.expired_count ?? 0,
+    failedCount: rows[0]?.failed_count ?? 0,
+  };
+}
+
+/** Claims up to `limit` due mails across Organizations (bounded 1..100). */
+export async function claimNotificationEmailJobs(
+  database: Database,
+  input: { limit: number },
+): Promise<EmailJobClaim[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100)
+    throw new Error(
+      "email job claim limit must be an integer between 1 and 100",
+    );
+  const result = await database.sql.query<{
+    intent_id: string;
+    recipient_user_id: string;
+    tenant_id: string;
+    claim_token: string;
+    attempt_count: number;
+  }>("select * from claim_notification_email_jobs($1)", [input.limit]);
+  return result.rows.map((row) => ({
+    intentId: row.intent_id,
+    recipientUserId: row.recipient_user_id,
+    tenantId: row.tenant_id,
+    claimToken: row.claim_token,
+    attemptCount: row.attempt_count,
+  }));
+}
+
+/** Ends a claim; false when the lease is no longer this claim's. */
+export async function finishNotificationEmailJob(
+  database: Database,
+  input: {
+    intentId: string;
+    recipientUserId: string;
+    claimToken: string;
+    outcome: "sent" | "skipped" | "retry" | "failed";
+  },
+): Promise<boolean> {
+  const result = await database.sql.query<{ ok: boolean }>(
+    "select finish_notification_email_job($1, $2, $3, $4) as ok",
+    [input.intentId, input.recipientUserId, input.claimToken, input.outcome],
+  );
+  return result.rows[0]?.ok === true;
 }

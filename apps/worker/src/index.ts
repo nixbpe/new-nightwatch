@@ -2,8 +2,10 @@ import { createDatabase, failNotificationDispatch } from "@nightwatch/db";
 import {
   createFeeds,
   createLogger,
+  createMailer,
   loadEnv,
   loadMonitorEnv,
+  loadSmtpEnv,
   createRateLimiter,
   type MonitorEnv,
 } from "@nightwatch/shared";
@@ -34,6 +36,7 @@ import {
 } from "./monitor/queue";
 import { MonitorScheduler, startMonitorSchedule } from "./monitor/scheduler";
 import { armHardDeadline, closeWithin } from "./shutdown";
+import { VulnerabilityEmailSender } from "./vulnerability/email";
 import { VulnerabilityScanner } from "./vulnerability/scanner";
 
 const WORKER_ROLES = [
@@ -43,6 +46,7 @@ const WORKER_ROLES = [
   "monitor-checker",
   "audit-exporter",
   "vulnerability-scanner",
+  "notification-email",
 ] as const;
 type WorkerRole = (typeof WORKER_ROLES)[number];
 
@@ -124,6 +128,10 @@ const vulnerabilityScanner = vulnerabilityRedis
     })
   : null;
 vulnerabilityScanner?.start();
+// Mail needs a real SMTP server, checked before the role starts (OUT-02).
+const emailSender = roles.has("notification-email")
+  ? await startEmailSender()
+  : null;
 if (vulnerabilityScanner) logger.info({}, "vulnerability scanner ready");
 let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
@@ -142,6 +150,8 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   stopAuditMaintenance?.();
   await auditExporter?.stop();
   if (auditExporter) logger.info({}, "audit exporter stopped");
+  await emailSender?.stop();
+  if (emailSender) logger.info({}, "notification email sender stopped");
   await vulnerabilityScanner?.stop();
   if (vulnerabilityScanner) logger.info({}, "vulnerability scanner stopped");
   // Closes run together so the slowest one, not their sum, bounds shutdown.
@@ -312,4 +322,23 @@ function createLimiterRedis(url: string, prefix: string | undefined): Redis {
     logger.warn({ kind: error.code ?? error.name }, "redis connection error");
   });
   return redis;
+}
+
+async function startEmailSender(): Promise<VulnerabilityEmailSender> {
+  const smtp = loadSmtpEnv();
+  const mailer = createMailer(smtp, logger);
+  try {
+    await mailer.verify();
+  } catch {
+    logger.error({ component: "smtp" }, "SMTP server is not reachable");
+    throw new Error("notification-email needs a reachable SMTP server");
+  }
+  const sender = new VulnerabilityEmailSender(database, {
+    mailer,
+    appUrl: smtp.APP_URL,
+    logger,
+  });
+  sender.start();
+  logger.info({}, "notification email sender ready");
+  return sender;
 }

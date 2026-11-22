@@ -60,6 +60,18 @@ Find supported roles through the [Worker runtime code index](../features.md#tool
   from the same NVD limit as the API through Redis with the same `REDIS_KEY_PREFIX`. Run one
   instance per NVD egress address; more instances share the limit and add no throughput. A lease
   lasts 30 minutes, after which another instance continues the run.
+- For the new-CVE mail (F-020, S4.3), run `notification-email`. It needs `SMTP_HOST`, `SMTP_PORT`,
+  `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (required) and `APP_URL` (the origin of
+  the links), and refuses to start when the SMTP server cannot be verified. A mail is sent at most
+  once per claim, so a Worker that stops between SMTP acceptance and the end of the claim sends it
+  again after the 5 minute lease. A failed send is retried after 5 minutes times the attempts, up to
+  5 attempts (an outage of about an hour makes the last attempt fail and the mail is dropped; the
+  in-app notification stays and the log says so). Interrupted fifth attempts are marked failed
+  after lease expiry and logged as a count without recipient data on the next email round.
+  Each round also removes up to 100 expired email jobs, sharing that limit with failed-lease
+  recovery and preserving live send leases. This cleanup does not purge the parent intents. Each recipient is checked again when the mail is
+  sent. A send that does not end in 2 minutes is abandoned and retried; if the SMTP server accepts it later, that recipient gets one extra mail. The role refuses to start when SMTP cannot be verified and that ends the whole process, so run
+  it in its own service, as `compose.worker.yaml` does.
 - After [local dependency setup](../../scripts/quality/README.md#local-development-dependencies-postgresql--mailpit--redis),
   run `bun run dev` for local development.
 - To stop the Worker, send SIGTERM. The scheduler stops before the checker.
