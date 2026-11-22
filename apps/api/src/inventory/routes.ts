@@ -2,9 +2,11 @@ import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   INVENTORY_MAX_FILE_BYTES,
   errorResponseSchema,
+  inventoryImportListSchema,
   inventoryImportPendingSchema,
   inventoryImportPreviewSchema,
   inventoryImportResultSchema,
+  inventoryImportsQuerySchema,
   inventoryRowCreateSchema,
   inventoryRowDeleteQuerySchema,
   inventoryRowListSchema,
@@ -31,6 +33,7 @@ import {
   getImportPreview,
 } from "./import";
 import { contentDisposition, exportInventory } from "./export";
+import { listImports } from "./import-history";
 import { createRow, deleteRow, listRows, updateRow } from "./row-edit";
 import {
   exportRejectedRows,
@@ -301,6 +304,36 @@ export function registerInventoryRoutes(
       );
       return c.body(null, 204);
     },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: `${base}/imports`,
+      tags,
+      request: { params, query: inventoryImportsQuerySchema },
+      responses: {
+        ...errors,
+        200: {
+          description:
+            "One page of the Project's confirmed imports, newest first; counts and file names only",
+          content: {
+            "application/json": { schema: inventoryImportListSchema },
+          },
+        },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await run(
+          c.req.raw.headers,
+          c.req.valid("param"),
+          c.get("requestId"),
+          "inventory.read",
+          (input) => listImports(deps, input, c.req.valid("query")),
+        ),
+        200,
+      ),
   );
 
   app.openapi(

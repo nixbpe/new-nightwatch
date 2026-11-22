@@ -1,5 +1,6 @@
 import {
   cpeSearchResultSchema,
+  inventoryImportListSchema,
   inventoryImportPendingSchema,
   inventoryImportPreviewSchema,
   inventoryImportResultSchema,
@@ -11,6 +12,7 @@ import {
   inventoryRowSchema,
   inventorySummarySchema,
   inventorySystemSchema,
+  type InventoryImportsQuery,
   type InventoryIssue,
   type InventoryMappingUpdate,
   type InventoryRowCreate,
@@ -40,6 +42,7 @@ const row = `${rows}/{rowId}` as const;
 const previews = `${base}/import-previews` as const;
 const currentPreview = `${previews}/current` as const;
 const preview = `${previews}/{previewId}` as const;
+const imports = `${base}/imports` as const;
 const mappings = `${base}/mappings` as const;
 const mapping = `${mappings}/{mappingId}` as const;
 
@@ -63,6 +66,8 @@ export const inventoryKeys = {
       ...inventoryKeys.all(organizationId, projectId),
       "import-preview",
     ] as const,
+  imports: (organizationId: string, projectId: string, page: number) =>
+    [...inventoryKeys.all(organizationId, projectId), "imports", page] as const,
 };
 
 export function fetchInventory(
@@ -130,6 +135,19 @@ export function fetchRows(
   signal?: AbortSignal,
 ) {
   return request(rows, inventoryRowListSchema, {
+    params: { organizationId, projectId },
+    query,
+    signal,
+  });
+}
+
+export function fetchImports(
+  organizationId: string,
+  projectId: string,
+  query: InventoryImportsQuery,
+  signal?: AbortSignal,
+) {
+  return request(imports, inventoryImportListSchema, {
     params: { organizationId, projectId },
     query,
     signal,

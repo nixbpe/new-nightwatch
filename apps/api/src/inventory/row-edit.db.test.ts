@@ -736,6 +736,27 @@ describe("inventory row writes", () => {
   });
 });
 
+describe("inventory row provenance of a person who is gone", () => {
+  it("lists the row with no name for the last change when the account no longer exists, and keeps the file and time", async () => {
+    const project = await newProject(
+      "ghost-actor",
+      [HEADER, GOOD("Billing API")].join("\n"),
+    );
+    const before = await rowOf(() => true, project);
+    await ctx.owner.sql.query(
+      "update inventory_rows set changed_by = 'account-deleted-id' where project_id = $1",
+      [project],
+    );
+    const after = await rowOf(() => true, project);
+    expect(after.source).toEqual({
+      kind: "import",
+      fileName: before.source.fileName,
+      changedBy: null,
+      changedAt: before.source.changedAt,
+    });
+  });
+});
+
 describe("inventory row permissions", () => {
   it("lets every Project member read and only a maintainer write, with 404 for a Project the caller cannot see", async () => {
     const project = await newProject(

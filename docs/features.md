@@ -79,6 +79,8 @@ Import แบบ preview แล้วยืนยัน (E-005 F-022 S7.3, แ�
 
 Export inventory ปัจจุบัน (E-005 F-022 S7.4): [workbook, ขนาดสูงสุด และชื่อไฟล์](../apps/api/src/inventory/export.ts), [routes](../apps/api/src/inventory/routes.ts), [ปุ่ม Export Excel](../apps/web/src/pages/inventory/ExportButton.tsx), [integration test รวม round trip ผ่าน preview จริง](../apps/api/src/inventory/export.db.test.ts).
 
+ที่มาของแถวและประวัติ import (E-005 F-022 S7.5): [อ่านประวัติ import ของ Project](../apps/api/src/inventory/import-history.ts), [routes](../apps/api/src/inventory/routes.ts), [สัญญา](../packages/api-contract/src/inventory-import.ts), [ตารางประวัติใต้หน้า Import](../apps/web/src/pages/inventory/ImportHistory.tsx), [ที่มาของแถว](../apps/web/src/pages/inventory/rowSource.ts), [integration test ประวัติ](../apps/api/src/inventory/import-history.db.test.ts), [test backfill ที่มาของแถวก่อน r9](../packages/db/tests/inventory-provenance-backfill.db.test.ts).
+
 ## ยืนยัน CPE/purl ของ inventory (E-005 F-018)
 
 [API mapping](../apps/api/src/inventory/mappings.ts), [routes](../apps/api/src/inventory/mapping-routes.ts), [ค้น NVD CPE dictionary](../apps/api/src/inventory/cpe.ts), [คำสั่ง operator ของตารางกลาง](../apps/api/src/operator/catalog-product-mapping.ts), [สัญญา](../packages/api-contract/src/inventory-mapping.ts), [Web](../apps/web/src/pages/inventory/MappingQueuePage.tsx), [migration](../packages/db/migrations/0031_identifier_mappings.sql), [browser test](../e2e/tests/inventory-mappings.spec.ts).
