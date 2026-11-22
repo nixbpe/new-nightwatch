@@ -699,6 +699,111 @@ describe("inventory export", () => {
     });
   }, 120_000);
 
+  describe("a System that was named after its rows failed for having no name", () => {
+    const blank = (product: string) => [
+      "",
+      "ทีม N",
+      "Canonical",
+      product,
+      "22.04.4",
+      "OS",
+      "Production",
+      "Internal",
+    ];
+    const unchangedTotals = (n: number) => ({
+      added: 0,
+      updated: 0,
+      failed: 0,
+      unchanged: n,
+      skipped: 0,
+    });
+
+    async function unnamed(label: string) {
+      const project = await newProject(label);
+      await confirmed(project, [blank("Ubuntu"), blank("Debian")]);
+      const found = await ctx.owner.sql.query<{ id: string; revision: number }>(
+        "select id, revision from inventory_systems where project_id = $1",
+        [project],
+      );
+      const system = found.rows[0];
+      if (!system) throw new Error("the unnamed System is missing");
+      return { project, system };
+    }
+
+    const reimports = async (project: string, bytes: Uint8Array) =>
+      inventoryImportPreviewSchema.parse(
+        await (await previewBytes(org.users.owner, project, bytes)).json(),
+      ).totals;
+
+    it("exports an unnamed System as it is and imports it back unchanged", async () => {
+      const { project, system } = await unnamed("export-unnamed");
+      for (const id of [undefined, system.id]) {
+        const { bytes } = await exported(project, id);
+        const data = (await sheetsOf(bytes))[0]?.data ?? [];
+        expect(data.slice(1).map((cells) => cells[0])).toEqual([null, null]);
+        expect(await reimports(project, bytes)).toEqual(unchangedTotals(2));
+      }
+    });
+
+    it("refuses the export, with the count, until the rows are saved again", async () => {
+      const { project, system } = await unnamed("export-renamed");
+      const other = await newProject("export-renamed-other");
+      await confirmed(other, [blank("Ubuntu")]);
+      const rename = await ctx.call(
+        org.users.owner,
+        "PATCH",
+        projectPath(project, org.id, `/systems/${system.id}`),
+        { name: "Payments API", revision: system.revision },
+      );
+      expect(rename.status).toBe(200);
+      for (const id of [undefined, system.id]) {
+        const refused = await exportRequest(org.users.owner, project, id);
+        expect(refused.status).toBe(409);
+        const body = (await refused.json()) as {
+          error: { code: string; message: string };
+        };
+        expect(body.error.code).toBe("INVENTORY_EXPORT_STALE_ROWS");
+        expect(body.error.message).toContain("2 แถว");
+      }
+      const rows = await ctx.owner.sql.query<{ id: string; revision: number }>(
+        "select id, revision from inventory_rows where project_id = $1 order by line_no",
+        [project],
+      );
+      const save = async (
+        row: { id: string; revision: number },
+        product: string,
+      ) =>
+        ctx.call(
+          org.users.owner,
+          "PUT",
+          projectPath(project, org.id, `/rows/${row.id}`),
+          {
+            owner: "ทีม N",
+            vendor: "Canonical",
+            product,
+            version: "22.04.4",
+            layer: "OS",
+            environment: "Production",
+            exposure: "Internal",
+            revision: row.revision,
+          },
+        );
+      const [first, second] = rows.rows;
+      if (!first || !second) throw new Error("the rows are missing");
+      expect((await save(first, "Ubuntu")).status).toBe(200);
+      const half = await exportRequest(org.users.owner, project);
+      expect(half.status).toBe(409);
+      expect(
+        ((await half.json()) as { error: { message: string } }).error.message,
+      ).toContain("1 แถว");
+      expect((await save(second, "Debian")).status).toBe(200);
+      const { bytes } = await exported(project);
+      expect(await reimports(project, bytes)).toEqual(unchangedTotals(2));
+      // The other Project's unnamed System is not touched by the rename.
+      expect((await exportRequest(org.users.owner, other)).status).toBe(200);
+    });
+  });
+
   it.each([
     "00:00:00.001Z",
     "00:00:00.999Z",

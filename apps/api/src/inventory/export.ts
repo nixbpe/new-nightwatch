@@ -195,8 +195,25 @@ export async function exportInventory(
       };
     },
   );
+  // Renaming an unnamed System leaves its rows' `System: required` issue (and their failed
+  // state) as stored, so the file would carry the new name and read back as different rows.
+  // Saving a row again re-validates it.
+  const stale = rows.filter(
+    (row) =>
+      row.system.trim() !== "" &&
+      row.issues.some(
+        (issue) => issue.column === "System" && issue.code === "required",
+      ),
+  ).length;
   const what = systemName === undefined ? "inventory ของ Project" : "System";
   if (rows.length > INVENTORY_MAX_ROWS) tooLarge(what);
+  if (stale > 0) {
+    throw new AppError(
+      409,
+      "INVENTORY_EXPORT_STALE_ROWS",
+      `${String(stale)} แถวยังมีข้อผิดพลาดของช่อง System จากก่อนเปลี่ยนชื่อ System เปิดและบันทึกแถวเหล่านั้นอีกครั้งก่อน export`,
+    );
+  }
   const blob = await writeXlsxFile(
     [
       {

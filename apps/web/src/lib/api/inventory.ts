@@ -308,6 +308,7 @@ export function inventoryErrorMessage(error: unknown): string {
       error.code === "INVENTORY_PREVIEW_EXPIRED" ||
       error.code === "INVENTORY_PREVIEW_STALE" ||
       error.code === "INVENTORY_EXPORT_TOO_LARGE" ||
+      error.code === "INVENTORY_EXPORT_STALE_ROWS" ||
       error.code === "CPE_DICTIONARY_UNAVAILABLE" ||
       error.code === "MAPPING_IDENTIFIER_REQUIRED"
     ) {

@@ -560,4 +560,25 @@ describe("InventoryPage export", () => {
     expect(screen.getByTestId("inventory-export")).toBeEnabled();
     expect(screen.getByTestId("inventory-tile-total")).toBeInTheDocument();
   });
+
+  it("shows the stale-rows message of a refused export as an alert", async () => {
+    fetchMock.mockResolvedValue(summary());
+    exportMock.mockRejectedValueOnce(
+      new ApiError(
+        "INVENTORY_EXPORT_STALE_ROWS",
+        "2 แถวยังมีข้อผิดพลาดของช่อง System จากก่อนเปลี่ยนชื่อ System",
+        409,
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("inventory-export"));
+
+    expect(
+      await screen.findByTestId("inventory-export-error"),
+    ).toHaveTextContent("2 แถวยังมีข้อผิดพลาดของช่อง System");
+    expect(screen.getByTestId("inventory-export")).toBeEnabled();
+    expect(screen.getByTestId("inventory-tile-total")).toBeInTheDocument();
+  });
 });
