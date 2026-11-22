@@ -63,8 +63,11 @@ export const inventorySystemSchema = z.object({
   totalRows: z.number().int().nonnegative(),
   usableRows: z.number().int().nonnegative(),
   lowQuality: z.boolean(),
-  fileName: z.string(),
+  // Null for a System created in the system; then `uploadedAt` is when it was created.
+  fileName: z.string().nullable(),
   uploadedAt: timestamp,
+  // The token a rename or delete names, so a System changed meanwhile is never overwritten.
+  revision: z.number().int().min(1),
 });
 export type InventorySystem = z.infer<typeof inventorySystemSchema>;
 
@@ -88,25 +91,6 @@ export const inventorySummarySchema = z.object({
   systems: z.array(inventorySystemSchema),
 });
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
-
-export const inventoryRejectedRowSchema = z.object({
-  line: z.number().int().min(2),
-  owner: z.string(),
-  vendor: z.string(),
-  product: z.string(),
-  version: z.string(),
-  layer: z.string(),
-  environment: z.string(),
-  exposure: z.string(),
-  issues: z.array(inventoryIssueSchema).min(1),
-});
-export type InventoryRejectedRow = z.infer<typeof inventoryRejectedRowSchema>;
-
-export const inventoryRejectedRowsSchema = z.object({
-  system: inventorySystemSchema,
-  rows: z.array(inventoryRejectedRowSchema),
-});
-export type InventoryRejectedRows = z.infer<typeof inventoryRejectedRowsSchema>;
 
 // F-022 S7.1: every row of a Project, read with filters and edited one row at a time.
 export const INVENTORY_ROWS_PAGE_SIZE = 25;
@@ -198,6 +182,27 @@ export type InventoryRowUpdate = z.infer<typeof inventoryRowUpdateSchema>;
 
 export const inventoryRowDeleteQuerySchema = z.object({
   revision: z.coerce.number().int().min(1),
+});
+
+const SYSTEM_NAME_MAX_LENGTH = 1000;
+const systemName = z.string().max(SYSTEM_NAME_MAX_LENGTH);
+
+// F-022 S7.2: a System is created with its first row, renamed, and deleted with its rows.
+export const inventorySystemCreateSchema = inventoryRowInputSchema.extend({
+  name: systemName,
+});
+export type InventorySystemCreate = z.infer<typeof inventorySystemCreateSchema>;
+
+export const inventorySystemRenameSchema = z.object({
+  name: systemName,
+  revision,
+});
+export type InventorySystemRename = z.infer<typeof inventorySystemRenameSchema>;
+
+// `rows` is the count the confirmation named; a System that holds another number is refused.
+export const inventorySystemDeleteQuerySchema = z.object({
+  revision: z.coerce.number().int().min(1),
+  rows: z.coerce.number().int().min(0),
 });
 
 // `details` of INVENTORY_ROW_INVALID: the same codes an upload keeps per row.

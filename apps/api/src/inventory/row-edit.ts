@@ -158,7 +158,7 @@ export async function listRows(
 }
 
 /** The same rules an upload applies (Q-01, Q-02), so a row saved here is a row a file could carry. */
-function checkedFields(systemName: string, fields: InventoryRowInput) {
+export function checkedFields(systemName: string, fields: InventoryRowInput) {
   const row = validateRow({
     line: 0,
     cells: {

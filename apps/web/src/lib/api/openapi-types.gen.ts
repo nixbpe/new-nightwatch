@@ -5362,7 +5362,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.inventory.system.create" | "organization.project.inventory.system.rename" | "organization.project.inventory.system.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5549,7 +5549,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.inventory.system.create" | "organization.project.inventory.system.rename" | "organization.project.inventory.system.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -6357,9 +6357,10 @@ export interface paths {
                                 totalRows: number;
                                 usableRows: number;
                                 lowQuality: boolean;
-                                fileName: string;
+                                fileName: string | null;
                                 /** Format: date-time */
                                 uploadedAt: string;
+                                revision: number;
                             }[];
                         };
                     };
@@ -6533,9 +6534,10 @@ export interface paths {
                                 totalRows: number;
                                 usableRows: number;
                                 lowQuality: boolean;
-                                fileName: string;
+                                fileName: string | null;
                                 /** Format: date-time */
                                 uploadedAt: string;
+                                revision: number;
                             }[];
                         };
                     };
@@ -7398,61 +7400,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{organizationId}/projects/{projectId}/inventory/systems/{systemId}/rejected-rows": {
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory/systems": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: {
+        get?: never;
+        put?: never;
+        post: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
                     organizationId: string;
                     projectId: string;
-                    systemId: string;
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": {
+                        owner: string;
+                        vendor: string;
+                        product: string;
+                        version: string;
+                        layer: string;
+                        environment: string;
+                        exposure: string;
+                        name: string;
+                    };
+                };
+            };
             responses: {
-                /** @description Rows of one System that failed the template rules */
-                200: {
+                /** @description The System that was created with its first row */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            system: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                owners: string[];
-                                totalRows: number;
-                                usableRows: number;
-                                lowQuality: boolean;
-                                fileName: string;
-                                /** Format: date-time */
-                                uploadedAt: string;
-                            };
-                            rows: {
-                                line: number;
-                                owner: string;
-                                vendor: string;
-                                product: string;
-                                version: string;
-                                layer: string;
-                                environment: string;
-                                exposure: string;
-                                issues: {
-                                    /** @enum {string} */
-                                    column: "System" | "Owner" | "Vendor" | "Product" | "Version" | "Layer" | "Environment" | "Exposure";
-                                    /** @enum {string} */
-                                    code: "required" | "too_long" | "not_in_list" | "version_not_text" | "version_not_a_number" | "version_not_patch_level" | "product_has_version";
-                                }[];
-                            }[];
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            owners: string[];
+                            totalRows: number;
+                            usableRows: number;
+                            lowQuality: boolean;
+                            fileName: string | null;
+                            /** Format: date-time */
+                            uploadedAt: string;
+                            revision: number;
                         };
                     };
                 };
@@ -7578,12 +7577,332 @@ export interface paths {
                 };
             };
         };
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory/systems/{systemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query: {
+                    revision: number;
+                    rows?: number | null;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    systemId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The System and its rows were deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    systemId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        revision: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The System after the rename */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            owners: string[];
+                            totalRows: number;
+                            usableRows: number;
+                            lowQuality: boolean;
+                            fileName: string | null;
+                            /** Format: date-time */
+                            uploadedAt: string;
+                            revision: number;
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/api/organizations/{organizationId}/projects/{projectId}/inventory/systems/{systemId}/rejected-rows/export": {

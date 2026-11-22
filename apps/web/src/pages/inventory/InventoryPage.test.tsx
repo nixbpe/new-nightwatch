@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import {
+  createSystem,
   fetchInventory,
   fetchRows,
   uploadInventory,
@@ -29,11 +30,13 @@ vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   fetchInventory: vi.fn(),
   fetchRows: vi.fn(),
   uploadInventory: vi.fn(),
+  createSystem: vi.fn(),
 }));
 
 const fetchMock = vi.mocked(fetchInventory);
 const uploadMock = vi.mocked(uploadInventory);
 const rowsMock = vi.mocked(fetchRows);
+const createMock = vi.mocked(createSystem);
 
 function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
   return {
@@ -54,6 +57,7 @@ function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
         lowQuality: false,
         fileName: "inventory-q4.xlsx",
         uploadedAt: "2026-11-20T09:42:00.000Z",
+        revision: 1,
       },
       {
         id: HR,
@@ -64,13 +68,20 @@ function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
         lowQuality: true,
         fileName: "inventory-q4.xlsx",
         uploadedAt: "2026-11-20T09:42:00.000Z",
+        revision: 1,
       },
     ],
     ...overrides,
   };
 }
 
-function renderPage() {
+const BASE_SYSTEM =
+  summary().systems[0] ??
+  (() => {
+    throw new Error("no system");
+  })();
+
+function renderPage(state?: unknown) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -83,7 +94,12 @@ function renderPage() {
       { path: "*", element: <p data-testid="elsewhere" /> },
     ],
     {
-      initialEntries: [`/organizations/${ORG}/projects/${PROJECT}/inventory`],
+      initialEntries: [
+        {
+          pathname: `/organizations/${ORG}/projects/${PROJECT}/inventory`,
+          state,
+        },
+      ],
     },
   );
   render(
@@ -98,6 +114,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   uploadMock.mockReset();
   rowsMock.mockReset();
+  createMock.mockReset();
   rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
 });
 
@@ -341,5 +358,212 @@ describe("InventoryPage", () => {
     expect(
       await screen.findByTestId("inventory-tile-total"),
     ).toBeInTheDocument();
+  });
+
+  describe("managing Systems", () => {
+    const first = {
+      owner: "ทีม Cache",
+      vendor: "Redis Ltd",
+      product: "Redis",
+      version: "7.2.4",
+      layer: "Middleware",
+      environment: "Production",
+      exposure: "Internal",
+    };
+
+    async function fillRow(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByTestId("inventory-row-owner"), first.owner);
+      await user.type(screen.getByTestId("inventory-row-vendor"), first.vendor);
+      await user.type(
+        screen.getByTestId("inventory-row-product"),
+        first.product,
+      );
+      await user.type(
+        screen.getByTestId("inventory-row-version"),
+        first.version,
+      );
+      await user.selectOptions(
+        screen.getByTestId("inventory-row-layer"),
+        first.layer,
+      );
+      await user.selectOptions(
+        screen.getByTestId("inventory-row-environment"),
+        first.environment,
+      );
+      await user.selectOptions(
+        screen.getByTestId("inventory-row-exposure"),
+        first.exposure,
+      );
+    }
+
+    it("shows the add button to a maintainer only, and opens a dialog whose first field is the name", async () => {
+      fetchMock.mockResolvedValue(summary());
+      const user = userEvent.setup();
+      renderPage();
+
+      const add = await screen.findByTestId("inventory-add-system");
+      expect(add).toHaveTextContent("เพิ่ม System");
+      await user.click(add);
+      const dialog = await screen.findByRole("dialog", {
+        name: "เพิ่ม System",
+      });
+      expect(within(dialog).getByLabelText("ชื่อ System")).toHaveFocus();
+      expect(within(dialog).queryByTestId("inventory-row-system")).toBeNull();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(add).toHaveFocus();
+    });
+
+    it("offers no add button to a member", async () => {
+      fetchMock.mockResolvedValue(summary({ canUpload: false }));
+      renderPage();
+
+      await screen.findByTestId("inventory-tile-total");
+      expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+    });
+
+    it("sends the name with the seven columns of the first row, then reloads and says so", async () => {
+      fetchMock.mockResolvedValue(summary());
+      createMock.mockResolvedValue({
+        ...BASE_SYSTEM,
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3",
+        name: "Cache",
+      });
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      await user.type(screen.getByTestId("inventory-row-name"), "Cache");
+      await fillRow(user);
+      await user.click(screen.getByTestId("inventory-row-save"));
+
+      await waitFor(() => {
+        expect(createMock).toHaveBeenCalledWith(ORG, PROJECT, {
+          name: "Cache",
+          ...first,
+        });
+      });
+      expect(await screen.findByTestId("inventory-success")).toHaveTextContent(
+        "เพิ่ม System แล้ว",
+      );
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("puts a name another System has under the name field and keeps every typed value", async () => {
+      fetchMock.mockResolvedValue(summary());
+      createMock.mockRejectedValue(
+        new ApiError(
+          "INVENTORY_SYSTEM_NAME_TAKEN",
+          "มี System ชื่อ billing api ใน Project นี้แล้ว",
+          409,
+        ),
+      );
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      await user.type(screen.getByTestId("inventory-row-name"), "billing api");
+      await fillRow(user);
+      await user.click(screen.getByTestId("inventory-row-save"));
+
+      const error = await screen.findByTestId("inventory-row-name-error");
+      expect(error).toHaveTextContent("มี System ชื่อ billing api");
+      const name = screen.getByTestId("inventory-row-name");
+      expect(name).toHaveValue("billing api");
+      expect(name).toHaveAttribute("aria-invalid", "true");
+      expect(name).toHaveAttribute("aria-describedby", error.id);
+      expect(name).toHaveFocus();
+      expect(screen.getByTestId("inventory-row-owner")).toHaveValue(
+        first.owner,
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.queryByTestId("inventory-success")).toBeNull();
+    });
+
+    it("puts the reason of the name and of a failing column each under its own field", async () => {
+      fetchMock.mockResolvedValue(summary());
+      createMock.mockRejectedValue(
+        new ApiError("INVENTORY_ROW_INVALID", "x", 400, {
+          issues: [
+            { column: "System", code: "required" },
+            { column: "Version", code: "version_not_patch_level" },
+          ],
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      await user.click(screen.getByTestId("inventory-row-save"));
+
+      expect(
+        await screen.findByTestId("inventory-row-name-error"),
+      ).toHaveTextContent("ว่าง ต้องกรอก");
+      expect(
+        screen.getByTestId("inventory-row-version-error"),
+      ).toHaveTextContent("ไม่ถึง patch level");
+      expect(screen.queryByTestId("inventory-row-error")).toBeNull();
+    });
+
+    it("disables saving while the System is created", async () => {
+      fetchMock.mockResolvedValue(summary());
+      createMock.mockReturnValue(new Promise(() => undefined));
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      await user.click(screen.getByTestId("inventory-row-save"));
+
+      expect(await screen.findByTestId("inventory-row-save")).toBeDisabled();
+      expect(createMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows what the System page carried after a delete in the live region", async () => {
+      fetchMock.mockResolvedValue(summary());
+      renderPage({ notice: "ลบ System HR Portal และ 42 แถวแล้ว" });
+
+      expect(await screen.findByTestId("inventory-success")).toHaveTextContent(
+        "ลบ System HR Portal และ 42 แถวแล้ว",
+      );
+      expect(
+        screen.getByTestId("inventory-success").closest("[aria-live]"),
+      ).not.toBeNull();
+    });
+
+    it("links every System name to its page and lists an empty System as having no rows", async () => {
+      const empty = {
+        ...BASE_SYSTEM,
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4",
+        name: "Retired",
+        owners: [],
+        totalRows: 0,
+        usableRows: 0,
+        lowQuality: false,
+      };
+      fetchMock.mockResolvedValue(
+        summary({
+          systems: [...summary().systems, empty],
+          systemCount: 3,
+        }),
+      );
+      renderPage();
+
+      const link = await screen.findByTestId(
+        `inventory-open-system-${empty.id}`,
+      );
+      expect(link).toHaveAttribute(
+        "href",
+        `/organizations/${ORG}/projects/${PROJECT}/inventory/systems/${empty.id}`,
+      );
+      const row = screen.getByTestId(`inventory-system-${empty.id}`);
+      expect(within(row).getByText("ไม่มีแถว")).toBeInTheDocument();
+      expect(within(row).queryByText("ผ่าน")).toBeNull();
+      expect(
+        screen.getByTestId(`inventory-open-system-${BILLING}`),
+      ).toBeInTheDocument();
+    });
   });
 });

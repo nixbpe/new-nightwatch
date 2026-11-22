@@ -4,7 +4,7 @@ import type {
 } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type DragEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
 import { Page, PageHeader } from "../../components/shell/Page";
@@ -29,6 +29,7 @@ import { usePreferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import templateUrl from "../../../../../docs/templates/inventory-template.xlsx?url";
 import { InventoryRowsSection } from "./InventoryRowsSection";
+import { RowDialog } from "./RowDialog";
 import {
   formatUploadedAt,
   NO_SYSTEM_NAME,
@@ -226,10 +227,15 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
     {
       key: "system",
       header: "System",
+      // Every System opens its page, which is the only way to rename or delete an empty one.
       cell: (system) => (
-        <span className="font-medium">
+        <Link
+          data-testid={`inventory-open-system-${system.id}`}
+          className="font-medium text-primary underline-offset-4 hover:underline"
+          to={`/organizations/${scope.organizationId}/projects/${scope.projectId}/inventory/systems/${system.id}`}
+        >
           {system.name === "" ? NO_SYSTEM_NAME : system.name}
-        </span>
+        </Link>
       ),
     },
     {
@@ -250,7 +256,9 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
       align: "end",
       mono: true,
       cell: (system) =>
-        `${String(system.usableRows)} · ${String(usablePercent(system.usableRows, system.totalRows))}%`,
+        system.totalRows === 0
+          ? "—"
+          : `${String(system.usableRows)} · ${String(usablePercent(system.usableRows, system.totalRows))}%`,
     },
     {
       key: "status",
@@ -258,10 +266,20 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
       cell: (system) => (
         <StatusPill
           dot
-          neutralLabel={!system.lowQuality}
-          tone={system.lowQuality ? "caution" : "neutral"}
+          neutralLabel={system.totalRows === 0 || !system.lowQuality}
+          tone={
+            system.totalRows === 0
+              ? "muted"
+              : system.lowQuality
+                ? "caution"
+                : "neutral"
+          }
         >
-          {system.lowQuality ? "คุณภาพต่ำ" : "ผ่าน"}
+          {system.totalRows === 0
+            ? "ไม่มีแถว"
+            : system.lowQuality
+              ? "คุณภาพต่ำ"
+              : "ผ่าน"}
         </StatusPill>
       ),
     },
@@ -291,6 +309,13 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const { preferences } = usePreferences();
   const { project } = useCurrentProject();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const [adding, setAdding] = useState<HTMLElement | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // The System page leaves its success message here after it deletes the System.
+  const carried = (location.state as { notice?: string } | null)?.notice;
   const query = useQuery({
     queryKey: inventoryKeys.summary(organizationId, projectId),
     queryFn: ({ signal }) => fetchInventory(organizationId, projectId, signal),
@@ -330,8 +355,31 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             </>
           )
         }
+        titleRef={heading}
+        titleTabIndex={-1}
         description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลมาจากไฟล์ที่ Organization แจ้งเอง ไม่ได้มาจากการตรวจจริง"
+        actions={
+          summary?.canUpload === true ? (
+            <Button
+              variant="secondary"
+              data-testid="inventory-add-system"
+              onClick={(event) => {
+                setAdded(null);
+                setAdding(event.currentTarget);
+              }}
+            >
+              เพิ่ม System
+            </Button>
+          ) : undefined
+        }
       />
+      <div aria-live="polite" className="empty:hidden">
+        {(added ?? carried) ? (
+          <Notice tone="success" data-testid="inventory-success">
+            {added ?? carried}
+          </Notice>
+        ) : null}
+      </div>
       {query.isPending ? (
         <PageState
           kind="loading"
@@ -415,6 +463,25 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             />
           )}
         </>
+      )}
+      {adding === null ? null : (
+        <RowDialog
+          mode={{ kind: "system" }}
+          scope={{ organizationId, projectId }}
+          opener={adding}
+          fallbackFocus={heading}
+          onCancel={() => {
+            setAdding(null);
+          }}
+          onSaved={(message) => {
+            setAdding(null);
+            setAdded(message);
+            void queryClient.invalidateQueries({
+              queryKey: inventoryKeys.all(organizationId, projectId),
+            });
+          }}
+          onStale={() => undefined}
+        />
       )}
     </Page>
   );

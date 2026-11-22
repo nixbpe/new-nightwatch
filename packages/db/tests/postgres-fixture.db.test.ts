@@ -255,6 +255,7 @@ describe("owned PostgreSQL fixture", () => {
         "0036_vulnerability_triage.sql",
         "0037_email_job_maintenance.sql",
         "0038_inventory_row_editing.sql",
+        "0039_inventory_system_management.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -440,6 +441,19 @@ describe("owned PostgreSQL fixture", () => {
               revision: 1,
             })),
           );
+        }
+        if (stage === "0039_inventory_system_management.sql") {
+          // A System of an upload keeps its file and gets the first revision.
+          expect(
+            (
+              await fixture.owner.sql.query(
+                "select name, file_name, revision from inventory_systems where tenant_id = $1",
+                [id],
+              )
+            ).rows,
+          ).toEqual([
+            { name: "Billing", file_name: "legacy-q3.xlsx", revision: 1 },
+          ]);
         }
         if (stage === "0028_aws_connections.sql") {
           expect(

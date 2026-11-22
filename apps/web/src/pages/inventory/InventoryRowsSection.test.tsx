@@ -98,6 +98,7 @@ function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
         lowQuality: false,
         fileName: "inventory-q4.xlsx",
         uploadedAt: "2026-11-20T09:42:00.000Z",
+        revision: 1,
       },
       {
         id: HR,
@@ -108,6 +109,7 @@ function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
         lowQuality: true,
         fileName: "inventory-q4.xlsx",
         uploadedAt: "2026-11-20T09:42:00.000Z",
+        revision: 1,
       },
     ],
     ...overrides,
@@ -725,6 +727,44 @@ describe("InventoryRowsSection repairs", () => {
         .getAllByRole("option")
         .map((option) => option.textContent),
     ).toEqual(["Billing API"]);
+  });
+
+  it("lists an empty System in the filter and the add-row picker, and adds the first row to it", async () => {
+    fetchMock.mockResolvedValue(list([]));
+    createMock.mockResolvedValue(row());
+    const [named] = summary().systems;
+    if (!named) throw new Error("system missing");
+    const empty = {
+      ...named,
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5",
+      name: "Retired",
+      owners: [],
+      totalRows: 0,
+      usableRows: 0,
+    };
+    const user = userEvent.setup();
+    renderSection({ summary: summary({ systems: [named, empty] }) });
+
+    const filter = await screen.findByTestId("inventory-rows-system");
+    expect(
+      within(filter)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["ทุก System", "Billing API", "Retired"]);
+    await user.click(screen.getByTestId("inventory-row-add"));
+    const dialog = await screen.findByRole("dialog");
+    await user.selectOptions(
+      within(dialog).getByTestId("inventory-row-system"),
+      "Retired",
+    );
+    await user.click(within(dialog).getByTestId("inventory-row-save"));
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith(
+        ORG,
+        PROJECT,
+        expect.objectContaining({ systemId: empty.id }),
+      );
+    });
   });
 
   it("shows no add button when every System is unnamed, but still lists their rows", async () => {

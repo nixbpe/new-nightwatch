@@ -179,7 +179,7 @@ export function InventoryRowsSection({
   });
 
   const canEdit = summary.canUpload;
-  // A System with no name takes no new row until it is renamed (PR 2); its rows stay listed.
+  // A System with no name takes no new row until it is renamed; its rows stay listed.
   const addable = summary.systems.filter((system) => system.name !== "");
   const systemName = (name: string) => (name === "" ? NO_SYSTEM_NAME : name);
 

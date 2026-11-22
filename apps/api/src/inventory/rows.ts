@@ -122,3 +122,25 @@ export function validateRow(raw: RawRow): InventoryRow {
     issues,
   };
 }
+
+/** The System column's share of the upload's rules, for a name typed on the screen. */
+export function validateSystemName(raw: string) {
+  const row = validateRow({
+    line: 0,
+    cells: {
+      System: raw,
+      Owner: null,
+      Vendor: null,
+      Product: null,
+      Version: null,
+      Layer: null,
+      Environment: null,
+      Exposure: null,
+    },
+  });
+  return {
+    name: row.system,
+    key: row.systemKey,
+    issues: row.issues.filter((issue) => issue.column === "System"),
+  };
+}

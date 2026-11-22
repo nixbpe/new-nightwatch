@@ -52,14 +52,14 @@ import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import {
   inventoryLoader,
   inventoryMappingsLoader,
-  inventoryRejectedRowsLoader,
+  inventorySystemLoader,
 } from "./lib/auth/loaders/inventory";
 import { newVulnerabilitiesLoader } from "./lib/auth/loaders/newVulnerabilities";
 import { priorityLoader } from "./lib/auth/loaders/priority";
 import { vulnerabilitiesLoader } from "./lib/auth/loaders/vulnerabilities";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
-import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
+import { SystemPage } from "./pages/inventory/SystemPage";
 import { NewVulnerabilitiesPage } from "./pages/vulnerabilities/NewVulnerabilitiesPage";
 import { PriorityPage } from "./pages/vulnerabilities/PriorityPage";
 import { VulnerabilitiesPage } from "./pages/vulnerabilities/VulnerabilitiesPage";
@@ -215,8 +215,8 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",
-            loader: inventoryRejectedRowsLoader,
-            element: <RejectedRowsPage />,
+            loader: inventorySystemLoader,
+            element: <SystemPage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/overview",

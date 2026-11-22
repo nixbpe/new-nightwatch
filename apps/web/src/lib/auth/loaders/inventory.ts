@@ -3,7 +3,6 @@ import { type LoaderFunctionArgs } from "react-router";
 import {
   fetchInventory,
   fetchMappings,
-  fetchRejectedRows,
   fetchRows,
   inventoryKeys,
 } from "../../api/inventory";
@@ -17,7 +16,7 @@ async function prefetch(
   { params, request }: LoaderFunctionArgs,
   load: (
     client: ReturnType<typeof resolveQueryClientForIdentity>,
-    ids: { organizationId: string; projectId: string; systemId?: string },
+    ids: { organizationId: string; projectId: string },
   ) => Promise<unknown>,
 ): Promise<null | Response> {
   const session = await gateVerifiedSession(request);
@@ -35,7 +34,6 @@ async function prefetch(
   await load(resolveQueryClientForIdentity(session.user.id), {
     organizationId,
     projectId,
-    systemId: params.systemId?.toLowerCase(),
   }).catch(() => undefined);
   return null;
 }
@@ -61,16 +59,16 @@ export function inventoryLoader(args: LoaderFunctionArgs) {
   );
 }
 
-export function inventoryRejectedRowsLoader(args: LoaderFunctionArgs) {
-  return prefetch(args, (client, { organizationId, projectId, systemId }) => {
-    if (systemId === undefined) return Promise.resolve();
-    return client.query({
-      queryKey: inventoryKeys.rejected(organizationId, projectId, systemId),
+// The System page reads its System from the summary, which also says what the caller may do.
+export function inventorySystemLoader(args: LoaderFunctionArgs) {
+  return prefetch(args, (client, { organizationId, projectId }) =>
+    client.query({
+      queryKey: inventoryKeys.summary(organizationId, projectId),
       queryFn: ({ signal }) =>
-        fetchRejectedRows(organizationId, projectId, systemId, signal),
+        fetchInventory(organizationId, projectId, signal),
       staleTime: 0,
-    });
-  });
+    }),
+  );
 }
 
 export function inventoryMappingsLoader(args: LoaderFunctionArgs) {
