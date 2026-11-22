@@ -51,6 +51,7 @@ export const AUDIT_ACTIONS = [
   "organization.project.aws_connection.update",
   "organization.project.aws_connection.delete",
   "organization.project.inventory.upload",
+  "organization.project.inventory.mapping.update",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
@@ -92,6 +93,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.aws_connection.delete":
     "ยกเลิกการเชื่อมต่อ AWS ของโปรเจกต์",
   "organization.project.inventory.upload": "upload inventory ของโปรเจกต์",
+  "organization.project.inventory.mapping.update":
+    "ยืนยัน CPE/purl ของ inventory",
 };
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {

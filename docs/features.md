@@ -71,6 +71,10 @@
 
 [API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0030_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
 
+## ยืนยัน CPE/purl ของ inventory (E-005 F-018)
+
+[API mapping](../apps/api/src/inventory/mappings.ts), [routes](../apps/api/src/inventory/mapping-routes.ts), [ค้น NVD CPE dictionary](../apps/api/src/inventory/cpe.ts), [คำสั่ง operator ของตารางกลาง](../apps/api/src/operator/catalog-product-mapping.ts), [สัญญา](../packages/api-contract/src/inventory-mapping.ts), [Web](../apps/web/src/pages/inventory/MappingQueuePage.tsx), [migration](../packages/db/migrations/0031_identifier_mappings.sql), [browser test](../e2e/tests/inventory-mappings.spec.ts).
+
 ## สัญญา API
 
 [Shared contracts](../packages/api-contract/src/).

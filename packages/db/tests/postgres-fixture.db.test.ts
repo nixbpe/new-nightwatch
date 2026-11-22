@@ -247,6 +247,7 @@ describe("owned PostgreSQL fixture", () => {
         "0028_aws_connections.sql",
         "0029_aws_connections_v2.sql",
         "0030_project_inventory.sql",
+        "0031_identifier_mappings.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -310,6 +311,20 @@ describe("owned PostgreSQL fixture", () => {
           expect(
             await hasColumn(fixture, "org_aws_connections", "revision"),
           ).toBe(false);
+        }
+        if (stage === "0031_identifier_mappings.sql") {
+          expect(
+            (
+              await fixture.owner.sql.query(
+                "select to_regclass('public.inventory_mappings')::text as mappings, to_regclass('public.catalog_product_mappings')::text as catalog",
+              )
+            ).rows,
+          ).toEqual([
+            {
+              mappings: "inventory_mappings",
+              catalog: "catalog_product_mappings",
+            },
+          ]);
         }
         if (stage === "0030_project_inventory.sql") {
           expect(

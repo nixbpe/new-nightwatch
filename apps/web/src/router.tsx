@@ -51,9 +51,11 @@ import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import {
   inventoryLoader,
+  inventoryMappingsLoader,
   inventoryRejectedRowsLoader,
 } from "./lib/auth/loaders/inventory";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
+import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
 import { RejectedRowsPage } from "./pages/inventory/RejectedRowsPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -184,6 +186,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/projects/:projectId/inventory",
             loader: inventoryLoader,
             element: <InventoryPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/inventory/mappings",
+            loader: inventoryMappingsLoader,
+            element: <MappingQueuePage />,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",

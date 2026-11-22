@@ -96,8 +96,11 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  const keys = await redis.keys("rl:inventory-upload:*");
-  if (keys.length > 0) await redis.del(...keys);
+  const keys = [
+    ...(await redis.keys(`rl:inventory-upload:u:*:p:${projectId}`)),
+    `rl:inventory-upload:o:${org.id}`,
+  ];
+  await redis.del(...keys);
   await ctx.close();
   redis.disconnect();
 });

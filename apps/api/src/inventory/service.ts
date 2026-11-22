@@ -16,11 +16,17 @@ import writeXlsxFile from "write-excel-file/universal";
 import { recordAuditEvent } from "../audit/record";
 import { withProjectAccess, type Identity } from "../projects/service";
 import type { RateLimiter } from "../rate-limit";
+import type { CpeSearch } from "./cpe";
 import { parseInventoryFile } from "./file";
 import { inventoryFileRejected } from "./messages";
+import { ensureMappings, syncMappings } from "./mappings";
 import { validateRow, type InventoryRow } from "./rows";
 
-export type InventoryDeps = { database: Database; rateLimiter?: RateLimiter };
+export type InventoryDeps = {
+  database: Database;
+  rateLimiter?: RateLimiter;
+  cpeSearch?: CpeSearch;
+};
 export type ProjectIdentity = Identity & { projectId: string };
 
 type SystemRow = {
@@ -65,6 +71,21 @@ async function summarize(
      where s.tenant_id = $1 and s.project_id = $2 order by s.name_key`,
     [tenant, project],
   );
+  const counts = await client.query<{ status: string; total: number }>(
+    `select status, count(*)::int as total from inventory_mappings
+     where tenant_id = $1 and project_id = $2 group by status`,
+    [tenant, project],
+  );
+  const mappings = { pending: 0, confirmed: 0, unmapped: 0 };
+  for (const row of counts.rows) {
+    if (
+      row.status === "pending" ||
+      row.status === "confirmed" ||
+      row.status === "unmapped"
+    ) {
+      mappings[row.status] = row.total;
+    }
+  }
   const systems = rows.map(toSystem);
   const last = rows.reduce<SystemRow | undefined>(
     (latest, row) =>
@@ -73,6 +94,7 @@ async function summarize(
   );
   return {
     canUpload,
+    mappings,
     systemCount: systems.length,
     totalRows: systems.reduce((sum, system) => sum + system.totalRows, 0),
     usableRows: systems.reduce((sum, system) => sum + system.usableRows, 0),
@@ -92,8 +114,15 @@ export function getInventory(deps: InventoryDeps, input: ProjectIdentity) {
     input,
     "inventory.read",
     false,
-    (client, { projectId, access }) =>
-      summarize(client, input.organizationId, projectId, canUpload(access)),
+    async (client, { projectId, access }) => {
+      await ensureMappings(client, input.organizationId, projectId);
+      return summarize(
+        client,
+        input.organizationId,
+        projectId,
+        canUpload(access),
+      );
+    },
   );
 }
 
@@ -214,6 +243,7 @@ export async function uploadInventory(
           rows.map((row) => JSON.stringify(row.issues)),
         ],
       );
+      await syncMappings(client, tenant, projectId);
       await recordAuditEvent(client, {
         ...input,
         actorRole,
