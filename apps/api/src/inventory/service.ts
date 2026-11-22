@@ -157,10 +157,13 @@ async function limitUploads(deps: InventoryDeps, input: ProjectIdentity) {
     windowMs: 60_000,
     limits: [
       {
-        key: `rl:inventory-upload:u:${input.actorUserId}:p:${input.projectId}`,
+        key: `rl:inventory-upload:u:${input.actorUserId}:p:${input.projectId.toLowerCase()}`,
         limit: 10,
       },
-      { key: `rl:inventory-upload:o:${input.organizationId}`, limit: 60 },
+      {
+        key: `rl:inventory-upload:o:${input.organizationId.toLowerCase()}`,
+        limit: 60,
+      },
     ],
   });
 }
