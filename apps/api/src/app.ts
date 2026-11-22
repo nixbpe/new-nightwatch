@@ -8,6 +8,7 @@ import {
 import { DB_READINESS_TIMEOUT_MS, type Database } from "@nightwatch/db";
 import {
   AppError,
+  createFeeds,
   type AuthEnv,
   type Env,
   type Logger,
@@ -29,7 +30,6 @@ import { registerAwsConnectionRoutes } from "./aws-connection/routes";
 import { createNvdCpeSearch } from "./inventory/cpe";
 import { registerInventoryMappingRoutes } from "./inventory/mapping-routes";
 import { registerInventoryRoutes } from "./inventory/routes";
-import { createFeeds } from "./vulnerability/feeds";
 import { registerVulnerabilityRoutes } from "./vulnerability/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";

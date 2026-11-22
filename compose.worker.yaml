@@ -60,3 +60,11 @@ services:
     environment:
       <<: *worker-env
       WORKER_ROLES: audit-exporter
+
+  # Needs migration 0033. Scans every Project that has a confirmed product every 12 hours,
+  # spending from the same NVD limit as the API (Redis). Reaches NVD, OSV, CISA and FIRST.
+  vulnerability-scanner:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: vulnerability-scanner

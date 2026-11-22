@@ -34,3 +34,6 @@ export {
   type StsErrorCode,
   type StsVerifier,
 } from "./aws/sts";
+export * from "./vulnerability";
+export * from "./rate-limit";
+export * from "./identity-key";

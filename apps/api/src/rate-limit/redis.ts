@@ -1,7 +1,7 @@
-import type { Logger } from "@nightwatch/shared";
+import { RATE_LIMIT_TIMEOUT_MS, type Logger } from "@nightwatch/shared";
 import { Redis } from "ioredis";
 
-export const RATE_LIMIT_TIMEOUT_MS = 2000;
+export { RATE_LIMIT_TIMEOUT_MS };
 
 /**
  * Client for the rate limiter and readiness; every command is bounded by the

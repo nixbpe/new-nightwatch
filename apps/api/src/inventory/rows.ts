@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   INVENTORY_ENVIRONMENTS,
   INVENTORY_EXPOSURES,
@@ -9,8 +7,11 @@ import {
   type InventoryIssue,
   type InventoryIssueCode,
 } from "@nightwatch/api-contract";
+import { identityKey } from "@nightwatch/shared";
 
 import type { Cell, RawRow } from "./file";
+
+export { identityKey };
 
 export type InventoryRow = {
   line: number;
@@ -70,18 +71,6 @@ export function versionIssue(
     return null;
   }
   return "version_not_patch_level";
-}
-
-// The Project-wide identity of a System. Lower-casing can lengthen a name past the
-// 200 characters the key column holds, and cutting it would give two names one
-// key, so a longer key is replaced by its hash. The hash key starts with a control
-// character, which a normalized name never contains, so a hash key can never equal
-// the key of a name typed as that text.
-export function identityKey(system: string): string {
-  const lower = system.toLowerCase();
-  return Array.from(lower).length <= INVENTORY_FIELD_MAX_LENGTH
-    ? lower
-    : `\u0001sha256:${createHash("sha256").update(lower).digest("hex")}`;
 }
 
 export function validateRow(raw: RawRow): InventoryRow {

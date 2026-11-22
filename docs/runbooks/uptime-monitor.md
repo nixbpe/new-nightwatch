@@ -55,6 +55,11 @@ Find supported roles through the [Worker runtime code index](../features.md#tool
   supports multiple instances.
 - For in-app notifications, run `scheduler` and `consumer`.
 - For audit exports and audit retention, run `audit-exporter`.
+- For the scheduled CVE scan (F-020), run `vulnerability-scanner`. It claims a due Project from
+  PostgreSQL, scans it every 12 hours (retries after 1 hour when a scan does not finish) and spends
+  from the same NVD limit as the API through Redis with the same `REDIS_KEY_PREFIX`. Run one
+  instance per NVD egress address; more instances share the limit and add no throughput. A lease
+  lasts 30 minutes, after which another instance continues the run.
 - After [local dependency setup](../../scripts/quality/README.md#local-development-dependencies-postgresql--mailpit--redis),
   run `bun run dev` for local development.
 - To stop the Worker, send SIGTERM. The scheduler stops before the checker.

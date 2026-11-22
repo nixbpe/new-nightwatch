@@ -1,4 +1,5 @@
 import {
+  newCveListSchema,
   vulnerabilityAdvanceSchema,
   vulnerabilityListSchema,
   vulnerabilityRunSchema,
@@ -23,6 +24,8 @@ export const vulnerabilityKeys = {
     ] as const,
   list: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "list"] as const,
+  newCves: (organizationId: string, projectId: string) =>
+    [...vulnerabilityKeys.all(organizationId, projectId), "new"] as const,
   sample: (organizationId: string, projectId: string) =>
     [...vulnerabilityKeys.all(organizationId, projectId), "sample"] as const,
 };
@@ -33,6 +36,17 @@ export function fetchVulnerabilities(
   signal?: AbortSignal,
 ) {
   return request(base, vulnerabilityListSchema, {
+    params: { organizationId, projectId },
+    signal,
+  });
+}
+
+export function fetchNewVulnerabilities(
+  organizationId: string,
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  return request(`${base}/new`, newCveListSchema, {
     params: { organizationId, projectId },
     signal,
   });
