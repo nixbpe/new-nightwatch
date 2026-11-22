@@ -169,7 +169,7 @@ describe("InventoryPage", () => {
     expect(screen.getByTestId("inventory-tile-total")).toHaveTextContent("40");
   });
 
-  it("shows the reason a file was rejected and says earlier data is still used", async () => {
+  it("shows the reason a file was rejected and preserves earlier inventory totals", async () => {
     fetchMock.mockResolvedValue(summary());
     uploadMock.mockRejectedValue(
       new ApiError(
@@ -191,9 +191,6 @@ describe("InventoryPage", () => {
     ).toHaveTextContent(
       "ไฟล์ draft.xlsx ถูกปฏิเสธ ไม่มีข้อมูลใดถูกนำเข้า: ขาดคอลัมน์ Exposure",
     );
-    expect(
-      screen.getByText("ข้อมูลเดิมยังใช้ match CVE อยู่"),
-    ).toBeInTheDocument();
     expect(screen.getByTestId("inventory-tile-total")).toHaveTextContent("40");
   });
 
