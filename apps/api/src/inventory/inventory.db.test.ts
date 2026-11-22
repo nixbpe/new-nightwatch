@@ -272,6 +272,19 @@ describe("inventory upload", () => {
     expect(await storedRows()).toEqual(before);
   });
 
+  it("rejects an unterminated CSV quote without replacing stored inventory", async () => {
+    const before = await storedRows();
+    const response = await upload(
+      org.users.owner,
+      `${HEADER}\n${GOOD("billing api").replace("Internal", '"Internal')}\n${GOOD("HR Portal")}`,
+    );
+    expect(response.status).toBe(400);
+    expect(response.json).toMatchObject({
+      error: { code: "INVENTORY_FILE_REJECTED" },
+    });
+    expect(await storedRows()).toEqual(before);
+  });
+
   it("answers 413 in the error envelope for an oversized body", async () => {
     const response = await upload(
       org.users.owner,
@@ -385,13 +398,57 @@ describe("inventory upload", () => {
     ]);
   });
 
+  it("does not replace a System when an overlong name shares its prefix", async () => {
+    const project = await ctx.createProject(org.id, "long-name-identity", []);
+    const prefix = "A".repeat(200);
+    const first = await upload(
+      org.users.owner,
+      [HEADER, GOOD(prefix)].join("\n"),
+      "inventory.csv",
+      project,
+    );
+    expect(first.status).toBe(200);
+    const originalId = systemId(
+      inventorySummarySchema.parse(first.json),
+      prefix,
+    );
+    const second = await upload(
+      org.users.owner,
+      [HEADER, GOOD(`${prefix}other`)].join("\n"),
+      "inventory.csv",
+      project,
+    );
+    expect(second.status).toBe(200);
+    const summary = inventorySummarySchema.parse(second.json);
+    expect(summary.systems).toHaveLength(2);
+    expect(
+      summary.systems.find((system) => system.id === originalId),
+    ).toMatchObject({ name: prefix, totalRows: 1, usableRows: 1 });
+    expect(await storedRows(project)).toEqual(
+      expect.arrayContaining([
+        { name: prefix, line_no: 2, usable: true },
+        { name: prefix, line_no: 2, usable: false },
+      ]),
+    );
+  });
+
   it("limits uploads per user and Project", async () => {
     const keys = await redis.keys(`rl:inventory-upload:u:${org.users.owner}:*`);
     if (keys.length > 0) await redis.del(...keys);
     const csv = [HEADER, GOOD("Limiter")].join("\n");
     const statuses: number[] = [];
     for (let i = 0; i < 11; i += 1) {
-      statuses.push((await upload(org.users.owner, csv)).status);
+      statuses.push(
+        (
+          await upload(
+            org.users.owner,
+            csv,
+            "inventory.csv",
+            i % 2 === 0 ? projectId : projectId.toUpperCase(),
+            i % 2 === 0 ? org.id : org.id.toUpperCase(),
+          )
+        ).status,
+      );
     }
     expect(statuses).toEqual([...Array<number>(10).fill(200), 429]);
   });

@@ -18,6 +18,7 @@ export type FileRejection =
   | { code: "unsupported_extension" }
   | { code: "file_too_large" }
   | { code: "csv_not_utf8" }
+  | { code: "csv_invalid" }
   | { code: "xlsx_unreadable" }
   | { code: "sheet_not_found" }
   | {
@@ -69,6 +70,7 @@ export async function parseInventoryFile(
       return toRows(parseCsv(text, MAX_CSV_RECORDS));
     } catch (error) {
       if (error instanceof RangeError) return reject({ code: "too_many_rows" });
+      if (error instanceof SyntaxError) return reject({ code: "csv_invalid" });
       throw error;
     }
   }
@@ -264,6 +266,7 @@ export function parseCsv(text: string, maxRecords = Infinity): string[][] {
       field = "";
     } else field += char;
   }
+  if (quoted) throw new SyntaxError("unterminated quoted CSV field");
   if (field !== "" || row.length > 0) {
     row.push(field);
     table.push(row);

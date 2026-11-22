@@ -63,7 +63,11 @@ export function versionIssue(
   const numbers = (match[1] ?? "").split(".").length;
   const revision = /[-+~](?:\d|[A-Za-z]+\d)/.test(match[2] ?? "");
   if (numbers >= 3 || (numbers === 2 && revision)) return null;
-  if (numbers === 2 && TWO_PART_PATCH_PRODUCTS.has(product.toLowerCase())) {
+  if (
+    numbers === 2 &&
+    Number(match[1]?.split(".")[0]) >= 10 &&
+    TWO_PART_PATCH_PRODUCTS.has(product.toLowerCase())
+  ) {
     return null;
   }
   return "version_not_patch_level";
@@ -113,7 +117,7 @@ export function validateRow(raw: RawRow): InventoryRow {
   }
   return {
     line: raw.line,
-    systemKey: identityKey(row.system),
+    systemKey: identityKey(text(raw.cells.System)),
     ...row,
     issues,
   };

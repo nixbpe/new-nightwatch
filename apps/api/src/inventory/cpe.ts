@@ -67,7 +67,7 @@ function overlap(left: string, right: string): number {
 /** The vendor and product components of a CPE 2.3 name, `_` read as a space. */
 export function cpeVendorProduct(cpe: string): [string, string] | undefined {
   if (!CPE_NAME_PATTERN.test(cpe)) return undefined;
-  const parts = cpe.split(/(?<!\\):/);
+  const parts = Array.from(cpe.matchAll(/(?:\\.|[^:\\])+/g), ([part]) => part);
   const vendor = parts[3];
   const product = parts[4];
   return vendor === undefined || product === undefined
