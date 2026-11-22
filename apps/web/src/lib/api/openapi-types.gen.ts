@@ -5362,7 +5362,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5549,7 +5549,7 @@ export interface paths {
                                 /** @enum {string} */
                                 category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project" | "aws_connection";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove" | "organization.aws_connection.tested" | "organization.aws_connection.updated" | "organization.aws_connection.disconnected" | "organization.aws_connection.test" | "organization.aws_connection.update" | "organization.aws_connection.delete" | "organization.project.aws_connection.test" | "organization.project.aws_connection.update" | "organization.project.aws_connection.delete" | "organization.project.inventory.upload" | "organization.project.inventory.mapping.update" | "organization.project.inventory.row.create" | "organization.project.inventory.row.update" | "organization.project.inventory.row.delete" | "organization.project.vulnerability.run" | "organization.project.vulnerability.sample" | "organization.project.vulnerability.triage";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -6425,6 +6425,21 @@ export interface paths {
                     };
                 };
                 /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
                 413: {
                     headers: {
                         [name: string]: unknown;
@@ -6586,6 +6601,21 @@ export interface paths {
                     };
                 };
                 /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
                 413: {
                     headers: {
                         [name: string]: unknown;
@@ -6633,6 +6663,736 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    system?: string;
+                    layer?: "OS" | "DB" | "Middleware" | "Runtime" | "Appliance";
+                    status?: "all" | "rejected" | "duplicate";
+                    q?: string;
+                    page?: number;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of the Project's rows, filtered */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rows: {
+                                /** Format: uuid */
+                                id: string;
+                                /** Format: uuid */
+                                systemId: string;
+                                systemName: string;
+                                owner: string;
+                                vendor: string;
+                                product: string;
+                                version: string;
+                                layer: string;
+                                environment: string;
+                                exposure: string;
+                                usable: boolean;
+                                issues: {
+                                    /** @enum {string} */
+                                    column: "System" | "Owner" | "Vendor" | "Product" | "Version" | "Layer" | "Environment" | "Exposure";
+                                    /** @enum {string} */
+                                    code: "required" | "too_long" | "not_in_list" | "version_not_text" | "version_not_a_number" | "version_not_patch_level" | "product_has_version";
+                                }[];
+                                duplicate: boolean;
+                                revision: number;
+                                source: {
+                                    /** @enum {string} */
+                                    kind: "import" | "manual";
+                                    fileName: string | null;
+                                    changedBy: string | null;
+                                    /** Format: date-time */
+                                    changedAt: string;
+                                };
+                            }[];
+                            total: number;
+                            page: number;
+                            pageSize: number;
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        owner: string;
+                        vendor: string;
+                        product: string;
+                        version: string;
+                        layer: string;
+                        environment: string;
+                        exposure: string;
+                        /** Format: uuid */
+                        systemId: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The row that was added */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            systemId: string;
+                            systemName: string;
+                            owner: string;
+                            vendor: string;
+                            product: string;
+                            version: string;
+                            layer: string;
+                            environment: string;
+                            exposure: string;
+                            usable: boolean;
+                            issues: {
+                                /** @enum {string} */
+                                column: "System" | "Owner" | "Vendor" | "Product" | "Version" | "Layer" | "Environment" | "Exposure";
+                                /** @enum {string} */
+                                code: "required" | "too_long" | "not_in_list" | "version_not_text" | "version_not_a_number" | "version_not_patch_level" | "product_has_version";
+                            }[];
+                            duplicate: boolean;
+                            revision: number;
+                            source: {
+                                /** @enum {string} */
+                                kind: "import" | "manual";
+                                fileName: string | null;
+                                changedBy: string | null;
+                                /** Format: date-time */
+                                changedAt: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/projects/{projectId}/inventory/rows/{rowId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    rowId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        owner: string;
+                        vendor: string;
+                        product: string;
+                        version: string;
+                        layer: string;
+                        environment: string;
+                        exposure: string;
+                        revision: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The row after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            systemId: string;
+                            systemName: string;
+                            owner: string;
+                            vendor: string;
+                            product: string;
+                            version: string;
+                            layer: string;
+                            environment: string;
+                            exposure: string;
+                            usable: boolean;
+                            issues: {
+                                /** @enum {string} */
+                                column: "System" | "Owner" | "Vendor" | "Product" | "Version" | "Layer" | "Environment" | "Exposure";
+                                /** @enum {string} */
+                                code: "required" | "too_long" | "not_in_list" | "version_not_text" | "version_not_a_number" | "version_not_patch_level" | "product_has_version";
+                            }[];
+                            duplicate: boolean;
+                            revision: number;
+                            source: {
+                                /** @enum {string} */
+                                kind: "import" | "manual";
+                                fileName: string | null;
+                                changedBy: string | null;
+                                /** Format: date-time */
+                                changedAt: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query: {
+                    revision: number;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    rowId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The row was deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Request rejected */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -6743,6 +7503,21 @@ export interface paths {
                 };
                 /** @description Request rejected */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -6887,6 +7662,21 @@ export interface paths {
                 };
                 /** @description Request rejected */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Request rejected */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };

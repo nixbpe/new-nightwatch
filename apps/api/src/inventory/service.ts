@@ -222,9 +222,10 @@ export async function uploadInventory(
       await client.query(
         `insert into inventory_rows
            (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
-            layer, environment, exposure, usable, issues)
+            layer, environment, exposure, usable, issues, source_kind, source_file_name, changed_by)
          select $1, $2, r.system_id, r.line, r.owner, r.vendor, r.product, r.version,
-                r.layer, r.environment, r.exposure, r.issues = '[]', r.issues::jsonb
+                r.layer, r.environment, r.exposure, r.issues = '[]', r.issues::jsonb,
+                'import', $13, $14
          from unnest($3::uuid[], $4::int[], $5::text[], $6::text[], $7::text[], $8::text[],
                      $9::text[], $10::text[], $11::text[], $12::text[])
            as r(system_id, line, owner, vendor, product, version, layer, environment, exposure, issues)`,
@@ -241,6 +242,8 @@ export async function uploadInventory(
           rows.map((row) => row.environment),
           rows.map((row) => row.exposure),
           rows.map((row) => JSON.stringify(row.issues)),
+          fileName,
+          input.actorUserId,
         ],
       );
       await syncMappings(client, tenant, projectId);

@@ -332,8 +332,8 @@ describe("a Project that uploaded before mappings existed", () => {
       [longName, "Thing"],
     ] as const) {
       await ctx.owner.sql.query(
-        `insert into inventory_rows (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer, environment, exposure, usable)
-         values ($1, $2, $3, $4, 't', $5, $6, '1.2.3', 'OS', 'Production', 'Internal', true)`,
+        `insert into inventory_rows (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
+         values ($1, $2, $3, $4, 't', $5, $6, '1.2.3', 'OS', 'Production', 'Internal', true, 'import', 'seed.xlsx', 'seed-user')`,
         [org.id, legacy, system, lineNo, vendor, product],
       );
       lineNo += 1;

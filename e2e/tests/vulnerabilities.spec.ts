@@ -73,8 +73,8 @@ async function seed() {
   for (const [vendor, product, version, cpe] of products) {
     await pool.query(
       `insert into inventory_rows
-         (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer, environment, exposure, usable)
-       values ($1, $2, $3, $4, 'ทีม A', $5, $6, $7, 'Middleware', 'Production', 'Internal', true)`,
+         (tenant_id, project_id, system_id, line_no, owner, vendor, product, version, layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
+       values ($1, $2, $3, $4, 'ทีม A', $5, $6, $7, 'Middleware', 'Production', 'Internal', true, 'import', 'seed.xlsx', 'seed-user')`,
       [org, projectId, systemId, line, vendor, product, version],
     );
     line += 1;

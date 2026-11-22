@@ -108,6 +108,103 @@ export const inventoryRejectedRowsSchema = z.object({
 });
 export type InventoryRejectedRows = z.infer<typeof inventoryRejectedRowsSchema>;
 
+// F-022 S7.1: every row of a Project, read with filters and edited one row at a time.
+export const INVENTORY_ROWS_PAGE_SIZE = 25;
+// A body field is only bounded here; the row rules (Q-01, Q-02) answer per column.
+const ROW_INPUT_MAX_LENGTH = 1000;
+
+export const inventoryRowStatusSchema = z.enum([
+  "all",
+  "rejected",
+  "duplicate",
+]);
+export type InventoryRowStatus = z.infer<typeof inventoryRowStatusSchema>;
+
+export const inventoryRowsQuerySchema = z.object({
+  system: z.uuid().optional(),
+  layer: z.enum(INVENTORY_LAYERS).optional(),
+  status: inventoryRowStatusSchema.default("all"),
+  // Matches part of the Vendor or the Product, ignoring case.
+  q: z.string().trim().max(INVENTORY_FIELD_MAX_LENGTH).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+});
+export type InventoryRowsQuery = Partial<
+  z.infer<typeof inventoryRowsQuerySchema>
+>;
+
+export const inventoryRowSourceSchema = z.object({
+  kind: z.enum(["import", "manual"]),
+  // Set when kind is "import".
+  fileName: z.string().nullable(),
+  // Null when the person's account no longer exists.
+  changedBy: z.string().nullable(),
+  changedAt: timestamp,
+});
+export type InventoryRowSource = z.infer<typeof inventoryRowSourceSchema>;
+
+export const inventoryRowSchema = z.object({
+  id: z.uuid(),
+  systemId: z.uuid(),
+  systemName: z.string(),
+  owner: z.string(),
+  vendor: z.string(),
+  product: z.string(),
+  version: z.string(),
+  layer: z.string(),
+  environment: z.string(),
+  exposure: z.string(),
+  usable: z.boolean(),
+  issues: z.array(inventoryIssueSchema),
+  // Another row of the same System has the same key (an upload before F-022 kept both).
+  duplicate: z.boolean(),
+  // The token a save or delete names, so a row changed meanwhile is never overwritten.
+  revision: z.number().int().min(1),
+  source: inventoryRowSourceSchema,
+});
+export type InventoryRowItem = z.infer<typeof inventoryRowSchema>;
+
+export const inventoryRowListSchema = z.object({
+  rows: z.array(inventoryRowSchema),
+  // Rows matching the filters, over all pages.
+  total: z.number().int().nonnegative(),
+  // The page returned; a request past the last page gets the last one.
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+});
+export type InventoryRowList = z.infer<typeof inventoryRowListSchema>;
+
+const rowField = z.string().max(ROW_INPUT_MAX_LENGTH);
+export const inventoryRowInputSchema = z.object({
+  owner: rowField,
+  vendor: rowField,
+  product: rowField,
+  version: rowField,
+  layer: rowField,
+  environment: rowField,
+  exposure: rowField,
+});
+export type InventoryRowInput = z.infer<typeof inventoryRowInputSchema>;
+
+export const inventoryRowCreateSchema = inventoryRowInputSchema.extend({
+  systemId: z.uuid(),
+});
+export type InventoryRowCreate = z.infer<typeof inventoryRowCreateSchema>;
+
+const revision = z.number().int().min(1);
+export const inventoryRowUpdateSchema = inventoryRowInputSchema.extend({
+  revision,
+});
+export type InventoryRowUpdate = z.infer<typeof inventoryRowUpdateSchema>;
+
+export const inventoryRowDeleteQuerySchema = z.object({
+  revision: z.coerce.number().int().min(1),
+});
+
+// `details` of INVENTORY_ROW_INVALID: the same codes an upload keeps per row.
+export const inventoryRowInvalidDetailsSchema = z.object({
+  issues: z.array(inventoryIssueSchema).min(1),
+});
+
 const LIST_VALUES: Partial<Record<InventoryColumn, readonly string[]>> = {
   Layer: INVENTORY_LAYERS,
   Environment: INVENTORY_ENVIRONMENTS,

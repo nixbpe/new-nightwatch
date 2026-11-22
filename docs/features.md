@@ -71,6 +71,8 @@
 
 [API](../apps/api/src/inventory/), [parser](../apps/api/src/inventory/file.ts), [กฎรายแถว](../apps/api/src/inventory/rows.ts), [สัญญา](../packages/api-contract/src/inventory.ts), [Web](../apps/web/src/pages/inventory/), [migration](../packages/db/migrations/0030_project_inventory.sql), [browser test](../e2e/tests/inventory.spec.ts).
 
+แก้แถวในระบบ (E-005 F-022 S7.1): [list, เพิ่ม, แก้, ลบรายแถว](../apps/api/src/inventory/row-edit.ts), [ตารางแถวและตัวกรองใน URL](../apps/web/src/pages/inventory/InventoryRowsSection.tsx), [dialog เพิ่มและแก้](../apps/web/src/pages/inventory/RowDialog.tsx), [tooltip และปุ่ม icon](../apps/web/src/components/ui/icon-button.tsx), [ที่มาของแถว, revision และ key ของแถว](../packages/db/migrations/0038_inventory_row_editing.sql), [integration test](../apps/api/src/inventory/row-edit.db.test.ts).
+
 ## ยืนยัน CPE/purl ของ inventory (E-005 F-018)
 
 [API mapping](../apps/api/src/inventory/mappings.ts), [routes](../apps/api/src/inventory/mapping-routes.ts), [ค้น NVD CPE dictionary](../apps/api/src/inventory/cpe.ts), [คำสั่ง operator ของตารางกลาง](../apps/api/src/operator/catalog-product-mapping.ts), [สัญญา](../packages/api-contract/src/inventory-mapping.ts), [Web](../apps/web/src/pages/inventory/MappingQueuePage.tsx), [migration](../packages/db/migrations/0031_identifier_mappings.sql), [browser test](../e2e/tests/inventory-mappings.spec.ts).

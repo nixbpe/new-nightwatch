@@ -28,6 +28,7 @@ import {
 import { usePreferences } from "../../lib/preferences";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import templateUrl from "../../../../../docs/templates/inventory-template.xlsx?url";
+import { InventoryRowsSection } from "./InventoryRowsSection";
 import {
   formatUploadedAt,
   NO_SYSTEM_NAME,
@@ -95,6 +96,11 @@ function UploadCard({
         inventoryKeys.summary(scope.organizationId, scope.projectId),
         next,
       );
+      // An upload replaces the rows of its Systems with new ones, so the table shows dead rows
+      // until it reloads.
+      void queryClient.invalidateQueries({
+        queryKey: inventoryKeys.allRows(scope.organizationId, scope.projectId),
+      });
       setNotice(
         `นำเข้าไฟล์ ${file.name} แล้ว: ${String(next.totalRows)} แถว ใช้งานได้ ${String(next.usableRows)} แถว`,
       );
@@ -268,7 +274,11 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
           <Link
             data-testid={`inventory-rejected-link-${system.id}`}
             className="text-[13px] text-primary underline-offset-4 hover:underline"
-            to={`/organizations/${scope.organizationId}/projects/${scope.projectId}/inventory/systems/${system.id}`}
+            to={{
+              pathname: `/organizations/${scope.organizationId}/projects/${scope.projectId}/inventory`,
+              search: `?system=${system.id}&status=rejected`,
+            }}
+            state={{ focusRows: true }}
           >
             ดูแถวที่ไม่ผ่าน
           </Link>
@@ -387,7 +397,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             <SectionHeader
               id="inventory-quality-heading"
               title="คุณภาพข้อมูลราย System"
-              meta={`ผ่านเมื่อแถวที่ใช้งานได้ ≥ ${String(QUALITY_THRESHOLD)}% ของ upload ล่าสุด`}
+              meta={`ผ่านเมื่อแถวที่ใช้งานได้ ≥ ${String(QUALITY_THRESHOLD)}% ของแถวปัจจุบัน`}
             />
             <DataTable
               ariaLabel="คุณภาพข้อมูลราย System"
@@ -398,6 +408,12 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
               empty="ยังไม่มี inventory ใน Project นี้ upload ไฟล์ตาม template เพื่อเริ่มต้น"
             />
           </section>
+          {query.data.systemCount === 0 ? null : (
+            <InventoryRowsSection
+              summary={query.data}
+              scope={{ organizationId, projectId }}
+            />
+          )}
         </>
       )}
     </Page>
