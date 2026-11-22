@@ -21,6 +21,7 @@ const tenantB = randomUUID();
 const projectA = randomUUID();
 const projectA2 = randomUUID();
 const projectB = randomUUID();
+const projectEdit = randomUUID();
 const TABLES = ["inventory_systems", "inventory_rows"] as const;
 
 beforeAll(async () => {
@@ -43,6 +44,7 @@ beforeAll(async () => {
     [projectA, tenantA, "inv-a"],
     [projectA2, tenantA, "inv-a2"],
     [projectB, tenantB, "inv-b"],
+    [projectEdit, tenantA, "inv-edit"],
   ] as const) {
     await owner.query(
       "insert into projects (id, tenant_id, name, slug) values ($1, $2, $3, $4)",
@@ -86,9 +88,9 @@ function insertRow(
   return client.query(
     `insert into inventory_rows
        (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
-        layer, environment, exposure, usable, issues)
+        layer, environment, exposure, usable, issues, source_kind, source_file_name, changed_by)
      values ($1, $2, $3, $4, 'ทีม A', 'Canonical', 'Ubuntu', '22.04.4',
-        'OS', 'Production', 'Internal', $5, $6::jsonb)`,
+        'OS', 'Production', 'Internal', $5, $6::jsonb, 'import', 'inventory.xlsx', 'user-1')`,
     [
       scope.tenant,
       scope.project,
@@ -173,6 +175,30 @@ describe("inventory tenant isolation", () => {
     ).rejects.toMatchObject({ code: "23503" });
   });
 
+  it("cannot update or delete the other tenant's rows", async () => {
+    const updated = await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        "update inventory_rows set owner = 'hijacked', revision = revision + 1 where tenant_id = $1",
+        [tenantB],
+      ),
+    );
+    expect(updated.rowCount).toBe(0);
+    const deleted = await withTenantContextRaw(database, tenantA, (client) =>
+      client.query("delete from inventory_rows where tenant_id = $1", [
+        tenantB,
+      ]),
+    );
+    expect(deleted.rowCount).toBe(0);
+    expect(await ownerCount("inventory_rows", tenantB)).toBe(1);
+    const counters = await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        "update inventory_systems set total_rows = 0, usable_rows = 0 where tenant_id = $1",
+        [tenantB],
+      ),
+    );
+    expect(counters.rowCount).toBe(0);
+  });
+
   it("cannot delete the other tenant's System", async () => {
     const deleted = await withTenantContextRaw(database, tenantA, (client) =>
       client.query("delete from inventory_systems where tenant_id = $1", [
@@ -224,7 +250,7 @@ describe("inventory constraints", () => {
   });
 
   it("removes rows with their System and everything with the Project", async () => {
-    const scope = { tenant: tenantA, project: projectA2 };
+    const scope = { tenant: tenantA, project: projectEdit };
     const system = await withTenantContextRaw(
       database,
       tenantA,
@@ -297,7 +323,7 @@ describe("inventory catalog", () => {
     }
   });
 
-  it("grants the runtime role only what a replacement needs", async () => {
+  it("grants the runtime role only what a replacement and a row edit need", async () => {
     const granted = async (table: string) =>
       (
         await owner.query<{ privilege: string }>(
@@ -311,16 +337,97 @@ describe("inventory catalog", () => {
       "insert",
       "delete",
     ]);
-    expect(await granted("inventory_rows")).toEqual(["select", "insert"]);
+    expect(await granted("inventory_rows")).toEqual([
+      "select",
+      "insert",
+      "delete",
+    ]);
+    const updatable = async (table: string) =>
+      (
+        await owner.query<{ column_name: string }>(
+          `select column_name from information_schema.column_privileges
+           where grantee = 'nightwatch' and table_name = $1 and privilege_type = 'UPDATE'
+           order by column_name`,
+          [table],
+        )
+      ).rows.map((row) => row.column_name);
+    // Tenant, Project, System, line and the generated key are never rewritten.
+    expect(await updatable("inventory_systems")).toEqual([
+      "total_rows",
+      "usable_rows",
+    ]);
+    expect(await updatable("inventory_rows")).toEqual([
+      "changed_at",
+      "changed_by",
+      "environment",
+      "exposure",
+      "issues",
+      "layer",
+      "owner",
+      "product",
+      "revision",
+      "source_file_name",
+      "source_kind",
+      "usable",
+      "vendor",
+      "version",
+    ]);
   });
 
-  it("records the inventory upload as an audit action", async () => {
+  it("records the inventory actions as audit actions", async () => {
     const result = await owner.query<{ definition: string }>(
       `select pg_get_constraintdef(oid) as definition from pg_constraint
        where conname = 'audit_events_action_check'`,
     );
-    expect(result.rows[0]?.definition).toContain(
+    for (const action of [
       "organization.project.inventory.upload",
-    );
+      "organization.project.inventory.row.create",
+      "organization.project.inventory.row.update",
+      "organization.project.inventory.row.delete",
+    ]) {
+      expect(result.rows[0]?.definition).toContain(action);
+    }
+  });
+
+  it("derives one case- and space-insensitive key per row and keeps duplicate keys of earlier uploads", async () => {
+    const scope = { tenant: tenantA, project: projectEdit };
+    await withTenantContextRaw(database, scope.tenant, async (client) => {
+      const system = await insertSystem(client, scope, "Keys");
+      await insertRow(client, scope, system, {
+        usable: true,
+        issues: [],
+        line: 2,
+      });
+      await client.query(
+        `insert into inventory_rows
+           (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
+            layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
+         values ($1, $2, $3, 3, 'ทีม B', ' CANONICAL ', 'ubuntu', '22.04.4',
+            'OS', 'Production', 'Internal', true, 'manual', null, 'user-2')`,
+        [scope.tenant, scope.project, system],
+      );
+      const keys = await client.query<{ row_key: string }>(
+        "select row_key from inventory_rows where system_id = $1",
+        [system],
+      );
+      expect(new Set(keys.rows.map((row) => row.row_key)).size).toBe(1);
+    });
+  });
+
+  it("rejects a row whose source and file name disagree", async () => {
+    const scope = { tenant: tenantA, project: projectEdit };
+    await expect(
+      withTenantContextRaw(database, scope.tenant, async (client) => {
+        const system = await insertSystem(client, scope, "Bad source");
+        await client.query(
+          `insert into inventory_rows
+             (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
+              layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
+           values ($1, $2, $3, 2, 'x', 'v', 'p', '1.2.3', 'OS', 'Production', 'Internal',
+              true, 'manual', 'file.xlsx', 'user-2')`,
+          [scope.tenant, scope.project, system],
+        );
+      }),
+    ).rejects.toThrow(/inventory_rows_source/);
   });
 });

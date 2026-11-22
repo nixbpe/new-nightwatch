@@ -4,8 +4,10 @@ import {
   fetchInventory,
   fetchMappings,
   fetchRejectedRows,
+  fetchRows,
   inventoryKeys,
 } from "../../api/inventory";
+import { readFilters, toQuery } from "../../api/inventoryRowFilters";
 import { resolveQueryClientForIdentity } from "../../queryClient";
 import { gateVerifiedSession, prefetchMeContext } from "./session";
 
@@ -39,13 +41,23 @@ async function prefetch(
 }
 
 export function inventoryLoader(args: LoaderFunctionArgs) {
+  // The table's page and filters are in the address, so the loader asks for the same rows.
+  const query = toQuery(readFilters(new URL(args.request.url).searchParams));
   return prefetch(args, (client, { organizationId, projectId }) =>
-    client.query({
-      queryKey: inventoryKeys.summary(organizationId, projectId),
-      queryFn: ({ signal }) =>
-        fetchInventory(organizationId, projectId, signal),
-      staleTime: 0,
-    }),
+    Promise.all([
+      client.query({
+        queryKey: inventoryKeys.summary(organizationId, projectId),
+        queryFn: ({ signal }) =>
+          fetchInventory(organizationId, projectId, signal),
+        staleTime: 0,
+      }),
+      client.query({
+        queryKey: inventoryKeys.rows(organizationId, projectId, query),
+        queryFn: ({ signal }) =>
+          fetchRows(organizationId, projectId, query, signal),
+        staleTime: 0,
+      }),
+    ]),
   );
 }
 

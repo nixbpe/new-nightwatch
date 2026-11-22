@@ -6,7 +6,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import { fetchInventory, uploadInventory } from "../../lib/api/inventory";
+import {
+  fetchInventory,
+  fetchRows,
+  uploadInventory,
+} from "../../lib/api/inventory";
 import { InventoryPage } from "./InventoryPage";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -23,11 +27,13 @@ vi.mock("../../components/shell/useCurrentProject", () => ({
 vi.mock("../../lib/api/inventory", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchInventory: vi.fn(),
+  fetchRows: vi.fn(),
   uploadInventory: vi.fn(),
 }));
 
 const fetchMock = vi.mocked(fetchInventory);
 const uploadMock = vi.mocked(uploadInventory);
+const rowsMock = vi.mocked(fetchRows);
 
 function summary(overrides: Partial<InventorySummary> = {}): InventorySummary {
   return {
@@ -91,6 +97,8 @@ function renderPage() {
 beforeEach(() => {
   fetchMock.mockReset();
   uploadMock.mockReset();
+  rowsMock.mockReset();
+  rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
 });
 
 describe("InventoryPage", () => {
@@ -119,8 +127,38 @@ describe("InventoryPage", () => {
       within(hr).getByTestId(`inventory-rejected-link-${HR}`),
     ).toHaveAttribute(
       "href",
-      `/organizations/${ORG}/projects/${PROJECT}/inventory/systems/${HR}`,
+      `/organizations/${ORG}/projects/${PROJECT}/inventory?system=${HR}&status=rejected`,
     );
+  });
+
+  it("opens the table of rows filtered by that System and the failed status from the link", async () => {
+    fetchMock.mockResolvedValue(summary());
+    const user = userEvent.setup();
+    const router = renderPage();
+
+    await user.click(
+      await screen.findByTestId(`inventory-rejected-link-${HR}`),
+    );
+
+    await waitFor(() => {
+      expect(rowsMock.mock.calls.at(-1)?.[2]).toMatchObject({
+        system: HR,
+        status: "rejected",
+      });
+    });
+    expect(router.state.location.search).toBe(`?system=${HR}&status=rejected`);
+    expect(await screen.findByTestId("inventory-rows-heading")).toHaveFocus();
+  });
+
+  it("keeps the rows table out of a Project with no System yet", async () => {
+    fetchMock.mockResolvedValue(
+      summary({ systems: [], systemCount: 0, totalRows: 0, usableRows: 0 }),
+    );
+    renderPage();
+
+    await screen.findByText(/ยังไม่มี inventory ใน Project นี้/);
+    expect(screen.queryByTestId("inventory-rows")).toBeNull();
+    expect(rowsMock).not.toHaveBeenCalled();
   });
 
   it("links the pending CPE/purl count to the review queue", async () => {
@@ -167,6 +205,67 @@ describe("InventoryPage", () => {
       "นำเข้าไฟล์ inventory-q4.csv แล้ว: 40 แถว ใช้งานได้ 36 แถว",
     );
     expect(screen.getByTestId("inventory-tile-total")).toHaveTextContent("40");
+  });
+
+  it("reloads the rows table after an upload replaced the rows it was showing", async () => {
+    const before = {
+      id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+      systemId: BILLING,
+      systemName: "Billing API",
+      owner: "ทีม Payment",
+      vendor: "Canonical",
+      product: "Ubuntu",
+      version: "22.04.4",
+      layer: "OS",
+      environment: "Production",
+      exposure: "Internal",
+      usable: true,
+      issues: [],
+      duplicate: false,
+      revision: 1,
+      source: {
+        kind: "import" as const,
+        fileName: "old.csv",
+        changedBy: "สมชาย",
+        changedAt: "2026-11-20T09:42:00.000Z",
+      },
+    };
+    const after = {
+      ...before,
+      id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc9",
+      source: { ...before.source, fileName: "new.csv" },
+    };
+    fetchMock.mockResolvedValue(summary());
+    rowsMock.mockResolvedValueOnce({
+      rows: [before],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+    });
+    rowsMock.mockResolvedValue({
+      rows: [after],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+    });
+    uploadMock.mockResolvedValue(summary());
+    const user = userEvent.setup();
+    renderPage();
+    expect(
+      await screen.findByTestId(`inventory-row-source-${before.id}`),
+    ).toHaveTextContent("old.csv");
+
+    await user.upload(
+      await screen.findByTestId("inventory-file-input"),
+      new File(["x"], "new.csv"),
+    );
+
+    expect(
+      await screen.findByTestId(`inventory-row-source-${after.id}`),
+    ).toHaveTextContent("new.csv");
+    expect(
+      screen.queryByTestId(`inventory-row-source-${before.id}`),
+    ).toBeNull();
   });
 
   it("shows the reason a file was rejected and preserves earlier inventory totals", async () => {

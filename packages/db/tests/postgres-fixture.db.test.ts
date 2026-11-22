@@ -254,6 +254,7 @@ describe("owned PostgreSQL fixture", () => {
         "0035_notification_email_jobs.sql",
         "0036_vulnerability_triage.sql",
         "0037_email_job_maintenance.sql",
+        "0038_inventory_row_editing.sql",
       ];
       for (const stage of stages) {
         const started = performance.now();
@@ -397,6 +398,48 @@ describe("owned PostgreSQL fixture", () => {
               )
             ).rows,
           ).toEqual([{ systems: "inventory_systems", rows: "inventory_rows" }]);
+          // Rows uploaded under 0030 must show their upload as the source after 0038.
+          const legacyProject = randomUUID();
+          await fixture.owner.sql.query(
+            "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'legacy inventory', $3)",
+            [legacyProject, id, legacyProject],
+          );
+          const system = await fixture.owner.sql.query<{ id: string }>(
+            `insert into inventory_systems
+               (tenant_id, project_id, name_key, name, file_name, uploaded_by, uploaded_at, total_rows, usable_rows)
+             values ($1, $2, 'billing', 'Billing', 'legacy-q3.xlsx', 'legacy-uploader',
+               '2026-01-02T03:04:05Z', 2, 2) returning id`,
+            [id, legacyProject],
+          );
+          for (const line of [2, 3]) {
+            await fixture.owner.sql.query(
+              `insert into inventory_rows
+                 (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
+                  layer, environment, exposure, usable)
+               values ($1, $2, $3, $4, 'ทีม A', 'Canonical', 'Ubuntu', '22.04.4',
+                  'OS', 'Production', 'Internal', true)`,
+              [id, legacyProject, system.rows[0]?.id, line],
+            );
+          }
+        }
+        if (stage === "0038_inventory_row_editing.sql") {
+          expect(
+            (
+              await fixture.owner.sql.query(
+                `select source_kind, source_file_name, changed_by, extract(epoch from changed_at)::float8 as changed_epoch, revision
+                 from inventory_rows where tenant_id = $1 order by line_no`,
+                [id],
+              )
+            ).rows,
+          ).toEqual(
+            [2, 3].map(() => ({
+              source_kind: "import",
+              source_file_name: "legacy-q3.xlsx",
+              changed_by: "legacy-uploader",
+              changed_epoch: Date.parse("2026-01-02T03:04:05Z") / 1000,
+              revision: 1,
+            })),
+          );
         }
         if (stage === "0028_aws_connections.sql") {
           expect(

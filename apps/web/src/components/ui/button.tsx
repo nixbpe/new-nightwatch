@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 // Offset focus outline stays visible against the solid primary fill.
-// `sm` is for table row actions and filter chips (LAY-06).
+// `sm` and `icon-sm` are for table row actions and filter chips (LAY-06).
 // `destructive` is for confirmation dialogs (COL-05); `destructive-outline` is for inline confirms.
 // Disabled filled variants go neutral so they never read as washed-out actions.
 // `wrap` lets long Thai labels break without an ancestor override.
@@ -36,6 +36,7 @@ const buttonVariants = cva(
         quiet: "h-8 px-3 text-[13px]",
         lg: "h-11 px-6",
         icon: "h-10 w-10",
+        "icon-sm": "h-8 w-8",
       },
       wrap: {
         true: "h-auto min-w-0 whitespace-normal py-2",

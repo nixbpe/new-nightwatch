@@ -4,8 +4,15 @@ import {
   inventoryMappingSchema,
   inventoryMappingSuggestionSchema,
   inventoryRejectedRowsSchema,
+  inventoryRowInvalidDetailsSchema,
+  inventoryRowListSchema,
+  inventoryRowSchema,
   inventorySummarySchema,
+  type InventoryIssue,
   type InventoryMappingUpdate,
+  type InventoryRowCreate,
+  type InventoryRowInput,
+  type InventoryRowsQuery,
 } from "@nightwatch/api-contract";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
@@ -20,6 +27,8 @@ import {
 const base =
   "/api/organizations/{organizationId}/projects/{projectId}/inventory";
 const rejected = `${base}/systems/{systemId}/rejected-rows` as const;
+const rows = `${base}/rows` as const;
+const row = `${rows}/{rowId}` as const;
 const mappings = `${base}/mappings` as const;
 const mapping = `${mappings}/{mappingId}` as const;
 
@@ -29,6 +38,13 @@ export const inventoryKeys = {
     [...TENANT_QUERY_PREFIX, "inventory", organizationId, projectId] as const,
   summary: (organizationId: string, projectId: string) =>
     [...inventoryKeys.all(organizationId, projectId), "summary"] as const,
+  allRows: (organizationId: string, projectId: string) =>
+    [...inventoryKeys.all(organizationId, projectId), "rows"] as const,
+  rows: (
+    organizationId: string,
+    projectId: string,
+    query: InventoryRowsQuery,
+  ) => [...inventoryKeys.allRows(organizationId, projectId), query] as const,
   mappings: (organizationId: string, projectId: string) =>
     [...inventoryKeys.all(organizationId, projectId), "mappings"] as const,
   rejected: (organizationId: string, projectId: string, systemId: string) =>
@@ -60,6 +76,57 @@ export function uploadInventory(
     params: { organizationId, projectId },
     file,
     signal,
+  });
+}
+
+export function fetchRows(
+  organizationId: string,
+  projectId: string,
+  query: InventoryRowsQuery,
+  signal?: AbortSignal,
+) {
+  return request(rows, inventoryRowListSchema, {
+    params: { organizationId, projectId },
+    query,
+    signal,
+  });
+}
+
+export function createRow(
+  organizationId: string,
+  projectId: string,
+  body: InventoryRowCreate,
+) {
+  return request(rows, inventoryRowSchema, {
+    method: "POST",
+    params: { organizationId, projectId },
+    body,
+  });
+}
+
+export function updateRow(
+  organizationId: string,
+  projectId: string,
+  rowId: string,
+  body: InventoryRowInput & { revision: number },
+) {
+  return request(row, inventoryRowSchema, {
+    method: "PUT",
+    params: { organizationId, projectId, rowId },
+    body,
+  });
+}
+
+export function deleteRow(
+  organizationId: string,
+  projectId: string,
+  rowId: string,
+  revision: number,
+) {
+  return request(row, undefined, {
+    method: "DELETE",
+    params: { organizationId, projectId, rowId },
+    query: { revision },
   });
 }
 
@@ -145,6 +212,9 @@ export function inventoryErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (
       error.code === "INVENTORY_FILE_REJECTED" ||
+      error.code === "INVENTORY_ROW_INVALID" ||
+      error.code === "INVENTORY_ROW_DUPLICATE" ||
+      error.code === "INVENTORY_ROW_STALE" ||
       error.code === "CPE_DICTIONARY_UNAVAILABLE" ||
       error.code === "MAPPING_IDENTIFIER_REQUIRED"
     ) {
@@ -156,6 +226,15 @@ export function inventoryErrorMessage(error: unknown): string {
     if (error.status === 503) return "บริการ inventory ยังไม่พร้อม";
   }
   return "ทำรายการไม่สำเร็จ โปรดลองใหม่";
+}
+
+/** The columns a save was refused for, with the code an upload would have given them. */
+export function inventoryRowIssues(error: unknown): InventoryIssue[] {
+  if (!(error instanceof ApiError) || error.code !== "INVENTORY_ROW_INVALID") {
+    return [];
+  }
+  const details = inventoryRowInvalidDetailsSchema.safeParse(error.details);
+  return details.success ? details.data.issues : [];
 }
 
 export function isInventoryAccessDenied(error: unknown): boolean {

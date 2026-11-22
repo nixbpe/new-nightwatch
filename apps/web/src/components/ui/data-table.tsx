@@ -28,6 +28,7 @@ export function DataTable<Row>({
   rowActions,
   empty,
   className,
+  dense = false,
   "data-testid": testId,
 }: {
   "data-testid"?: string;
@@ -42,7 +43,10 @@ export function DataTable<Row>({
   rowActions?: (row: Row) => ReactNode;
   empty?: ReactNode;
   className?: string;
+  /** Narrower cell padding for a table with many columns. */
+  dense?: boolean;
 }) {
+  const padding = dense ? "px-2" : "px-4";
   const columnCount = columns.length + (rowActions === undefined ? 0 : 1);
   return (
     <div
@@ -72,7 +76,8 @@ export function DataTable<Row>({
                     : { width: column.width }
                 }
                 className={cn(
-                  "h-11 border-b border-foreground/10 px-4 font-medium whitespace-nowrap",
+                  "h-11 border-b border-foreground/10 font-medium whitespace-nowrap",
+                  padding,
                   column.align === "end" && "text-end",
                 )}
               >
@@ -82,7 +87,7 @@ export function DataTable<Row>({
             {rowActions === undefined ? null : (
               <th
                 scope="col"
-                className="h-11 border-b border-foreground/10 px-4"
+                className={cn("h-11 border-b border-foreground/10", padding)}
               />
             )}
           </tr>
@@ -109,7 +114,8 @@ export function DataTable<Row>({
                   data-testid={cellTestId?.(column)}
                   key={column.key}
                   className={cn(
-                    "h-11 px-4 align-middle",
+                    "h-11 align-middle",
+                    padding,
                     column.mono && "font-mono text-[13px]",
                     column.align === "end" && "text-end",
                   )}
@@ -118,7 +124,7 @@ export function DataTable<Row>({
                 </td>
               ))}
               {rowActions === undefined ? null : (
-                <td className="h-11 px-4 text-end align-middle">
+                <td className={cn("h-11 text-end align-middle", padding)}>
                   {rowActions(row)}
                 </td>
               )}

@@ -3,6 +3,12 @@ import {
   INVENTORY_MAX_FILE_BYTES,
   errorResponseSchema,
   inventoryRejectedRowsSchema,
+  inventoryRowCreateSchema,
+  inventoryRowDeleteQuerySchema,
+  inventoryRowListSchema,
+  inventoryRowSchema,
+  inventoryRowsQuerySchema,
+  inventoryRowUpdateSchema,
   inventorySummarySchema,
 } from "@nightwatch/api-contract";
 import { AppError, type Logger } from "@nightwatch/shared";
@@ -11,6 +17,7 @@ import { bodyLimit } from "hono/body-limit";
 import { auditDenials } from "../audit/denials";
 import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
+import { createRow, deleteRow, listRows, updateRow } from "./row-edit";
 import {
   authorizeUpload,
   exportRejectedRows,
@@ -33,8 +40,9 @@ const params = z.object({
   projectId: z.string(),
 });
 const systemParams = params.extend({ systemId: z.uuid() });
+const rowParams = params.extend({ rowId: z.uuid() });
 const errors = Object.fromEntries(
-  [400, 401, 403, 404, 413, 429, 503].map((status) => [
+  [400, 401, 403, 404, 409, 413, 429, 503].map((status) => [
     status,
     {
       description: "Request rejected",
@@ -190,6 +198,126 @@ export function registerInventoryRoutes(
         );
       }
       return c.json(result, 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: `${base}/rows`,
+      tags,
+      request: { params, query: inventoryRowsQuerySchema },
+      responses: {
+        ...errors,
+        200: {
+          description: "One page of the Project's rows, filtered",
+          content: { "application/json": { schema: inventoryRowListSchema } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await run(
+          c.req.raw.headers,
+          c.req.valid("param"),
+          c.get("requestId"),
+          "inventory.read",
+          (input) => listRows(deps, input, c.req.valid("query")),
+        ),
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: `${base}/rows`,
+      tags,
+      request: {
+        params,
+        body: {
+          required: true,
+          content: { "application/json": { schema: inventoryRowCreateSchema } },
+        },
+      },
+      responses: {
+        ...errors,
+        201: {
+          description: "The row that was added",
+          content: { "application/json": { schema: inventoryRowSchema } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await run(
+          c.req.raw.headers,
+          c.req.valid("param"),
+          c.get("requestId"),
+          "inventory.write",
+          (input) => createRow(deps, input, c.req.valid("json")),
+        ),
+        201,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: `${base}/rows/{rowId}`,
+      tags,
+      request: {
+        params: rowParams,
+        body: {
+          required: true,
+          content: { "application/json": { schema: inventoryRowUpdateSchema } },
+        },
+      },
+      responses: {
+        ...errors,
+        200: {
+          description: "The row after the change",
+          content: { "application/json": { schema: inventoryRowSchema } },
+        },
+      },
+    }),
+    async (c) => {
+      const { rowId, ...ids } = c.req.valid("param");
+      return c.json(
+        await run(
+          c.req.raw.headers,
+          ids,
+          c.get("requestId"),
+          "inventory.write",
+          (input) => updateRow(deps, { ...input, rowId }, c.req.valid("json")),
+        ),
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: `${base}/rows/{rowId}`,
+      tags,
+      request: { params: rowParams, query: inventoryRowDeleteQuerySchema },
+      responses: {
+        ...errors,
+        204: { description: "The row was deleted" },
+      },
+    }),
+    async (c) => {
+      const { rowId, ...ids } = c.req.valid("param");
+      await run(
+        c.req.raw.headers,
+        ids,
+        c.get("requestId"),
+        "inventory.write",
+        (input) =>
+          deleteRow(deps, { ...input, rowId }, c.req.valid("query").revision),
+      );
+      return c.body(null, 204);
     },
   );
 

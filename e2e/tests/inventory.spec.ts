@@ -50,6 +50,14 @@ async function signIn(page: Page, person: Person) {
   );
 }
 
+// A dialog fades in; a screenshot taken meanwhile shows it half transparent.
+const settled = (page: Page) =>
+  page.evaluate(() =>
+    Promise.all(
+      document.getAnimations().map((animation) => animation.finished),
+    ),
+  );
+
 const csvFile = (name: string, text: string) => ({
   name,
   mimeType: "text/csv",
@@ -116,6 +124,12 @@ for (const theme of ["light", "dark"] as const) {
         "ผ่าน",
       );
       await shot(page, `inventory-${theme}`);
+      await expect(page.getByTestId("inventory-rows-table")).toBeVisible();
+      await page.getByTestId("inventory-rows").scrollIntoViewIfNeeded();
+      await shot(page, `inventory-rows-${theme}`);
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
 
       const rejectedLink = hr.getByRole("link", { name: "ดูแถวที่ไม่ผ่าน" });
       await rejectedLink.focus();
@@ -123,6 +137,21 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Shift+Tab");
       await expect(rejectedLink).toBeFocused();
       await page.keyboard.press("Enter");
+      // The link opens the table of rows already filtered by that System and the failed status.
+      await expect(page).toHaveURL(
+        /inventory\?system=[0-9a-f-]+&status=rejected$/,
+      );
+      await expect(page.getByTestId("inventory-rows-heading")).toBeFocused();
+      const table = page.getByTestId("inventory-rows-table");
+      await expect(table.locator("tbody tr")).toHaveCount(3);
+      await expect(table).toContainText("ไม่ถึง patch level");
+      await expect(table).toContainText("ต้องเป็นเลขเวอร์ชัน");
+      await expect(table).toContainText("ค่าไม่อยู่ในรายการ");
+      await expect(table).toContainText("import จาก inventory-q4.csv");
+      await shot(page, `inventory-rows-filtered-${theme}`);
+
+      // The System name opens the System page, where the Owner download stays.
+      await table.getByRole("link", { name: "HR Portal" }).first().click();
       await expect(page.getByTestId("inventory-rejected-status")).toContainText(
         "ใช้งานได้ 1 จาก 4 แถว (25%, ต่ำกว่า 95%)",
       );
@@ -143,6 +172,153 @@ for (const theme of ["light", "dark"] as const) {
       await expect(downloadButton).toBeFocused();
       await page.keyboard.press("Enter");
       expect((await download).suggestedFilename()).toBe("rejected-rows.xlsx");
+    });
+
+    test("owner adds, edits and deletes a row and a stale save is refused", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.goto(inventoryUrl());
+      const table = page.getByTestId("inventory-rows-table");
+      await expect(table.locator("tbody tr")).toHaveCount(6);
+
+      // A tooltip stays open while the pointer travels onto it (WCAG 1.4.13).
+      const firstEdit = table.getByRole("button", { name: /^แก้แถว/ }).first();
+      await firstEdit.hover();
+      const bubble = page.getByTestId("tooltip");
+      await expect(bubble).toBeVisible();
+      const target = await bubble.boundingBox();
+      if (!target) throw new Error("tooltip has no box");
+      await page.mouse.move(
+        target.x + target.width / 2,
+        target.y + target.height / 2,
+        { steps: 12 },
+      );
+      await expect(bubble).toBeVisible();
+      await page.mouse.move(5, 5);
+      await expect(page.getByTestId("tooltip")).toHaveCount(0);
+
+      // Add: a failing Version shows its reason under the field and keeps what was typed.
+      await page.getByTestId("inventory-row-add").click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByTestId("inventory-row-owner")).toBeFocused();
+      await dialog
+        .getByTestId("inventory-row-system")
+        .selectOption({ label: "Billing API" });
+      await dialog.getByTestId("inventory-row-owner").fill("ทีม E2E");
+      await dialog.getByTestId("inventory-row-vendor").fill("Redis Ltd");
+      await dialog.getByTestId("inventory-row-product").fill("Redis");
+      await dialog.getByTestId("inventory-row-version").fill("7.2");
+      await dialog
+        .getByTestId("inventory-row-environment")
+        .selectOption("Production");
+      await dialog
+        .getByTestId("inventory-row-exposure")
+        .selectOption("Internal");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(
+        dialog.getByTestId("inventory-row-version-error"),
+      ).toContainText("ไม่ถึง patch level");
+      await expect(
+        dialog.getByTestId("inventory-row-layer-error"),
+      ).toContainText("ว่าง");
+      await expect(dialog.getByTestId("inventory-row-owner")).toHaveValue(
+        "ทีม E2E",
+      );
+      await settled(page);
+      await shot(page, `inventory-row-dialog-${theme}`);
+      await dialog.getByTestId("inventory-row-version").fill("7.2.4");
+      await dialog
+        .getByTestId("inventory-row-layer")
+        .selectOption("Middleware");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(page.getByTestId("inventory-rows-success")).toContainText(
+        "เพิ่มแถวแล้ว",
+      );
+      await expect(table.locator("tbody tr")).toHaveCount(7);
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("7");
+      const added = table.locator("tbody tr").filter({ hasText: "Redis Ltd" });
+      await expect(added).toContainText("แก้ในระบบ");
+      await expect(added).toContainText("ใช้งานได้");
+
+      // The same key again is refused and names the row it repeats.
+      await page.getByTestId("inventory-row-add").click();
+      await dialog
+        .getByTestId("inventory-row-system")
+        .selectOption({ label: "Billing API" });
+      await dialog.getByTestId("inventory-row-owner").fill("ทีม อื่น");
+      await dialog.getByTestId("inventory-row-vendor").fill(" REDIS LTD ");
+      await dialog.getByTestId("inventory-row-product").fill("redis");
+      await dialog.getByTestId("inventory-row-version").fill("7.2.4");
+      await dialog
+        .getByTestId("inventory-row-layer")
+        .selectOption("Middleware");
+      await dialog
+        .getByTestId("inventory-row-environment")
+        .selectOption("Production");
+      await dialog
+        .getByTestId("inventory-row-exposure")
+        .selectOption("Internal");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(
+        dialog.getByTestId("inventory-row-version-error"),
+      ).toContainText("Redis Ltd Redis 7.2.4");
+      await dialog.getByTestId("inventory-row-cancel").click();
+      await expect(dialog).toHaveCount(0);
+
+      // Edit: the footer says where the row came from, and a change by someone else
+      // while the dialog is open is never overwritten.
+      const edit = page.getByRole("button", { name: "แก้แถว Redis 7.2.4" });
+      await edit.focus();
+      // Focus given by a script after mouse use is not a keyboard visit; Tab is.
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      await expect(edit).toBeFocused();
+      await expect(page.getByTestId("tooltip")).toHaveText(
+        "แก้แถว Redis 7.2.4",
+      );
+      await shot(page, `inventory-tooltip-${theme}`);
+      await page.keyboard.press("Enter");
+      await expect(dialog.getByTestId("inventory-row-source")).toContainText(
+        "แก้ในระบบ",
+      );
+      await expect(dialog.getByTestId("inventory-row-source")).toContainText(
+        "inventory-owner",
+      );
+      await settled(page);
+      await shot(page, `inventory-row-edit-dialog-${theme}`);
+      await pool.query(
+        "update inventory_rows set owner = 'ทีมของคนอื่น', revision = revision + 1 where project_id = $1 and product = 'Redis'",
+        [projectId],
+      );
+      await dialog.getByTestId("inventory-row-owner").fill("ทีมของฉัน");
+      await dialog.getByTestId("inventory-row-save").click();
+      await expect(dialog.getByTestId("inventory-row-error")).toContainText(
+        "โหลดตารางใหม่",
+      );
+      await expect(dialog.getByTestId("inventory-row-owner")).toHaveValue(
+        "ทีมของฉัน",
+      );
+      await expect(dialog.getByTestId("inventory-row-save")).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(added).toContainText("ทีมของคนอื่น");
+      await expect(edit).toBeFocused();
+
+      // Delete: the dialog names the Product and Version and the effect on CVE results.
+      await page.getByRole("button", { name: "ลบแถว Redis 7.2.4" }).click();
+      await expect(dialog).toContainText("Redis 7.2.4");
+      await expect(dialog).toContainText(
+        "ผล CVE ของ component นี้จะหายในรอบตรวจถัดไป",
+      );
+      await settled(page);
+      await shot(page, `inventory-row-delete-dialog-${theme}`);
+      await page.getByTestId("inventory-row-delete-confirm").click();
+      await expect(page.getByTestId("inventory-rows-success")).toContainText(
+        "ลบแถวแล้ว",
+      );
+      await expect(table.locator("tbody tr")).toHaveCount(6);
+      await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
     });
 
     test("a file with the wrong columns is rejected and the earlier data stays", async ({
@@ -179,4 +355,11 @@ test("a Project member reads the inventory but cannot upload", async ({
   await expect(page.getByTestId("inventory-file-input")).toHaveCount(0);
   await expect(page.getByTestId("inventory-upload-button")).toHaveCount(0);
   await expect(page.getByTestId("inventory-template-link")).toBeVisible();
+  await expect(
+    page.getByTestId("inventory-rows-table").locator("tbody tr"),
+  ).toHaveCount(6);
+  await expect(page.getByTestId("inventory-row-add")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^(แก้|ลบ)แถว/ })).toHaveCount(
+    0,
+  );
 });

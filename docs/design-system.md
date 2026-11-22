@@ -93,6 +93,9 @@ Implementation details and regression tests are located through the [feature cod
 - CMP-03 Overlays have a clear title, dismissal and return path; modals trap focus while open, restore it on close and fit the viewport.
 - CMP-04 Collapsed navigation stays keyboard-usable, and closed items are unreachable.
 - CMP-06 A designed element with no backing data yet (a mockup) renders in its real route inside a marked region (dashed strong edge): the notice "ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง", a link to its GitHub issue and an `aria-label` that names the region an example. Sample data inside is neutral and labelled and never looks like live telemetry (CMP-05): no status colors, live indicator or freshness claim.
+- CMP-07 A tooltip is a short text on Surface with Text and a hairline edge, without a shadow or a new color. It opens on hover, keyboard focus and touch, stays open while the pointer is on it, and closes on Escape (the dialog around it stays open). The control it describes keeps the same text as its `aria-label`, so the bubble is hidden from assistive technology. It is drawn outside any scrolling container.
+- CMP-08 An icon-only button (`IconButton`) carries its label as both `aria-label` and tooltip; the 32 px size (`icon-sm`) is for row and page actions (LAY-06), 40 px beside form controls. An explanation moved off the page is an info icon (`InfoTip`) whose tooltip and `aria-label` hold the text.
+- CMP-09 A table with many columns may use dense padding (`dense`, 8 px sides instead of 16 px) so its row actions stay inside the content width at 1440 px.
 
 ## Accessibility
 
