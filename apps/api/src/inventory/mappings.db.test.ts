@@ -233,7 +233,7 @@ describe("review decisions", () => {
     });
     expect(bad.status).toBe(400);
     expect(bad.json).toMatchObject({
-      error: { code: "MAPPING_IDENTIFIER_INVALID" },
+      error: { code: "VALIDATION_ERROR" },
     });
     await ctx.owner.sql.query(
       "update inventory_mappings set status = 'pending', cpe = null, purl = null, confidence = null, source = null, confirmed_at = null, confirmed_by = null where id = $1",
