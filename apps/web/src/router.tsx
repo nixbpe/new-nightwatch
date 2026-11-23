@@ -55,15 +55,17 @@ import {
   inventoryMappingsLoader,
   inventorySystemLoader,
 } from "./lib/auth/loaders/inventory";
-import { newVulnerabilitiesLoader } from "./lib/auth/loaders/newVulnerabilities";
-import { priorityLoader } from "./lib/auth/loaders/priority";
-import { vulnerabilitiesLoader } from "./lib/auth/loaders/vulnerabilities";
+import {
+  vulnerabilitiesLoader,
+  vulnerabilitiesNewRedirect,
+  vulnerabilitiesPriorityRedirect,
+  vulnerabilitySampleLoader,
+} from "./lib/auth/loaders/vulnerabilities";
 import { ImportPage } from "./pages/inventory/ImportPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { MappingQueuePage } from "./pages/inventory/MappingQueuePage";
 import { SystemPage } from "./pages/inventory/SystemPage";
-import { NewVulnerabilitiesPage } from "./pages/vulnerabilities/NewVulnerabilitiesPage";
-import { PriorityPage } from "./pages/vulnerabilities/PriorityPage";
+import { SamplePage } from "./pages/vulnerabilities/SamplePage";
 import { VulnerabilitiesPage } from "./pages/vulnerabilities/VulnerabilitiesPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -196,14 +198,18 @@ export const routes: RouteObject[] = [
             element: <VulnerabilitiesPage />,
           },
           {
+            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/sample",
+            loader: vulnerabilitySampleLoader,
+            element: <SamplePage />,
+          },
+          // Links in notifications and Emails already sent point at these two paths.
+          {
             path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/priority",
-            loader: priorityLoader,
-            element: <PriorityPage />,
+            loader: vulnerabilitiesPriorityRedirect,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/new",
-            loader: newVulnerabilitiesLoader,
-            element: <NewVulnerabilitiesPage />,
+            loader: vulnerabilitiesNewRedirect,
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/inventory",
