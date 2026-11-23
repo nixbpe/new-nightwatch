@@ -1,7 +1,12 @@
 import type { VulnerabilitySample } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { overFalsePositiveLimit } from "@nightwatch/api-contract";
+import {
+  FALSE_POSITIVE_LIMIT,
+  FALSE_POSITIVE_MIN_REVIEWED,
+  overFalsePositiveLimit,
+} from "@nightwatch/api-contract";
 
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
@@ -31,6 +36,37 @@ export function SamplePage() {
   };
   return (
     <Sample key={`${scope.organizationId}:${scope.projectId}`} {...scope} />
+  );
+}
+
+// Numbers and units are monospace; the Thai around them stays in the sans-serif (TYP-04).
+function Num({ children }: { children: ReactNode }) {
+  return <span className="font-mono">{children}</span>;
+}
+
+function Stat({
+  testId,
+  label,
+  value,
+  note,
+}: {
+  testId: string;
+  label: string;
+  value: ReactNode;
+  note?: string;
+}) {
+  return (
+    <div className="px-4 py-2" data-testid={testId}>
+      <span className="block text-[13px] text-foreground-secondary">
+        {label}
+      </span>
+      <span className="block text-2xl leading-8 font-medium text-heading">
+        {value}
+      </span>
+      {note === undefined ? null : (
+        <span className="block text-xs text-foreground-secondary">{note}</span>
+      )}
+    </div>
   );
 }
 
@@ -158,11 +194,28 @@ function Sample({
         </div>
       ) : (
         <section aria-labelledby="vuln-sample-heading" className="space-y-3">
-          <SectionHeader
-            id="vuln-sample-heading"
-            title="ผลสุ่มตรวจ"
-            meta="สุ่มไม่เกิน 50 รายการจากรอบล่าสุด"
-          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHeader
+              id="vuln-sample-heading"
+              title="ผลสุ่มตรวจ"
+              meta="สุ่มไม่เกิน 50 รายการจากรอบล่าสุด"
+            />
+            <Button
+              variant="outline"
+              data-testid="vuln-sample-draw"
+              disabled={
+                list?.results == null ||
+                list.summary.cves === 0 ||
+                draw.isPending
+              }
+              onClick={() => {
+                review.reset();
+                draw.mutate();
+              }}
+            >
+              {draw.isPending ? "กำลังสุ่ม…" : "สุ่มตรวจใหม่"}
+            </Button>
+          </div>
           <span role="status" className="sr-only">
             {announcement}
           </span>
@@ -184,23 +237,52 @@ function Sample({
             </p>
           ) : (
             <>
-              <p
-                className="text-sm text-foreground-secondary"
-                data-testid="vuln-sample-rate"
+              <div
+                className="grid gap-px overflow-hidden rounded-md border border-foreground/10 bg-foreground/10 *:bg-surface sm:grid-cols-2 lg:grid-cols-4"
+                data-testid="vuln-sample-stats"
               >
-                ตรวจแล้ว{" "}
-                <span className="font-mono text-foreground">
-                  {sample.reviewed}
-                </span>{" "}
-                จาก{" "}
-                <span className="font-mono text-foreground">{sample.size}</span>{" "}
-                รายการ · false positive{" "}
-                <span className="font-mono text-foreground">
-                  {sample.falsePositiveRate === null
-                    ? "ไม่ทราบ"
-                    : `${String(sample.falsePositives)} (${percent(sample.falsePositiveRate)})`}
-                </span>
-              </p>
+                <Stat
+                  testId="vuln-sample-stat-reviewed"
+                  label="ตรวจแล้ว"
+                  value={
+                    <>
+                      <Num>{sample.reviewed}</Num> จาก <Num>{sample.size}</Num>
+                    </>
+                  }
+                />
+                <Stat
+                  testId="vuln-sample-stat-fp"
+                  label="false positive"
+                  value={
+                    sample.falsePositiveRate === null ? (
+                      "ไม่ทราบ"
+                    ) : (
+                      <Num>{sample.falsePositives}</Num>
+                    )
+                  }
+                />
+                <Stat
+                  testId="vuln-sample-stat-rate"
+                  label="อัตรา"
+                  value={
+                    sample.falsePositiveRate === null ? (
+                      "ไม่ทราบ"
+                    ) : (
+                      <Num>{percent(sample.falsePositiveRate)}</Num>
+                    )
+                  }
+                />
+                <Stat
+                  testId="vuln-sample-stat-limit"
+                  label="เกณฑ์"
+                  value={
+                    <>
+                      เกิน <Num>{percent(FALSE_POSITIVE_LIMIT)}</Num>
+                    </>
+                  }
+                  note={`เมื่อตรวจแล้วอย่างน้อย ${String(FALSE_POSITIVE_MIN_REVIEWED)} รายการ`}
+                />
+              </div>
               {sample.falsePositiveRate !== null &&
               overFalsePositiveLimit(sample) ? (
                 <FalsePositiveAlert
@@ -209,65 +291,81 @@ function Sample({
                   reviewed={sample.reviewed}
                 />
               ) : null}
-              <ul className="divide-y divide-foreground/10 rounded-md border border-foreground/10 bg-surface">
-                {sample.items.map((item) => (
-                  <li
-                    key={item.position}
-                    data-testid={`vuln-sample-item-${String(item.position)}`}
-                    className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm"
-                  >
-                    <span className="font-mono text-[13px]">{item.cveId}</span>
-                    <span className="min-w-0 flex-1 break-words text-foreground-secondary">
-                      {item.component}
-                    </span>
-                    <span className="inline-flex gap-2">
-                      {(
-                        [
-                          ["true_positive", "ถูกต้อง"],
-                          ["false_positive", "false positive"],
-                        ] as const
-                      ).map(([verdict, label]) => (
-                        <Button
-                          key={verdict}
-                          size="sm"
-                          variant={
-                            item.verdict === verdict ? "default" : "outline"
-                          }
-                          aria-pressed={item.verdict === verdict}
-                          data-testid={`vuln-sample-${verdict}-${String(item.position)}`}
-                          disabled={review.isPending}
-                          onClick={() => {
-                            draw.reset();
-                            review.mutate({
-                              sampleId: sample.id,
-                              position: item.position,
-                              verdict,
-                            });
-                          }}
-                        >
-                          {label}
-                          <span className="sr-only"> ของ {item.cveId}</span>
-                        </Button>
-                      ))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead className="text-xs text-foreground-secondary">
+                    <tr>
+                      <th scope="col" className="w-40 px-4 py-2 font-normal">
+                        CVE
+                      </th>
+                      <th scope="col" className="px-2 py-2 font-normal">
+                        Component
+                      </th>
+                      <th
+                        scope="col"
+                        className="w-72 px-4 py-2 text-end font-normal"
+                      >
+                        ผลตัดสิน
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sample.items.map((item) => (
+                      <tr
+                        key={item.position}
+                        data-testid={`vuln-sample-item-${String(item.position)}`}
+                        className="border-t border-foreground/10"
+                      >
+                        <td className="px-4 py-2 font-mono text-[13px]">
+                          {item.cveId}
+                        </td>
+                        <td className="px-2 py-2 break-words text-foreground-secondary">
+                          {item.component}
+                        </td>
+                        <td className="px-4 py-2 text-end">
+                          <span className="inline-flex gap-2">
+                            {(
+                              [
+                                ["true_positive", "ถูกต้อง"],
+                                ["false_positive", "false positive"],
+                              ] as const
+                            ).map(([verdict, label]) => (
+                              <Button
+                                key={verdict}
+                                size="sm"
+                                variant={
+                                  item.verdict === verdict
+                                    ? "default"
+                                    : "outline"
+                                }
+                                aria-pressed={item.verdict === verdict}
+                                data-testid={`vuln-sample-${verdict}-${String(item.position)}`}
+                                disabled={review.isPending}
+                                onClick={() => {
+                                  draw.reset();
+                                  review.mutate({
+                                    sampleId: sample.id,
+                                    position: item.position,
+                                    verdict,
+                                  });
+                                }}
+                              >
+                                {label}
+                                <span className="sr-only">
+                                  {" "}
+                                  ของ {item.cveId}
+                                </span>
+                              </Button>
+                            ))}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
-          <Button
-            variant="outline"
-            data-testid="vuln-sample-draw"
-            disabled={
-              list?.results == null || list.summary.cves === 0 || draw.isPending
-            }
-            onClick={() => {
-              review.reset();
-              draw.mutate();
-            }}
-          >
-            {draw.isPending ? "กำลังสุ่ม…" : "สุ่มตรวจใหม่"}
-          </Button>
         </section>
       )}
     </Page>

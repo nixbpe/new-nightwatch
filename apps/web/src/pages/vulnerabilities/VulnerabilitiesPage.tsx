@@ -276,60 +276,64 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
         }
       />
       <div className="space-y-2">
-        <p
-          className="text-xs text-foreground-secondary"
-          data-testid="vuln-trust"
-        >
-          ข้อมูลมาจาก inventory ที่ Organization แจ้งเอง ไม่พบ CVE
-          ไม่ได้แปลว่าปลอดภัย
-        </p>
-        <div className="space-y-2">
-          {data === undefined ? null : (
-            <div
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
-              data-testid="vuln-status"
-            >
-              {results === null ? (
-                <span data-testid="vuln-no-results">
-                  ยังไม่มีผลการตรวจ
-                  {canManage
-                    ? ' กด "ตรวจ CVE ตอนนี้" เมื่อ inventory ได้รับการยืนยัน CPE/purl แล้ว'
-                    : ""}
-                </span>
-              ) : (
-                <>
-                  <span>
-                    ตรวจล่าสุด{" "}
-                    <span className="font-mono">
-                      {results.finishedAt === null
-                        ? ""
-                        : formatUploadedAt(results.finishedAt, preferences)}
-                    </span>{" "}
-                    ·{" "}
-                    {feedDown.length === 0 ? (
-                      "แหล่งข้อมูลครบ"
-                    ) : (
-                      <span className="text-caution">
-                        {feedDown.map((feed) => FEED_LABELS[feed]).join(", ")}{" "}
-                        ใช้ไม่ได้
-                      </span>
-                    )}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md border border-foreground/10 bg-surface px-4 py-2">
+          <div className="min-w-0 space-y-0.5">
+            {data === undefined ? null : (
+              <div
+                className="flex flex-wrap items-center gap-x-1 text-sm"
+                data-testid="vuln-status"
+              >
+                {results === null ? (
+                  <span data-testid="vuln-no-results">
+                    ยังไม่มีผลการตรวจ
+                    {canManage
+                      ? ' กด "ตรวจ CVE ตอนนี้" เมื่อ inventory ได้รับการยืนยัน CPE/purl แล้ว'
+                      : ""}
                   </span>
-                  <InfoTip data-testid="vuln-feeds" label={feedTip} />
-                </>
-              )}
-              {canManage ? (
-                <Button
-                  variant="outline"
-                  data-testid="vuln-run"
-                  disabled={starting || run?.status === "running"}
-                  onClick={() => void start()}
-                >
-                  ตรวจ CVE ตอนนี้
-                </Button>
-              ) : null}
-            </div>
-          )}
+                ) : (
+                  <>
+                    <span>
+                      ตรวจล่าสุด{" "}
+                      <span className="font-mono">
+                        {results.finishedAt === null
+                          ? ""
+                          : formatUploadedAt(results.finishedAt, preferences)}
+                      </span>{" "}
+                      ·{" "}
+                      {feedDown.length === 0 ? (
+                        "แหล่งข้อมูลครบ"
+                      ) : (
+                        <span className="text-caution">
+                          {feedDown.map((feed) => FEED_LABELS[feed]).join(", ")}{" "}
+                          ใช้ไม่ได้
+                        </span>
+                      )}
+                    </span>
+                    <InfoTip data-testid="vuln-feeds" label={feedTip} />
+                  </>
+                )}
+              </div>
+            )}
+            <p
+              className="text-xs text-foreground-secondary"
+              data-testid="vuln-trust"
+            >
+              ข้อมูลมาจาก inventory ที่ Organization แจ้งเอง ไม่พบ CVE
+              ไม่ได้แปลว่าปลอดภัย
+            </p>
+          </div>
+          {canManage ? (
+            <Button
+              variant="outline"
+              data-testid="vuln-run"
+              disabled={starting || run?.status === "running"}
+              onClick={() => void start()}
+            >
+              ตรวจ CVE ตอนนี้
+            </Button>
+          ) : null}
+        </div>
+        <div className="space-y-2">
           {run?.status === "running" ? (
             <Notice tone="pending" data-testid="vuln-progress">
               กำลังตรวจ {run.doneUnits} จาก {run.totalUnits} product

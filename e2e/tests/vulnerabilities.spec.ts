@@ -29,6 +29,31 @@ const userIds: string[] = [];
 const page_ = () =>
   `/organizations/${org}/projects/${projectId}/vulnerabilities`;
 
+// The VEX control is one button that opens a menu; the menu is drawn in a portal.
+async function chooseVex(
+  page: Page,
+  row: string,
+  choice: "affected" | "not-affected",
+) {
+  await page.locator(`${row} [data-testid^="triage-menu-"]`).click();
+  await page
+    .locator(`[data-testid^="triage-${choice}-CVE-2024-0001-"]`)
+    .click();
+}
+
+// The same screen in both themes: the choice is read from storage when the page loads.
+async function shotThemes(page: Page, name: string, ready: string) {
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((value) => {
+      localStorage.setItem("nightwatch-theme", value);
+    }, theme);
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.getByTestId(ready)).toBeVisible();
+    await shot(page, `${name}-${theme}`);
+  }
+}
+
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
   await page.getByTestId("login-email").fill(person.email);
@@ -224,6 +249,21 @@ for (const theme of ["light", "dark"] as const) {
         /\b(?:Q-\d{2}|P[1-4]|F-\d{3})\b/,
       );
       await shot(page, `vulnerabilities-${theme}`);
+      // 900 px wide: the page reflows and only the table scrolls inside its container.
+      await page.setViewportSize({ width: 900, height: 900 });
+      await shot(page, `vulnerabilities-narrow-${theme}`, true);
+
+      // A long name with no spaces wraps inside its cell instead of running into the next one.
+      const long = "Acme".repeat(30);
+      const cell = page.locator('[data-testid="vuln-item-1"] td').nth(1);
+      await cell.evaluate((node, text) => {
+        const target = node.querySelectorAll("span")[1];
+        if (target) target.textContent = text;
+      }, long);
+      expect(
+        await cell.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+      await shot(page, `vulnerabilities-long-name-${theme}`, true);
     });
 
     test("shows each System with the state of its components, and exports it as Excel", async ({
@@ -254,6 +294,12 @@ for (const theme of ["light", "dark"] as const) {
           .getByTestId(`vuln-component-${systemId}-agent-1.2.3`)
           .getByTestId("vuln-not-covered"),
       ).toContainText("ยังไม่ครอบคลุม");
+      // The chevron follows the details element once it has toggled.
+      await expect(
+        redis.locator('summary [aria-hidden="true"]').first(),
+      ).toHaveClass(/rotate-90/);
+      // The chevron turns over 150 ms; the picture is taken once it has.
+      await page.waitForTimeout(400);
       await shot(page, `vulnerabilities-systems-${theme}`);
 
       const [download] = await Promise.all([
@@ -263,6 +309,18 @@ for (const theme of ["light", "dark"] as const) {
       expect(download.suggestedFilename()).toBe("vulnerabilities.xlsx");
       const path = await download.path();
       expect((await readFile(path)).byteLength).toBeGreaterThan(1000);
+      await page.setViewportSize({ width: 900, height: 900 });
+      await shot(page, `vulnerabilities-systems-narrow-${theme}`, true);
+      const name = page
+        .getByTestId(`vuln-component-${systemId}-Thing-1.0.0`)
+        .locator("span.min-w-0")
+        .first();
+      await name.evaluate((node, text) => {
+        node.textContent = text;
+      }, "Quiet".repeat(40));
+      expect(
+        await name.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      ).toBe(true);
     });
 
     test("keeps what the old new-CVE page showed under the filter, reached from the old URL", async ({
@@ -294,6 +352,47 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("vuln-item-2")).toBeVisible();
     });
 
+    test("opens the VEX menu, asks for a reason, and moves the CVE to the folded group", async ({
+      page,
+    }) => {
+      await signIn(page, owner);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(page_());
+      const row = '[data-testid="vuln-item-1"]';
+      await page.locator(`${row} [data-testid^="triage-menu-"]`).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      // The overlay fades in; the picture is taken once it has settled.
+      await page.waitForTimeout(400);
+      await shot(page, `vulnerabilities-vex-menu-open-${theme}`, true);
+      await page
+        .locator('[data-testid^="triage-not-affected-CVE-2024-0001-"]')
+        .click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      const reason = page.locator(
+        `${row} [data-testid^="triage-reason-CVE-2024-0001-"]`,
+      );
+      await expect(reason).toBeVisible();
+      await shot(page, `vulnerabilities-vex-reason-row-${theme}`, true);
+      await reason.fill("ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+      await page.locator(`${row} [data-testid^="triage-save-"]`).click();
+      await page.getByTestId("vuln-not-affected").locator("summary").click();
+      await expect(
+        page.getByTestId("vuln-not-affected-CVE-2024-0001"),
+      ).toContainText("เหตุผล: ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+      await shot(page, `vulnerabilities-not-affected-${theme}`, true);
+      // Put it back for the tests that follow.
+      await chooseVex(
+        page,
+        '[data-testid="vuln-not-affected-CVE-2024-0001"]',
+        "affected",
+      );
+      await expect(
+        page
+          .getByTestId("vuln-item-1")
+          .locator('[data-testid^="triage-menu-"]'),
+      ).toContainText("ได้รับผลกระทบ");
+    });
+
     test("sends the old priority URL to the findings page", async ({
       page,
     }) => {
@@ -312,10 +411,7 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   await page.goto(page_());
   // Rank 1 is CVE-2024-0001. Mark it not affected: a reason is required first.
   const key = `CVE-2024-0001-`;
-  const control = page
-    .locator(`[data-testid^="triage-not-affected-${key}"]`)
-    .first();
-  await control.click();
+  await chooseVex(page, '[data-testid="vuln-item-1"]', "not-affected");
   const save = page.locator(`[data-testid^="triage-save-${key}"]`).first();
   await expect(save).toBeDisabled();
   await page
@@ -330,20 +426,22 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   await apart.locator("summary").click();
   await expect(
     page.getByTestId("vuln-not-affected-CVE-2024-0001"),
-  ).toContainText("ไม่ได้รับผลกระทบ: ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+  ).toContainText("ไม่ได้เปิดใช้ module ที่มีช่องโหว่");
+  await expect(
+    page
+      .getByTestId("vuln-not-affected-CVE-2024-0001")
+      .locator('[data-testid^="triage-menu-"]'),
+  ).toContainText("ไม่ได้รับผลกระทบ");
   await expect(page.getByTestId("vuln-item-1")).not.toContainText(
     "CVE-2024-0001",
   );
-  await shot(page, "vulnerabilities-not-affected");
 
   // A member reads the same and has no control.
   await page.context().clearCookies();
   await signIn(page, member);
   await page.goto(page_());
   await expect(page.getByTestId("vuln-not-affected")).toContainText("1 รายการ");
-  await expect(page.locator('[data-testid^="triage-affected-"]')).toHaveCount(
-    0,
-  );
+  await expect(page.locator('[data-testid^="triage-menu-"]')).toHaveCount(0);
   await page.goto(`${page_()}?view=systems`);
   await page
     .getByTestId(`vuln-component-${systemId}-Redis-7.2.4`)
@@ -359,12 +457,15 @@ test("an admin marks a CVE not affected with a reason; it leaves the ordering, s
   await signIn(page, owner);
   await page.goto(page_());
   await page.getByTestId("vuln-not-affected").locator("summary").click();
-  await page
-    .getByTestId("vuln-not-affected-CVE-2024-0001")
-    .locator('[data-testid^="triage-affected-"]')
-    .click();
+  await chooseVex(
+    page,
+    '[data-testid="vuln-not-affected-CVE-2024-0001"]',
+    "affected",
+  );
   await expect(page.getByTestId("vuln-item-1")).toContainText("CVE-2024-0001");
-  await expect(page.getByTestId("vuln-item-1")).toContainText("ได้รับผลกระทบ");
+  await expect(
+    page.getByTestId("vuln-item-1").locator('[data-testid^="triage-menu-"]'),
+  ).toContainText("ได้รับผลกระทบ");
 });
 
 test("an admin opens the sample page from the findings page, draws, marks results and sees the false-positive rate", async ({
@@ -381,14 +482,17 @@ test("an admin opens the sample page from the findings page, draws, marks result
   await page.getByTestId("vuln-sample-draw").click();
   await expect(page.getByTestId("vuln-sample-item-1")).toBeVisible();
   await expect(page.getByTestId("vuln-sample-item-2")).toBeVisible();
-  await expect(page.getByTestId("vuln-sample-rate")).toContainText("ไม่ทราบ");
+  await expect(page.getByTestId("vuln-sample-stat-rate")).toContainText(
+    "ไม่ทราบ",
+  );
   await page.getByTestId("vuln-sample-true_positive-1").click();
   await page.getByTestId("vuln-sample-false_positive-2").click();
-  await expect(page.getByTestId("vuln-sample-rate")).toContainText("1 (50%)");
+  await expect(page.getByTestId("vuln-sample-stat-rate")).toContainText("50%");
+  await expect(page.getByTestId("vuln-sample-stat-fp")).toContainText("1");
   await expect(page.locator("body")).not.toContainText(
     /\b(?:Q-\d{2}|P[1-4]|F-\d{3})\b/,
   );
-  await shot(page, "vulnerabilities-sample");
+  await shotThemes(page, "vulnerabilities-sample", "vuln-sample-stats");
 });
 
 test("a Project member reads findings but sees no run, no sample link, and a restricted sample page", async ({
@@ -405,7 +509,11 @@ test("a Project member reads findings but sees no run, no sample link, and a res
   await expect(page.getByTestId("vuln-sample-restricted")).toBeVisible();
   await expect(page.getByTestId("vuln-sample-item-1")).toHaveCount(0);
   await expect(page.getByTestId("vuln-sample-draw")).toHaveCount(0);
-  await shot(page, "vulnerabilities-sample-restricted");
+  await shotThemes(
+    page,
+    "vulnerabilities-sample-restricted",
+    "vuln-sample-restricted",
+  );
 
   // The API says the same: the sampled results are the Project admin's.
   const sample = await page.request.get(

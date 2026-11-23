@@ -106,9 +106,9 @@ describe("the sample page of a Project admin", () => {
     await waitFor(() => {
       expect(drawMock).toHaveBeenCalledWith(ORG, PROJECT);
     });
-    expect(await screen.findByTestId("vuln-sample-rate")).toHaveTextContent(
-      "ไม่ทราบ",
-    );
+    expect(
+      await screen.findByTestId("vuln-sample-stat-rate"),
+    ).toHaveTextContent("ไม่ทราบ");
     expect(await screen.findByText("สุ่มรายการแล้ว")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("vuln-sample-false_positive-1"));
     expect(reviewMock).toHaveBeenCalledWith(
@@ -118,9 +118,12 @@ describe("the sample page of a Project admin", () => {
       1,
       "false_positive",
     );
-    expect(await screen.findByTestId("vuln-sample-rate")).toHaveTextContent(
-      "1 (100%)",
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-sample-stat-rate")).toHaveTextContent(
+        "100%",
+      );
+    });
+    expect(screen.getByTestId("vuln-sample-stat-fp")).toHaveTextContent("1");
     expect(
       await screen.findByText("บันทึกผลการตัดสินแล้ว"),
     ).toBeInTheDocument();
@@ -128,6 +131,43 @@ describe("the sample page of a Project admin", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("shows the counts as four cells with the limit from the contract, as the only place the numbers are read", async () => {
+    sampleMock.mockResolvedValue({
+      sample: sample({
+        reviewed: 2,
+        falsePositives: 1,
+        falsePositiveRate: 0.5,
+      }),
+    });
+    open();
+    const stat = async (name: string) =>
+      (await screen.findByTestId(`vuln-sample-stat-${name}`)).textContent;
+    expect(await stat("reviewed")).toBe("ตรวจแล้ว2 จาก 2");
+    expect(await stat("fp")).toBe("false positive1");
+    expect(await stat("rate")).toBe("อัตรา50%");
+    expect(await stat("limit")).toBe(
+      "เกณฑ์เกิน 20%เมื่อตรวจแล้วอย่างน้อย 30 รายการ",
+    );
+    // One reading of the numbers: no second, hidden sentence repeats them.
+    expect(screen.queryByTestId("vuln-sample-rate")).toBeNull();
+    expect(document.querySelector(".sr-only[data-testid]")).toBeNull();
+  });
+
+  it("lists the results as a table of CVE, Component and verdict, and puts the redraw in the section header", async () => {
+    sampleMock.mockResolvedValue({ sample: sample() });
+    open();
+    await screen.findByTestId("vuln-sample-item-1");
+    expect(
+      screen.getAllByRole("columnheader").map((head) => head.textContent),
+    ).toEqual(["CVE", "Component", "ผลตัดสิน"]);
+    const draw = screen.getByTestId("vuln-sample-draw");
+    expect(
+      draw.parentElement?.contains(
+        screen.getByRole("heading", { name: "ผลสุ่มตรวจ" }),
+      ),
+    ).toBe(true);
   });
 
   it("gives each verdict button the CVE it is for", async () => {
@@ -166,7 +206,7 @@ describe("the sample page of a Project admin", () => {
       }),
     });
     open();
-    await screen.findByTestId("vuln-sample-rate");
+    await screen.findByTestId("vuln-sample-stats");
     expect(screen.queryByTestId("vuln-sample-over-limit")).toBeNull();
   });
 

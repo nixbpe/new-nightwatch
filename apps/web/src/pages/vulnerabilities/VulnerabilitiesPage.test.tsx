@@ -580,6 +580,27 @@ describe("the By-System view", () => {
     expect(screen.queryByTestId("vuln-tiles")).toBeNull();
   });
 
+  it("folds a System with its header button, open at first, and keeps its Excel button outside the fold", async () => {
+    await fix(`${BASE}?view=systems`);
+    const toggle = await screen.findByTestId(`vuln-system-toggle-${SYSTEM}`);
+    // The System name is a level-3 heading whose button folds the group.
+    expect(
+      screen.getByRole("heading", { level: 3, name: /Billing API/ }),
+    ).toContainElement(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveTextContent("Billing API");
+    expect(toggle).toHaveTextContent("พบ CVE 2 รายการ · อยู่ใน KEV 1 รายการ");
+    const redis = screen.getByTestId(`vuln-component-${SYSTEM}-Redis-7.2.4`);
+    expect(redis).toBeVisible();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(redis).not.toBeVisible();
+    expect(screen.getByTestId(`vuln-export-${SYSTEM}`)).toBeVisible();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(redis).toBeVisible();
+  });
+
   it("expands the found CVEs with severity, EPSS, KEV, source and VEX, and 'ไม่ทราบ' for missing values", async () => {
     await fix(`${BASE}?view=systems`);
     const redis = await screen.findByTestId(
@@ -795,10 +816,11 @@ describe("VEX in the list", () => {
   it("gives an admin the segmented control on a ranked row and a member only the status", async () => {
     await fix();
     const row = screen.getByTestId("vuln-item-1");
-    expect(within(row).getAllByRole("group")[0]).toBeInTheDocument();
     expect(
-      within(row).getByRole("button", { name: "ได้รับผลกระทบ" }),
-    ).toBeInTheDocument();
+      within(row).getByRole("button", {
+        name: "สถานะ VEX ของ CVE-2024-0001: ยังไม่ triage",
+      }),
+    ).toHaveAttribute("aria-haspopup", "menu");
   });
 
   it("shows a member the status and no control", async () => {
@@ -807,7 +829,7 @@ describe("VEX in the list", () => {
     expect(screen.getByTestId("vuln-item-1")).toHaveTextContent(
       "ยังไม่ triage",
     );
-    expect(screen.queryByRole("button", { name: "ได้รับผลกระทบ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /สถานะ VEX/ })).toBeNull();
   });
 
   it("keeps an open reason editor on its own finding when an earlier finding leaves the ranking", async () => {
@@ -816,8 +838,11 @@ describe("VEX in the list", () => {
     await fix();
     await userEvent.click(
       within(screen.getByTestId("vuln-item-2")).getByRole("button", {
-        name: "ไม่ได้รับผลกระทบ",
+        name: /สถานะ VEX ของ CVE-2024-0002/,
       }),
+    );
+    await userEvent.click(
+      screen.getByRole("menuitemradio", { name: "ไม่ได้รับผลกระทบ" }),
     );
     await userEvent.type(
       screen.getByPlaceholderText("เหตุผล (จำเป็น)"),
@@ -849,8 +874,11 @@ describe("VEX in the list", () => {
     );
     await userEvent.click(
       within(screen.getByTestId("vuln-item-1")).getByRole("button", {
-        name: "ได้รับผลกระทบ",
+        name: /สถานะ VEX ของ CVE-2024-0001/,
       }),
+    );
+    await userEvent.click(
+      screen.getByRole("menuitemradio", { name: "ได้รับผลกระทบ" }),
     );
     await waitFor(() => {
       expect(screen.getByTestId("vuln-item-1")).toHaveTextContent(
@@ -893,9 +921,12 @@ describe("VEX in the list", () => {
     expect(
       within(screen.getByTestId("vuln-not-affected-CVE-2024-0001")).getByRole(
         "button",
-        { name: "ได้รับผลกระทบ" },
+        { name: "สถานะ VEX ของ CVE-2024-0001: ไม่ได้รับผลกระทบ" },
       ),
     ).toBeVisible();
+    expect(
+      screen.getByTestId(`triage-reason-text-CVE-2024-0001-${MAPPING}-7.2.4`),
+    ).toHaveTextContent("เหตุผล: ไม่ได้เปิดใช้ module");
   });
 });
 

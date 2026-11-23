@@ -6,6 +6,7 @@ import type {
   TriagedItem,
   VulnerabilityList,
 } from "@nightwatch/api-contract";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { cn } from "@/lib/utils";
@@ -64,17 +65,17 @@ function Tile({
         aria-pressed={pressed}
         onClick={onClick}
         className={cn(
-          "flex w-full flex-col gap-1 px-5 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+          "flex w-full flex-col px-4 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
           pressed ? "bg-primary-tint" : "hover:surface-hover",
         )}
       >
         <span className="text-[13px] text-foreground-secondary">{label}</span>
-        <span className="font-mono text-[28px] leading-8 font-medium text-heading">
+        <span className="font-mono text-2xl leading-8 font-medium text-heading">
           {value}
         </span>
       </button>
       {term === undefined ? null : (
-        <span className="absolute top-3 right-3">
+        <span className="absolute top-1.5 right-2">
           <TermTip term={term} />
         </span>
       )}
@@ -82,38 +83,139 @@ function Tile({
   );
 }
 
-function ComponentCell({ item }: { item: PriorityItem | TriagedItem }) {
+/** The columns of every list on this view, so the folded groups line up with the ranking. */
+function Cols() {
   return (
-    <span className="block text-[13px]">
-      {item.vendor} · {item.product}{" "}
-      <span className="font-mono">{item.version}</span>
-      <span className="block text-foreground-secondary">{item.system}</span>
-    </span>
+    <colgroup>
+      <col style={{ width: 56 }} />
+      <col style={{ width: "32%" }} />
+      <col style={{ width: 120 }} />
+      <col />
+      <col style={{ width: 232 }} />
+    </colgroup>
   );
 }
 
-function NewBadge({
+const td = "px-2 py-2 align-top [overflow-wrap:anywhere]";
+
+function CveCell({
+  cveId,
+  vendor,
+  product,
+  version,
+  system,
   firstSeen,
   preferences,
 }: {
+  cveId: string;
+  vendor: string;
+  product: string;
+  version: string;
+  system: string | null;
   firstSeen: string | undefined;
   preferences: Preferences;
 }) {
-  if (firstSeen === undefined) return null;
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground-secondary">
-      <StatusPill tone="primary" data-testid="vuln-new-badge">
-        ใหม่
-      </StatusPill>
-      พบครั้งแรก{" "}
-      <span className="font-mono text-foreground">
-        {formatUploadedAt(firstSeen, preferences)}
+    <td className={td}>
+      <span className="block font-mono text-[13px]">{cveId}</span>
+      <span className="block text-[13px]">
+        {vendor} · {product} <span className="font-mono">{version}</span>
       </span>
-    </span>
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground-secondary">
+        {system === null ? null : <span>{system}</span>}
+        {firstSeen === undefined ? null : (
+          <>
+            <StatusPill tone="primary" data-testid="vuln-new-badge">
+              ใหม่
+            </StatusPill>
+            <span>
+              พบครั้งแรก{" "}
+              <span className="font-mono text-foreground">
+                {formatUploadedAt(firstSeen, preferences)}
+              </span>
+            </span>
+          </>
+        )}
+      </span>
+    </td>
   );
 }
 
-function GroupItem({
+function Vex({
+  scope,
+  canManage,
+  item,
+}: {
+  scope: Scope;
+  canManage: boolean;
+  item: PriorityItem | TriagedItem;
+}) {
+  return (
+    <td className={td}>
+      {item.mappingId === null ? null : (
+        <TriageControl
+          {...scope}
+          canManage={canManage}
+          target={{
+            mappingId: item.mappingId,
+            version: item.version,
+            cveId: item.cveId,
+          }}
+          triage={item.triage}
+        />
+      )}
+    </td>
+  );
+}
+
+function GroupTable({ children }: { children: ReactNode }) {
+  return (
+    <table className="w-full min-w-[920px] table-fixed text-sm">
+      <Cols />
+      <thead className="sr-only">
+        <tr>
+          <th scope="col">ลำดับ</th>
+          <th scope="col">CVE และ component</th>
+          <th scope="col">ความรุนแรง</th>
+          <th scope="col">เหตุผลของลำดับ</th>
+          <th scope="col">สถานะ VEX</th>
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  );
+}
+
+function Group({
+  testId,
+  title,
+  note,
+  children,
+}: {
+  testId: string;
+  title: string;
+  note?: string;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      className="rounded-md border border-foreground/10 bg-surface"
+      data-testid={testId}
+    >
+      <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+        {title}
+      </summary>
+      {note === undefined ? null : (
+        <p className="px-4 pb-2 text-xs text-foreground-secondary">{note}</p>
+      )}
+      <div className="overflow-x-auto border-t border-foreground/10">
+        <GroupTable>{children}</GroupTable>
+      </div>
+    </details>
+  );
+}
+
+function GroupRow({
   item,
   preferences,
   testId,
@@ -123,23 +225,21 @@ function GroupItem({
   testId: string;
 }) {
   return (
-    <li
+    <tr
       data-testid={testId}
-      className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm"
+      className="border-t border-foreground/10 first:border-t-0"
     >
-      <span>
-        <span className="font-mono text-[13px]">{item.cveId}</span>{" "}
-        {item.vendor} · {item.product}{" "}
-        <span className="font-mono text-[13px]">{item.version}</span>
-        <span className="block text-xs text-foreground-secondary">
-          พบครั้งแรก{" "}
-          <span className="font-mono text-foreground">
-            {formatUploadedAt(item.firstSeenAt, preferences)}
-          </span>
-        </span>
-      </span>
-      <span className="flex items-center gap-3 text-[13px]">
+      <td className={td} />
+      <CveCell
+        {...item}
+        system={null}
+        firstSeen={item.firstSeenAt}
+        preferences={preferences}
+      />
+      <td className={td}>
         <SeverityPill score={null} level={item.cvssSeverity} />
+      </td>
+      <td className={cn(td, "text-[13px]")}>
         {item.kev === null ? (
           <span className="text-foreground-secondary">KEV ไม่ทราบ</span>
         ) : item.kev ? (
@@ -147,12 +247,13 @@ function GroupItem({
         ) : (
           "ไม่อยู่ใน KEV"
         )}
-      </span>
-    </li>
+      </td>
+      <td className={td} />
+    </tr>
   );
 }
 
-const th = "px-4 py-2 text-left font-normal";
+const th = "px-2 py-2 text-left font-normal";
 
 /** The "ต้องแก้" view: what to fix first, with the filters of the URL. */
 export function NeedsFix({
@@ -236,25 +337,6 @@ export function NeedsFix({
           }}
         />
       </div>
-      {uncovered === 0 ? null : (
-        <p
-          className="flex flex-wrap items-center gap-x-2 text-sm"
-          data-testid="vuln-coverage"
-        >
-          <span>
-            ยังไม่ครอบคลุม {list.summary.notCovered} component · ตรวจไม่สำเร็จ{" "}
-            {list.summary.checkFailed} component
-          </span>
-          <TermTip term="notCovered" />
-          <Link
-            data-testid="vuln-coverage-link"
-            className="text-primary underline-offset-4 hover:underline"
-            to={systemsPath}
-          >
-            ดูในราย System
-          </Link>
-        </p>
-      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-foreground-secondary">ตัวกรอง</span>
         <label className="sr-only" htmlFor="vuln-filter-system">
@@ -311,6 +393,25 @@ export function NeedsFix({
             ล้างตัวกรอง
           </Button>
         ) : null}
+        {uncovered === 0 ? null : (
+          <p
+            className="flex flex-wrap items-center gap-x-2 text-[13px] lg:ml-auto"
+            data-testid="vuln-coverage"
+          >
+            <span>
+              ยังไม่ครอบคลุม {list.summary.notCovered} component · ตรวจไม่สำเร็จ{" "}
+              {list.summary.checkFailed} component
+            </span>
+            <TermTip term="notCovered" />
+            <Link
+              data-testid="vuln-coverage-link"
+              className="text-primary underline-offset-4 hover:underline"
+              to={systemsPath}
+            >
+              ดูในราย System
+            </Link>
+          </p>
+        )}
       </div>
       {filters.isNew ? (
         <div className="space-y-2" data-testid="vuln-new-notes">
@@ -376,9 +477,10 @@ export function NeedsFix({
       {view.ranked.length === 0 ? null : (
         <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
           <table
-            className="w-full min-w-[960px] text-sm"
+            className="w-full min-w-[920px] table-fixed text-sm"
             data-testid="vuln-ranked"
           >
+            <Cols />
             <thead className="text-xs text-foreground-secondary">
               <tr>
                 <th scope="col" className={th}>
@@ -415,23 +517,20 @@ export function NeedsFix({
                   data-testid={`vuln-item-${String(item.rank)}`}
                   className="border-t border-foreground/10 align-top"
                 >
-                  <td className="px-4 py-3 font-mono">{item.rank}</td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-[13px]">{item.cveId}</span>
-                    <ComponentCell item={item} />
-                    <NewBadge
-                      firstSeen={view.firstSeen.get(itemKey(item))}
-                      preferences={preferences}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
+                  <td className={cn(td, "font-mono")}>{item.rank}</td>
+                  <CveCell
+                    {...item}
+                    firstSeen={view.firstSeen.get(itemKey(item))}
+                    preferences={preferences}
+                  />
+                  <td className={td}>
                     <SeverityPill
                       score={item.cvssScore}
                       level={item.cvssSeverity}
                     />
                   </td>
                   <td
-                    className="px-4 py-3"
+                    className={td}
                     data-testid={`vuln-reason-${String(item.rank)}`}
                   >
                     <span className="flex flex-wrap gap-1.5">
@@ -453,20 +552,7 @@ export function NeedsFix({
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3">
-                    {item.mappingId === null ? null : (
-                      <TriageControl
-                        {...scope}
-                        canManage={list.canManage}
-                        target={{
-                          mappingId: item.mappingId,
-                          version: item.version,
-                          cveId: item.cveId,
-                        }}
-                        triage={item.triage}
-                      />
-                    )}
-                  </td>
+                  <Vex scope={scope} canManage={list.canManage} item={item} />
                 </tr>
               ))}
             </tbody>
@@ -474,87 +560,66 @@ export function NeedsFix({
         </div>
       )}
       {view.notAffected.length === 0 ? null : (
-        <details
-          className="rounded-md border border-foreground/10 bg-surface"
-          data-testid="vuln-not-affected"
+        <Group
+          testId="vuln-not-affected"
+          title={`ไม่ได้รับผลกระทบ (VEX) ${String(view.notAffected.length)} รายการ อยู่นอกลำดับ`}
         >
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
-            ไม่ได้รับผลกระทบ (VEX) {view.notAffected.length} รายการ อยู่นอกลำดับ
-          </summary>
-          <ul className="divide-y divide-foreground/10">
-            {view.notAffected.map((item) => (
-              <li
-                key={`${item.cveId}|${item.systemId}|${item.vendor}|${item.product}|${item.version}`}
-                data-testid={`vuln-not-affected-${item.cveId}`}
-                className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <span>
-                  <span className="font-mono text-[13px]">{item.cveId}</span>{" "}
-                  <ComponentCell item={item} />
-                  <NewBadge
-                    firstSeen={view.firstSeen.get(itemKey(item))}
-                    preferences={preferences}
-                  />
-                </span>
-                {item.mappingId === null ? null : (
-                  <TriageControl
-                    {...scope}
-                    canManage={list.canManage}
-                    target={{
-                      mappingId: item.mappingId,
-                      version: item.version,
-                      cveId: item.cveId,
-                    }}
-                    triage={item.triage}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
+          {view.notAffected.map((item) => (
+            <tr
+              key={`${item.cveId}|${item.systemId}|${item.vendor}|${item.product}|${item.version}`}
+              data-testid={`vuln-not-affected-${item.cveId}`}
+              className="border-t border-foreground/10 first:border-t-0"
+            >
+              <td className={td} />
+              <CveCell
+                {...item}
+                firstSeen={view.firstSeen.get(itemKey(item))}
+                preferences={preferences}
+              />
+              <td className={td}>
+                <SeverityPill
+                  score={item.cvssScore}
+                  level={item.cvssSeverity}
+                />
+              </td>
+              <td className={cn(td, "text-[13px]")}>
+                {item.kev === true ? "อยู่ใน KEV" : null}
+              </td>
+              <Vex scope={scope} canManage={list.canManage} item={item} />
+            </tr>
+          ))}
+        </Group>
       )}
       {view.gone.length === 0 ? null : (
-        <details
-          className="rounded-md border border-foreground/10 bg-surface"
-          data-testid="vuln-new-gone"
+        <Group
+          testId="vuln-new-gone"
+          title={`ใหม่แต่ไม่พบแล้ว ${String(view.gone.length)} รายการ`}
         >
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
-            ใหม่แต่ไม่พบแล้ว {view.gone.length} รายการ
-          </summary>
-          <ul className="divide-y divide-foreground/10">
-            {view.gone.map((item) => (
-              <GroupItem
-                key={itemKey(item)}
-                item={item}
-                preferences={preferences}
-                testId={`vuln-new-gone-${item.cveId}`}
-              />
-            ))}
-          </ul>
-        </details>
+          {view.gone.map((item) => (
+            <GroupRow
+              key={itemKey(item)}
+              item={item}
+              preferences={preferences}
+              testId={`vuln-new-gone-${item.cveId}`}
+            />
+          ))}
+        </Group>
       )}
       {view.unknown.length === 0 ? null : (
-        <details
-          className="rounded-md border border-foreground/10 bg-surface"
-          data-testid="vuln-new-unknown"
+        <Group
+          testId="vuln-new-unknown"
+          title={`ใหม่แต่ยังไม่ทราบสถานะ ${String(view.unknown.length)} รายการ`}
+          note="รอบล่าสุดไม่มีผลตรวจ product ของรายการเหล่านี้"
         >
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
-            ใหม่แต่ยังไม่ทราบสถานะ {view.unknown.length} รายการ
-          </summary>
-          <p className="px-4 pb-2 text-xs text-foreground-secondary">
-            รอบล่าสุดไม่มีผลตรวจ product ของรายการเหล่านี้
-          </p>
-          <ul className="divide-y divide-foreground/10">
-            {view.unknown.map((item) => (
-              <GroupItem
-                key={itemKey(item)}
-                item={item}
-                preferences={preferences}
-                testId={`vuln-new-unknown-${item.cveId}`}
-              />
-            ))}
-          </ul>
-        </details>
+          {view.unknown.map((item) => (
+            <GroupRow
+              key={itemKey(item)}
+              item={item}
+              preferences={preferences}
+              testId={`vuln-new-unknown-${item.cveId}`}
+            />
+          ))}
+        </Group>
       )}
     </div>
   );
