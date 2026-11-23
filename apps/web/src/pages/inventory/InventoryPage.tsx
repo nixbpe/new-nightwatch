@@ -60,9 +60,9 @@ function Tile({
   testId: string;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-6 py-5" data-testid={testId}>
+    <div className="flex flex-col gap-1 px-4 py-3" data-testid={testId}>
       <span className="text-[13px] text-foreground-secondary">{label}</span>
-      <span className="font-mono text-[28px] leading-8 font-medium text-heading">
+      <span className="font-mono text-xl leading-7 font-medium text-heading">
         {value}
       </span>
       <span className="text-xs text-foreground-secondary">{note}</span>
@@ -100,7 +100,7 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
     },
     {
       key: "usable",
-      header: "ใช้งานได้",
+      header: "ข้อมูลครบ",
       align: "end",
       mono: true,
       cell: (system) =>
@@ -110,9 +110,11 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
     },
     {
       key: "status",
-      header: "สถานะ",
+      header: "คุณภาพข้อมูล",
       cell: (system) => (
         <StatusPill
+          data-testid={`inventory-quality-${system.id}`}
+          data-low-quality={system.lowQuality}
           dot
           neutralLabel={system.totalRows === 0 || !system.lowQuality}
           tone={
@@ -126,8 +128,8 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
           {system.totalRows === 0
             ? "ไม่มีแถว"
             : system.lowQuality
-              ? "คุณภาพต่ำ"
-              : "ผ่าน"}
+              ? "ข้อมูลไม่ผ่านเกณฑ์"
+              : "ข้อมูลผ่านเกณฑ์"}
         </StatusPill>
       ),
     },
@@ -206,7 +208,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         }
         titleRef={heading}
         titleTabIndex={-1}
-        description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลมาจากไฟล์ที่ Organization แจ้งเอง ไม่ได้มาจากการตรวจจริง"
+        description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลที่องค์กรระบุและดูแลเอง ไม่ได้มาจากการตรวจทรัพยากรจริง"
         actions={
           summary === undefined ? undefined : (
             <>
@@ -228,7 +230,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
                       setAdding(event.currentTarget);
                     }}
                   >
-                    เพิ่ม System
+                    เพิ่มระบบใน Inventory
                   </Button>
                 </>
               ) : null}
@@ -280,7 +282,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             />
             <Tile
               testId="inventory-tile-usable"
-              label="แถวที่ใช้งานได้"
+              label="ข้อมูลครบและรูปแบบผ่าน"
               value={String(query.data.usableRows)}
               note={`ไม่ผ่าน ${String(query.data.totalRows - query.data.usableRows)} แถว`}
             />
@@ -299,14 +301,25 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
               }
             />
           </HairlineGrid>
-          <section
-            aria-labelledby="inventory-quality-heading"
+          {query.data.systemCount === 0 ? null : (
+            <InventoryRowsSection
+              summary={query.data}
+              scope={{ organizationId, projectId }}
+            />
+          )}
+          <details
             className="space-y-3"
+            data-testid="inventory-quality-details"
+            open={query.data.systemCount === 0}
           >
+            <summary className="cursor-pointer rounded-sm py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+              คุณภาพข้อมูลราย System · {query.data.systemCount} System · ไม่ผ่าน{" "}
+              {query.data.totalRows - query.data.usableRows} แถว
+            </summary>
             <SectionHeader
               id="inventory-quality-heading"
               title="คุณภาพข้อมูลราย System"
-              meta={`ผ่านเมื่อแถวที่ใช้งานได้ ≥ ${String(QUALITY_THRESHOLD)}% ของแถวปัจจุบัน`}
+              meta={`ข้อมูลครบและรูปแบบผ่าน ≥ ${String(QUALITY_THRESHOLD)}% ของแถวปัจจุบัน ไม่ใช่ผลตรวจความปลอดภัย`}
             />
             <DataTable
               ariaLabel="คุณภาพข้อมูลราย System"
@@ -331,13 +344,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
                 )
               }
             />
-          </section>
-          {query.data.systemCount === 0 ? null : (
-            <InventoryRowsSection
-              summary={query.data}
-              scope={{ organizationId, projectId }}
-            />
-          )}
+          </details>
         </>
       )}
       {adding === null ? null : (

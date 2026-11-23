@@ -29,6 +29,7 @@ export function DataTable<Row>({
   empty,
   className,
   dense = false,
+  stickyRowActions = false,
   "data-testid": testId,
 }: {
   "data-testid"?: string;
@@ -45,6 +46,7 @@ export function DataTable<Row>({
   className?: string;
   /** Narrower cell padding for a table with many columns. */
   dense?: boolean;
+  stickyRowActions?: boolean;
 }) {
   const padding = dense ? "px-2" : "px-4";
   const columnCount = columns.length + (rowActions === undefined ? 0 : 1);
@@ -87,8 +89,14 @@ export function DataTable<Row>({
             {rowActions === undefined ? null : (
               <th
                 scope="col"
-                className={cn("h-11 border-b border-foreground/10", padding)}
-              />
+                className={cn(
+                  "h-11 border-b border-foreground/10",
+                  padding,
+                  stickyRowActions && "sticky right-0 z-20 bg-surface",
+                )}
+              >
+                <span className="sr-only">การดำเนินการ</span>
+              </th>
             )}
           </tr>
         </thead>
@@ -124,7 +132,14 @@ export function DataTable<Row>({
                 </td>
               ))}
               {rowActions === undefined ? null : (
-                <td className={cn("h-11 text-end align-middle", padding)}>
+                <td
+                  className={cn(
+                    "h-11 text-end align-middle",
+                    padding,
+                    stickyRowActions &&
+                      "sticky right-0 bg-surface border-l border-foreground/10",
+                  )}
+                >
                   {rowActions(row)}
                 </td>
               )}

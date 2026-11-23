@@ -130,15 +130,26 @@ describe("InventoryPage", () => {
     expect(screen.getByTestId("inventory-tile-usable")).toHaveTextContent(
       "ไม่ผ่าน 4 แถว",
     );
+    const details = screen.getByTestId("inventory-quality-details");
+    expect(details).not.toHaveAttribute("open");
+    await userEvent
+      .setup()
+      .click(within(details).getByText(/คุณภาพข้อมูลราย System ·/));
+    expect(details).toHaveAttribute("open");
     const billing = screen.getByTestId(`inventory-system-${BILLING}`);
     expect(within(billing).getByText("24 · 100%")).toBeInTheDocument();
-    expect(within(billing).getByText("ผ่าน")).toBeInTheDocument();
+    expect(
+      within(billing).getByTestId(`inventory-quality-${BILLING}`),
+    ).toHaveAttribute("data-low-quality", "false");
     expect(
       within(billing).queryByTestId(`inventory-rejected-link-${BILLING}`),
     ).toBeNull();
     const hr = screen.getByTestId(`inventory-system-${HR}`);
     expect(within(hr).getByText("12 · 75%")).toBeInTheDocument();
-    expect(within(hr).getByText("คุณภาพต่ำ")).toBeInTheDocument();
+    expect(within(hr).getByTestId(`inventory-quality-${HR}`)).toHaveAttribute(
+      "data-low-quality",
+      "true",
+    );
     expect(within(hr).getByText("ทีม HR, ทีม Infra")).toBeInTheDocument();
     expect(
       within(hr).getByTestId(`inventory-rejected-link-${HR}`),
@@ -296,11 +307,15 @@ describe("InventoryPage", () => {
       renderPage();
 
       const add = await screen.findByTestId("inventory-add-system");
-      expect(add).toHaveTextContent("เพิ่ม System");
+      expect(add).toHaveTextContent("เพิ่มระบบใน Inventory");
       await user.click(add);
       const dialog = await screen.findByRole("dialog", {
-        name: "เพิ่ม System",
+        name: "เพิ่มระบบใน Inventory",
       });
+      expect(dialog).toHaveAttribute(
+        "aria-describedby",
+        within(dialog).getByTestId("inventory-system-description").id,
+      );
       expect(within(dialog).getByLabelText("ชื่อ System")).toHaveFocus();
       expect(within(dialog).queryByTestId("inventory-row-system")).toBeNull();
       await user.keyboard("{Escape}");
@@ -338,7 +353,7 @@ describe("InventoryPage", () => {
         });
       });
       expect(await screen.findByTestId("inventory-success")).toHaveTextContent(
-        "เพิ่ม System แล้ว",
+        "เพิ่มระบบใน Inventory แล้ว",
       );
       expect(screen.queryByRole("dialog")).toBeNull();
       await waitFor(() => {

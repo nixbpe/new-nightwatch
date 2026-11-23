@@ -186,7 +186,13 @@ describe("InventoryRowsSection table", () => {
     renderSection();
 
     const first = await screen.findByTestId(`inventory-row-${ROW_A}`);
-    expect(within(first).getByText("ใช้งานได้")).toBeInTheDocument();
+    const source = screen.getByTestId(`inventory-row-source-${ROW_A}`);
+    expect(source).not.toHaveAttribute("open");
+    await userEvent.setup().click(within(source).getByText(/ที่มาของ Ubuntu/));
+    expect(source).toHaveAttribute("open");
+    expect(
+      within(first).getByTestId(`inventory-row-quality-${ROW_A}`),
+    ).toHaveAttribute("data-usable", "true");
     expect(
       within(first).getByRole("link", { name: "Billing API" }),
     ).toHaveAttribute("href", `${BASE}/systems/${BILLING}`);
@@ -197,7 +203,9 @@ describe("InventoryRowsSection table", () => {
       screen.getByTestId(`inventory-row-source-${ROW_A}`),
     ).toHaveTextContent("สมชาย");
     const second = screen.getByTestId(`inventory-row-${ROW_B}`);
-    expect(within(second).getByText("ไม่ผ่าน")).toBeInTheDocument();
+    expect(
+      within(second).getByTestId(`inventory-row-quality-${ROW_B}`),
+    ).toHaveAttribute("data-usable", "false");
     expect(within(second).getByText("key ซ้ำ")).toBeInTheDocument();
     expect(second).toHaveTextContent("ไม่ถึง patch level");
     expect(
@@ -447,7 +455,7 @@ describe("InventoryRowsSection editing", () => {
     ]);
     expect(
       await screen.findByTestId("inventory-rows-success"),
-    ).toHaveTextContent("เพิ่มแถวแล้ว");
+    ).toHaveTextContent("เพิ่มรายการซอฟต์แวร์แล้ว");
     expect(screen.getByTestId("inventory-row-add")).toHaveFocus();
   });
 

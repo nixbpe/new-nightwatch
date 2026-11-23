@@ -167,17 +167,40 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("inventory-tile-usable")).toContainText(
         "ไม่ผ่าน 3 แถว",
       );
+      const quality = page.getByTestId("inventory-quality-details");
+      await expect(quality).not.toHaveAttribute("open");
+      await quality.locator("summary").focus();
+      await page.keyboard.press("Enter");
+      await expect(quality).toHaveAttribute("open", "");
       const systems = page.getByTestId(/^inventory-system-/);
       await expect(systems).toHaveCount(2);
       const hr = systems.filter({ hasText: "HR Portal" });
       await expect(hr).toContainText("1 · 25%");
-      await expect(hr).toContainText("คุณภาพต่ำ");
+      await expect(hr.locator('[data-low-quality="true"]')).toHaveCount(1);
       await expect(systems.filter({ hasText: "Billing API" })).toContainText(
         "ผ่าน",
       );
       await shot(page, `inventory-${theme}`);
       await expect(page.getByTestId("inventory-rows-table")).toBeVisible();
       await page.getByTestId("inventory-rows").scrollIntoViewIfNeeded();
+      const edit = page.getByTestId(/^inventory-row-edit-/).first();
+      const bounds = await edit.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
+        page.viewportSize()!.width,
+      );
+      await edit.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(edit).toBeFocused();
+      const source = page
+        .locator('[data-testid^="inventory-row-source-"]')
+        .first();
+      await source.locator("summary").focus();
+      await page.keyboard.press("Enter");
+      await expect(source).toHaveAttribute("open", "");
+      await expect(source).toContainText("inventory-q4.csv");
       await shot(page, `inventory-rows-${theme}`);
       await page.evaluate(() => {
         window.scrollTo(0, 0);
@@ -322,13 +345,13 @@ for (const theme of ["light", "dark"] as const) {
         .selectOption("Middleware");
       await dialog.getByTestId("inventory-row-save").click();
       await expect(page.getByTestId("inventory-rows-success")).toContainText(
-        "เพิ่มแถวแล้ว",
+        "เพิ่มรายการซอฟต์แวร์แล้ว",
       );
       await expect(table.locator("tbody tr")).toHaveCount(7);
       await expect(page.getByTestId("inventory-tile-total")).toContainText("7");
       const added = table.locator("tbody tr").filter({ hasText: "Redis Ltd" });
       await expect(added).toContainText("แก้ในระบบ");
-      await expect(added).toContainText("ใช้งานได้");
+      await expect(added.locator('[data-usable="true"]')).toHaveCount(1);
 
       // The same key again is refused and names the row it repeats.
       await page.getByTestId("inventory-row-add").click();
@@ -445,7 +468,7 @@ for (const theme of ["light", "dark"] as const) {
       await dialog.getByTestId("inventory-row-name").fill("Cache");
       await dialog.getByTestId("inventory-row-save").click();
       await expect(page.getByTestId("inventory-success")).toContainText(
-        "เพิ่ม System แล้ว",
+        "เพิ่มระบบใน Inventory แล้ว",
       );
       await expect(page.getByTestId("inventory-tile-total")).toContainText("7");
       const cache = page.getByTestId(/^inventory-open-system-/).filter({
@@ -454,6 +477,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(cache).toHaveCount(1);
 
       // Rename in the form of the page: the name another System has is refused.
+      await page
+        .getByTestId("inventory-quality-details")
+        .locator("summary")
+        .click();
       await cache.click();
       await expect(page.getByTestId("page-title")).toHaveText("Cache");
       const name = page.getByRole("textbox", { name: "ชื่อ System" });

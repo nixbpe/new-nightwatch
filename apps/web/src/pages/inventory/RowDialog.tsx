@@ -185,9 +185,9 @@ export function RowDialog({
     onSuccess: () => {
       onSaved(
         mode.kind === "system"
-          ? "เพิ่ม System แล้ว"
+          ? "เพิ่มระบบใน Inventory แล้ว"
           : editing === null
-            ? "เพิ่มแถวแล้ว"
+            ? "เพิ่มรายการซอฟต์แวร์แล้ว"
             : "บันทึกแถวแล้ว",
       );
     },
@@ -283,6 +283,9 @@ export function RowDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={
+          mode.kind === "system" ? `${titleId}-description` : undefined
+        }
         aria-busy={save.isPending ? true : undefined}
         tabIndex={-1}
         onKeyDown={onKeyDown}
@@ -296,11 +299,21 @@ export function RowDialog({
           <div className="px-4 pt-4 sm:px-6 sm:pt-6">
             <h2 id={titleId} className="text-lg font-semibold text-heading">
               {mode.kind === "system"
-                ? "เพิ่ม System"
+                ? "เพิ่มระบบใน Inventory"
                 : editing === null
-                  ? "เพิ่มแถว"
+                  ? "เพิ่มรายการซอฟต์แวร์"
                   : "แก้แถว"}
             </h2>
+            {mode.kind === "system" ? (
+              <p
+                id={`${titleId}-description`}
+                className="mt-2 text-sm text-foreground-secondary"
+                data-testid="inventory-system-description"
+              >
+                ระบุชื่อระบบและซอฟต์แวร์รายการแรก
+                ไม่ได้สร้างหรือเชื่อมต่อระบบจริง
+              </p>
+            ) : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
             {general === null ? null : (

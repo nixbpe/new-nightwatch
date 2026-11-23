@@ -200,7 +200,7 @@ export function InventoryRowsSection({
       key: "owner",
       header: "Owner",
       cell: (row) => (
-        <span className="inline-block max-w-[120px] min-w-[80px]">
+        <span className="inline-block max-w-[96px] min-w-[64px]">
           {row.owner}
         </span>
       ),
@@ -218,20 +218,32 @@ export function InventoryRowsSection({
       key,
       header,
       mono: key === "version",
-      cell: (row) => <span className="whitespace-nowrap">{row[key]}</span>,
+      cell: (row) => (
+        <span
+          className={
+            key === "vendor"
+              ? "inline-block max-w-[100px] break-words"
+              : "whitespace-nowrap"
+          }
+        >
+          {row[key]}
+        </span>
+      ),
     })),
     {
       key: "status",
-      header: "สถานะ",
+      header: "คุณภาพข้อมูล",
       cell: (row) => (
-        <div className="flex w-[150px] flex-col items-start gap-1 py-2">
+        <div className="flex w-[120px] flex-col items-start gap-1 py-2">
           <span className="flex flex-wrap gap-1">
             <StatusPill
+              data-testid={`inventory-row-quality-${row.id}`}
+              data-usable={row.usable}
               dot
               neutralLabel={row.usable}
               tone={row.usable ? "neutral" : "caution"}
             >
-              {row.usable ? "ใช้งานได้" : "ไม่ผ่าน"}
+              {row.usable ? "ข้อมูลครบ" : "ข้อมูลไม่ผ่าน"}
             </StatusPill>
             {row.duplicate ? (
               <StatusPill tone="muted">key ซ้ำ</StatusPill>
@@ -254,15 +266,23 @@ export function InventoryRowsSection({
       key: "source",
       header: "ที่มา",
       cell: (row) => (
-        <div
+        <details
           data-testid={`inventory-row-source-${row.id}`}
-          className="flex w-[170px] flex-col py-2 text-xs"
+          className="w-[100px] py-2 text-xs"
         >
-          <span className="break-words">{sourceLabel(row.source)}</span>
-          <span className="font-mono break-words text-foreground-secondary">
-            {sourceWho(row.source, preferences)}
-          </span>
-        </div>
+          <summary className="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            <span className="sr-only">
+              ที่มาของ {row.product} {row.version}:{" "}
+            </span>
+            {row.source.kind === "import" ? "นำเข้าจากไฟล์" : "แก้ในระบบ"}
+          </summary>
+          <div className="mt-2 space-y-1 break-words">
+            <p>{sourceLabel(row.source)}</p>
+            <p className="text-foreground-secondary">
+              {sourceWho(row.source, preferences)} ({preferences.timeZone})
+            </p>
+          </div>
+        </details>
       ),
     },
   ];
@@ -300,6 +320,9 @@ export function InventoryRowsSection({
           </span>
         }
       />
+      <p className="text-xs text-foreground-secondary">
+        คุณภาพข้อมูลตรวจความครบถ้วนและรูปแบบ ไม่ใช่ผลตรวจความปลอดภัย
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <select
           data-testid="inventory-rows-system"
@@ -368,7 +391,7 @@ export function InventoryRowsSection({
               setDialog({ kind: "add", opener: event.currentTarget });
             }}
           >
-            เพิ่มแถว
+            เพิ่มรายการซอฟต์แวร์
           </Button>
         ) : null}
       </div>
@@ -431,6 +454,7 @@ export function InventoryRowsSection({
           <DataTable
             ariaLabel="แถวทั้งหมดของ inventory"
             dense
+            stickyRowActions
             tableTestId="inventory-rows-table"
             columns={columns}
             rows={data.rows}
