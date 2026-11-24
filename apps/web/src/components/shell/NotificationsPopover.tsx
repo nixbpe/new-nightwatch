@@ -106,7 +106,11 @@ export function NotificationsPopover() {
         ref={popover.triggerRef}
         data-testid="shell-notifications-open"
         type="button"
-        aria-label="การแจ้งเตือน"
+        aria-label={
+          unreadCount === undefined
+            ? "การแจ้งเตือน"
+            : `การแจ้งเตือน · ${String(unreadCount)} รายการยังไม่อ่าน`
+        }
         aria-haspopup="dialog"
         aria-expanded={popover.open}
         disabled={me === undefined}
@@ -220,9 +224,22 @@ export function NotificationsPopover() {
                 ))}
               </div>
             ) : list.isError ? (
-              <p role="alert" className="p-4 text-sm text-danger">
-                โหลดการแจ้งเตือนไม่สำเร็จ
-              </p>
+              <div className="p-4 text-sm">
+                <p role="alert" className="text-danger">
+                  โหลดการแจ้งเตือนไม่สำเร็จ
+                </p>
+                <button
+                  data-testid="shell-notifications-list-retry"
+                  type="button"
+                  data-popover-item=""
+                  onClick={() => {
+                    void list.refetch();
+                  }}
+                  className="mt-2 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  ลองใหม่
+                </button>
+              </div>
             ) : list.data.items.length === 0 ? (
               <p
                 data-testid="shell-notifications-empty"

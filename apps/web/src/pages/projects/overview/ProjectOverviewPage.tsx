@@ -25,7 +25,7 @@ import {
   formatTime,
   formatTimeWithSeconds,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../../monitors/format";
 import {
   isDenied,
@@ -130,7 +130,7 @@ function OverviewForProject({
                 format={formatTimeWithSeconds}
               />
             </span>{" "}
-            (<span className="font-mono">{TIME_ZONE}</span>)
+            (<span className="font-mono">{timeZone()}</span>)
           </span>
         )
       }

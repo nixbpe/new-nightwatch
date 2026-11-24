@@ -1,3 +1,4 @@
+import { defaultPreferences, writePreferences } from "../../lib/preferences";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
@@ -32,7 +33,7 @@ import {
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
-import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
+import { formatDateTime, formatTimeWithSeconds, timeZone } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
 import {
@@ -1360,7 +1361,7 @@ describe("Overview times, focus and filter failures", () => {
     expect(
       await within(card).findByTestId("monitor-overview-event-time"),
     ).toHaveAttribute("datetime", at);
-    expect(card).toHaveTextContent(TIME_ZONE);
+    expect(card).toHaveTextContent(timeZone());
   });
 
   it("keeps focus on the refresh button while it refreshes and ignores a second press", async () => {
@@ -2160,7 +2161,7 @@ describe("Project monitor list", () => {
       "สถานะ",
       "เวลาตอบสนอง · p95 · 24 ชม.",
       "ความพร้อมใช้งาน · 24 ชม.",
-      `ตรวจล่าสุด (${TIME_ZONE})`,
+      `ตรวจล่าสุด (${timeZone()})`,
     ]);
     const down = within(rowOf(ids.down));
     expect(down.getByTestId("monitor-list-url")).toHaveTextContent(
@@ -2278,3 +2279,27 @@ describe("A failed Project lookup", () => {
     expect(screen.queryByTestId("monitor-overview-access-error")).toBeNull();
   });
 });
+
+it.each(["table", "cards"])(
+  "%s last-check time and zone follow Display instead of browser",
+  async (view) => {
+    writePreferences({
+      ...defaultPreferences(),
+      timeZone: "Pacific/Kiritimati",
+      hourCycle: "h23",
+    });
+    localStorage.setItem("nightwatch:monitors-view", view);
+    fetchListMock.mockResolvedValue(
+      list([item({ lastCheckAt: "2026-09-30T23:30:00Z" })]),
+    );
+    try {
+      renderPage();
+      const times = await screen.findAllByTestId("monitor-list-check-time");
+      expect(times[0]).toHaveTextContent("1 ต.ค.");
+      expect(times[0]).toHaveTextContent("13:30");
+      expect(document.body).toHaveTextContent("Pacific/Kiritimati");
+    } finally {
+      localStorage.removeItem("nightwatch-preferences");
+    }
+  },
+);

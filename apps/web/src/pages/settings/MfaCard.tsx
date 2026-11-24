@@ -1,3 +1,4 @@
+import { Notice } from "../../components/ui/notice";
 import { useForm } from "@tanstack/react-form";
 import { toDataURL } from "qrcode";
 import {
@@ -335,10 +336,10 @@ export function MfaCard({
       {enabled ? (
         <>
           {justEnabled ? (
-            <Alert data-testid="mfa-enabled-notice" tone="success">
+            <Notice data-testid="mfa-enabled-notice" tone="success">
               เปิดใช้งานยืนยันสองขั้นตอนแล้ว
               ครั้งถัดไปที่เข้าสู่ระบบจะต้องกรอกรหัสจากแอปด้วย
-            </Alert>
+            </Notice>
           ) : null}
           <div className="flex flex-col rounded border border-foreground/10">
             <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">

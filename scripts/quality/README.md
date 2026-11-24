@@ -238,6 +238,12 @@ cadence and Resume pending-window tests. Never use accelerated monitors for
 uptime, chart or elapsed-duration assertions; notification dispatch keeps its
 normal cadence.
 
+The test-only API entry supplies a deterministic DNS failure for
+`dns-not-found.nw-e2e.invalid` through the outbound resolver dependency. The
+monitor form case exercises the real API, executor classification and UI with
+that synthetic low-level failure; it does not prove external DNS availability
+or OS NXDOMAIN timing. Other hostnames retain the real resolver.
+
 E2E supplements unit and integration tests. Execution stages are listed
 [below](#test-changes-and-execution-stages).
 

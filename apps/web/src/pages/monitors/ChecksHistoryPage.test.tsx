@@ -57,7 +57,7 @@ import {
   P,
   projectDetail,
 } from "./detail-test-support";
-import { TIME_ZONE } from "./format";
+import { timeZone } from "./format";
 import { deferred } from "./form-test-support";
 
 // The interval is read when a fetch starts or ends. It is long by default so that a refresh never takes a response a test queued for a load more; a test that exercises the interval shortens it just before the step it checks.
@@ -748,7 +748,7 @@ describe("Checks history URL changes", () => {
     expect(
       within(change).getByTestId("monitor-check-url-change-time"),
     ).toHaveAttribute("dateTime", changedAt);
-    expect(change).toHaveTextContent(TIME_ZONE);
+    expect(change).toHaveTextContent(timeZone());
     expect(
       within(change).getByTestId("monitor-check-url-change-url"),
     ).toHaveTextContent("https://new.acme.example/health");

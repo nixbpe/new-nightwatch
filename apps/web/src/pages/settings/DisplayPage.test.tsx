@@ -95,7 +95,7 @@ describe("DisplayPage", () => {
     expect(screen.getByTestId("display-saved")).toBeVisible();
     expect(screen.getByTestId("display-saved")).toHaveAttribute(
       "role",
-      "alert",
+      "status",
     );
     const stored = JSON.parse(
       localStorage.getItem(PREFERENCES_KEY) ?? "{}",

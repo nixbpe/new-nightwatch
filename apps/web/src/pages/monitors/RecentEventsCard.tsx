@@ -14,7 +14,7 @@ import {
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import {
-  TIME_ZONE,
+  timeZone,
   formatDateTime,
   formatDuration,
   incidentReasonLabel,
@@ -196,7 +196,7 @@ export function RecentEventsCard({
       <CardHeader
         id="recent-events-title"
         title="เหตุการณ์ล่าสุด"
-        description={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
+        description={`เวลาแสดงตามเขตเวลา ${timeZone()}`}
         className="border-b border-foreground/10 p-4"
       />
       {body}

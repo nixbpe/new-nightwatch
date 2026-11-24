@@ -39,7 +39,7 @@ import {
   formatTimeWithSeconds,
   formatTimeWithSecondsOrDate,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useDataFresh } from "./useDataFresh";
@@ -530,7 +530,7 @@ function DetailForMonitor({
               format={formatTimeWithSecondsOrDate}
             />
           </span>{" "}
-          ({TIME_ZONE})
+          ({timeZone()})
         </span>
       )}
       {canWrite ? null : (

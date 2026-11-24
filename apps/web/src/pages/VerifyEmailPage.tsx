@@ -1,3 +1,4 @@
+import { Notice } from "../components/ui/notice";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
