@@ -1046,6 +1046,21 @@ export const monitorHistoryQuerySchema = z.object({
 });
 export type MonitorHistoryQuery = z.output<typeof monitorHistoryQuerySchema>;
 
+/** Stored check results are purged after this many days; `since` is clamped to it. */
+export const MONITOR_RETENTION_DAYS = 30;
+
+/**
+ * Both filters are optional; without them the response is the unfiltered list.
+ * `offset` counts rows of the filtered list, so a page position is meaningful
+ * only with the filter combination it was read under. `since` is an instant
+ * (UTC, `Z`); the server never reads earlier than the retention window.
+ */
+export const monitorChecksQuerySchema = monitorHistoryQuerySchema.extend({
+  outcome: z.enum(CHECK_OUTCOMES).optional(),
+  since: z.iso.datetime().max(40).optional(),
+});
+export type MonitorChecksQuery = z.output<typeof monitorChecksQuerySchema>;
+
 export const monitorRecentEventsQuerySchema = z.object({
   limit: z.coerce
     .number()

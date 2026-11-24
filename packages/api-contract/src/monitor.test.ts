@@ -6,6 +6,7 @@ import {
   monitorConfigSchema,
   monitorCreateSchema,
   monitorEditSchema,
+  monitorChecksQuerySchema,
   monitorHistoryQuerySchema,
   monitorIssueReason,
   monitorListQuerySchema,
@@ -658,6 +659,39 @@ describe("read query schemas", () => {
     expect(
       monitorResponseTimesQuerySchema.safeParse({ range: "1y" }).success,
     ).toBe(false);
+  });
+});
+
+describe("checks query schema", () => {
+  it("keeps the default query identical and accepts one filter of each kind", () => {
+    expect(monitorChecksQuerySchema.parse({})).toEqual(
+      monitorHistoryQuerySchema.parse({}),
+    );
+    expect(
+      monitorChecksQuerySchema.parse({
+        outcome: "check_error",
+        since: "2026-09-30T07:55:00.000Z",
+        offset: "50",
+      }),
+    ).toEqual({
+      limit: 20,
+      offset: 50,
+      outcome: "check_error",
+      since: "2026-09-30T07:55:00.000Z",
+    });
+  });
+
+  it("rejects an unknown outcome and a since that is not a UTC instant", () => {
+    for (const bad of [
+      { outcome: "failed" },
+      { outcome: "" },
+      { since: "yesterday" },
+      { since: "2026-09-30" },
+      { since: "2026-09-30T07:55:00+07:00" },
+      { since: `2026-09-30T07:55:00.${"0".repeat(60)}Z` },
+    ]) {
+      expect(monitorChecksQuerySchema.safeParse(bad).success).toBe(false);
+    }
   });
 });
 

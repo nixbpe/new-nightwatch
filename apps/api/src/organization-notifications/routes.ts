@@ -448,7 +448,7 @@ export function registerOrganizationMemberRoutes(
 ): void {
   app.openapi(memberListRoute, async (c) => {
     const { organizationId } = c.req.valid("param");
-    const { limit, offset } = c.req.valid("query");
+    const { limit, offset, q, role } = c.req.valid("query");
     const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
     const body = await auditDenials(
       deps.logger,
@@ -460,6 +460,8 @@ export function registerOrganizationMemberRoutes(
           actorUserId: session.user.id,
           limit,
           offset,
+          q,
+          role,
         }),
     );
     return c.json(body, 200);

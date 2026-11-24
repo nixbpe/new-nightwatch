@@ -23,6 +23,8 @@ const revokeOtherOrganizationId = crypto.randomUUID();
 const leaveOrganizationId = crypto.randomUUID();
 const leaveOtherOrganizationId = crypto.randomUUID();
 const nativeOrganizationId = crypto.randomUUID();
+const filterOrganizationId = crypto.randomUUID();
+const filterOtherOrganizationId = crypto.randomUUID();
 const inviterId = crypto.randomUUID();
 const memberIds = {
   owner: crypto.randomUUID(),
@@ -72,6 +74,8 @@ const emails = {
   nativeOwner: `native-owner-${run}@example.test`,
   nativeAdmin: `native-admin-${run}@example.test`,
   nativeViewer: `native-viewer-${run}@example.test`,
+  filterOwner: `filter-owner-${run}@example.test`,
+  filterViewer: `filter-viewer-${run}@example.test`,
 };
 const userIds = new Map<keyof typeof emails, string>();
 const mail: OutboundMail[] = [];
@@ -235,7 +239,9 @@ beforeAll(async () => {
             ($16, $17, $18, now()),
             ($19, $20, $21, now()),
             ($22, $23, $24, now()),
-            ($25, $26, $27, now())`,
+            ($25, $26, $27, now()),
+            ($28, $29, $30, now()),
+            ($31, $32, $33, now())`,
     [
       organizationId,
       `Member route ${run}`,
@@ -264,6 +270,12 @@ beforeAll(async () => {
       nativeOrganizationId,
       `Native route ${run}`,
       `native-route-${run}`,
+      filterOrganizationId,
+      `Filter route ${run}`,
+      `filter-route-${run}`,
+      filterOtherOrganizationId,
+      `Filter other route ${run}`,
+      `filter-other-route-${run}`,
     ],
   );
   await owner.sql.query(
@@ -284,6 +296,8 @@ afterAll(async () => {
       leaveOrganizationId,
       leaveOtherOrganizationId,
       nativeOrganizationId,
+      filterOrganizationId,
+      filterOtherOrganizationId,
     ],
   ]);
   await owner.sql.query(
@@ -1783,5 +1797,90 @@ describe("native Better Auth organization routes (hotfix)", () => {
     ]) {
       expect(serialized).not.toContain(sensitive);
     }
+  }, 120_000);
+});
+
+describe("organization member list filters HTTP contract", () => {
+  it("filters by q and role inside the actor's organization, rejects invalid values and keeps denials", async () => {
+    const ownerClient = await admit("filterOwner", filterOrganizationId);
+    const viewerClient = await admit("filterViewer", filterOrganizationId);
+    const ownerUser = userIds.get("filterOwner");
+    const viewerUser = userIds.get("filterViewer");
+    if (!ownerUser || !viewerUser) throw new Error("filter users missing");
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $3, $4, 'owner', now(), now()),
+              ($2, $3, $5, 'viewer', now(), now()),
+              ($6, $7, $4, 'viewer', now(), now())`,
+      [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        filterOrganizationId,
+        ownerUser,
+        viewerUser,
+        crypto.randomUUID(),
+        filterOtherOrganizationId,
+      ],
+    );
+    const base = `/api/organizations/${filterOrganizationId}/members`;
+    const names = (response: ApiResponse) =>
+      organizationMemberListResponseSchema
+        .parse(response.json)
+        .members.map((member) => member.userId);
+
+    const byEmail = await ownerClient(
+      "GET",
+      `${base}?q=${encodeURIComponent(`FILTER-VIEWER-${run}`)}`,
+    );
+    expect(byEmail.status).toBe(200);
+    expect(names(byEmail)).toEqual([viewerUser]);
+    expect(
+      organizationMemberListResponseSchema.parse(byEmail.json).page,
+    ).toEqual({ limit: 50, offset: 0, total: 1 });
+
+    const byRole = await ownerClient("GET", `${base}?role=owner`);
+    expect(names(byRole)).toEqual([ownerUser]);
+
+    const noMatch = await ownerClient("GET", `${base}?q=zzz-${run}&role=admin`);
+    expect(noMatch.status).toBe(200);
+    expect(
+      organizationMemberListResponseSchema.parse(noMatch.json),
+    ).toMatchObject({ members: [], page: { total: 0 } });
+
+    // The same user is a member of the other organization; its row never shows here.
+    const other = await ownerClient(
+      "GET",
+      `/api/organizations/${filterOtherOrganizationId}/members?q=filter`,
+    );
+    expect(other.status).toBe(403);
+
+    for (const query of [
+      "q=",
+      "q=%20%20",
+      `q=${"a".repeat(101)}`,
+      "q=a&q=b",
+      "q=a%00b",
+      "role=superuser",
+      "role=",
+      "role=owner&role=admin",
+    ]) {
+      const invalid = await ownerClient("GET", `${base}?${query}`);
+      expect(invalid.status, query).toBe(400);
+      expect(invalid.json).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+    }
+
+    const denied = await viewerClient("GET", `${base}?q=filter&role=owner`);
+    expect(denied.status).toBe(403);
+    expect(denied.json).toEqual({
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
+      },
+    });
   }, 120_000);
 });

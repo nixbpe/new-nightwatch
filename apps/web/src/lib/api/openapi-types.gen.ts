@@ -1473,6 +1473,8 @@ export interface paths {
                 query?: {
                     limit?: number;
                     offset?: number;
+                    q?: string;
+                    role?: "owner" | "admin" | "viewer" | "auditor";
                 };
                 header?: never;
                 path: {
@@ -4386,12 +4388,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Check history, newest first */
+        /** Check history, newest first, optionally by outcome and start time */
         get: {
             parameters: {
                 query?: {
                     limit?: number;
                     offset?: number | null;
+                    outcome?: "pass" | "fail" | "check_error";
+                    since?: string;
                 };
                 header?: never;
                 path: {
@@ -7481,6 +7485,9 @@ export interface paths {
                 query?: {
                     system?: string;
                     layer?: "OS" | "DB" | "Middleware" | "Runtime" | "Appliance";
+                    environment?: "Production" | "Non-production";
+                    exposure?: "Internet-facing" | "Internal" | "Isolated";
+                    owner?: string;
                     status?: "all" | "rejected" | "duplicate";
                     q?: string;
                     page?: number;

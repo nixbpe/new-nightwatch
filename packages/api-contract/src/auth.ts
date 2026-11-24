@@ -38,9 +38,24 @@ const decimalInteger = z.preprocess(
   z.int(),
 );
 
-export const organizationMemberListQuerySchema = z.object({
+const pagedListQuerySchema = z.object({
   limit: decimalInteger.pipe(z.number().min(1).max(50)).default(50),
   offset: decimalInteger.pipe(z.number().min(0)).default(0),
+});
+
+/** Longest member search text the list accepts (matches name or email). */
+export const ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH = 100;
+
+export const organizationMemberListQuerySchema = pagedListQuerySchema.extend({
+  q: z
+    .string()
+    .trim()
+    .min(1)
+    .max(ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH)
+    // eslint-disable-next-line no-control-regex -- the point is to reject them
+    .refine((value) => !/[\u0000-\u001f\u007f]/.test(value))
+    .optional(),
+  role: organizationRoleSchema.optional(),
 });
 
 export const organizationMemberSchema = z.object({
@@ -74,8 +89,7 @@ export const organizationMemberRoleUpdateResponseSchema = z.object({
   }),
 });
 
-export const pendingInvitationListQuerySchema =
-  organizationMemberListQuerySchema;
+export const pendingInvitationListQuerySchema = pagedListQuerySchema;
 
 export const pendingInvitationSchema = z.object({
   publicId: z.uuid(),

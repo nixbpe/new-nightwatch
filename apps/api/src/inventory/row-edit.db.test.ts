@@ -176,6 +176,109 @@ describe("inventory row list", () => {
     expect(unknown.status).toBe(400);
   });
 
+  it("filters by Owner prefix, Environment and Exposure, combined with the other filters and counted in the total", async () => {
+    const line = (
+      system: string,
+      owner: string,
+      environment: string,
+      exposure: string,
+      product: string,
+    ) =>
+      `${system},${owner},Canonical,${product},22.04.4,OS,${environment},${exposure}`;
+    const project = await newProject(
+      "axes",
+      [
+        HEADER,
+        line("Web", "Team Alpha", "Production", "Internet-facing", "Ubuntu"),
+        line("Web", "team alpine", "Non-production", "Internal", "Nginx"),
+        line("Batch", "Team Beta", "Production", "Isolated", "Redis"),
+        line("Batch", "Alpha Ops", "Production", "Internal", "Ubuntu"),
+      ].join("\n"),
+    );
+    const products = async (query: string) =>
+      (await listRows(query, project)).rows.map((row) => row.product).sort();
+
+    expect(await products("")).toEqual(["Nginx", "Redis", "Ubuntu", "Ubuntu"]);
+    expect(await products("owner=team%20al")).toEqual(["Nginx", "Ubuntu"]);
+    // Whitespace runs collapse, as they do in the stored Owner.
+    expect(await products("owner=team%20%20%20al")).toEqual([
+      "Nginx",
+      "Ubuntu",
+    ]);
+    // A prefix, not a substring, and no LIKE wildcard.
+    expect(await products("owner=lpha")).toEqual([]);
+    expect(await products("owner=%25")).toEqual([]);
+    expect(await products("owner=_")).toEqual([]);
+    expect(await products("owner=%20%20")).toHaveLength(4);
+    expect(await products("environment=Non-production")).toEqual(["Nginx"]);
+    expect(await products("exposure=Internal")).toEqual(["Nginx", "Ubuntu"]);
+    expect(await products("exposure=Isolated")).toEqual(["Redis"]);
+    expect(
+      await products("owner=team&environment=Production&exposure=Internal"),
+    ).toEqual([]);
+    expect(await products("owner=alpha&environment=Production")).toEqual([
+      "Ubuntu",
+    ]);
+    expect(await products("owner=alpha&environment=Non-production")).toEqual(
+      [],
+    );
+    expect(
+      (await listRows("environment=Production&status=rejected", project)).total,
+    ).toBe(0);
+    expect((await listRows("environment=Production", project)).total).toBe(3);
+  });
+
+  it("never returns a row of another Project or Organization through the new filters", async () => {
+    const other = await newProject(
+      "axes-other",
+      [
+        HEADER,
+        "Elsewhere,ทีม Z,Canonical,Ubuntu,22.04.4,OS,Non-production,Isolated",
+      ].join("\n"),
+    );
+    const query = `owner=${encodeURIComponent("ทีม")}&environment=Non-production&exposure=Isolated`;
+    expect((await listRows(query)).total).toBe(0);
+    expect((await listRows(query, other)).total).toBe(1);
+    const foreign = await ctx.call(
+      otherOrg.users.owner,
+      "GET",
+      `${rowsPath(other)}?${query}`,
+    );
+    expect(foreign.status).toBe(403);
+    const outsider = await ctx.call(
+      org.users.auditor,
+      "GET",
+      `${rowsPath(other)}?${query}`,
+    );
+    expect(outsider.status).toBe(404);
+    const anonymous = await ctx.call(
+      null,
+      "GET",
+      `${rowsPath(other)}?${query}`,
+    );
+    expect(anonymous.status).toBe(401);
+  });
+
+  it("rejects an Environment or Exposure outside the lists and an Owner over the length limit", async () => {
+    for (const query of [
+      "environment=Staging",
+      "exposure=Public",
+      "environment=production",
+      `owner=${"a".repeat(201)}`,
+      // A NUL byte cannot be stored and used to reach Postgres as a 500.
+      "owner=%00",
+      "q=%00",
+    ]) {
+      const response = await ctx.call(
+        org.users.owner,
+        "GET",
+        `${rowsPath()}?${query}`,
+      );
+      expect(response.status, query).toBe(400);
+      expect(errorOf(response).code, query).toBe("VALIDATION_ERROR");
+    }
+  });
+
   it("pages the table and answers a page past the end with the last page", async () => {
     const project = await newProject("paging");
     await ctx.owner.sql.query(
@@ -186,7 +289,9 @@ describe("inventory row list", () => {
        insert into inventory_rows
          (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
           layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
-       select $1, $2, s.id, n + 1, 'o', 'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
+       select $1, $2, s.id, n + 1,
+              case when n <= 26 then 'Team 100%_ops' else 'Team other' end,
+              'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
               true, 'import', 'big.csv', 'u'
        from s, generate_series(1, 30) n`,
       [org.id, project],
@@ -199,6 +304,16 @@ describe("inventory row list", () => {
     const beyond = await listRows("page=9", project);
     expect(beyond.page).toBe(2);
     expect(beyond.rows).toHaveLength(5);
+    const filtered = await listRows("owner=TEAM%20100%25_&page=2", project);
+    expect(filtered).toMatchObject({ total: 26, page: 2, pageSize: 25 });
+    expect(filtered.rows.map((row) => row.product)).toEqual(["p26"]);
+    expect(filtered.rows[0]?.owner).toBe("Team 100%_ops");
+    const filteredBeyond = await listRows(
+      "owner=TEAM%20100%25_&page=9",
+      project,
+    );
+    expect(filteredBeyond).toMatchObject({ total: 26, page: 2 });
+    expect(filteredBeyond.rows.map((row) => row.product)).toEqual(["p26"]);
   });
 });
 

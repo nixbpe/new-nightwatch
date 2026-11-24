@@ -98,6 +98,8 @@ export async function listOrganizationMembers(
     actorUserId: string;
     limit: number;
     offset: number;
+    q?: string;
+    role?: OrganizationRole;
   },
 ): Promise<OrganizationMemberListResponse> {
   return withTenantContextRaw(
@@ -133,6 +135,16 @@ export async function listOrganizationMembers(
            join "user" u on u.id = m.user_id
            cross join authorization_state
            where m.organization_id = $1 and authorization_state.authorized
+             and ($5::text is null
+                  or strpos(lower(u.name), lower($5)) > 0
+                  or strpos(lower(u.email), lower($5)) > 0)
+             and ($6::text is null or (
+                  case
+                    when m.role ~ '(^|,)[[:space:]]*owner[[:space:]]*(,|$)' then 'owner'
+                    when m.role ~ '(^|,)[[:space:]]*admin[[:space:]]*(,|$)' then 'admin'
+                    when m.role ~ '(^|,)[[:space:]]*viewer[[:space:]]*(,|$)' then 'viewer'
+                    when m.role ~ '(^|,)[[:space:]]*auditor[[:space:]]*(,|$)' then 'auditor'
+                  end) = $6)
          ),
          page as (
            select * from scoped
@@ -157,7 +169,14 @@ export async function listOrganizationMembers(
                   '[]'::json
                 ) as members
          from authorization_state`,
-        [input.organizationId, input.actorUserId, input.limit, input.offset],
+        [
+          input.organizationId,
+          input.actorUserId,
+          input.limit,
+          input.offset,
+          input.q ?? null,
+          input.role ?? null,
+        ],
       );
       const row = result.rows[0];
       if (!row) throw new Error("member list query returned no row");

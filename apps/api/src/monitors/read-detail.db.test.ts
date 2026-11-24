@@ -15,6 +15,7 @@ import {
   seedIncident,
   seedMonitor,
   seedResults,
+  seedResponseSamples,
   type SeedMonitor,
 } from "./read-test-support";
 import {
@@ -32,6 +33,7 @@ let ctx: MonitorTestContext;
 let health: TestOrganization;
 let detail: TestOrganization;
 let history: TestOrganization;
+let filters: TestOrganization;
 let access: TestOrganization;
 let other: TestOrganization;
 let outsider: string;
@@ -42,6 +44,7 @@ beforeAll(async () => {
   health = await ctx.createOrganization("detail-health");
   detail = await ctx.createOrganization("detail-view");
   history = await ctx.createOrganization("detail-history");
+  filters = await ctx.createOrganization("detail-filters");
   access = await ctx.createOrganization("detail-access");
   other = await ctx.createOrganization("detail-other");
   outsider = await ctx.createUser("detail-outsider");
@@ -804,6 +807,225 @@ describe("Check history", () => {
   });
 });
 
+describe("Check history filters", () => {
+  const DAY = 86_400;
+  let id: string;
+  let foreignId: string;
+
+  beforeAll(async () => {
+    id = await seedMonitor(ctx, filters.id, { name: "Filtered history" });
+    foreignId = await seedMonitor(ctx, other.id, { name: "Foreign history" });
+    // Newest first: pass 100, fail 200, check_error 300, fail 400, pass 500, pass 10 d.
+    await seedResults(ctx, filters.id, id, [100, 500, 10 * DAY]);
+    await seedResults(ctx, filters.id, id, [200, 400], { outcome: "fail" });
+    await seedResults(ctx, filters.id, id, [300], { outcome: "check_error" });
+    // The same outcomes on another Organization's monitor must never show up.
+    await seedResults(ctx, other.id, foreignId, [150, 250], {
+      outcome: "fail",
+    });
+    await seedEvent(
+      ctx,
+      filters.id,
+      id,
+      "config_changed",
+      150,
+      "https://a.example",
+    );
+    await seedEvent(
+      ctx,
+      filters.id,
+      id,
+      "config_changed",
+      5 * DAY,
+      "https://b.example",
+    );
+  });
+
+  const filtered = async (query: string) => {
+    const response = await read(filters, `/${id}/checks${query}`);
+    expect(response.status).toBe(200);
+    return monitorChecksResponseSchema.parse(response.json);
+  };
+  const outcomes = (body: { checks: { outcome: string }[] }) =>
+    body.checks.map((check) => check.outcome);
+  const isoAgo = (seconds: number) =>
+    new Date(Date.now() - seconds * 1000).toISOString();
+
+  it("returns the whole list, with the same counts, when no filter is sent", async () => {
+    const body = await filtered("");
+    expect(body.page.total).toBe(6);
+    expect(outcomes(body)).toEqual([
+      "pass",
+      "fail",
+      "check_error",
+      "fail",
+      "pass",
+      "pass",
+    ]);
+  });
+
+  it("filters by outcome, newest first, and counts only the matches", async () => {
+    const body = await filtered("?outcome=fail");
+    expect(outcomes(body)).toEqual(["fail", "fail"]);
+    expect(body.page.total).toBe(2);
+    expect(outcomes(await filtered("?outcome=check_error"))).toEqual([
+      "check_error",
+    ]);
+    expect((await filtered("?outcome=pass")).page.total).toBe(3);
+  });
+
+  it("filters by start time and leaves out URL changes older than it", async () => {
+    const day = await filtered(`?since=${isoAgo(DAY)}`);
+    expect(day.page.total).toBe(5);
+    expect(day.urlChanges.map((change) => change.url)).toEqual([
+      "https://a.example",
+    ]);
+    const all = await filtered("");
+    expect(all.urlChanges).toHaveLength(2);
+    expect((await filtered(`?since=${isoAgo(-DAY)}`)).checks).toEqual([]);
+  });
+
+  it("clamps an old since to retention for checks, counts and URL changes", async () => {
+    const monitor = await seedMonitor(ctx, filters.id);
+    await seedResults(ctx, filters.id, monitor, [29 * DAY, 31 * DAY]);
+    await seedEvent(
+      ctx,
+      filters.id,
+      monitor,
+      "config_changed",
+      29 * DAY,
+      "https://retained.example",
+    );
+    await seedEvent(
+      ctx,
+      filters.id,
+      monitor,
+      "config_changed",
+      31 * DAY,
+      "https://expired.example",
+    );
+    const page = async (query: string) => {
+      const response = await read(filters, `/${monitor}/checks${query}`);
+      expect(response.status).toBe(200);
+      return monitorChecksResponseSchema.parse(response.json);
+    };
+    // Physical rows still exist; the filter, not partition cleanup, must hide them.
+    expect((await page("")).page.total).toBe(2);
+    const retained = await page(
+      "?since=2000-01-01T00:00:00.000Z&outcome=pass&limit=1",
+    );
+    expect(retained.checks).toHaveLength(1);
+    expect(retained.page).toEqual({ limit: 1, offset: 0, total: 1 });
+    expect(retained.urlChanges.map((change) => change.url)).toEqual([
+      "https://retained.example",
+    ]);
+    const beyond = await page(
+      "?since=2000-01-01T00:00:00.000Z&outcome=pass&limit=1&offset=1",
+    );
+    expect(beyond.checks).toEqual([]);
+    expect(beyond.page.total).toBe(1);
+    expect(beyond.urlChanges).toEqual([]);
+  });
+
+  it("includes the exact since instant for checks and URL changes but excludes the preceding millisecond", async () => {
+    const monitor = await seedMonitor(ctx, filters.id);
+    const clock = await ctx.owner.sql.query<{ cutoff: Date }>(
+      "select date_trunc('milliseconds', now() - interval '2 days') as cutoff",
+    );
+    const cutoff = clock.rows[0]?.cutoff;
+    if (!cutoff) throw new Error("database returned no cutoff");
+    const before = new Date(cutoff.getTime() - 1).toISOString();
+    const at = cutoff.toISOString();
+    const after = new Date(cutoff.getTime() + 1).toISOString();
+    await seedResponseSamples(
+      ctx,
+      filters.id,
+      monitor,
+      [before, at, after].map((scheduledFor) => ({
+        scheduledFor,
+        outcome: "fail",
+        responseTimeMs: 50,
+      })),
+    );
+    await seedResults(ctx, filters.id, monitor, [100], { outcome: "pass" });
+    await ctx.owner.sql.query(
+      `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at, url_masked)
+       values ($1, $2, 'config_changed', $3, 'https://before.example'),
+              ($1, $2, 'config_changed', $4, 'https://at.example'),
+              ($1, $2, 'config_changed', $5, 'https://after.example'),
+              ($1, $2, 'config_changed', $5, null)`,
+      [monitor, filters.id, before, at, after],
+    );
+    const response = await read(
+      filters,
+      `/${monitor}/checks?outcome=fail&since=${at}`,
+    );
+    expect(response.status).toBe(200);
+    const body = monitorChecksResponseSchema.parse(response.json);
+    expect(body.checks.map((check) => check.scheduledFor)).toEqual([after, at]);
+    expect(body.page).toEqual({ limit: 20, offset: 0, total: 2 });
+    expect(
+      body.urlChanges.map((change) => ({ at: change.at, url: change.url })),
+    ).toEqual([
+      { at: after, url: "https://after.example" },
+      { at, url: "https://at.example" },
+    ]);
+  });
+
+  it("combines both filters", async () => {
+    const body = await filtered(`?outcome=pass&since=${isoAgo(DAY)}`);
+    expect(outcomes(body)).toEqual(["pass", "pass"]);
+    expect(body.page.total).toBe(2);
+  });
+
+  it("counts the offset in the filtered list, so a page position belongs to its filter", async () => {
+    const second = await filtered("?outcome=fail&limit=1&offset=1");
+    expect(second.checks).toHaveLength(1);
+    expect(second.checks[0]?.outcome).toBe("fail");
+    expect(second.page).toEqual({ limit: 1, offset: 1, total: 2 });
+    // The same offset under another filter indexes that filter's list.
+    const errors = await filtered("?outcome=check_error&limit=1&offset=1");
+    expect(errors.checks).toEqual([]);
+    expect(errors.page.total).toBe(1);
+    const whole = await filtered("?limit=1&offset=1");
+    expect(whole.checks[0]?.outcome).toBe("fail");
+    expect(whole.page.total).toBe(6);
+  });
+
+  it("never returns another Organization's results, whatever the filter", async () => {
+    const body = await filtered("?outcome=fail&since=2000-01-01T00:00:00.000Z");
+    expect(body.page.total).toBe(2);
+    const foreign = await read(filters, `/${foreignId}/checks?outcome=fail`);
+    expect(foreign.status).toBe(404);
+    expect(foreign.json).toMatchObject({
+      error: { code: "MONITOR_NOT_FOUND" },
+    });
+  });
+
+  it("rejects an unknown outcome and a malformed since with the invalid-input error", async () => {
+    for (const query of [
+      "?outcome=failed",
+      "?outcome=",
+      "?since=yesterday",
+      "?since=2026-09-30T07:55:00%2B07:00",
+      "?outcome=fail&limit=51",
+    ]) {
+      const response = await read(filters, `/${id}/checks${query}`);
+      expect(response.status, query).toBe(400);
+      expect(response.json).toMatchObject({ error: { code: "INVALID_INPUT" } });
+    }
+  });
+
+  it("answers a non-member with 403 for a filtered request", async () => {
+    const response = await ctx.call(
+      outsider,
+      "GET",
+      monitorsPath(filters.id, `/${id}/checks?outcome=fail`),
+    );
+    expect(response.status).toBe(403);
+  });
+});
+
 describe("Incidents", () => {
   it("lists newest first with duration, reasons and paging", async () => {
     const id = await seedMonitor(ctx, history.id, { name: "incidents" });
@@ -867,6 +1089,8 @@ describe("Detail, Checks and Incidents: access", () => {
     "/response-times?range=7d",
     "/response-times?range=30d",
     "/events",
+    "/checks?outcome=fail",
+    "/checks?since=2026-01-01T00:00:00.000Z&outcome=pass&limit=1&offset=1",
   ];
 
   beforeAll(async () => {

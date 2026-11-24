@@ -1,5 +1,6 @@
 export {
   ORGANIZATION_MEMBER_LIMIT,
+  ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH,
   activeOrganizationInputSchema,
   invitationAcceptResponseSchema,
   invitationCancelResponseSchema,

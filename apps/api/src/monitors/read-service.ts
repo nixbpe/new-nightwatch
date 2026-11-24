@@ -2,6 +2,7 @@ import {
   CHECK_FAILURE_REASONS,
   LAST_RESPONSE_BODY_OMITTED_REASONS,
   MONITOR_EVENTS_WINDOW_DAYS,
+  MONITOR_RETENTION_DAYS,
   MONITOR_LIMIT_PER_PROJECT,
   MONITOR_RESPONSE_POINTS_MAX,
   TLS_REASONS,
@@ -16,6 +17,7 @@ import {
   type MonitorEventsResponse,
   type MonitorLastResponseResponse,
   type OrganizationRole,
+  type MonitorChecksQuery,
   type MonitorHistoryQuery,
   type MonitorIncidentsResponse,
   type MonitorHealthName,
@@ -981,22 +983,38 @@ type CheckRow = Omit<CheckResultView, "scheduledFor" | "checkedAt"> & {
   checkedAt: Date;
 };
 
+/**
+ * The earliest result a `since` filter may read: the later of `since` and the
+ * retention window, so a filter older than the stored data reads the same rows
+ * as the window itself. No `since` stays unbounded (the default list).
+ */
+export function checksSinceFloor(
+  since: string | undefined,
+  now: Date,
+): Date | null {
+  if (since === undefined) return null;
+  const retained = now.getTime() - MONITOR_RETENTION_DAYS * DAY_MS;
+  return new Date(Math.max(Date.parse(since), retained));
+}
+
 export async function listChecks(
   database: Database,
   identity: ReadIdentity,
   rawMonitorId: string,
-  query: MonitorHistoryQuery,
+  query: MonitorChecksQuery,
 ): Promise<MonitorChecksResponse> {
   return readInTenant(
     database,
     identity,
-    async (client, _now, _role, projectId) => {
+    async (client, now, _role, projectId) => {
       const monitorId = await assertMonitorInProject(
         client,
         identity.organizationId,
         projectId,
         rawMonitorId,
       );
+      const outcome = query.outcome ?? null;
+      const since = checksSinceFloor(query.since, now);
       // One row more than the page: it is the check just before the page, which
       // bounds the URL changes that belong to this page.
       const rows = await client.query<CheckRow>(
@@ -1007,14 +1025,25 @@ export async function listChecks(
          evaluated_from_prefix as "evaluatedFromPrefix"
        from monitor_check_results
        where monitor_id = $1 and tenant_id = $2
+         and ($5::text is null or outcome = $5)
+         and ($6::timestamptz is null or scheduled_for >= $6)
        order by scheduled_for desc
        offset $3 limit $4`,
-        [monitorId, identity.organizationId, query.offset, query.limit + 1],
+        [
+          monitorId,
+          identity.organizationId,
+          query.offset,
+          query.limit + 1,
+          outcome,
+          since,
+        ],
       );
       const total = await client.query<{ total: number }>(
         `select count(*)::int as total from monitor_check_results
-       where monitor_id = $1 and tenant_id = $2`,
-        [monitorId, identity.organizationId],
+       where monitor_id = $1 and tenant_id = $2
+         and ($3::text is null or outcome = $3)
+         and ($4::timestamptz is null or scheduled_for >= $4)`,
+        [monitorId, identity.organizationId, outcome, since],
       );
       const page = rows.rows.slice(0, query.limit);
       const before = rows.rows[query.limit]?.scheduledFor ?? null;
@@ -1032,12 +1061,14 @@ export async function listChecks(
                  and kind = 'config_changed' and url_masked is not null
                  and ($3::timestamptz is null or occurred_at > $3)
                  and ($4::timestamptz is null or occurred_at <= $4)
+                 and ($5::timestamptz is null or occurred_at >= $5)
                order by occurred_at desc, id`,
                 [
                   monitorId,
                   identity.organizationId,
                   before,
                   query.offset === 0 ? null : newest,
+                  since,
                 ],
               )
             ).rows;

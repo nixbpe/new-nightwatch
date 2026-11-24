@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isStorableText } from "./monitor";
+
 // Browser-safe (PKG-01): zod only. The template columns and rules below are the
 // F-017 contract (E-005 S1.1, Q-01, Q-02); the web app shows a message per code.
 
@@ -107,9 +109,25 @@ export type InventoryRowStatus = z.infer<typeof inventoryRowStatusSchema>;
 export const inventoryRowsQuerySchema = z.object({
   system: z.uuid().optional(),
   layer: z.enum(INVENTORY_LAYERS).optional(),
+  environment: z.enum(INVENTORY_ENVIRONMENTS).optional(),
+  exposure: z.enum(INVENTORY_EXPOSURES).optional(),
+  // Matches the start of the Owner, ignoring case. An empty value means no filter.
+  // Stored Owners have runs of whitespace collapsed to one space (import), so the filter does too.
+  owner: z
+    .string()
+    .trim()
+    .max(INVENTORY_FIELD_MAX_LENGTH)
+    .refine(isStorableText)
+    .transform((value) => value.replace(/\s+/gu, " "))
+    .optional(),
   status: inventoryRowStatusSchema.default("all"),
   // Matches part of the Vendor or the Product, ignoring case.
-  q: z.string().trim().max(INVENTORY_FIELD_MAX_LENGTH).optional(),
+  q: z
+    .string()
+    .trim()
+    .max(INVENTORY_FIELD_MAX_LENGTH)
+    .refine(isStorableText)
+    .optional(),
   page: z.coerce.number().int().min(1).default(1),
 });
 export type InventoryRowsQuery = Partial<
