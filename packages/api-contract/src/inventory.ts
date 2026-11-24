@@ -120,7 +120,6 @@ export const inventoryRowsQuerySchema = z.object({
     .transform((value) => value.replace(/\s+/gu, " "))
     .optional(),
   status: inventoryRowStatusSchema.default("all"),
-  // Matches part of the Vendor or the Product, ignoring case.
   q: z
     .string()
     .trim()
