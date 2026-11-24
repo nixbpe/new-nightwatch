@@ -1,15 +1,16 @@
-import { Notice } from "../../components/ui/notice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { initialsOf } from "../../components/shell/initials";
-import { Skeleton } from "../../components/shell/Skeleton";
+import { PageState } from "../../components/shell/PageState";
 import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { contextQueryOptions } from "../../lib/tenant/bootstrap";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { Card, CardFooter } from "../../components/ui/card";
+import { Notice } from "../../components/ui/notice";
+import { useUnsavedChangesGuard } from "../../components/ui/useUnsavedChangesGuard";
 import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 
@@ -36,20 +37,12 @@ export function ProfilePage() {
 
   if (meQuery.isPending) {
     return (
-      <Card
-        as="section"
-        role="status"
+      <PageState
+        kind="loading"
+        layout="lines"
         data-testid="profile-loading"
-        aria-label="กำลังโหลดโปรไฟล์"
-        padding="md"
-      >
-        <Skeleton className="h-4 w-40" />
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-16 w-16 rounded-full" />
-          <Skeleton className="h-3 w-56" />
-        </div>
-        <Skeleton className="h-10 w-full max-w-md" />
-      </Card>
+        label="กำลังโหลดโปรไฟล์…"
+      />
     );
   }
 
@@ -108,10 +101,21 @@ function ProfileForm({
   } | null>(null);
   const nameId = useId();
   const emailId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const restoreFocus = useRef(false);
 
   const validation = validateName(name);
   const dirty = name.trim() !== storedName;
   const showError = touched && validation !== null;
+  const guard = useUnsavedChangesGuard(dirty);
+
+  // Save and Cancel disable themselves once the name matches the stored one; keep focus on the form.
+  useEffect(() => {
+    if (!dirty && restoreFocus.current) {
+      restoreFocus.current = false;
+      nameRef.current?.focus();
+    }
+  }, [dirty]);
 
   const save = async () => {
     setTouched(true);
@@ -131,6 +135,7 @@ function ProfileForm({
       }
       setName(name.trim());
       setTouched(false);
+      restoreFocus.current = true;
       await onSaved();
       setNotice({ tone: "success", text: "บันทึกแล้ว" });
     } catch {
@@ -146,13 +151,9 @@ function ProfileForm({
   return (
     <Card as="section" aria-labelledby="profile-card-title" padding="md">
       <div className="flex flex-col gap-2">
-        <SectionHeader
-          id="profile-card-title"
-          code="01"
-          title="ข้อมูลโปรไฟล์"
-        />
+        <SectionHeader id="profile-card-title" title="ข้อมูลโปรไฟล์" />
         <p className="text-sm text-foreground-secondary">
-          ชื่อที่แสดงให้สมาชิกองค์กรอื่นเห็นในกิจกรรมและคำเชิญ
+          สมาชิกคนอื่นในองค์กรของคุณเห็นชื่อนี้ในกิจกรรมและคำเชิญ
         </p>
       </div>
 
@@ -161,7 +162,7 @@ function ProfileForm({
           {notice.text}
         </Notice>
       ) : (
-        <Alert data-testid={`profile-save-${notice.tone}`} tone={notice.tone}>
+        <Alert data-testid="profile-save-error" tone="error">
           {notice.text}
         </Alert>
       )}
@@ -199,6 +200,7 @@ function ProfileForm({
             errorId={`${nameId}-error`}
           >
             <Input
+              ref={nameRef}
               data-testid="profile-name"
               id={nameId}
               name="display-name"
@@ -258,6 +260,7 @@ function ProfileForm({
             data-testid="profile-cancel"
             disabled={!dirty || saving}
             onClick={() => {
+              restoreFocus.current = true;
               setName(storedName);
               setTouched(false);
               setNotice(null);
@@ -274,6 +277,7 @@ function ProfileForm({
           </Button>
         </CardFooter>
       </form>
+      {guard}
     </Card>
   );
 }

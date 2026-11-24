@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toDataURL } from "qrcode";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +29,7 @@ const TOTP_URI =
   "otpauth://totp/NightWatch:member@example.com?secret=JBSWY3DPEHPK3PXP&issuer=NightWatch";
 const SECRET_GROUPED = "JBSW Y3DP EHPK 3PXP";
 
-async function reachScanStep(refreshStatus = vi.fn()) {
+async function reachScanStep(refreshStatus = vi.fn(), accountEmail?: string) {
   const user = userEvent.setup();
   twoFactorMock.enable.mockResolvedValue({
     data: {
@@ -39,7 +39,13 @@ async function reachScanStep(refreshStatus = vi.fn()) {
     },
     error: null,
   });
-  render(<MfaCard enabled={false} refreshStatus={refreshStatus} />);
+  render(
+    <MfaCard
+      enabled={false}
+      refreshStatus={refreshStatus}
+      accountEmail={accountEmail}
+    />,
+  );
   await user.click(screen.getByTestId("mfa-enable-open"));
   await user.type(
     screen.getByTestId("mfa-enable-password"),
@@ -240,6 +246,16 @@ describe("MfaCard enrolment steps", () => {
     expect(code).toHaveValue("123456");
   });
 
+  it("a pasted code with a space keeps all six digits", async () => {
+    const user = await reachScanStep();
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
+
+    await user.click(screen.getByTestId("mfa-verify-code"));
+    await user.paste("123 456");
+    expect(screen.getByTestId("mfa-verify-code")).toHaveValue("123456");
+  });
+
   it("step 2 renders a QR image generated from the real otpauth URI on a white tile", async () => {
     await reachScanStep();
 
@@ -268,6 +284,39 @@ describe("MfaCard enrolment steps", () => {
     writeText.mockRestore();
   });
 
+  it("tells the user when the clipboard refuses, so a one-time code is not lost silently", async () => {
+    const user = await reachScanStep();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockRejectedValue(new Error("denied"));
+
+    await user.click(screen.getByTestId("mfa-codes-copy-ready"));
+    const status = screen.getByTestId("mfa-codes-copy-status");
+    await waitFor(() => {
+      expect(status).toHaveTextContent(/\S/);
+    });
+    expect(status).toHaveAttribute("role", "status");
+    expect(screen.queryByTestId("mfa-codes-copy-done")).toBeNull();
+    expect(screen.getByTestId("mfa-secret-copy-status")).toBeEmptyDOMElement();
+
+    // A clipboard that does not exist (plain http) throws before any promise is returned.
+    writeText.mockRestore();
+    vi.stubGlobal(
+      "navigator",
+      Object.create(navigator, { clipboard: { value: undefined } }),
+    );
+    try {
+      await user.click(screen.getByTestId("mfa-secret-copy-ready"));
+      await waitFor(() => {
+        expect(screen.getByTestId("mfa-secret-copy-status")).toHaveTextContent(
+          /\S/,
+        );
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("downloads the codes as a text file", async () => {
     const createObjectURL = vi
       .spyOn(URL, "createObjectURL")
@@ -278,14 +327,18 @@ describe("MfaCard enrolment steps", () => {
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined);
-    const user = await reachScanStep();
+    const user = await reachScanStep(vi.fn(), "member@example.com");
 
     await user.click(screen.getByTestId("mfa-codes-download"));
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0]?.[0];
     expect(blob).toBeInstanceOf(Blob);
-    expect(await (blob as Blob).text()).toContain("code-1\ncode-2");
+    const text = await (blob as Blob).text();
+    expect(text).toContain("code-1\ncode-2");
+    // The header names the account and the day, so files from several accounts or sets can be told apart.
+    expect(text).toContain("member@example.com");
+    expect(text).toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(click).toHaveBeenCalledTimes(1);
     expect(click.mock.instances[0]).toHaveAttribute(
       "download",
@@ -368,6 +421,60 @@ describe("MfaCard enabled state", () => {
     expect(password).toHaveValue("nope");
     expect(twoFactorMock.disable).toHaveBeenCalledWith({ password: "nope" });
     expect(screen.getByTestId("mfa-status-enabled")).toBeInTheDocument();
+  });
+
+  it("new recovery codes take focus and cannot be dismissed until the user confirms saving them", async () => {
+    twoFactorMock.generateBackupCodes.mockResolvedValue({
+      data: { status: true, backupCodes: ["new-1", "new-2"] },
+      error: null,
+    });
+    const user = userEvent.setup();
+    render(<MfaCard enabled refreshStatus={vi.fn()} />);
+
+    await user.click(screen.getByTestId("mfa-regenerate-open"));
+    await user.type(
+      screen.getByTestId("mfa-regenerate-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-regenerate-submit"));
+
+    await screen.findByTestId("mfa-recovery-codes");
+    expect(screen.getByTestId("mfa-codes-title")).toHaveFocus();
+    const done = screen.getByTestId("mfa-regenerate-done");
+    expect(done).toBeDisabled();
+    await user.click(screen.getByTestId("mfa-regenerate-acknowledge"));
+    expect(done).toBeEnabled();
+    await user.click(done);
+    expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
+    expect(screen.getByTestId("mfa-regenerate-open")).toHaveFocus();
+  });
+
+  it("every password field of the card has a show/hide toggle", async () => {
+    const user = userEvent.setup();
+    render(<MfaCard enabled refreshStatus={vi.fn()} />);
+
+    for (const [open, id] of [
+      ["mfa-disable-open", "mfa-disable-password"],
+      ["mfa-regenerate-open", "mfa-regenerate-password"],
+    ] as const) {
+      await user.click(screen.getByTestId(open));
+      const input = screen.getByTestId(id);
+      expect(input).toHaveAttribute("type", "password");
+      await user.click(screen.getByTestId(`${id}-toggle`));
+      expect(input).toHaveAttribute("type", "text");
+    }
+  });
+
+  it("the enable step has a show/hide toggle on its password field", async () => {
+    const user = userEvent.setup();
+    render(<MfaCard enabled={false} refreshStatus={vi.fn()} />);
+
+    await user.click(screen.getByTestId("mfa-enable-open"));
+    await user.click(screen.getByTestId("mfa-enable-password-toggle"));
+    expect(screen.getByTestId("mfa-enable-password")).toHaveAttribute(
+      "type",
+      "text",
+    );
   });
 
   it("only one panel is open at a time, and cancelling returns focus to the button that opened it", async () => {

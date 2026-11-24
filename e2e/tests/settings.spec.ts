@@ -147,8 +147,8 @@ test.describe("signed-in settings", () => {
       const tab = page.getByTestId(`settings-tab-${path}`);
       await tab.click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(tab).toHaveAttribute("aria-selected", "true");
-      await expect(tab).toHaveRole("tab");
+      await expect(tab).toHaveAttribute("aria-current", "page");
+      await expect(tab).toHaveRole("link");
       if (path === "/settings/sessions") sessionsLabel = await tab.innerText();
     }
     await expect(page.getByTestId("shell-breadcrumb-current")).toHaveAttribute(
@@ -191,14 +191,14 @@ test.describe("signed-in settings", () => {
             const activeTab = tablist.getByTestId(
               `settings-tab-/settings/${route}`,
             );
-            await expectReflow(page, tablist.getByRole("tab"));
+            await expectReflow(page, tablist.getByRole("link"));
             expect(
               await tablist.evaluate((element) => element.scrollWidth),
             ).toBe(await tablist.evaluate((element) => element.clientWidth));
             expect(
               await tablist.evaluate((element) => element.scrollHeight),
             ).toBe(await tablist.evaluate((element) => element.clientHeight));
-            for (const tab of await tablist.getByRole("tab").all()) {
+            for (const tab of await tablist.getByRole("link").all()) {
               await tab.scrollIntoViewIfNeeded();
               await expect(tab).toBeInViewport({ ratio: 1 });
               expect(
@@ -223,14 +223,9 @@ test.describe("signed-in settings", () => {
               ).toBe(true);
             }
             await expect(activeTab).toBeVisible();
-            await expect(activeTab).toHaveRole("tab");
-            await expect(activeTab).toHaveAttribute("aria-selected", "true");
+            await expect(activeTab).toHaveRole("link");
+            await expect(activeTab).toHaveAttribute("aria-current", "page");
             await expect(activeTab).toHaveAccessibleName(/\S/);
-            await expect(activeTab).toHaveAttribute("id", /\S/);
-            await expect(page.getByTestId("settings-panel")).toHaveAttribute(
-              "aria-labelledby",
-              (await activeTab.getAttribute("id")) ?? "",
-            );
             if (
               route === "profile" ||
               (route === "display" && textScale === 200)
@@ -379,6 +374,28 @@ test.describe("signed-in settings", () => {
     await mfa.getByTestId("mfa-verify-code").fill(totp(secret));
     await mfa.getByTestId("mfa-verify-submit").click();
     await expect(mfa.getByTestId("mfa-status-enabled")).toHaveText(/\S/);
+
+    // SET-04: server-issued replacement codes survive a detour through disable/cancel.
+    await mfa.getByTestId("mfa-regenerate-open").click();
+    await mfa.getByTestId("mfa-regenerate-password").fill(PASSWORD!);
+    await mfa.getByTestId("mfa-regenerate-submit").click();
+    await expect(mfa.getByTestId("mfa-recovery-codes")).toBeVisible();
+    const replacement = await mfa
+      .getByTestId("mfa-recovery-code")
+      .allTextContents();
+    expect(replacement.length).toBeGreaterThan(0);
+    await expect(mfa.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    await mfa.getByTestId("mfa-disable-open").click();
+    await mfa.getByTestId("mfa-disable-cancel").click();
+    // Compare in memory; never attach recovery material to screenshots or logs.
+    const retained = await mfa
+      .getByTestId("mfa-recovery-code")
+      .allTextContents();
+    expect(JSON.stringify(retained) === JSON.stringify(replacement)).toBe(true);
+    await expect(mfa.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    await mfa.getByTestId("mfa-regenerate-acknowledge").check();
+    await mfa.getByTestId("mfa-regenerate-done").click();
+    await expect(mfa.getByTestId("mfa-recovery-codes")).toHaveCount(0);
 
     await mfa.getByTestId("mfa-disable-open").click();
     await mfa.getByTestId("mfa-disable-password").fill(PASSWORD!);

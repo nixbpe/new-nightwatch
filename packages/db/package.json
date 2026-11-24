@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./testing": "./tests/support/postgres.ts"
+    "./testing": "./tests/support/postgres.ts",
+    "./testing-snapshot": "./tests/support/snapshot.ts"
   },
   "scripts": {
     "migrate": "bun run src/migrate.ts",

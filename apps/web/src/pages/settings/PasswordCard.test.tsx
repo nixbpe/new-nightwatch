@@ -64,6 +64,22 @@ describe("PasswordCard", () => {
     );
   });
 
+  it("shows a field's error after it loses focus, not while the user is still typing", async () => {
+    const user = userEvent.setup();
+    render(<PasswordCard />);
+    const next = screen.getByTestId("change-new-password");
+
+    await user.type(next, "abc");
+    expect(next).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByTestId("change-new-password-error")).toBeNull();
+
+    await user.type(screen.getByTestId("change-confirm-password"), "x");
+    // Moving on blurred the new-password field; the confirm field is still being typed in.
+    expect(screen.getByTestId("change-new-password-error")).toBeVisible();
+    expect(next).toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByTestId("change-confirm-password-error")).toBeNull();
+  });
+
   it("changes the password with other sessions revoked, then resets and confirms", async () => {
     changePasswordMock.mockResolvedValue({ data: {}, error: null });
     const user = userEvent.setup();
@@ -74,6 +90,7 @@ describe("PasswordCard", () => {
       next: "NewPassw0rd!!",
       confirm: "NewPassw0rd!!",
     });
+    await user.click(screen.getByTestId("change-new-password-toggle"));
     await user.click(screen.getByTestId("password-change-submit"));
 
     expect(changePasswordMock).toHaveBeenCalledWith({
@@ -82,9 +99,19 @@ describe("PasswordCard", () => {
       revokeOtherSessions: true,
     });
     expect(await screen.findByTestId("password-change-success")).toBeVisible();
+    // Success is a status message, not an interrupting alert (CMP-10).
+    expect(screen.getByTestId("password-change-success")).toHaveAttribute(
+      "role",
+      "status",
+    );
     expect(screen.getByTestId("change-current-password")).toHaveValue("");
     expect(screen.getByTestId("change-new-password")).toHaveValue("");
     expect(screen.getByTestId("change-confirm-password")).toHaveValue("");
+    // A field revealed before the change is hidden again.
+    expect(screen.getByTestId("change-new-password")).toHaveAttribute(
+      "type",
+      "password",
+    );
   });
 
   it("a rejected current password is reported on that field", async () => {
@@ -119,6 +146,33 @@ describe("PasswordCard", () => {
     expect(current).toHaveValue("WrongPassw0rd!");
     expect(screen.getByTestId("change-new-password")).toHaveValue(
       "NewPassw0rd!!",
+    );
+  });
+
+  it("a too-short new password is not reported on the current-password field", async () => {
+    changePasswordMock.mockResolvedValue({
+      data: null,
+      error: {
+        status: 400,
+        code: "PASSWORD_TOO_SHORT",
+        message: "Password too short",
+      },
+    });
+    const user = userEvent.setup();
+    render(<PasswordCard />);
+
+    await fill(user, {
+      current: "OldPassw0rd!",
+      next: "NewPassw0rd!!",
+      confirm: "NewPassw0rd!!",
+    });
+    await user.click(screen.getByTestId("password-change-submit"));
+
+    expect(await screen.findByTestId("password-change-error")).toBeVisible();
+    expect(screen.queryByTestId("change-current-password-error")).toBeNull();
+    expect(screen.getByTestId("change-current-password")).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
     );
   });
 

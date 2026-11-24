@@ -6,7 +6,7 @@ import {
   LogOutIcon,
   SmartphoneIcon,
 } from "../../components/shell/icons";
-import { Skeleton } from "../../components/shell/Skeleton";
+import { PageState } from "../../components/shell/PageState";
 import { EmptyState } from "../../components/shell/EmptyState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -48,6 +48,7 @@ export function SessionsPage() {
   const triggers = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocus = useRef<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (confirming !== null) {
@@ -75,11 +76,13 @@ export function SessionsPage() {
       if (error != null) {
         setFailure({
           key,
-          message: authErrorMessage(error, "ออกจากระบบอุปกรณ์ไม่สำเร็จ"),
+          message: authErrorMessage(error, "ออกจากระบบเซสชันไม่สำเร็จ"),
         });
         return;
       }
       closeConfirm(null);
+      // The revoked row and its focused confirm button are about to unmount.
+      headingRef.current?.focus();
       setRevoked(true);
       await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
     } catch {
@@ -94,18 +97,12 @@ export function SessionsPage() {
 
   if (query.isPending) {
     return (
-      <Card
-        as="section"
-        role="status"
+      <PageState
+        kind="loading"
+        layout="lines"
         data-testid="sessions-loading"
-        aria-label="กำลังโหลดรายการเซสชัน"
-        className="gap-3 p-6"
-      >
-        <Skeleton className="h-4 w-56" />
-        {[0, 1, 2].map((row) => (
-          <Skeleton key={row} className="h-16 w-full" />
-        ))}
-      </Card>
+        label="กำลังโหลดรายการเซสชัน…"
+      />
     );
   }
 
@@ -154,12 +151,24 @@ export function SessionsPage() {
       <div className="flex flex-col gap-2">
         <SectionHeader
           id="sessions-card-title"
-          code="01"
-          title="อุปกรณ์ที่เข้าสู่ระบบอยู่"
+          headingRef={headingRef}
+          headingTabIndex={-1}
+          headingClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          title="เซสชันที่เข้าสู่ระบบอยู่"
         />
         <p className="text-sm text-foreground-secondary">
-          เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที
+          เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบเซสชันที่ไม่รู้จักได้ทันที
         </p>
+        {currentToken === null && !isSessionPending ? (
+          <p
+            data-testid="sessions-current-unknown"
+            role="status"
+            className="text-sm text-foreground-secondary"
+          >
+            ยังระบุไม่ได้ว่าเซสชันไหนคือเซสชันนี้ จึงซ่อนปุ่มออกจากระบบไว้
+            เพื่อไม่ให้ออกจากเซสชันที่ใช้อยู่โดยไม่ตั้งใจ ลองโหลดหน้านี้ใหม่
+          </p>
+        ) : null}
       </div>
 
       <ul
@@ -204,7 +213,7 @@ export function SessionsPage() {
                         tone="primary"
                         dot
                       >
-                        อุปกรณ์นี้
+                        เซสชันนี้
                       </StatusPill>
                     ) : null}
                   </div>
@@ -227,12 +236,30 @@ export function SessionsPage() {
                       )}
                     </span>
                     <span>
+                      เข้าสู่ระบบ{" "}
+                      <time
+                        data-testid="session-created-at"
+                        dateTime={row.createdAt.toISOString()}
+                      >
+                        {formatDateTime(row.createdAt, preferences)}
+                      </time>
+                    </span>
+                    <span>
                       ใช้งานล่าสุด{" "}
                       <time
                         data-testid="session-updated-at"
                         dateTime={row.updatedAt.toISOString()}
                       >
                         {lastActive}
+                      </time>
+                    </span>
+                    <span>
+                      หมดอายุ{" "}
+                      <time
+                        data-testid="session-expires-at"
+                        dateTime={row.expiresAt.toISOString()}
+                      >
+                        {formatDateTime(row.expiresAt, preferences)}
                       </time>
                     </span>
                   </p>
@@ -245,6 +272,7 @@ export function SessionsPage() {
                       variant="destructive-outline"
                       size="sm"
                       data-testid="session-revoke-confirm"
+                      aria-label={`${busy === row.token ? "กำลังออกจากระบบ" : "ยืนยันออกจากระบบ"} ${device.label}`}
                       disabled={busy === row.token}
                       onClick={() => {
                         void revoke(row.token, () =>
@@ -264,6 +292,7 @@ export function SessionsPage() {
                         closeConfirm(row.token);
                       }}
                       data-testid="session-revoke-cancel"
+                      aria-label={`ยกเลิกการออกจากระบบ ${device.label}`}
                     >
                       ยกเลิก
                     </Button>
@@ -281,6 +310,7 @@ export function SessionsPage() {
                       setConfirming(row.token);
                     }}
                     data-testid="session-revoke-open"
+                    aria-label={`ออกจากระบบ ${device.label}`}
                   >
                     <LogOutIcon size={14} />
                     ออกจากระบบ
@@ -301,19 +331,21 @@ export function SessionsPage() {
         })}
       </ul>
 
-      <Notice tone="success">{revoked ? "ออกจากระบบอุปกรณ์แล้ว" : null}</Notice>
+      <Notice tone="success">
+        {revoked ? "ออกจากระบบเซสชันที่เลือกแล้ว" : null}
+      </Notice>
       {others?.length === 0 ? (
         <EmptyState
           data-testid="sessions-no-others"
           icon={<LaptopIcon size={20} />}
-          title="ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น"
+          title="ไม่มีเซสชันอื่นเข้าสู่ระบบอยู่ มีเพียงเซสชันนี้เท่านั้น"
         />
       ) : null}
       {others !== null && others.length > 0 ? (
         <CardFooter variant="stack">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-foreground-secondary">
-              อุปกรณ์นี้จะยังเข้าสู่ระบบอยู่ อุปกรณ์อื่นต้องเข้าสู่ระบบใหม่
+              เซสชันนี้จะยังเข้าสู่ระบบอยู่ เซสชันอื่นต้องเข้าสู่ระบบใหม่
               (และผ่าน MFA ถ้าเปิดไว้)
             </p>
             {confirming === OTHERS ? (
@@ -331,7 +363,7 @@ export function SessionsPage() {
                 >
                   {busy === OTHERS
                     ? "กำลังออกจากระบบ…"
-                    : `ยืนยันออกจากระบบ ${String(others.length)} อุปกรณ์`}
+                    : `ยืนยันออกจากระบบ ${String(others.length)} เซสชัน`}
                 </Button>
                 <Button
                   type="button"
@@ -352,14 +384,13 @@ export function SessionsPage() {
                 }}
                 type="button"
                 variant="secondary"
-                className="text-danger"
                 onClick={() => {
                   setFailure(null);
                   setConfirming(OTHERS);
                 }}
                 data-testid="sessions-others-open"
               >
-                ออกจากระบบทุกอุปกรณ์อื่น
+                ออกจากระบบทุกเซสชันอื่น
               </Button>
             )}
           </div>

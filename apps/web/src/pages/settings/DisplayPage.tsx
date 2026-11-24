@@ -1,12 +1,19 @@
-import { Notice } from "../../components/ui/notice";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { textInputClass } from "../../components/ui";
+import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { SegmentedControl } from "../../components/ui/segmented-control";
+import { Select } from "../../components/ui/select";
 import { Label } from "../../components/ui/label";
 import { SectionHeader } from "../../components/ui/section-header";
-import { usePreferences, type Preferences } from "../../lib/preferences";
+import { Notice } from "../../components/ui/notice";
+import { useUnsavedChangesGuard } from "../../components/ui/useUnsavedChangesGuard";
+import {
+  defaultPreferences,
+  formatDateTime,
+  usePreferences,
+  type Preferences,
+} from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
 import { Card, CardFooter, CardSection } from "../../components/ui/card";
 
@@ -60,19 +67,18 @@ function offsetLabel(minutes: number): string {
   return `GMT${sign}${String(hours)}${rest === 0 ? "" : `:${String(rest).padStart(2, "0")}`}`;
 }
 
-function zoneOptions(extra: string): ZoneOption[] {
+function zoneOptions(extras: string[]): ZoneOption[] {
   const now = new Date();
   const ids = new Set<string>(Intl.supportedValuesOf("timeZone"));
-  ids.add(extra);
+  for (const extra of extras) ids.add(extra);
   const options: ZoneOption[] = [];
   for (const id of ids) {
     try {
       const offsetMinutes = zoneOffsetMinutes(id, now);
-      const city = (id.split("/").pop() ?? id).replaceAll("_", " ");
       options.push({
         id,
         offsetMinutes,
-        label: `${city} (${offsetLabel(offsetMinutes)})`,
+        label: `${id} (${offsetLabel(offsetMinutes)})`,
       });
     } catch {
       // Unknown to this runtime: omit rather than mislabel.
@@ -96,21 +102,39 @@ export function DisplayPage() {
   const { theme, setTheme } = useTheme();
   const { preferences, save } = usePreferences();
   const [draft, setDraft] = useState<Preferences>(preferences);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<"stored" | "session-only" | null>(null);
+  const [themeStored, setThemeStored] = useState(true);
+  // Fixed at mount so the preview does not tick while the user compares formats.
+  const [now] = useState(() => new Date());
+  const zoneRef = useRef<HTMLSelectElement>(null);
+  const restoreFocus = useRef(false);
   const ids = {
     language: useId(),
     timeZone: useId(),
     hourCycle: useId(),
     weekStart: useId(),
   };
-  const zones = useMemo(() => zoneOptions(draft.timeZone), [draft.timeZone]);
+  const browserZone = useMemo(() => defaultPreferences().timeZone, []);
+  const zones = useMemo(
+    () => zoneOptions([draft.timeZone, browserZone]),
+    [draft.timeZone, browserZone],
+  );
   const dirty = !samePreferences(draft, preferences);
+  const guard = useUnsavedChangesGuard(dirty);
+
+  // Save and Cancel disable themselves once the draft matches; keep focus on the form.
+  useEffect(() => {
+    if (!dirty && restoreFocus.current) {
+      restoreFocus.current = false;
+      zoneRef.current?.focus();
+    }
+  }, [dirty]);
 
   const update = <K extends keyof Preferences>(
     key: K,
     value: Preferences[K],
   ) => {
-    setSaved(false);
+    setSaved(null);
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
@@ -120,8 +144,18 @@ export function DisplayPage() {
         <div className="flex flex-col gap-2">
           <SectionHeader id="theme-card-title" code="01" title="ธีม" />
           <p className="text-sm text-foreground-secondary">
-            มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป
+            มีผลทันทีกับเบราว์เซอร์นี้
+            {themeStored ? " และจำไว้สำหรับครั้งถัดไป" : ""}
           </p>
+          {themeStored ? null : (
+            <Alert
+              data-testid="display-theme-not-saved"
+              tone="warning"
+              role="status"
+            >
+              ใช้ได้เฉพาะหน้านี้ เบราว์เซอร์ไม่อนุญาตให้จำค่า
+            </Alert>
+          )}
         </div>
         <SegmentedControl
           optionTestId={(value) => `display-theme-${value}`}
@@ -129,7 +163,7 @@ export function DisplayPage() {
           value={theme}
           options={THEME_OPTIONS}
           onChange={(value) => {
-            setTheme(value);
+            setThemeStored(setTheme(value));
           }}
         />
       </CardSection>
@@ -143,10 +177,19 @@ export function DisplayPage() {
           </p>
         </div>
 
-        {saved ? (
+        {saved === "stored" ? (
           <Notice data-testid="display-saved" tone="success">
             บันทึกแล้ว ใช้กับเบราว์เซอร์นี้
           </Notice>
+        ) : null}
+        {saved === "session-only" ? (
+          <Alert
+            data-testid="display-save-not-persisted"
+            tone="warning"
+            role="status"
+          >
+            ใช้ได้เฉพาะหน้านี้ เบราว์เซอร์ไม่อนุญาตให้จำค่า
+          </Alert>
         ) : null}
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
@@ -154,18 +197,17 @@ export function DisplayPage() {
             <Label htmlFor={ids.language} className="mb-2 block">
               ภาษา
             </Label>
-            <select
+            <Select
               data-testid="display-language"
               id={ids.language}
               value={draft.language}
               disabled
               aria-describedby={`${ids.language}-help`}
-              className={textInputClass}
             >
               <option data-testid="display-language-th" value="th">
                 ไทย
               </option>
-            </select>
+            </Select>
             <p
               id={`${ids.language}-help`}
               className="mt-1 text-xs text-foreground-secondary"
@@ -177,7 +219,8 @@ export function DisplayPage() {
             <Label htmlFor={ids.timeZone} className="mb-2 block">
               โซนเวลา
             </Label>
-            <select
+            <Select
+              ref={zoneRef}
               data-testid="display-time-zone"
               id={ids.timeZone}
               value={draft.timeZone}
@@ -185,7 +228,6 @@ export function DisplayPage() {
                 update("timeZone", event.target.value);
               }}
               aria-describedby={`${ids.timeZone}-help`}
-              className={textInputClass}
             >
               {zones.map((zone) => (
                 <option
@@ -196,19 +238,35 @@ export function DisplayPage() {
                   {zone.label}
                 </option>
               ))}
-            </select>
+            </Select>
             <p
               id={`${ids.timeZone}-help`}
               className="mt-1 text-xs text-foreground-secondary"
             >
               เวลาทั้งหมดในรายงานและกิจกรรมจะแสดงในโซนนี้
             </p>
+            {draft.timeZone === browserZone ? null : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="display-time-zone-browser"
+                className="mt-1"
+                onClick={() => {
+                  update("timeZone", browserZone);
+                  // The button unmounts once the draft matches the browser zone.
+                  zoneRef.current?.focus();
+                }}
+              >
+                ใช้โซนของเบราว์เซอร์ ({browserZone})
+              </Button>
+            )}
           </div>
           <div>
             <Label htmlFor={ids.hourCycle} className="mb-2 block">
               รูปแบบเวลา
             </Label>
-            <select
+            <Select
               data-testid="display-hour-cycle"
               id={ids.hourCycle}
               value={draft.hourCycle}
@@ -218,20 +276,19 @@ export function DisplayPage() {
                   event.target.value === "h12" ? "h12" : "h23",
                 );
               }}
-              className={textInputClass}
             >
               {HOUR_CYCLES.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <Label htmlFor={ids.weekStart} className="mb-2 block">
               วันแรกของสัปดาห์
             </Label>
-            <select
+            <Select
               data-testid="display-week-start"
               id={ids.weekStart}
               value={draft.weekStart}
@@ -241,16 +298,25 @@ export function DisplayPage() {
                   event.target.value === "sunday" ? "sunday" : "monday",
                 );
               }}
-              className={textInputClass}
             >
               {WEEK_STARTS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
+
+        <p
+          data-testid="display-preview"
+          className="text-sm text-foreground-secondary"
+        >
+          ตัวอย่างเวลาตอนนี้:{" "}
+          <span className="font-mono text-foreground">
+            {formatDateTime(now, draft)}
+          </span>
+        </p>
 
         <CardFooter>
           <Button
@@ -259,8 +325,9 @@ export function DisplayPage() {
             data-testid="display-cancel"
             disabled={!dirty}
             onClick={() => {
+              restoreFocus.current = true;
               setDraft(preferences);
-              setSaved(false);
+              setSaved(null);
             }}
           >
             ยกเลิก
@@ -270,14 +337,15 @@ export function DisplayPage() {
             data-testid="display-save"
             disabled={!dirty}
             onClick={() => {
-              save(draft);
-              setSaved(true);
+              restoreFocus.current = true;
+              setSaved(save(draft) ? "stored" : "session-only");
             }}
           >
             บันทึกการเปลี่ยนแปลง
           </Button>
         </CardFooter>
       </CardSection>
+      {guard}
     </Card>
   );
 }

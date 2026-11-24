@@ -9,9 +9,6 @@ import { SETTINGS_TABS } from "./settings-tabs";
 function isActiveTab(path: string, pathname: string) {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
-function tabId(path: string) {
-  return `settings-tab-${path.split("/").pop() ?? ""}`;
-}
 
 export function SettingsLayout() {
   const { me, mePending, activeOrg } = useTenant();
@@ -20,6 +17,11 @@ export function SettingsLayout() {
     isActiveTab(tab.path, pathname),
   );
   const name = me?.user.name ?? "";
+  // Display preferences live in this browser's storage; every other tab belongs to the account.
+  const scope =
+    activeTab?.path === "/settings/display"
+      ? "ใช้กับเบราว์เซอร์นี้เท่านั้น"
+      : "ใช้กับบัญชีของคุณในทุกองค์กร";
 
   return (
     <Page width="form">
@@ -41,15 +43,14 @@ export function SettingsLayout() {
         title="การตั้งค่าส่วนตัว"
         description={
           activeOrg === null
-            ? "ใช้กับบัญชีของคุณในทุกองค์กร"
-            : `ใช้กับบัญชีของคุณในทุกองค์กร ไม่ใช่การตั้งค่าขององค์กร ${activeOrg.name}`
+            ? scope
+            : `${scope} ไม่ใช่การตั้งค่าขององค์กร ${activeOrg.name}`
         }
       />
 
       <div className="border-b border-foreground/10">
         <nav
           data-testid="settings-tabs"
-          role="tablist"
           aria-label="หมวดการตั้งค่า"
           className="-mb-px flex flex-wrap gap-x-2"
         >
@@ -60,10 +61,7 @@ export function SettingsLayout() {
               <NavLink
                 key={tab.path}
                 data-testid={`settings-tab-${tab.path}`}
-                id={tabId(tab.path)}
                 to={tab.path}
-                role="tab"
-                aria-selected={active}
                 className={`inline-flex h-11 items-center gap-2 border-b-2 px-3 text-sm whitespace-nowrap transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   active
                     ? "border-primary font-medium text-foreground"
@@ -80,14 +78,7 @@ export function SettingsLayout() {
         </nav>
       </div>
 
-      <div
-        data-testid="settings-panel"
-        role="tabpanel"
-        aria-labelledby={
-          activeTab === undefined ? undefined : tabId(activeTab.path)
-        }
-        className="min-w-0"
-      >
+      <div data-testid="settings-panel" className="min-w-0">
         <Outlet />
       </div>
     </Page>

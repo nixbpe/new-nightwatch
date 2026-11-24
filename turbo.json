@@ -43,8 +43,11 @@
     },
     "typecheck": { "cache": false },
     "test": {},
-    "test:integration": {},
+    "test:integration": {
+      "passThroughEnv": ["TEST_POSTGRES_CONTAINER"]
+    },
     "test:coverage": {
+      "passThroughEnv": ["TEST_POSTGRES_CONTAINER"],
       "outputs": ["coverage/**"]
     },
     "codegen:check": { "cache": false }
