@@ -338,6 +338,7 @@ describe("SessionsPage", () => {
       expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
     });
     expect(screen.queryByTestId("sessions-others-open")).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: /\S/ })).toHaveFocus();
   });
 
   it("a failed revoke keeps the row and shows the message", async () => {
