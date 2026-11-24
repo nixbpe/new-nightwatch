@@ -641,6 +641,49 @@ describe("Test panel states", () => {
     );
   });
 
+  it("marks a passing and a failing result with different icons, not only different words", async () => {
+    const user = await openCreate();
+    draftMock.mockResolvedValue(result());
+    await user.click(testButton());
+    const passIcon = await screen.findByTestId("monitor-test-outcome-icon");
+    const passKind = passIcon.getAttribute("data-icon");
+    expect(passKind).toBe("pass");
+    expect(passIcon).toHaveAttribute("aria-hidden", "true");
+
+    draftMock.mockResolvedValue(
+      result({ outcome: "fail", failureReason: "timeout" }),
+    );
+    await user.click(testButton());
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-outcome",
+        "fail",
+      );
+    });
+    const failIcon = screen.getByTestId("monitor-test-outcome-icon");
+    expect(failIcon).toHaveAttribute("data-icon", "fail");
+    expect(failIcon.innerHTML).not.toBe(passIcon.innerHTML);
+  });
+
+  it("shows no outcome icon for a system-side check error", async () => {
+    draftMock.mockResolvedValue(
+      result({ outcome: "check_error", failureReason: "executor_error" }),
+    );
+    const user = await openCreate();
+    await user.click(testButton());
+    await screen.findByTestId("monitor-test-result");
+    expect(screen.queryByTestId("monitor-test-outcome-icon")).toBeNull();
+  });
+
+  it("announces the stale warning politely", async () => {
+    draftMock.mockResolvedValue(result());
+    const user = await openCreate();
+    await user.click(testButton());
+    await screen.findByTestId("monitor-test-result");
+    await user.type(screen.getByTestId("monitor-form-name"), " 2");
+    expect(screen.getByTestId("monitor-test-stale")).toHaveRole("status");
+  });
+
   it("labels the result stale once the form changes", async () => {
     draftMock.mockResolvedValue(result());
     const user = await openCreate();

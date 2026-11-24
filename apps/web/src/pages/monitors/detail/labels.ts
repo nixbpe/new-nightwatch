@@ -176,7 +176,7 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   "auth.password": "รหัสผ่าน Basic",
   "auth.apiKey": "ค่า API key",
   body: "เนื้อหาคำขอ",
-  assertions: "Assertions",
+  assertions: "เงื่อนไขตรวจสอบ",
   "alerts.failureThreshold": "แจ้งเมื่อล้มเหลวติดกัน",
   "alerts.downEnabled": "แจ้งเมื่อล่มและกลับมาปกติ",
   "alerts.sslEnabled": "แจ้งเมื่อ SSL ใกล้หมดอายุ",
@@ -224,6 +224,6 @@ export const EVENT_KIND_LABELS = {
   incident_closed_recovered: "กลับมาปกติ",
   incident_closed_paused: "สิ้นสุดเหตุการณ์ล่ม",
   paused: "หยุดชั่วคราว",
-  resumed: "เริ่มตรวจต่อ",
+  resumed: "เริ่มการตรวจต่อ",
   config_changed: "แก้ไขการตั้งค่า",
 } as const;

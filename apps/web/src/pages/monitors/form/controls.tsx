@@ -2,6 +2,7 @@ import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 
 import { Field, Input, textInputClass } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
+import { Select } from "../../../components/ui/select";
 import { cn } from "@/lib/utils";
 import { errorId, fieldId, type FieldErrors, type FormValues } from "./model";
 import type { SecretAccess } from "./secrets";
@@ -164,7 +165,7 @@ export function SelectControl({
   /** Rendered outside the <label> (like TextControl's hint) so it never joins the accessible name. */
   hint?: ReactNode;
   disabled?: boolean;
-} & Omit<ComponentProps<"select">, "id" | "className">) {
+} & Omit<ComponentProps<"select">, "id" | "className" | "size">) {
   const hintId = `${fieldId(path)}-hint`;
   const describedBy = [
     error === undefined ? null : errorId(path),
@@ -175,7 +176,7 @@ export function SelectControl({
   return (
     <div className={className}>
       <Field label={label} error={error} errorId={errorId(path)}>
-        <select
+        <Select
           id={fieldId(path)}
           aria-label={ariaLabel}
           aria-invalid={error === undefined ? undefined : true}
@@ -184,11 +185,10 @@ export function SelectControl({
           onChange={(event) => {
             if (disabled !== true) onChange?.(event);
           }}
-          className={cn(textInputClass, controlInvalid)}
           {...props}
         >
           {children}
-        </select>
+        </Select>
       </Field>
       {hint === undefined ? null : (
         <p id={hintId} className="mt-1 text-xs text-foreground-secondary">

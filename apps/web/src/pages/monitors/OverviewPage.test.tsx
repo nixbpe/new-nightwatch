@@ -29,10 +29,11 @@ import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
+  MONITOR_RECENT_EVENTS_LIMIT,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
-import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
+import { formatDateTime, formatTimeWithSeconds, timeZone } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
 import {
@@ -380,6 +381,51 @@ describe("Overview sort", () => {
     expect(fetchListMock.mock.calls[0]?.[2].sort).toBeUndefined();
   });
 
+  it("sorts from the table headers, keeps the select in step and marks aria-sort", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "7b0e4f1a-3d52-4c8e-9a61-0f2d5c8e1b34", name: "Web" })]),
+    );
+    renderPage();
+    await screen.findByTestId(
+      "monitor-list-name-7b0e4f1a-3d52-4c8e-9a61-0f2d5c8e1b34",
+    );
+    const heading = (key: string) =>
+      screen.getByTestId(`monitor-list-heading-${key}`);
+    expect(heading("name")).not.toHaveAttribute("aria-sort");
+
+    await user.click(within(heading("name")).getByRole("button"));
+    await waitFor(() => {
+      expect(fetchListMock).toHaveBeenLastCalledWith(
+        A,
+        P,
+        expect.objectContaining({ sort: "name", offset: 0 }),
+      );
+    });
+    expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("name");
+    expect(heading("name")).toHaveAttribute("aria-sort", "ascending");
+
+    await user.click(within(heading("p95")).getByRole("button"));
+    await waitFor(() => {
+      expect(fetchListMock).toHaveBeenLastCalledWith(
+        A,
+        P,
+        expect.objectContaining({ sort: "response_time" }),
+      );
+    });
+    expect(screen.getByTestId("monitor-overview-sort")).toHaveValue(
+      "response_time",
+    );
+    expect(heading("p95")).toHaveAttribute("aria-sort", "descending");
+    expect(heading("name")).not.toHaveAttribute("aria-sort");
+
+    await user.selectOptions(
+      screen.getByTestId("monitor-overview-sort"),
+      "uptime",
+    );
+    expect(heading("h24")).toHaveAttribute("aria-sort", "ascending");
+  });
+
   it("caches the default order under the loader and nav counts key", async () => {
     fetchListMock.mockResolvedValue(
       list([item({ id: "f6f65455-42cb-4673-9f75-cffc5d108f77", name: "Web" })]),
@@ -671,6 +717,12 @@ describe("Overview method, interval and sparkline", () => {
     const text = card.getByTestId("monitor-list-spark-description");
     expect(text).toHaveTextContent(/1,500/);
     expect(text.textContent.match(/\d[\d,]*/g)).toEqual(["24", "1,500", "21"]);
+    // The visible scale carries the window and the maximum the bars are scaled to.
+    expect(
+      card
+        .getByTestId("monitor-list-spark-scale")
+        .textContent.match(/\d[\d,]*/g),
+    ).toEqual(["24", "1,500"]);
     const chart = card.getByTestId("monitor-list-sparkline");
     expect(chart).toHaveAttribute("aria-hidden", "true");
     const slots = within(chart).getAllByTestId("monitor-list-spark-slot");
@@ -717,6 +769,7 @@ describe("Overview method, interval and sparkline", () => {
     ).not.toBeEmptyDOMElement();
     expect(card.queryByTestId("monitor-list-sparkline")).toBeNull();
     expect(card.queryByTestId("monitor-list-spark-description")).toBeNull();
+    expect(card.queryByTestId("monitor-list-spark-scale")).toBeNull();
   });
 });
 
@@ -1199,6 +1252,53 @@ describe("Overview success", () => {
     }
   });
 
+  it("shows the SSL level of each monitor in the default table view", async () => {
+    const levels: Item["ssl"]["level"][] = [
+      "ok",
+      "caution",
+      "danger",
+      "expired",
+      "no_data",
+    ];
+    const monitors = levels.map((level, index) =>
+      item({
+        name: `Ssl${String(index)}`,
+        ssl: {
+          level,
+          daysRemaining: level === "danger" ? 5 : null,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
+      }),
+    );
+    fetchListMock.mockResolvedValue(list(monitors));
+    renderPage();
+    await screen.findAllByTestId(/^monitor-list-row-/);
+    expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
+    for (const monitor of monitors) {
+      const cell = within(rowOf(monitor.id)).getByTestId(
+        "monitor-list-cell-ssl",
+      );
+      expect(cell).not.toBeEmptyDOMElement();
+      if (monitor.ssl.level === "no_data") continue;
+      const label = within(cell).getByTestId("monitor-list-ssl");
+      expect(label).toHaveAttribute("data-ssl-level", monitor.ssl.level);
+      expect(label).toHaveTextContent(/\S/);
+    }
+    // A problem level is a pill, a healthy one stays plain text.
+    const isPill = (monitor: Item) =>
+      within(rowOf(monitor.id))
+        .getByTestId("monitor-list-ssl")
+        .closest("[data-slot=status-pill]") !== null;
+    expect(monitors.slice(0, 4).map((monitor) => isPill(monitor))).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+  });
+
   it("writes missing uptime, p95 and last check as text and shows partial coverage", async () => {
     fetchListMock.mockResolvedValue(
       list([
@@ -1360,7 +1460,7 @@ describe("Overview times, focus and filter failures", () => {
     expect(
       await within(card).findByTestId("monitor-overview-event-time"),
     ).toHaveAttribute("datetime", at);
-    expect(card).toHaveTextContent(TIME_ZONE);
+    expect(card).toHaveTextContent(timeZone());
   });
 
   it("keeps focus on the refresh button while it refreshes and ignores a second press", async () => {
@@ -1566,6 +1666,60 @@ describe("Overview recent events", () => {
         },
       ]),
     );
+  });
+
+  it("places the card beside the list instead of after the pager", async () => {
+    fetchListMock.mockResolvedValue(
+      list([item()], { total: 30, pageTotal: 30 }),
+    );
+    renderPage();
+    const aside = await screen.findByTestId("monitor-overview-aside");
+    expect(aside).toContainElement(
+      screen.getByTestId("monitor-overview-events"),
+    );
+    expect(aside).not.toContainElement(
+      screen.getByTestId("monitor-overview-table"),
+    );
+    expect(aside).not.toContainElement(
+      screen.getByTestId("monitor-overview-pagination"),
+    );
+  });
+
+  it("says the list is cut at the cap only when it is full", async () => {
+    fetchListMock.mockResolvedValue(list([item()]));
+    const eventAt = (index: number): MonitorRecentEvent => ({
+      kind: "incident_opened",
+      monitorId: item().id,
+      monitorName: `M${String(index)}`,
+      at: new Date(NOW.getTime() - index * 60_000).toISOString(),
+      reason: "timeout",
+    });
+    fetchEventsMock.mockResolvedValue({
+      events: Array.from({ length: MONITOR_RECENT_EVENTS_LIMIT - 1 }, (_, i) =>
+        eventAt(i),
+      ),
+    });
+    const first = renderPage();
+    const card = await screen.findByTestId("monitor-overview-events");
+    await within(card).findAllByTestId("monitor-overview-event");
+    expect(
+      within(card).queryByTestId("monitor-overview-events-cap"),
+    ).toBeNull();
+    first.unmount();
+
+    fetchEventsMock.mockResolvedValue({
+      events: Array.from({ length: MONITOR_RECENT_EVENTS_LIMIT }, (_, i) =>
+        eventAt(i),
+      ),
+    });
+    renderPage();
+    const full = await screen.findByTestId("monitor-overview-events");
+    const note = await within(full).findByTestId("monitor-overview-events-cap");
+    expect(note).toHaveAttribute(
+      "data-limit",
+      String(MONITOR_RECENT_EVENTS_LIMIT),
+    );
+    expect(note).toHaveTextContent(String(MONITOR_RECENT_EVENTS_LIMIT));
   });
 
   it("shows its own empty text", async () => {
@@ -2098,7 +2252,7 @@ describe("Project monitor list", () => {
     await screen.findByTestId("monitor-overview-total");
     expect(fetchListMock).toHaveBeenCalledWith(A, P, expect.any(Object));
     expect(screen.getByTestId("monitor-overview-total")).toHaveTextContent(
-      "3 มอนิเตอร์",
+      "3/20",
     );
     expect(screen.getByTestId("monitor-overview-down")).toHaveTextContent(
       "ล่ม 1",
@@ -2160,7 +2314,8 @@ describe("Project monitor list", () => {
       "สถานะ",
       "เวลาตอบสนอง · p95 · 24 ชม.",
       "ความพร้อมใช้งาน · 24 ชม.",
-      `ตรวจล่าสุด (${TIME_ZONE})`,
+      "SSL",
+      `ตรวจล่าสุด (${timeZone()})`,
     ]);
     const down = within(rowOf(ids.down));
     expect(down.getByTestId("monitor-list-url")).toHaveTextContent(
@@ -2177,12 +2332,24 @@ describe("Project monitor list", () => {
     ).toHaveTextContent("212 ms");
   });
 
-  it("closes the list with the range shown and the Project it is limited to", async () => {
+  it("shows no pager and no result count while one page holds the whole unfiltered list", async () => {
     fetchListMock.mockResolvedValue(list(monitors()));
+    renderPage();
+    await screen.findByTestId("monitor-overview-table");
+    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-results")).toBeNull();
+  });
+
+  it("shows the pager once the list spans more than one page", async () => {
+    fetchListMock.mockResolvedValue(
+      list(monitors(), { total: 30, pageTotal: 30 }),
+    );
     renderPage();
     expect(
       await screen.findByTestId("monitor-overview-pagination"),
-    ).toHaveTextContent(`แสดง 1–3 จาก 3 · เฉพาะมอนิเตอร์ของ ${PROJECT_NAME}`);
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-overview-previous")).toBeDisabled();
+    expect(screen.getByTestId("monitor-overview-next")).toBeEnabled();
   });
 
   it("tells a Project without monitors that it has none and offers the add link to a Project admin", async () => {

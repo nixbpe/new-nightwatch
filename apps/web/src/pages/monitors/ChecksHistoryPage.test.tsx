@@ -57,7 +57,8 @@ import {
   P,
   projectDetail,
 } from "./detail-test-support";
-import { TIME_ZONE } from "./format";
+import { timeZone } from "./format";
+import { NO_DATA } from "./format";
 import { deferred } from "./form-test-support";
 
 // The interval is read when a fetch starts or ends. It is long by default so that a refresh never takes a response a test queued for a load more; a test that exercises the interval shortens it just before the step it checks.
@@ -174,6 +175,7 @@ function Harness() {
         switch to B
       </button>
       <p data-testid="location">{useLocation().pathname}</p>
+      <p data-testid="location-search">{useLocation().search}</p>
       <Routes>
         <Route
           path="/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks"
@@ -200,6 +202,7 @@ function renderChecks(
   organizationId = A,
   monitorId = MONITOR_ID,
   client?: QueryClient,
+  search = "",
 ) {
   const queryClient =
     client ??
@@ -212,7 +215,7 @@ function renderChecks(
         <TenantProvider>
           <MemoryRouter
             initialEntries={[
-              `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/checks`,
+              `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/checks${search}`,
             ]}
           >
             <Harness />
@@ -594,6 +597,30 @@ describe("Checks history offset drift", () => {
     expect(screen.getByTestId("monitor-checks-load-more")).toBeInTheDocument();
   });
 
+  it("puts the total and the first-load time above the table and keeps that time after loading more", async () => {
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 50), 0, 120))
+      .mockResolvedValueOnce(chunk(span(50, 100), 50, 120));
+    const user = userEvent.setup();
+    renderChecks();
+    const asOf = await screen.findByTestId("monitor-checks-as-of");
+    expect(asOf).toHaveAttribute("data-total", "120");
+    expect(
+      screen.getByTestId("monitor-checks-table").compareDocumentPosition(asOf) &
+        Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    const time = within(asOf).getByTestId("monitor-checks-as-of-time");
+    expect(time).toHaveAttribute("datetime", NOW.toISOString());
+
+    vi.setSystemTime(new Date(NOW.getTime() + 600_000));
+    await user.click(await loadMoreButton());
+    expect(await waitCount([1, 100, 120])).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-as-of-time")).toHaveAttribute(
+      "datetime",
+      NOW.toISOString(),
+    );
+  });
+
   it("does not claim the list is complete when newer results are missing, and says so", async () => {
     // 10 results arrived after the first chunk: the last chunk repeats 10 rows and ends at offset 70 of 70.
     fetchChecksMock
@@ -748,7 +775,7 @@ describe("Checks history URL changes", () => {
     expect(
       within(change).getByTestId("monitor-check-url-change-time"),
     ).toHaveAttribute("dateTime", changedAt);
-    expect(change).toHaveTextContent(TIME_ZONE);
+    expect(change).toHaveTextContent(timeZone());
     expect(
       within(change).getByTestId("monitor-check-url-change-url"),
     ).toHaveTextContent("https://new.acme.example/health");
@@ -885,20 +912,21 @@ describe("Checks history saved-result wording", () => {
       { reason: null, tls: null },
     ]);
     expect(new Set(records.map((x) => x.text)).size).toBe(3);
+    // An empty cell reads "ไม่มีข้อมูล" to a screen reader (the dash itself is aria-hidden).
     expect(records.filter((x) => x.reason === null).map((x) => x.text)).toEqual(
-      ["–"],
+      [`—${NO_DATA}`],
     );
     expect(
       rows.map(
         (row) => within(row).getByTestId("monitor-check-cell-http").textContent,
       ),
-    ).toEqual(["–", "–", "200"]);
+    ).toEqual([`—${NO_DATA}`, `—${NO_DATA}`, "200"]);
     expect(
       rows.map(
         (row) =>
           within(row).getByTestId("monitor-check-cell-response").textContent,
       ),
-    ).toEqual(["–", "–", "182 ms"]);
+    ).toEqual([`—${NO_DATA}`, `—${NO_DATA}`, "182 ms"]);
     for (const row of rows) {
       expect(reasonCell(row)).toHaveTextContent(/\S/);
     }
@@ -1430,5 +1458,161 @@ describe("A Project that is gone after the history loaded", () => {
     });
     expect(await screen.findByTestId("monitor-checks-not-found")).toBeVisible();
     expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+  });
+});
+
+describe("Checks history filter", () => {
+  const FILTER_SINCE_24H = new Date(NOW.getTime() - 86_400_000).toISOString();
+  const outcomeSelect = () =>
+    screen.findByTestId("monitor-checks-filter-outcome");
+  const rangeSelect = () => screen.findByTestId("monitor-checks-filter-range");
+
+  it("sends no filter parameter by default and shows the controls unset", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    renderChecks();
+    expect(await outcomeSelect()).toHaveValue("");
+    expect(await rangeSelect()).toHaveValue("");
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 0,
+    });
+    expect(screen.queryByTestId("monitor-checks-filter-active")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-filter-clear")).toBeNull();
+  });
+
+  it("reads the filter from the URL", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    renderChecks(A, MONITOR_ID, undefined, "?outcome=fail&range=7d");
+    expect(await outcomeSelect()).toHaveValue("fail");
+    expect(await rangeSelect()).toHaveValue("7d");
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 0,
+      outcome: "fail",
+      since: new Date(NOW.getTime() - 7 * 86_400_000).toISOString(),
+    });
+    expect(
+      screen.getByTestId("monitor-checks-filter-active"),
+    ).toHaveTextContent(/\S/);
+  });
+
+  it("ignores URL values that are not options", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    renderChecks(A, MONITOR_ID, undefined, "?outcome=nope&range=1y");
+    expect(await outcomeSelect()).toHaveValue("");
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 0,
+    });
+  });
+
+  it("puts a chosen outcome and range in the URL and in the request", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    const user = userEvent.setup();
+    renderChecks();
+    await user.selectOptions(await outcomeSelect(), "fail");
+    await waitFor(() => {
+      expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+        limit: 50,
+        offset: 0,
+        outcome: "fail",
+      });
+    });
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?outcome=fail",
+    );
+    await user.selectOptions(await rangeSelect(), "24h");
+    await waitFor(() => {
+      expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+        limit: 50,
+        offset: 0,
+        outcome: "fail",
+        since: FILTER_SINCE_24H,
+      });
+    });
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "range=24h",
+    );
+  });
+
+  it("starts the next filter at offset 0 and drops the rows of the previous one", async () => {
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 50), 0, 120))
+      .mockResolvedValueOnce(chunk(span(50, 100), 50, 120))
+      .mockResolvedValueOnce(chunk(span(0, 2), 0, 2));
+    const user = userEvent.setup();
+    renderChecks();
+    await user.click(await loadMoreButton());
+    await waitCount([1, 100, 120]);
+    await user.selectOptions(await outcomeSelect(), "fail");
+    await waitCount([2]);
+    expect(historyRows()).toHaveLength(2);
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 0,
+      outcome: "fail",
+    });
+  });
+
+  it("loads more inside the filter with the same parameters", async () => {
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 50), 0, 70))
+      .mockResolvedValueOnce(chunk(span(50, 70), 50, 70));
+    const user = userEvent.setup();
+    renderChecks(A, MONITOR_ID, undefined, "?outcome=fail");
+    await user.click(await loadMoreButton());
+    await waitCount([70]);
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 50,
+      outcome: "fail",
+    });
+  });
+
+  it("tells no matches apart from no checks yet, keeps the controls and clears on request", async () => {
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk([], 0, 0))
+      .mockResolvedValueOnce(chunk(span(0, 3), 0, 3));
+    const user = userEvent.setup();
+    renderChecks(A, MONITOR_ID, undefined, "?outcome=check_error");
+    expect(
+      await screen.findByTestId("monitor-checks-no-matches"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-empty")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+    expect(await outcomeSelect()).toHaveValue("check_error");
+
+    await user.click(screen.getByTestId("monitor-checks-filter-clear"));
+    expect(await screen.findByTestId("monitor-checks-table")).toBeVisible();
+    expect(screen.queryByTestId("monitor-checks-no-matches")).toBeNull();
+    expect(screen.getByTestId("location-search")).toBeEmptyDOMElement();
+    expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+      limit: 50,
+      offset: 0,
+    });
+    expect(await outcomeSelect()).toHaveFocus();
+  });
+
+  it("shows no filter for a monitor without any check", async () => {
+    fetchChecksMock.mockResolvedValue(chunk([], 0, 0));
+    renderChecks();
+    expect(await screen.findByTestId("monitor-checks-empty")).toBeVisible();
+    expect(screen.queryByTestId("monitor-checks-filter")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-no-matches")).toBeNull();
+  });
+
+  it("announces the result of a filter change once in the existing live region", async () => {
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 3), 0, 3))
+      .mockResolvedValueOnce(chunk([], 0, 0));
+    const user = userEvent.setup();
+    renderChecks();
+    const region = await screen.findByTestId("monitor-checks-announcement");
+    expect(region).toBeEmptyDOMElement();
+    await user.selectOptions(await outcomeSelect(), "fail");
+    await waitFor(() => {
+      expect(region).not.toBeEmptyDOMElement();
+    });
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
 });

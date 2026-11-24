@@ -13,12 +13,13 @@ import { ActivityIcon, SearchIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
-import { Alert, Input, textInputClass } from "../../components/ui";
+import { Alert, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { DataTablePagination } from "../../components/ui/data-table";
 import { Label } from "../../components/ui/label";
 import { SegmentedControl } from "../../components/ui/segmented-control";
+import { Select } from "../../components/ui/select";
 import {
   fetchMonitorList,
   MONITOR_LIST_PAGE_SIZE,
@@ -35,7 +36,7 @@ import {
   useMonitorAccess,
 } from "./useMonitorAccess";
 import { useFlashNotice } from "./flash";
-import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
+import { formatTimeWithSeconds, Time, timeZone } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
 import { MonitorCards } from "./list/MonitorCards";
 import { MonitorTable } from "./MonitorTable";
@@ -258,7 +259,6 @@ function OverviewForProject({
           retryTestId="monitor-overview-context-retry"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -295,7 +295,6 @@ function OverviewForProject({
           retryTestId="monitor-overview-access-retry"
           kind="error"
           message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
-          retryLabel="ลองอีกครั้ง"
           onRetry={access.retry}
         />
       </Page>
@@ -368,22 +367,25 @@ function OverviewForProject({
     />
   );
 
+  const changeSort = (next: MonitorListSort) => {
+    if (next === sort) return;
+    pendingAnnouncement.current = true;
+    pendingSortLabel.current = SORT_LABELS[next];
+    setOffset(0);
+    setSort(next);
+  };
+
   const sortControl = (
     <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
       เรียงตาม
-      <select
+      <Select
         data-testid="monitor-overview-sort"
-        className={textInputClass}
         value={sort}
         onChange={(event) => {
           const next = MONITOR_LIST_SORTS.find(
             (value) => value === event.target.value,
           );
-          if (next === undefined) return;
-          pendingAnnouncement.current = true;
-          pendingSortLabel.current = SORT_LABELS[next];
-          setOffset(0);
-          setSort(next);
+          if (next !== undefined) changeSort(next);
         }}
       >
         {MONITOR_LIST_SORTS.map((value) => (
@@ -395,7 +397,7 @@ function OverviewForProject({
             {SORT_LABELS[value]}
           </option>
         ))}
-      </select>
+      </Select>
     </Label>
   );
 
@@ -511,7 +513,7 @@ function OverviewForProject({
           </Button>
         ) : null}
       </div>
-      {data === undefined ? null : (
+      {data === undefined || !filtered ? null : (
         <p
           data-testid="monitor-overview-results"
           className="text-xs text-foreground-secondary tabular-nums"
@@ -535,7 +537,6 @@ function OverviewForProject({
               retryTestId="monitor-overview-retry"
               kind="error"
               message="โหลดมอนิเตอร์ไม่สำเร็จ"
-              retryLabel="ลองอีกครั้ง"
               onRetry={() => void list.refetch()}
               actions={
                 filtered ? (
@@ -597,6 +598,8 @@ function OverviewForProject({
   const mixedIntervals = new Set(intervals).size > 1;
   const shownFrom = page.total === 0 ? 0 : page.offset + 1;
   const shownTo = page.offset + data.monitors.length;
+  const hasPrevious = page.offset > 0;
+  const hasNext = shownTo < page.total;
 
   return (
     <Page>
@@ -620,7 +623,10 @@ function OverviewForProject({
         <>
           {status}
           <span data-testid="monitor-overview-total">
-            <span className="font-mono">{data.summary.total}</span> มอนิเตอร์
+            <span className="font-mono">
+              {data.summary.total}/{data.summary.limit}
+            </span>{" "}
+            มอนิเตอร์
           </span>
           <span data-testid="monitor-overview-down">
             ล่ม <span className="font-mono">{data.summary.down}</span>
@@ -640,12 +646,16 @@ function OverviewForProject({
                 format={formatTimeWithSeconds}
               />
             </span>{" "}
-            ({TIME_ZONE})
+            ({timeZone()})
           </span>
         </>,
       )}
       {list.isError ? (
-        <Alert data-testid="monitor-overview-refetch-error" tone="warning">
+        <Alert
+          data-testid="monitor-overview-refetch-error"
+          tone="warning"
+          role="alert"
+        >
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
           <Time
             testId="monitor-overview-refetch-time"
@@ -654,75 +664,86 @@ function OverviewForProject({
           />
         </Alert>
       ) : null}
-      {filterControls(!(page.total === 0 && filtered), sortControl)}
-      <p
-        data-testid="monitor-overview-announcement"
-        role="status"
-        aria-label="ผลการกรอง"
-        className="sr-only"
-      >
-        <span key={announcement.count}>{announcement.text}</span>
-      </p>
-      {page.total === 0 && filtered ? (
-        <EmptyState
-          icon={<ActivityIcon size={20} />}
-          data-testid="monitor-overview-filtered-empty"
-          title="ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"
-          action={
-            <Button
-              data-testid="monitor-overview-clear"
-              type="button"
-              variant="secondary"
-              onClick={clearFilters}
-            >
-              ล้างตัวกรอง
-            </Button>
-          }
-        />
-      ) : (
-        <div aria-busy={list.isPlaceholderData}>
-          {view === "cards" ? (
-            <MonitorCards
-              organizationId={organizationId}
-              projectId={projectId}
-              monitors={data.monitors}
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          {filterControls(!(page.total === 0 && filtered), sortControl)}
+          <p
+            data-testid="monitor-overview-announcement"
+            role="status"
+            aria-label="ผลการกรอง"
+            className="sr-only"
+          >
+            <span key={announcement.count}>{announcement.text}</span>
+          </p>
+          {page.total === 0 && filtered ? (
+            <EmptyState
+              icon={<ActivityIcon size={20} />}
+              data-testid="monitor-overview-filtered-empty"
+              title="ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"
+              action={
+                <Button
+                  data-testid="monitor-overview-clear"
+                  type="button"
+                  variant="secondary"
+                  onClick={clearFilters}
+                >
+                  ล้างตัวกรอง
+                </Button>
+              }
             />
           ) : (
-            <MonitorTable
-              organizationId={organizationId}
-              projectId={projectId}
-              monitors={data.monitors}
-            />
+            <div aria-busy={list.isPlaceholderData}>
+              {view === "cards" ? (
+                <MonitorCards
+                  organizationId={organizationId}
+                  projectId={projectId}
+                  monitors={data.monitors}
+                />
+              ) : (
+                <MonitorTable
+                  organizationId={organizationId}
+                  projectId={projectId}
+                  monitors={data.monitors}
+                  sort={sort}
+                  onSortChange={changeSort}
+                />
+              )}
+            </div>
           )}
+          {hasPrevious || hasNext ? (
+            <DataTablePagination
+              summaryTestId="monitor-overview-pagination"
+              previousTestId="monitor-overview-previous"
+              nextTestId="monitor-overview-next"
+              ariaLabel="หน้ามอนิเตอร์"
+              summary={
+                <>
+                  แสดง {shownFrom}–{shownTo} จาก {page.total}
+                  {project === undefined
+                    ? null
+                    : ` · เฉพาะมอนิเตอร์ของ ${project.name}`}
+                </>
+              }
+              previousLabel="ก่อนหน้า"
+              nextLabel="ถัดไป"
+              hasPrevious={hasPrevious}
+              hasNext={hasNext}
+              onPrevious={() => {
+                setOffset(Math.max(0, page.offset - MONITOR_LIST_PAGE_SIZE));
+              }}
+              onNext={() => {
+                setOffset(page.offset + MONITOR_LIST_PAGE_SIZE);
+              }}
+            />
+          ) : null}
         </div>
-      )}
-      {page.total === 0 ? null : (
-        <DataTablePagination
-          summaryTestId="monitor-overview-pagination"
-          previousTestId="monitor-overview-previous"
-          nextTestId="monitor-overview-next"
-          ariaLabel="หน้ามอนิเตอร์"
-          summary={
-            <>
-              แสดง {shownFrom}–{shownTo} จาก {page.total}
-              {project === undefined
-                ? null
-                : ` · เฉพาะมอนิเตอร์ของ ${project.name}`}
-            </>
-          }
-          previousLabel="ก่อนหน้า"
-          nextLabel="ถัดไป"
-          hasPrevious={page.offset > 0}
-          hasNext={page.offset + data.monitors.length < page.total}
-          onPrevious={() => {
-            setOffset(Math.max(0, page.offset - MONITOR_LIST_PAGE_SIZE));
-          }}
-          onNext={() => {
-            setOffset(page.offset + MONITOR_LIST_PAGE_SIZE);
-          }}
-        />
-      )}
-      <RecentEventsCard organizationId={organizationId} projectId={projectId} />
+        <div data-testid="monitor-overview-aside" className="min-w-0">
+          <RecentEventsCard
+            organizationId={organizationId}
+            projectId={projectId}
+          />
+        </div>
+      </div>
     </Page>
   );
 }

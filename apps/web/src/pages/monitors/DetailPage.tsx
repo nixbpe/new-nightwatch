@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { ArrowLeftIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
@@ -24,11 +23,13 @@ import {
 } from "../../lib/api/monitors";
 import { cn } from "@/lib/utils";
 import { useTenant } from "../../lib/tenant/TenantProvider";
+import { BackLink } from "./BackLink";
 import { AlertsCard } from "./detail/AlertsCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { IntervalText } from "./detail/IntervalText";
 import { LastResponseCard } from "./detail/LastResponseCard";
+import { UptimeStripMockup } from "./detail/MonitorDetailMockups";
 import { MonitorEventsCard } from "./detail/MonitorEventsCard";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
@@ -39,7 +40,7 @@ import {
   formatTimeWithSeconds,
   formatTimeWithSecondsOrDate,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useDataFresh } from "./useDataFresh";
@@ -309,14 +310,9 @@ function DetailForMonitor({
     title: ReactNode = "มอนิเตอร์",
   ) => (
     <>
-      <Link
-        data-testid="monitor-detail-back"
-        to={overviewPath}
-        className="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-foreground-secondary underline-offset-4 hover:text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <ArrowLeftIcon size={14} />
+      <BackLink testId="monitor-detail-back" to={overviewPath}>
         กลับไปรายการมอนิเตอร์
-      </Link>
+      </BackLink>
       <PageHeader
         titleTestId="monitor-detail-title"
         scopeTestId="monitor-detail-scope"
@@ -367,7 +363,6 @@ function DetailForMonitor({
           data-testid="monitor-detail-admission-error"
           retryTestId="monitor-detail-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -418,7 +413,6 @@ function DetailForMonitor({
           data-testid="monitor-detail-access-error"
           retryTestId="monitor-detail-access-retry"
           message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
-          retryLabel="ลองอีกครั้ง"
           onRetry={access.retry}
         />
       </Page>
@@ -435,7 +429,6 @@ function DetailForMonitor({
             alertTestId="monitor-detail-load-alert"
             retryTestId="monitor-detail-load-retry"
             message="โหลดมอนิเตอร์ไม่สำเร็จ"
-            retryLabel="ลองอีกครั้ง"
             onRetry={() => void detail.refetch()}
           />
         ) : (
@@ -465,21 +458,11 @@ function DetailForMonitor({
       >
         {busy
           ? paused
-            ? "กำลังเริ่มต่อ…"
+            ? "กำลังเริ่มการตรวจต่อ…"
             : "กำลังหยุด…"
           : paused
-            ? "เริ่มต่อ"
+            ? "เริ่มการตรวจต่อ"
             : "หยุดชั่วคราว"}
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        data-testid="monitor-detail-delete"
-        onClick={(event) => {
-          setDeleteDialog({ opener: event.currentTarget });
-        }}
-      >
-        ลบมอนิเตอร์
       </Button>
       <Button asChild>
         <Link
@@ -490,6 +473,18 @@ function DetailForMonitor({
         </Link>
       </Button>
     </>
+  ) : undefined;
+  const deleteButton = canWrite ? (
+    <Button
+      type="button"
+      variant="secondary"
+      data-testid="monitor-detail-delete"
+      onClick={(event) => {
+        setDeleteDialog({ opener: event.currentTarget });
+      }}
+    >
+      ลบมอนิเตอร์
+    </Button>
   ) : undefined;
   const line = statusLine(monitor);
   const bannerShown =
@@ -530,7 +525,7 @@ function DetailForMonitor({
               format={formatTimeWithSecondsOrDate}
             />
           </span>{" "}
-          ({TIME_ZONE})
+          ({timeZone()})
         </span>
       )}
       {canWrite ? null : (
@@ -564,7 +559,11 @@ function DetailForMonitor({
         </Alert>
       )}
       {detail.isError ? (
-        <Alert data-testid="monitor-detail-refresh-error" tone="warning">
+        <Alert
+          data-testid="monitor-detail-refresh-error"
+          tone="warning"
+          role="alert"
+        >
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
           <Time
             testId="monitor-detail-retained-time"
@@ -577,6 +576,13 @@ function DetailForMonitor({
       <DownBanner monitor={monitor} organizationId={organizationId} />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-8">
+          <StatusCard monitor={monitor} fresh={fresh} />
+          <IncidentsCard
+            organizationId={organizationId}
+            projectId={projectId}
+            monitorId={monitorId}
+          />
+          <UptimeStripMockup />
           <ResponseTimeCard
             organizationId={organizationId}
             projectId={projectId}
@@ -585,17 +591,11 @@ function DetailForMonitor({
             intervalSeconds={monitor.intervalSeconds}
             createdAt={monitor.createdAt}
           />
-          <StatusCard monitor={monitor} fresh={fresh} />
           <MonitorEventsCard
             organizationId={organizationId}
             projectId={projectId}
             monitorId={monitorId}
             headers={monitor.headers}
-          />
-          <IncidentsCard
-            organizationId={organizationId}
-            projectId={projectId}
-            monitorId={monitorId}
           />
         </div>
         <aside
@@ -617,7 +617,7 @@ function DetailForMonitor({
               </span>
             </Link>
           </Card>
-          <ConfigCard monitor={monitor} />
+          <ConfigCard monitor={monitor} footer={deleteButton} />
           <AlertsCard
             monitor={monitor}
             organizationId={organizationId}

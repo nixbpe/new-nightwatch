@@ -1,5 +1,6 @@
 import { MONITOR_INTERVAL_SECONDS } from "@nightwatch/api-contract";
 
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { SectionHeader } from "../../../components/ui/section-header";
 
@@ -7,11 +8,35 @@ import { SegmentedControl } from "../../../components/ui/segmented-control";
 import { intervalText } from "../detail/labels";
 import { formatNumber } from "../format";
 import { TextControl, type SectionProps } from "./controls";
+import { fieldId } from "./model";
 
 const INTERVAL_OPTIONS = MONITOR_INTERVAL_SECONDS.map((seconds) => ({
   value: String(seconds),
   label: `${String(seconds / 60)} นาที`,
 }));
+
+// A read-only line that names where its value is edited, and goes there.
+function EditLink({
+  testId,
+  onClick,
+  children,
+}: {
+  testId: string;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <Button
+      data-testid={testId}
+      type="button"
+      variant="link"
+      className="h-auto min-h-6 px-1 py-0"
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
 
 export function BasicSection({
   values,
@@ -20,8 +45,12 @@ export function BasicSection({
   disabled,
   advanced,
   urlNote,
+  focusAfterRender,
+  onShowAdvanced,
 }: SectionProps & {
   advanced: boolean;
+  /** Opens advanced mode, where the status code and the timeout are edited. */
+  onShowAdvanced: () => void;
   /** Beside the URL: why Save and Test are off (a kept secret and a new origin). */
   urlNote: string | null;
 }) {
@@ -112,12 +141,31 @@ export function BasicSection({
         >
           {intervalText(values.intervalSeconds)} ถือว่าล่มเมื่อล้มเหลวติดกัน{" "}
           {values.alerts.failureThreshold} ครั้ง
+          <EditLink
+            testId="monitor-form-edit-threshold"
+            onClick={() => {
+              focusAfterRender(fieldId("alerts.failureThreshold"));
+            }}
+          >
+            แก้ในการแจ้งเตือน
+          </EditLink>
         </li>
         <li
           data-testid="monitor-form-status-summary"
           data-expected-status={values.expectedStatus.trim()}
         >
           ถือว่าปกติเมื่อได้รหัส {values.expectedStatus.trim()}
+          {advanced ? null : (
+            <EditLink
+              testId="monitor-form-edit-status"
+              onClick={() => {
+                onShowAdvanced();
+                focusAfterRender(fieldId("expectedStatus"));
+              }}
+            >
+              แก้ในโหมดขั้นสูง
+            </EditLink>
+          )}
         </li>
         {advanced ? null : (
           <li
@@ -125,6 +173,15 @@ export function BasicSection({
             data-timeout-seconds={values.timeoutSeconds.trim()}
           >
             หมดเวลารอ {values.timeoutSeconds.trim()} วินาที
+            <EditLink
+              testId="monitor-form-edit-timeout"
+              onClick={() => {
+                onShowAdvanced();
+                focusAfterRender(fieldId("timeoutSeconds"));
+              }}
+            >
+              แก้ในโหมดขั้นสูง
+            </EditLink>
           </li>
         )}
       </ul>

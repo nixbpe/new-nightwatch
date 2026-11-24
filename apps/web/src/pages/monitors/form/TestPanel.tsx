@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card, CardHeader } from "../../../components/ui/card";
+import { CheckIcon, XIcon } from "../../../components/shell/icons";
 import { ApiError } from "../../../lib/api/client";
+import { cn } from "../../../lib/utils";
 import {
   AssertionTable,
   assertionRowFromResult,
@@ -286,8 +288,29 @@ export function TestPanel({
           state.kind === "result" ? state.result.assertions.length : undefined
         }
         role="status"
-        className="text-sm font-medium"
+        className={cn(
+          "flex items-center gap-1.5 text-sm font-medium",
+          state.kind === "result" && state.result.outcome === "pass"
+            ? "text-primary"
+            : state.kind === "result" && state.result.outcome === "fail"
+              ? "text-danger"
+              : null,
+        )}
       >
+        {state.kind === "result" && state.result.outcome !== "check_error" ? (
+          <span
+            data-testid="monitor-test-outcome-icon"
+            data-icon={state.result.outcome}
+            aria-hidden="true"
+            className="inline-flex shrink-0"
+          >
+            {state.result.outcome === "pass" ? (
+              <CheckIcon size={16} />
+            ) : (
+              <XIcon size={16} />
+            )}
+          </span>
+        ) : null}
         {statusText}
       </div>
       {waiting ? (
@@ -413,9 +436,9 @@ function ResultDetails({
   return (
     <div className="flex flex-col gap-3">
       {stale ? (
-        <p data-testid="monitor-test-stale" className="text-sm text-caution">
+        <Alert data-testid="monitor-test-stale" tone="warning" role="status">
           ผลนี้ไม่ตรงกับค่าปัจจุบัน
-        </p>
+        </Alert>
       ) : null}
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {result.httpStatus === null ? null : (

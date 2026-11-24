@@ -12,14 +12,12 @@ import {
   formatTimeWithSeconds,
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
+  NO_DATA,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../format";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { cn } from "@/lib/utils";
-import { UptimeStripMockup } from "./MonitorDetailMockups";
-
-export const NO_DATA = "ยังไม่มีข้อมูล";
 
 export function statusLine(monitor: Monitor): ReactNode {
   const { health, healthReason, openIncident } = monitor;
@@ -208,7 +206,7 @@ export function StatusCard({
                   format={formatTimeWithSeconds}
                 />
               </span>{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
             </span>
           </span>
         }
@@ -225,7 +223,7 @@ export function StatusCard({
               data-testid="monitor-status-failures"
               className="font-medium text-caution"
             >
-              ล้มเหลว {consecutiveFailures} ครั้ง
+              ล้มเหลวติดกัน {consecutiveFailures} ครั้ง
               <span
                 data-testid="monitor-status-failure-threshold"
                 className="font-normal text-foreground-secondary"
@@ -262,7 +260,6 @@ export function StatusCard({
         คำนวณจากการตรวจที่มีผล ไม่รวมช่วงหยุดชั่วคราวและช่วงที่ตรวจไม่ได้
         ช่วงไม่มีข้อมูลไม่นับเป็นปกติ
       </p>
-      <UptimeStripMockup />
     </section>
   );
 }

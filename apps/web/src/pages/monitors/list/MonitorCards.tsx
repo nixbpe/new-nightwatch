@@ -7,10 +7,16 @@ import {
 } from "../../../components/shell/initials";
 import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { cn } from "../../../lib/utils";
-import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import {
+  formatNumber,
+  formatTimeOrDate,
+  NO_DATA,
+  Time,
+  timeZone,
+} from "../format";
 import { IntervalText } from "../detail/IntervalText";
 import { HealthPill } from "../HealthPill";
-import { NO_DATA, NoData, StatusDetail, Uptime } from "../MonitorTable";
+import { NoData, StatusDetail, Uptime } from "../MonitorTable";
 import { SslLabel } from "../SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
@@ -63,6 +69,14 @@ function Sparkline({ points }: { points: Row["responseSparkline"] }) {
             />
           ),
         )}
+      </span>
+      <span
+        data-testid="monitor-list-spark-scale"
+        aria-hidden="true"
+        className="text-xs text-foreground-secondary tabular-nums"
+      >
+        24 ชม. · สูงสุด <span className="font-mono">{formatNumber(max)}</span>{" "}
+        ms
       </span>
       <span data-testid="monitor-list-spark-description" className="sr-only">
         เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด{" "}
@@ -157,7 +171,7 @@ export function MonitorCards({
                         format={formatTimeOrDate}
                       />
                     </span>
-                    <span>({TIME_ZONE})</span>
+                    <span>({timeZone()})</span>
                   </>
                 )}
               </div>

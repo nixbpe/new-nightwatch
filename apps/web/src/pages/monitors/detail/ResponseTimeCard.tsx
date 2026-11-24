@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "../../../components/shell/Skeleton";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
+import { InfoTip } from "../../../components/ui/icon-button";
 import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { ResponseTimeTable } from "../../../components/ui/response-time-table";
 import {
@@ -31,13 +32,28 @@ import {
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
 import { isDenied } from "../useMonitorAccess";
-import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import {
+  formatDateTimeSeconds,
+  formatNumber,
+  formatTimeOrDate,
+  NO_DATA,
+  Time,
+  timeZone,
+} from "../format";
 
 const ResponseTimeChart = lazy(() =>
   import("../../../components/ui/response-time-chart").then((module) => ({
     default: module.ResponseTimeChart,
   })),
 );
+
+const VIEW_OPTIONS = [
+  { value: "chart", label: "กราฟ" },
+  { value: "table", label: "ตาราง" },
+] as const;
+
+const POPULATION_TIP =
+  "p50/p95 จากเวลาที่วัดได้และไม่เป็น null รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ ผลตรวจที่ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์ล่ม";
 
 const RANGE_OPTIONS = [
   { value: "24h", label: "24 ชม." },
@@ -75,7 +91,7 @@ function Kpi({
       <dd
         data-testid={testId}
         data-value-code={valueCode ?? ""}
-        className={`mt-1 ${value === "ไม่มีข้อมูล" ? "font-sans text-base" : "font-mono text-[22px] leading-8 font-medium tabular-nums"} ${danger ? "text-danger" : "text-heading"}`}
+        className={`mt-1 ${value === NO_DATA ? "font-sans text-base" : "font-mono text-[22px] leading-8 font-medium tabular-nums"} ${danger ? "text-danger" : "text-heading"}`}
       >
         {value}
       </dd>
@@ -84,20 +100,9 @@ function Kpi({
 }
 
 const msText = (value: number | null) =>
-  value === null ? "ไม่มีข้อมูล" : `${formatNumber(value)} ms`;
+  value === null ? NO_DATA : `${formatNumber(value)} ms`;
 
 const SEPARATOR = " · ";
-
-const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-const formatBound = (iso: string) => boundFormat.format(new Date(iso));
 
 // Independent query: a failure stays inside this card.
 export function ResponseTimeCard({
@@ -173,7 +178,7 @@ export function ResponseTimeCard({
       organizationId,
       monitorId,
       range,
-      text: `${RANGE_LABELS[range]} p50 ${msText(current.p50Ms)} p95 ${msText(current.p95Ms)} จำนวนการตรวจ ${formatNumber(current.checks)} ล้มเหลว ${formatNumber(current.failed)}`,
+      text: `${RANGE_LABELS[range]} p50 ${msText(current.p50Ms)} p95 ${msText(current.p95Ms)} จำนวนการตรวจ ${formatNumber(current.checks)} ผลตรวจที่ล้มเหลว ${formatNumber(current.failed)}`,
     });
   }, [range, organizationId, monitorId, data, query.isFetching, query.isError]);
 
@@ -187,7 +192,7 @@ export function ResponseTimeCard({
   let body;
   if (denied || notFound) {
     body = (
-      <Alert data-testid="monitor-response-denial" tone="info">
+      <Alert data-testid="monitor-response-denial" tone="info" role="alert">
         {denied
           ? "คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
           : "ไม่พบมอนิเตอร์นี้"}
@@ -196,19 +201,14 @@ export function ResponseTimeCard({
   } else if (chartProps !== undefined && (hasChecks(series) || paused)) {
     body = (
       <>
-        <Button
-          data-testid="monitor-response-toggle"
-          data-view={view}
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="self-start"
-          onClick={() => {
-            setView((current) => (current === "chart" ? "table" : "chart"));
-          }}
-        >
-          {view === "chart" ? "ดูข้อมูลกราฟเป็นตาราง" : "ดูข้อมูลเป็นกราฟ"}
-        </Button>
+        <SegmentedControl
+          testId="monitor-response-toggle"
+          optionTestId={(value) => `monitor-response-view-${value}`}
+          label="มุมมองข้อมูลเวลาตอบสนอง"
+          value={view}
+          options={VIEW_OPTIONS}
+          onChange={setView}
+        />
         {view === "chart" ? (
           <Suspense fallback={<ChartLoading />}>
             <ResponseTimeChart {...chartProps} />
@@ -281,7 +281,7 @@ export function ResponseTimeCard({
           data-testid="monitor-response-retry"
           onClick={() => void query.refetch()}
         >
-          ลองอีกครั้ง
+          ลองใหม่
         </Button>
       </>
     );
@@ -344,32 +344,30 @@ export function ResponseTimeCard({
           แหล่ง: ผลการตรวจของ NightWatch
         </span>
         {SEPARATOR}
-        <span data-testid="monitor-response-caption-population">
-          p50/p95 จากเวลาที่วัดได้และไม่เป็น null
-          รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง
-          “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ
-          ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์
-        </span>
+        <InfoTip
+          data-testid="monitor-response-caption-population"
+          label={POPULATION_TIP}
+        />
         {data === undefined ? null : (
           <>
             {SEPARATOR}
             <span
               data-testid="monitor-response-caption-window"
-              data-time-zone={TIME_ZONE}
+              data-time-zone={timeZone()}
             >
               ช่วงข้อมูล:{" "}
               <Time
                 testId="monitor-response-window-from"
                 iso={data.window.from}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
               ถึง{" "}
               <Time
                 testId="monitor-response-window-to"
                 iso={data.window.to}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
               {range === "24h"
                 ? null
                 : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}
@@ -396,7 +394,7 @@ export function ResponseTimeCard({
             aria-label="กำลังโหลดสรุปเวลาตอบสนอง"
             className="grid grid-cols-2 gap-4 lg:grid-cols-4"
           >
-            {["p50", "p95", "จำนวนการตรวจ", "ล้มเหลว"].map((label) => (
+            {["p50", "p95", "จำนวนการตรวจ", "ผลตรวจที่ล้มเหลว"].map((label) => (
               <Skeleton key={label} className="h-20" />
             ))}
           </div>
@@ -426,7 +424,7 @@ export function ResponseTimeCard({
           />
           <Kpi
             testId="monitor-response-failed"
-            label="ล้มเหลว"
+            label="ผลตรวจที่ล้มเหลว"
             value={formatNumber(stats.failed)}
             danger={stats.failed > 0}
           />
@@ -439,14 +437,15 @@ export function ResponseTimeCard({
             <Alert
               data-testid="monitor-response-retained-warning"
               tone="warning"
+              role="alert"
             >
               อัปเดตกราฟไม่สำเร็จ ข้อมูล ณ{" "}
               <Time
                 testId="monitor-response-retained-time"
                 iso={data.dataAsOf}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
             </Alert>
             <Button
               type="button"
@@ -456,7 +455,7 @@ export function ResponseTimeCard({
               data-testid="monitor-response-retained-retry"
               onClick={() => void query.refetch()}
             >
-              ลองอีกครั้ง
+              ลองใหม่
             </Button>
           </>
         ) : null}

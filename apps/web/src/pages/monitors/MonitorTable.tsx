@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
-import type { MonitorListResponse } from "@nightwatch/api-contract";
+import type {
+  MonitorListResponse,
+  MonitorListSort,
+} from "@nightwatch/api-contract";
 import { Link } from "react-router";
 
 import {
   DataTable,
   type DataTableColumn,
+  type DataTableSort,
+  type SortDirection,
 } from "../../components/ui/data-table";
+import { StatusPill } from "../../components/ui/status-pill";
 import { HealthPill } from "./HealthPill";
 import {
   formatNumber,
@@ -13,15 +19,15 @@ import {
   formatTimeOrDate,
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
+  NO_DATA,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "./format";
+import { SslLabel, sslText } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
 
-export const NO_DATA = "ไม่มีข้อมูล";
-
-// The line under the pill says why a state holds; "ล้มเหลว N ครั้ง" is a warning beside a health that has not changed.
+// The line under the pill says why a state holds; "ล้มเหลวติดกัน N ครั้ง" is a warning beside a health that has not changed.
 export function StatusDetail({ row }: { row: Row }) {
   const lines: ReactNode[] = [];
   if (row.health === "down" && row.openIncident !== null) {
@@ -87,7 +93,7 @@ export function StatusDetail({ row }: { row: Row }) {
         key="failures"
         className="font-medium text-caution"
       >
-        ล้มเหลว {row.consecutiveFailures} ครั้ง
+        ล้มเหลวติดกัน {row.consecutiveFailures} ครั้ง
       </span>,
     );
   }
@@ -105,6 +111,36 @@ export function NoData() {
       <span aria-hidden="true">—</span>
       <span className="sr-only">{NO_DATA}</span>
     </span>
+  );
+}
+
+// Cards show SSL as plain text; the table has no spare line, so a level that needs action becomes a pill.
+function SslCell({ ssl }: { ssl: Row["ssl"] }) {
+  if (ssl.level === "no_data") return <NoData />;
+  if (
+    ssl.level === "caution" ||
+    ssl.level === "danger" ||
+    ssl.level === "expired"
+  ) {
+    return (
+      <StatusPill
+        data-testid="monitor-list-ssl"
+        data-ssl-level={ssl.level}
+        data-days-remaining={ssl.daysRemaining ?? ""}
+        tone={ssl.level === "caution" ? "caution" : "danger"}
+        dot
+      >
+        {sslText(ssl.level, ssl.daysRemaining)}
+      </StatusPill>
+    );
+  }
+  return (
+    <SslLabel
+      testId="monitor-list-ssl"
+      level={ssl.level}
+      daysRemaining={ssl.daysRemaining}
+      className="text-xs"
+    />
   );
 }
 
@@ -127,19 +163,45 @@ export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
   );
 }
 
+// The list API sorts in one fixed direction per order, so each sortable column offers only that one.
+const COLUMN_SORTS = {
+  name: { sort: "name", direction: "asc" },
+  p95: { sort: "response_time", direction: "desc" },
+  h24: { sort: "uptime", direction: "asc" },
+} as const satisfies Record<
+  string,
+  { sort: MonitorListSort; direction: SortDirection }
+>;
+
 export function MonitorTable({
   organizationId,
   projectId,
   monitors,
+  sort,
+  onSortChange,
 }: {
   organizationId: string;
   projectId: string;
   monitors: Row[];
+  sort: MonitorListSort;
+  onSortChange: (sort: MonitorListSort) => void;
 }) {
+  const sortColumn = Object.entries(COLUMN_SORTS).find(
+    ([, entry]) => entry.sort === sort,
+  );
+  const tableSort: DataTableSort = {
+    key: sortColumn?.[0] ?? null,
+    direction: sortColumn?.[1].direction ?? "asc",
+    onSortChange: (key) => {
+      const next = Object.entries(COLUMN_SORTS).find(([name]) => name === key);
+      if (next !== undefined) onSortChange(next[1].sort);
+    },
+  };
   const columns: DataTableColumn<Row>[] = [
     {
       key: "name",
       header: "มอนิเตอร์",
+      sortDirections: [COLUMN_SORTS.name.direction],
       cell: (row) => (
         <span className="flex min-w-40 max-w-[320px] flex-col py-1.5">
           <Link
@@ -173,6 +235,7 @@ export function MonitorTable({
       key: "p95",
       header: "เวลาตอบสนอง · p95 · 24 ชม.",
       align: "end",
+      sortDirections: [COLUMN_SORTS.p95.direction],
       cell: (row) =>
         row.responseP95Ms24h === null ? (
           <NoData />
@@ -188,11 +251,18 @@ export function MonitorTable({
     {
       key: "h24",
       header: "ความพร้อมใช้งาน · 24 ชม.",
+      align: "end",
+      sortDirections: [COLUMN_SORTS.h24.direction],
       cell: (row) => <Uptime window={row.uptime.h24} />,
     },
     {
+      key: "ssl",
+      header: "SSL",
+      cell: (row) => <SslCell ssl={row.ssl} />,
+    },
+    {
       key: "lastCheck",
-      header: `ตรวจล่าสุด (${TIME_ZONE})`,
+      header: `ตรวจล่าสุด (${timeZone()})`,
       cell: (row) =>
         row.lastCheckAt === null ? (
           <NoData />
@@ -216,6 +286,7 @@ export function MonitorTable({
       columns={columns}
       rows={monitors}
       rowKey={(row) => row.id}
+      sort={tableSort}
     />
   );
 }

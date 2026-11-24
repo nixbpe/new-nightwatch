@@ -8,14 +8,15 @@ import {
   useState,
   type SyntheticEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 
-import { ArrowLeftIcon } from "../../../components/shell/icons";
 import { Page, PageHeader } from "../../../components/shell/Page";
 import { PageState } from "../../../components/shell/PageState";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
+import { useUnsavedChangesGuard } from "../../../components/ui/useUnsavedChangesGuard";
 import { ApiError } from "../../../lib/api/client";
 import {
   createMonitor,
@@ -27,6 +28,7 @@ import {
 } from "../../../lib/api/monitors";
 import { getContextPublicationSnapshot } from "../../../lib/queryClient";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
+import { BackLink } from "../BackLink";
 import type { MonitorFlashState } from "../flash";
 import { useOrganizationSwitched } from "../../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { AssertionsSection } from "./AssertionsSection";
@@ -155,6 +157,11 @@ export function MonitorForm({
   const secretStore = useSecretStore();
   useClearSecretsOnUnmount(secretStore);
   const secretContext = { base, get: secretStore.get };
+  // A typed secret always comes with a changed auth or header row, so `values` covers drafts.
+  const [saved, setSaved] = useState(false);
+  const unsaved = useUnsavedChangesGuard(
+    !saved && JSON.stringify(values) !== JSON.stringify(initial.values),
+  );
   const entriesNow = () => planEntries(values, base, secretStore.get);
   const [mode, setMode] = useState<Mode>(
     advancedCount(initial.values) > 0 ? "advanced" : "basic",
@@ -370,7 +377,7 @@ export function MonitorForm({
     setFormError(null);
     setConflict(false);
     try {
-      const saved = editing
+      const result = editing
         ? await updateMonitor(
             organizationId,
             projectId,
@@ -415,8 +422,12 @@ export function MonitorForm({
       }
       // A save that lands after the Organization was switched must not pull the user back.
       if (leftOrganization()) return;
+      // The saved form is not a draft: the guard must see that before the navigation asks.
+      flushSync(() => {
+        setSaved(true);
+      });
       void navigate(
-        `/organizations/${organizationId}/projects/${projectId}/monitors/${saved.monitor.id}`,
+        `/organizations/${organizationId}/projects/${projectId}/monitors/${result.monitor.id}`,
         {
           state: {
             notice: editing ? "updated" : "created",
@@ -442,13 +453,9 @@ export function MonitorForm({
         releaseFocusRecovery(event.relatedTarget);
       }}
     >
-      <Link
-        to={backPath}
-        className="inline-flex items-center gap-1.5 self-start text-sm text-primary underline-offset-4 hover:underline"
-      >
-        <ArrowLeftIcon size={14} />
+      <BackLink testId="monitor-form-back" to={backPath}>
         {editing ? "กลับไปมอนิเตอร์" : "กลับไปรายการมอนิเตอร์"}
-      </Link>
+      </BackLink>
       <PageHeader
         titleTestId="monitor-form-title"
         scopeTestId="monitor-form-scope"
@@ -486,6 +493,7 @@ export function MonitorForm({
     return (
       <Page width="form">
         {heading}
+        {unsaved}
         <PageState
           kind="denied"
           data-testid="monitor-form-not-found"
@@ -513,6 +521,7 @@ export function MonitorForm({
   return (
     <Page>
       {heading}
+      {unsaved}
       {!presented ? (
         <PageState kind="loading" label="กำลังยืนยันสิทธิ์มอนิเตอร์" />
       ) : null}
@@ -581,6 +590,9 @@ export function MonitorForm({
               {...sectionProps}
               advanced={mode === "advanced"}
               urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
+              onShowAdvanced={() => {
+                setMode("advanced");
+              }}
             />
             {mode === "advanced" ? (
               <>
@@ -601,7 +613,11 @@ export function MonitorForm({
             ) : null}
             {conflict ? (
               <div className="flex flex-col gap-2">
-                <Alert data-testid="monitor-form-conflict" tone="warning">
+                <Alert
+                  data-testid="monitor-form-conflict"
+                  tone="warning"
+                  role="alert"
+                >
                   {CONFLICT_MESSAGE}
                 </Alert>
                 {onReload === undefined ? null : (

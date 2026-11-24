@@ -2,7 +2,7 @@ import type { MonitorIncidentsResponse } from "@nightwatch/api-contract";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Skeleton } from "../../../components/shell/Skeleton";
+import { PageState } from "../../../components/shell/PageState";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import {
@@ -23,66 +23,69 @@ import {
   formatDuration,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../format";
 
 type Incident = MonitorIncidentsResponse["incidents"][number];
 
-const columns: DataTableColumn<Incident>[] = [
-  {
-    key: "start",
-    header: `เริ่ม (${TIME_ZONE})`,
-    cell: (row) => (
-      <Time
-        testId="monitor-incident-start"
-        iso={row.startedAt}
-        format={formatDateTime}
-      />
-    ),
-  },
-  {
-    key: "end",
-    header: "สิ้นสุด",
-    cell: (row) =>
-      row.endedAt === null ? (
-        <span
-          data-testid="monitor-incident-open"
-          className="flex flex-wrap items-center gap-2"
-        >
-          ยังไม่สิ้นสุด
-          <StatusPill tone="danger" neutralLabel>
-            กำลังเกิดอยู่
-          </StatusPill>
-        </span>
-      ) : (
-        <span className="flex flex-col">
-          <Time iso={row.endedAt} format={formatDateTime} />
-          {row.endReason === null ? null : (
-            <span className="text-xs text-foreground-secondary">
-              {incidentReasonLabel(row.endReason)}
-            </span>
-          )}
+// Built per render: the header names the preference zone, which Settings can change.
+function buildColumns(): DataTableColumn<Incident>[] {
+  return [
+    {
+      key: "start",
+      header: `เริ่ม (${timeZone()})`,
+      cell: (row) => (
+        <Time
+          testId="monitor-incident-start"
+          iso={row.startedAt}
+          format={formatDateTime}
+        />
+      ),
+    },
+    {
+      key: "end",
+      header: "สิ้นสุด",
+      cell: (row) =>
+        row.endedAt === null ? (
+          <span
+            data-testid="monitor-incident-open"
+            className="flex flex-wrap items-center gap-2"
+          >
+            ยังไม่สิ้นสุด
+            <StatusPill tone="danger" neutralLabel>
+              กำลังเกิดอยู่
+            </StatusPill>
+          </span>
+        ) : (
+          <span className="flex flex-col">
+            <Time iso={row.endedAt} format={formatDateTime} />
+            {row.endReason === null ? null : (
+              <span className="text-xs text-foreground-secondary">
+                {incidentReasonLabel(row.endReason)}
+              </span>
+            )}
+          </span>
+        ),
+    },
+    {
+      key: "duration",
+      header: "ระยะเวลา",
+      cell: (row) => formatDuration(row.durationSeconds),
+    },
+    {
+      key: "reason",
+      header: "สาเหตุ",
+      cell: (row) => (
+        <span>
+          {incidentReasonLabel(row.startReason)}
+          {row.startHttpStatus === null
+            ? null
+            : ` (HTTP ${String(row.startHttpStatus)})`}
         </span>
       ),
-  },
-  {
-    key: "duration",
-    header: "ระยะเวลา",
-    cell: (row) => formatDuration(row.durationSeconds),
-  },
-  {
-    key: "reason",
-    header: "สาเหตุ",
-    cell: (row) => (
-      <span>
-        {incidentReasonLabel(row.startReason)}
-        {row.startHttpStatus === null
-          ? null
-          : ` (HTTP ${String(row.startHttpStatus)})`}
-      </span>
-    ),
-  },
-];
+    },
+  ];
+}
 
 // Independent query: a failure stays inside this card.
 export function IncidentsCard({
@@ -120,11 +123,11 @@ export function IncidentsCard({
       aria-labelledby="detail-incidents"
       className="flex flex-col gap-4"
     >
-      <SectionHeader id="detail-incidents" title="เหตุการณ์" />
+      <SectionHeader id="detail-incidents" title="เหตุการณ์ล่ม" />
       <div className="flex flex-col gap-3">
         {data === undefined && incidents.isError ? (
           <>
-            <Alert tone="error">โหลดเหตุการณ์ไม่สำเร็จ</Alert>
+            <Alert tone="error">โหลดเหตุการณ์ล่มไม่สำเร็จ</Alert>
             <Button
               type="button"
               variant="secondary"
@@ -132,18 +135,16 @@ export function IncidentsCard({
               className="self-start"
               onClick={() => void incidents.refetch()}
             >
-              ลองอีกครั้ง
+              ลองใหม่
             </Button>
           </>
         ) : null}
         {data === undefined && !incidents.isError ? (
-          <div aria-busy="true" className="flex flex-col gap-3">
-            <p role="status" className="sr-only">
-              กำลังโหลดเหตุการณ์
-            </p>
-            <Skeleton className="h-4 w-64 max-w-full" />
-            <Skeleton className="h-4 w-48 max-w-full" />
-          </div>
+          <PageState
+            kind="loading"
+            layout="inline"
+            label="กำลังโหลดเหตุการณ์ล่ม…"
+          />
         ) : null}
         {data !== undefined && data.page.total === 0 ? (
           <p
@@ -160,8 +161,8 @@ export function IncidentsCard({
               tableTestId="monitor-incidents-table"
               rowTestId={(row) => `monitor-incident-${row.id}`}
               cellTestId={(column) => `monitor-incident-cell-${column.key}`}
-              ariaLabel="ตารางเหตุการณ์"
-              columns={columns}
+              ariaLabel="ตารางเหตุการณ์ล่ม"
+              columns={buildColumns()}
               rows={data.incidents}
               rowKey={(row) => row.id}
             />
@@ -171,7 +172,7 @@ export function IncidentsCard({
                 previousTestId="monitor-incidents-previous"
                 nextTestId="monitor-incidents-next"
                 summaryTestId="monitor-incidents-summary"
-                ariaLabel="หน้าเหตุการณ์"
+                ariaLabel="หน้าเหตุการณ์ล่ม"
                 summary={
                   <>
                     แสดง {data.page.offset + 1}–
@@ -194,7 +195,9 @@ export function IncidentsCard({
           </>
         ) : null}
         {data !== undefined && incidents.isError ? (
-          <Alert tone="warning">อัปเดตเหตุการณ์ไม่สำเร็จ</Alert>
+          <Alert tone="warning" role="alert">
+            อัปเดตเหตุการณ์ล่มไม่สำเร็จ
+          </Alert>
         ) : null}
       </div>
     </section>

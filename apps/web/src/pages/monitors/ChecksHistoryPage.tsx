@@ -1,4 +1,7 @@
-import type { MonitorChecksResponse } from "@nightwatch/api-contract";
+import {
+  CHECK_OUTCOMES,
+  type MonitorChecksResponse,
+} from "@nightwatch/api-contract";
 import {
   useInfiniteQuery,
   useQuery,
@@ -7,14 +10,17 @@ import {
   type UseInfiniteQueryResult,
 } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 
-import { ArrowLeftIcon } from "../../components/shell/icons";
+import { EmptyState } from "../../components/shell/EmptyState";
+import { ActivityIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Label } from "../../components/ui/label";
+import { Select } from "../../components/ui/select";
 import {
   DataTable,
   type DataTableColumn,
@@ -25,6 +31,9 @@ import {
   fetchMonitorChecks,
   fetchMonitorDetail,
   MONITOR_CHECKS_CHUNK_SIZE,
+  MONITOR_CHECKS_RANGE_MS,
+  type MonitorChecksFilter,
+  type MonitorChecksRange,
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
@@ -35,7 +44,15 @@ import {
   assertionRowFromResult,
 } from "./detail/AssertionTable";
 import { assertionSummary, failureText, OUTCOME_LABELS } from "./detail/labels";
-import { formatDateTime, formatNumber, Time, TIME_ZONE } from "./format";
+import {
+  formatDateTime,
+  formatNumber,
+  formatTimeWithSeconds,
+  Time,
+  timeZone,
+} from "./format";
+import { BackLink } from "./BackLink";
+import { NoData } from "./MonitorTable";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { isDenied } from "./useMonitorAccess";
 
@@ -47,6 +64,25 @@ type ChecksQuery = UseInfiniteQueryResult<InfiniteData<MonitorChecksResponse>>;
 
 const TITLE_FOCUS_CLASS =
   "outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+const RANGE_LABELS: Record<MonitorChecksRange, string> = {
+  "24h": "24 ชั่วโมงล่าสุด",
+  "7d": "7 วันล่าสุด",
+  "30d": "30 วันล่าสุด",
+};
+const RANGES = Object.keys(RANGE_LABELS) as MonitorChecksRange[];
+
+/** The filter lives in the URL (`outcome`, `range`); a value that is not an option counts as unset. */
+function parseFilter(params: URLSearchParams): MonitorChecksFilter {
+  const outcome = CHECK_OUTCOMES.find(
+    (value) => value === params.get("outcome"),
+  );
+  const range = RANGES.find((value) => value === params.get("range"));
+  return {
+    ...(outcome === undefined ? {} : { outcome }),
+    ...(range === undefined ? {} : { range }),
+  };
+}
 
 const OUTCOME_TONES = {
   pass: "neutral",
@@ -133,103 +169,106 @@ function refreshesAutomatically(
   return data?.pages.length === 1;
 }
 
-const columns: DataTableColumn<Row>[] = [
-  {
-    key: "time",
-    header: `เวลา (${TIME_ZONE})`,
-    cell: ({ check, urlChanged }) => (
-      <span
-        data-testid="monitor-check-time-cell"
-        data-outcome={check.outcome}
-        data-failure-reason={check.failureReason}
-        data-tls-reason={check.tlsReason}
+// Built per render: the header names the preference zone, which Settings can change.
+function buildColumns(): DataTableColumn<Row>[] {
+  return [
+    {
+      key: "time",
+      header: `เวลา (${timeZone()})`,
+      cell: ({ check, urlChanged }) => (
+        <span
+          data-testid="monitor-check-time-cell"
+          data-outcome={check.outcome}
+          data-failure-reason={check.failureReason}
+          data-tls-reason={check.tlsReason}
 
-        data-url-changed={urlChanged}
-        className="flex flex-col py-1.5"
-      >
-        <Time
-          testId="monitor-check-time"
-          iso={check.checkedAt}
-          format={formatDateTime}
-        />
-        {urlChanged ? (
-          <span
-            data-testid="monitor-check-url-changed"
-            className="mt-1 flex flex-col items-start gap-1"
-          >
-            <StatusPill tone="caution">เปลี่ยน URL</StatusPill>
+          data-url-changed={urlChanged}
+          className="flex flex-col py-1.5"
+        >
+          <Time
+            testId="monitor-check-time"
+            iso={check.checkedAt}
+            format={formatDateTime}
+          />
+          {urlChanged ? (
             <span
-              data-testid="monitor-check-changed-url"
-              className="font-mono text-xs break-all text-foreground-secondary"
+              data-testid="monitor-check-url-changed"
+              className="mt-1 flex flex-col items-start gap-1"
             >
-              {check.url}
+              <StatusPill tone="caution">เปลี่ยน URL</StatusPill>
+              <span
+                data-testid="monitor-check-changed-url"
+                className="font-mono text-xs break-all text-foreground-secondary"
+              >
+                {check.url}
+              </span>
             </span>
-          </span>
-        ) : null}
-      </span>
-    ),
-  },
-  {
-    key: "outcome",
-    header: "ผล",
-    cell: ({ check }) => (
-      <StatusPill tone={OUTCOME_TONES[check.outcome]} dot>
-        {OUTCOME_LABELS[check.outcome]}
-      </StatusPill>
-    ),
-  },
-  {
-    key: "http",
-    header: "HTTP",
-    mono: true,
-    cell: ({ check }) => check.httpStatus ?? "–",
-  },
-  {
-    key: "response",
-    header: "ตอบสนอง",
-    align: "end",
-    cell: ({ check }) =>
-      check.responseTimeMs === null ? (
-        "–"
-      ) : (
-        <span className="tabular-nums">
-          {formatNumber(check.responseTimeMs)} ms
+          ) : null}
         </span>
       ),
-  },
-  {
-    key: "assertions",
-    header: "Assertions",
-    cell: ({ check }) => {
-      const summary = assertionSummary(check.assertions);
-      if (summary === null) return "–";
-      return (
-        <details data-testid="monitor-check-assertions">
-          <summary
-            data-testid="monitor-check-assertions-summary"
-            className="cursor-pointer"
-          >
-            {summary}
-          </summary>
-          <div className="mt-2">
-            <AssertionTable
-              testId="monitor-check-assertion-table"
-              caption={`Assertions ของผลตรวจ ${formatDateTime(check.checkedAt)}`}
-              rows={check.assertions.map((item, index) =>
-                assertionRowFromResult(item, index),
-              )}
-            />
-          </div>
-        </details>
-      );
     },
-  },
-  {
-    key: "reason",
-    header: "สาเหตุ",
-    cell: ({ check }) => failureText(check) ?? "–",
-  },
-];
+    {
+      key: "outcome",
+      header: "ผล",
+      cell: ({ check }) => (
+        <StatusPill tone={OUTCOME_TONES[check.outcome]} dot>
+          {OUTCOME_LABELS[check.outcome]}
+        </StatusPill>
+      ),
+    },
+    {
+      key: "http",
+      header: "HTTP",
+      mono: true,
+      cell: ({ check }) => check.httpStatus ?? <NoData />,
+    },
+    {
+      key: "response",
+      header: "เวลาตอบสนอง",
+      align: "end",
+      cell: ({ check }) =>
+        check.responseTimeMs === null ? (
+          <NoData />
+        ) : (
+          <span className="tabular-nums">
+            {formatNumber(check.responseTimeMs)} ms
+          </span>
+        ),
+    },
+    {
+      key: "assertions",
+      header: "เงื่อนไขตรวจสอบ",
+      cell: ({ check }) => {
+        const summary = assertionSummary(check.assertions);
+        if (summary === null) return <NoData />;
+        return (
+          <details data-testid="monitor-check-assertions">
+            <summary
+              data-testid="monitor-check-assertions-summary"
+              className="cursor-pointer"
+            >
+              {summary}
+            </summary>
+            <div className="mt-2">
+              <AssertionTable
+                testId="monitor-check-assertion-table"
+                caption={`เงื่อนไขตรวจสอบของผลตรวจ ${formatDateTime(check.checkedAt)}`}
+                rows={check.assertions.map((item, index) =>
+                  assertionRowFromResult(item, index),
+                )}
+              />
+            </div>
+          </details>
+        );
+      },
+    },
+    {
+      key: "reason",
+      header: "สาเหตุ",
+      cell: ({ check }) => failureText(check) ?? <NoData />,
+    },
+  ];
+}
 
 export function ChecksHistoryPage() {
   const { organizationId, projectId, monitorId } = useParams();
@@ -287,16 +326,38 @@ function ChecksHistoryForMonitor({
   });
   const detailGone = isMonitorNotFound(detail.error) || isDenied(detail.error);
 
+  // Part of the query key: a chunk offset is valid only inside the filter it was read with.
+  const [params, setParams] = useSearchParams();
+  const filter = parseFilter(params);
+  function changeFilter(next: MonitorChecksFilter) {
+    const updated = new URLSearchParams(params);
+    updated.delete("outcome");
+    updated.delete("range");
+    if (next.outcome !== undefined) updated.set("outcome", next.outcome);
+    if (next.range !== undefined) updated.set("range", next.range);
+    setParams(updated, { replace: true });
+  }
+
   const checks = useInfiniteQuery({
     queryKey: monitorQueryKeys.checksHistory(
       organizationId,
       projectId,
       monitorId,
+      filter,
     ),
     queryFn: ({ pageParam }) =>
       fetchMonitorChecks(organizationId, projectId, monitorId, {
         limit: MONITOR_CHECKS_CHUNK_SIZE,
         offset: pageParam,
+        ...(filter.outcome === undefined ? {} : { outcome: filter.outcome }),
+        // Measured at each read, so a refresh of "24 ชั่วโมงล่าสุด" moves with the clock.
+        ...(filter.range === undefined
+          ? {}
+          : {
+              since: new Date(
+                Date.now() - MONITOR_CHECKS_RANGE_MS[filter.range],
+              ).toISOString(),
+            }),
       }),
     initialPageParam: 0,
     // An empty chunk ends the list even when `total` says there is more.
@@ -350,15 +411,14 @@ function ChecksHistoryForMonitor({
 
   const header = (title: ReactNode = "มอนิเตอร์") => (
     <>
-      <Link
-        data-testid="monitor-checks-back"
+      <BackLink
+        testId="monitor-checks-back"
         to={`${overviewPath}/${monitorId}`}
-        className="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-foreground-secondary underline-offset-4 hover:text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <ArrowLeftIcon size={14} />
-        กลับไปหน้ามอนิเตอร์
-      </Link>
+        กลับไปมอนิเตอร์
+      </BackLink>
       <PageHeader
+        eyebrow="// checks"
         titleTestId="monitor-checks-title"
         scope={
           project === undefined || readDenied
@@ -397,7 +457,6 @@ function ChecksHistoryForMonitor({
           data-testid="monitor-checks-admission-error"
           retryTestId="monitor-checks-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -424,7 +483,7 @@ function ChecksHistoryForMonitor({
                     : checks.refetch());
                 }}
               >
-                ลองอีกครั้ง
+                ลองใหม่
               </Button>
             )
           }
@@ -456,12 +515,24 @@ function ChecksHistoryForMonitor({
   return (
     <Page>
       {header(monitor?.name)}
-      <ChecksHistorySection checks={checks} />
+      <ChecksHistorySection
+        checks={checks}
+        filter={filter}
+        onFilterChange={changeFilter}
+      />
     </Page>
   );
 }
 
-function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
+function ChecksHistorySection({
+  checks,
+  filter,
+  onFilterChange,
+}: {
+  checks: ChecksQuery;
+  filter: MonitorChecksFilter;
+  onFilterChange: (next: MonitorChecksFilter) => void;
+}) {
   const data = checks.data;
   const accumulated = useMemo(
     () => (data === undefined ? null : accumulate(data.pages)),
@@ -476,7 +547,17 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
   );
   const shown = rows.length;
   const total = data?.pages.at(-1)?.page.total ?? 0;
+  // Polling stops once a second chunk is loaded, so the time of the first chunk is the age of the newest rows.
+  const pageCount = data?.pages.length ?? 0;
+  const [asOf, setAsOf] = useState<number | null>(null);
+  useEffect(() => {
+    if (pageCount === 1) setAsOf(checks.dataUpdatedAt);
+  }, [pageCount, checks.dataUpdatedAt]);
   const hasNext = checks.hasNextPage;
+  const filtered = filter.outcome !== undefined || filter.range !== undefined;
+  const outcomeSelect = useRef<HTMLSelectElement>(null);
+  // Nothing to filter in a monitor that has no checks yet; a filter that matches nothing keeps its controls.
+  const showFilter = filtered || accumulated === null || shown > 0;
 
   const [announcement, setAnnouncement] = useState("");
   const [focusSummary, setFocusSummary] = useState(false);
@@ -490,6 +571,26 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
     setFocusSummary(false);
     summary.current?.focus();
   }, [focusSummary, hasNext]);
+
+  // The result of a filter change is announced once, when the chunk for the new filter arrives.
+  const announceFilter = useRef(false);
+  useEffect(() => {
+    if (!announceFilter.current || accumulated === null) return;
+    announceFilter.current = false;
+    setAnnouncement(
+      filtered
+        ? shown === 0
+          ? "ไม่พบผลการตรวจที่ตรงกับตัวกรอง"
+          : `ตรงตัวกรอง ${String(total)} รายการ`
+        : `แสดงผลการตรวจทั้งหมด ${String(total)} รายการ`,
+    );
+  }, [accumulated, filtered, shown, total]);
+
+  function changeFilter(next: MonitorChecksFilter) {
+    announceFilter.current = true;
+    setAnnouncement("");
+    onFilterChange(next);
+  }
 
   async function loadMore() {
     if (pressed.current || checks.isFetchingNextPage) return;
@@ -534,6 +635,96 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
         title="ประวัติการตรวจ"
       />
       <div className="flex flex-col gap-3">
+        {showFilter ? (
+          <div
+            data-testid="monitor-checks-filter"
+            className="flex flex-wrap items-end gap-3"
+          >
+            <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
+              ผล
+              <Select
+                data-testid="monitor-checks-filter-outcome"
+                ref={outcomeSelect}
+                size="sm"
+                value={filter.outcome ?? ""}
+                onChange={(event) => {
+                  changeFilter({
+                    ...filter,
+                    outcome: CHECK_OUTCOMES.find(
+                      (value) => value === event.target.value,
+                    ),
+                  });
+                }}
+              >
+                <option value="">ทั้งหมด</option>
+                {CHECK_OUTCOMES.map((value) => (
+                  <option key={value} value={value}>
+                    {OUTCOME_LABELS[value]}
+                  </option>
+                ))}
+              </Select>
+            </Label>
+            <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
+              ช่วงเวลา
+              <Select
+                data-testid="monitor-checks-filter-range"
+                size="sm"
+                value={filter.range ?? ""}
+                onChange={(event) => {
+                  changeFilter({
+                    ...filter,
+                    range: RANGES.find((value) => value === event.target.value),
+                  });
+                }}
+              >
+                <option value="">ทั้งหมด</option>
+                {RANGES.map((value) => (
+                  <option key={value} value={value}>
+                    {RANGE_LABELS[value]}
+                  </option>
+                ))}
+              </Select>
+            </Label>
+            {filtered ? (
+              <Button
+                data-testid="monitor-checks-filter-clear"
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  changeFilter({});
+                  // The button unmounts once the filter is clear; keep focus on a stable control.
+                  outcomeSelect.current?.focus();
+                }}
+              >
+                ล้างตัวกรอง
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {filtered ? (
+          <p
+            data-testid="monitor-checks-filter-active"
+            className="text-xs text-foreground-secondary"
+          >
+            กรองด้วย{" "}
+            {[
+              filter.outcome === undefined
+                ? null
+                : `ผล ${OUTCOME_LABELS[filter.outcome]}`,
+              filter.range === undefined ? null : RANGE_LABELS[filter.range],
+            ]
+              .filter((part) => part !== null)
+              .join(" · ")}
+          </p>
+        ) : null}
+        <p
+          data-testid="monitor-checks-announcement"
+          role="status"
+          className="sr-only"
+        >
+          {announcement}
+        </p>
         {data === undefined && checks.isError ? (
           <>
             <Alert data-testid="monitor-checks-load-error" tone="error">
@@ -547,24 +738,27 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
               data-testid="monitor-checks-retry"
               onClick={() => void checks.refetch()}
             >
-              ลองอีกครั้ง
+              ลองใหม่
             </Button>
           </>
         ) : null}
         {data === undefined && !checks.isError ? (
-          <div aria-busy="true" className="flex flex-col gap-3">
-            <p
-              data-testid="monitor-checks-loading"
-              role="status"
-              className="sr-only"
-            >
-              กำลังโหลดประวัติการตรวจ
-            </p>
-            <Skeleton className="h-4 w-64 max-w-full" />
-            <Skeleton className="h-4 w-48 max-w-full" />
-          </div>
+          <PageState
+            kind="loading"
+            layout="inline"
+            statusTestId="monitor-checks-loading"
+            label="กำลังโหลดประวัติการตรวจ…"
+          />
         ) : null}
-        {accumulated !== null && shown === 0 ? (
+        {accumulated !== null && shown === 0 && filtered ? (
+          <EmptyState
+            data-testid="monitor-checks-no-matches"
+            icon={<ActivityIcon size={20} />}
+            title="ไม่พบผลการตรวจที่ตรงกับตัวกรอง"
+            description="เปลี่ยนตัวกรองหรือล้างตัวกรองเพื่อดูผลการตรวจทั้งหมด"
+          />
+        ) : null}
+        {accumulated !== null && shown === 0 && !filtered ? (
           <p
             data-testid="monitor-checks-empty"
             className="text-sm text-foreground-secondary"
@@ -574,6 +768,22 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
         ) : null}
         {accumulated !== null && shown > 0 ? (
           <>
+            {asOf === null ? null : (
+              <p
+                data-testid="monitor-checks-as-of"
+                data-total={total}
+                className="text-xs text-foreground-secondary tabular-nums"
+              >
+                {filtered ? "ตรงตัวกรอง" : "ทั้งหมด"} {formatNumber(total)}{" "}
+                รายการ · ข้อมูล ณ{" "}
+                <Time
+                  testId="monitor-checks-as-of-time"
+                  iso={new Date(asOf).toISOString()}
+                  format={formatTimeWithSeconds}
+                />{" "}
+                ({timeZone()})
+              </p>
+            )}
             {accumulated.urlChanges.length === 0 ? null : (
               <ul className="flex flex-col gap-1 text-xs text-foreground-secondary">
                 {accumulated.urlChanges.map((change) => (
@@ -587,7 +797,7 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                       iso={change.at}
                       format={formatDateTime}
                     />{" "}
-                    ({TIME_ZONE}) เป็น{" "}
+                    ({timeZone()}) เป็น{" "}
                     <span
                       data-testid="monitor-check-url-change-url"
                       className="font-mono break-all"
@@ -607,8 +817,7 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                 `monitor-check-heading-${column.key}`
               }
               ariaLabel="ตารางประวัติการตรวจ"
-              className="max-h-none"
-              columns={columns}
+              columns={buildColumns()}
               rows={rows}
               rowKey={({ check }) => check.scheduledFor}
             />
@@ -655,17 +864,14 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                 </Button>
               ) : null}
             </div>
-            <p
-              data-testid="monitor-checks-announcement"
-              role="status"
-              className="sr-only"
-            >
-              {announcement}
-            </p>
           </>
         ) : null}
         {accumulated !== null && refetchFailed ? (
-          <Alert data-testid="monitor-checks-refresh-error" tone="warning">
+          <Alert
+            data-testid="monitor-checks-refresh-error"
+            tone="warning"
+            role="alert"
+          >
             อัปเดตประวัติการตรวจไม่สำเร็จ
           </Alert>
         ) : null}

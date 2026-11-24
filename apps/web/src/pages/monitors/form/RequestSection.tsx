@@ -6,6 +6,7 @@ import {
 import { useState } from "react";
 
 import { Card } from "../../../components/ui/card";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { SectionHeader } from "../../../components/ui/section-header";
 
 import {
@@ -186,13 +187,11 @@ export function RequestSection({
                 }}
               />
               <label className="flex items-center gap-2 text-sm">
-                <input
+                <Checkbox
                   data-testid="monitor-form-header-secret"
-                  type="checkbox"
                   checked={header.secret}
                   aria-label={`ค่าลับ header แถวที่ ${row}`}
                   aria-disabled={disabled}
-                  className="h-4 w-4 accent-primary"
                   onChange={(event) => {
                     if (!disabled) toggleSecret(header, event.target.checked);
                   }}

@@ -51,7 +51,7 @@ export function AssertionsSection({
       <SectionHeader
         id="monitor-form-assertions"
         code="04"
-        title="เงื่อนไขตรวจสอบ (Assertions)"
+        title="เงื่อนไขตรวจสอบ"
       />
       <TextControl
         data-testid="monitor-form-expected-status"

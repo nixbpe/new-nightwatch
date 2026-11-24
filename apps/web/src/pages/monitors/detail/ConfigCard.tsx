@@ -1,4 +1,5 @@
 import type { Monitor } from "@nightwatch/api-contract";
+import type { ReactNode } from "react";
 
 import { Card, CardHeader } from "../../../components/ui/card";
 import { IntervalText } from "./IntervalText";
@@ -30,7 +31,14 @@ function assertionText(assertion: Assertion): string {
 
 // Secret values never reach the client: "set" comes from the stored slots, not from the config rows.
 // Query parameters and body are not secret (OD-23), so every reader sees them.
-export function ConfigCard({ monitor }: { monitor: Monitor }) {
+export function ConfigCard({
+  monitor,
+  footer,
+}: {
+  monitor: Monitor;
+  /** Actions on the monitor itself, kept away from the daily ones in the page header. */
+  footer?: ReactNode;
+}) {
   const stored = new Set(monitor.secretSlots.map((item) => item.slot));
   const authSet = AUTH_SLOTS[monitor.auth.type].every((slot) =>
     stored.has(slot),
@@ -57,7 +65,7 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
         <dd>
           <IntervalText seconds={monitor.intervalSeconds} />
         </dd>
-        <dt className="text-foreground-secondary">หมดเวลา</dt>
+        <dt className="text-foreground-secondary">หมดเวลารอ</dt>
         <dd>
           <span className="font-mono">{monitor.timeoutSeconds}</span> วินาที
         </dd>
@@ -181,6 +189,9 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
           ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน
         </p>
       ) : null}
+      {footer === undefined ? null : (
+        <div className="border-t border-foreground/10 p-4">{footer}</div>
+      )}
     </Card>
   );
 }
