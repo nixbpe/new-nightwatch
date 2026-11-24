@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { createInvitation } from "../../lib/api/invitations";
+import { INVITATION_LIFETIME } from "../../lib/auth/flow";
 import { InvitationPanel } from "./InvitationPanel";
 
 vi.mock("../../lib/api/invitations", async (importOriginal) => ({
@@ -73,10 +74,12 @@ describe("InvitationPanel", () => {
       email: "new@example.com",
       role: "viewer",
     });
-    expect(
-      await screen.findByTestId("members-invitation-success"),
-    ).toHaveAttribute("role", "status");
-    expect(screen.getByTestId("members-invitation-notice-focus")).toHaveFocus();
+    const success = await screen.findByTestId("members-invitation-success");
+    expect(success).toHaveAttribute("role", "status");
+    // The notice names the address the invitation went to (the input is lower-cased on send).
+    expect(success).toHaveTextContent("new@example.com");
+    // Focus stays in the form so the next address can be typed at once.
+    expect(screen.getByTestId("members-invitation-email")).toHaveFocus();
     expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
   });
 
@@ -112,6 +115,21 @@ describe("InvitationPanel", () => {
       expect(create).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("states the invitation lifetime next to the form", () => {
+    render(
+      <InvitationPanel
+        organizationId={A}
+        organizationName="Acme"
+        actorRole="owner"
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("members-invitation-hint")).toHaveTextContent(
+      INVITATION_LIFETIME,
+    );
+  });
 
   it("focuses invalid email with inline error and sends nothing", async () => {
     const user = userEvent.setup();
@@ -161,6 +179,7 @@ describe("InvitationPanel", () => {
     const error = await screen.findByTestId("members-invitation-error");
     expect(error).toHaveAttribute("role", "alert");
     expect(error.textContent.match(/\d+/g)).toEqual(["100"]);
+    expect(screen.getByTestId("members-invitation-notice-focus")).toHaveFocus();
     expect(screen.getByTestId("members-invitation-email")).toHaveValue(
       "new@example.com",
     );

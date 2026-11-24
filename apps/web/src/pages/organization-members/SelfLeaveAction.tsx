@@ -93,7 +93,6 @@ export function SelfLeaveRouteBoundary({ children }: { children: ReactNode }) {
             data-testid="self-leave-admission-error"
             retryTestId="self-leave-admission-retry"
             message="ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้"
-            retryLabel="ลองอีกครั้ง"
             onRetry={() => void retrySelfLeave(origin)}
           />
         ) : (

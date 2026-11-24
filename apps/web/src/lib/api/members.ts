@@ -10,23 +10,38 @@ import { request } from "./client";
 
 export const MEMBER_LIST_QUERY_PREFIX = ["tenant", "members"] as const;
 
+export type MemberListFilter = { q?: string; role?: OrganizationRole };
+
+// An empty filter adds no key, so the unfiltered key and request stay as before.
+const activeFilter = (filter: MemberListFilter): MemberListFilter => ({
+  ...(filter.q === undefined ? {} : { q: filter.q }),
+  ...(filter.role === undefined ? {} : { role: filter.role }),
+});
+
 export const memberListQueryKey = (
   organizationId: string,
   limit: number,
   offset: number,
-) => [...MEMBER_LIST_QUERY_PREFIX, organizationId, { limit, offset }] as const;
+  filter: MemberListFilter = {},
+) =>
+  [
+    ...MEMBER_LIST_QUERY_PREFIX,
+    organizationId,
+    { limit, offset, ...activeFilter(filter) },
+  ] as const;
 
 export function fetchOrganizationMembers(
   organizationId: string,
   limit: number,
   offset: number,
+  filter: MemberListFilter = {},
 ): Promise<OrganizationMemberListResponse> {
   return request(
     "/api/organizations/{organizationId}/members",
     organizationMemberListResponseSchema,
     {
       params: { organizationId },
-      query: { limit, offset },
+      query: { limit, offset, ...activeFilter(filter) },
     },
   ).then((response) => organizationMemberListResponseSchema.parse(response));
 }

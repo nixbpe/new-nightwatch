@@ -11,7 +11,9 @@ import { PageState } from "../../components/shell/PageState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { CopyButton } from "../../components/ui/copy-button";
 import { DataTable } from "../../components/ui/data-table";
+import { StatusPill } from "../../components/ui/status-pill";
 import {
   fetchOrganizationAwsConnection,
   organizationAwsConnectionQueryKey,
@@ -22,8 +24,13 @@ import { formatDateTime, usePreferences } from "../../lib/preferences";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { ConnectionCard } from "./ConnectionCard";
-import { CopyButton } from "./CopyButton";
-import { DENIED_MESSAGES, FAILURE_REASONS, type DeniedCode } from "./labels";
+import {
+  DENIED_MESSAGES,
+  FAILURE_REASONS,
+  SETUP_STEPS_ID,
+  type DeniedCode,
+} from "./labels";
+import { permissionPolicy, trustPolicy } from "./policies";
 
 export function OrganizationAwsPage() {
   const { organizationId } = useParams();
@@ -158,7 +165,7 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
   } else {
     const data = query.data;
     body = (
-      <div className="flex flex-wrap items-start gap-6">
+      <div className="flex flex-col gap-6">
         {query.isError ? (
           // A failed refetch keeps the form and its draft; the shown data is marked as possibly old.
           <div
@@ -178,23 +185,23 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
             </Button>
           </div>
         ) : null}
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-6">
-          <ConnectionCard
-            organizationId={organizationId}
-            data={data}
-            onUpdated={(next) => {
-              // A GET that started before the change would answer with the
-              // old snapshot; cancel it so it cannot overwrite the result.
-              void queryClient.cancelQueries({ queryKey }).then(() => {
-                queryClient.setQueryData(queryKey, next);
-              });
-            }}
-            onDenied={denyAction}
-            onReload={() => void query.refetch()}
-          />
-          <ProjectsSection organizationId={organizationId} data={data} />
-        </div>
-        <SetupAside data={data} />
+        {/* Before a connection the steps come first, in the order the customer does them. */}
+        {data.connection === null ? <SetupSteps data={data} /> : null}
+        <ConnectionCard
+          organizationId={organizationId}
+          data={data}
+          onUpdated={(next) => {
+            // A GET that started before the change would answer with the
+            // old snapshot; cancel it so it cannot overwrite the result.
+            void queryClient.cancelQueries({ queryKey }).then(() => {
+              queryClient.setQueryData(queryKey, next);
+            });
+          }}
+          onDenied={denyAction}
+          onReload={() => void query.refetch()}
+        />
+        <ProjectsSection organizationId={organizationId} data={data} />
+        {data.connection === null ? null : <SetupSteps data={data} />}
       </div>
     );
   }
@@ -239,14 +246,21 @@ function ProjectsSection({
   const lastTest = (project: OrganizationAwsProject) => {
     const test = project.lastTest;
     if (project.status === "untested" || test === null) {
-      return <span className="text-foreground-secondary">ยังไม่ทดสอบ</span>;
+      return <StatusPill dot>ยังไม่ทดสอบ</StatusPill>;
     }
     const outcome = test.result === "passed" ? "ผ่าน" : "ไม่ผ่าน";
+    const stamp = (
+      <span className="text-foreground-secondary">{time(test.testedAt)}</span>
+    );
     if (project.status === "stale") {
       return (
-        <span className="flex flex-col text-foreground-secondary">
-          <span>
-            ผลเก่า · {time(test.testedAt)} · {outcome}
+        <span className="flex flex-col items-start gap-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusPill tone="caution" dot>
+              ผลเก่า
+            </StatusPill>
+            {stamp}
+            <span className="text-foreground-secondary">{outcome}</span>
           </span>
           <span className="text-caution">
             {data.connection === null
@@ -258,8 +272,13 @@ function ProjectsSection({
     }
     if (test.result === "failed") {
       return (
-        <span className="flex flex-col">
-          <span className="text-danger">{time(test.testedAt)} · ไม่ผ่าน</span>
+        <span className="flex flex-col items-start gap-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusPill tone="danger" dot>
+              ไม่ผ่าน
+            </StatusPill>
+            {stamp}
+          </span>
           {test.code === null ? null : (
             <span className="text-foreground-secondary">
               {FAILURE_REASONS[test.code]}
@@ -269,8 +288,11 @@ function ProjectsSection({
       );
     }
     return (
-      <span className="text-foreground-secondary">
-        {time(test.testedAt)} · ผ่าน
+      <span className="flex flex-wrap items-center gap-2">
+        <StatusPill tone="primary" dot>
+          ผ่าน
+        </StatusPill>
+        {stamp}
       </span>
     );
   };
@@ -298,6 +320,14 @@ function ProjectsSection({
         empty={
           <span data-testid="aws-projects-empty">
             ยังไม่มีโปรเจกต์ที่เชื่อมต่อผ่านบัญชีกลาง
+            เลือกวิธีนี้ในโปรเจกต์ได้จาก{" "}
+            <Link
+              data-testid="aws-projects-empty-link"
+              to={`/organizations/${organizationId}/projects`}
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              รายการโปรเจกต์
+            </Link>
           </span>
         }
         columns={[
@@ -321,7 +351,7 @@ function ProjectsSection({
           },
           {
             key: "role",
-            header: "Role",
+            header: "Role ปลายทาง",
             mono: true,
             cell: (project) => (
               <span
@@ -349,83 +379,177 @@ function ProjectsSection({
   );
 }
 
-function trustPolicy(principalArn: string, externalId: string): string {
-  return JSON.stringify(
-    {
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: { AWS: principalArn },
-          Action: "sts:AssumeRole",
-          Condition: { StringEquals: { "sts:ExternalId": externalId } },
-        },
-      ],
-    },
-    null,
-    2,
+const AWS_DOCS = {
+  externalId:
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html",
+  createRole:
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user.html",
+  permissions:
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_permissions-to-switch.html",
+} as const;
+
+const linkClass =
+  "text-primary underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+function DocsLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={`w-fit text-[13px] ${linkClass}`}
+    >
+      {children}
+    </a>
   );
 }
 
-function SetupAside({ data }: { data: OrganizationAwsConnectionResponse }) {
-  const policy =
+function PolicyBlock({
+  policy,
+  testId,
+  label,
+}: {
+  policy: string;
+  testId: string;
+  label: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <pre
+        data-testid={testId}
+        className="surface-inset rounded-md border border-foreground/10 p-3 font-mono text-xs leading-[18px] break-all whitespace-pre-wrap"
+      >
+        {policy}
+      </pre>
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyButton
+          value={policy}
+          label={label}
+          copiedLabel={`${label} แล้ว`}
+          showLabel
+          data-testid={`${testId}-copy`}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Open until the account is connected, then folded away: the steps matter once,
+// but a failed re-test links back here (the card opens it).
+function SetupSteps({ data }: { data: OrganizationAwsConnectionResponse }) {
+  const connected = data.connection !== null;
+  const trust =
     data.principalArn === null
       ? null
       : trustPolicy(data.principalArn, data.externalId);
+  const permission = permissionPolicy(
+    data.projects.map((project) => project.roleArn),
+  );
   return (
     <Card
       as="section"
       padding="md"
       data-testid="aws-setup"
       aria-labelledby="aws-setup-title"
-      className="min-w-0 flex-[1_1_320px] gap-4"
+      className="min-w-0 gap-0"
     >
-      <h2 id="aws-setup-title" className="text-base font-semibold text-heading">
-        ตั้งค่าในบัญชีกลาง
-      </h2>
-      <ol className="flex list-decimal flex-col gap-3 pl-5">
-        <li>
-          สร้าง role{" "}
-          <span className="font-mono text-[13px]">NightWatchOrgHub</span>{" "}
-          ในบัญชีกลาง
-        </li>
-        <li>
-          ตั้ง trust policy ให้ NightWatch assume role นี้ได้เมื่อส่ง External
-          ID ขององค์กรมา
-        </li>
-        <li>
-          ให้ role นี้ assume role ปลายทางในบัญชีของโปรเจกต์ได้ ผ่านสิทธิ์{" "}
-          <span className="font-mono text-[13px]">sts:AssumeRole</span>
-        </li>
-      </ol>
-      {policy === null ? (
-        // AC-02: no sample policy stands in for a live value.
-        <Alert data-testid="aws-setup-incomplete" tone="warning" role="status">
-          ตั้งค่า NightWatch ยังไม่ครบ: ยังไม่มี principal ของ NightWatch
-          จึงยังสร้าง trust policy ไม่ได้ ติดต่อผู้ดูแลระบบ NightWatch
-        </Alert>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-2">
-          <pre
-            data-testid="aws-trust-policy"
-            className="surface-inset rounded-md border border-foreground/10 p-3 font-mono text-xs leading-[18px] break-all whitespace-pre-wrap"
+      <details
+        id={SETUP_STEPS_ID}
+        data-testid="aws-setup-steps"
+        open={!connected}
+      >
+        <summary className="cursor-pointer rounded-[4px] focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <h2
+            id="aws-setup-title"
+            className="inline text-base font-semibold text-heading"
           >
-            {policy}
-          </pre>
-          <div>
-            <CopyButton
-              value={policy}
-              label="คัดลอก trust policy"
-              copiedLabel="คัดลอก trust policy แล้ว"
-              showLabel
-              data-testid="aws-trust-policy-copy"
+            ขั้นตอนตั้งค่าในบัญชีกลาง
+          </h2>
+        </summary>
+        <ol className="mt-4 flex list-decimal flex-col gap-5 pl-5">
+          <li className="flex flex-col gap-2">
+            <span>คัดลอก External ID ขององค์กร</span>
+            {connected ? (
+              <span className="text-[13px] text-foreground-secondary">
+                External ID อยู่ในการ์ดการเชื่อมต่อด้านบน
+              </span>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  data-testid="aws-external-id"
+                  className="font-mono text-[13px] break-all"
+                >
+                  {data.externalId}
+                </span>
+                <CopyButton
+                  value={data.externalId}
+                  label="คัดลอก External ID"
+                  copiedLabel="คัดลอก External ID แล้ว"
+                  data-testid="aws-external-id-copy"
+                />
+              </div>
+            )}
+            <DocsLink href={AWS_DOCS.externalId}>
+              เอกสาร AWS เรื่อง External ID
+            </DocsLink>
+          </li>
+          <li className="flex flex-col gap-2">
+            <span>
+              สร้าง role{" "}
+              <span className="font-mono text-[13px]">NightWatchOrgHub</span>{" "}
+              ในบัญชีกลาง แล้วตั้ง trust policy นี้ให้ NightWatch assume role
+              ได้เมื่อส่ง External ID ขององค์กรมา
+            </span>
+            {trust === null ? (
+              // AC-02: no sample policy stands in for a live value.
+              <Alert
+                data-testid="aws-setup-incomplete"
+                tone="warning"
+                role="status"
+              >
+                ตั้งค่า NightWatch ยังไม่ครบ: ยังไม่มี principal ของ NightWatch
+                จึงยังสร้าง trust policy ไม่ได้ ติดต่อผู้ดูแลระบบ NightWatch
+              </Alert>
+            ) : (
+              <PolicyBlock
+                policy={trust}
+                testId="aws-trust-policy"
+                label="คัดลอก trust policy"
+              />
+            )}
+            <DocsLink href={AWS_DOCS.createRole}>
+              เอกสาร AWS เรื่องการสร้าง role
+            </DocsLink>
+          </li>
+          <li className="flex flex-col gap-2">
+            <span>
+              ให้ role นี้ assume role ปลายทางในบัญชีของโปรเจกต์ได้ ด้วย
+              permission policy นี้ (สิทธิ์{" "}
+              <span className="font-mono text-[13px]">sts:AssumeRole</span>)
+            </span>
+            <PolicyBlock
+              policy={permission}
+              testId="aws-permission-policy"
+              label="คัดลอก permission policy"
             />
-          </div>
-        </div>
-      )}
-      <p className="text-[13px] text-foreground-secondary">
-        ผู้ที่แก้ไขหน้านี้ได้คือเจ้าของและผู้ดูแลขององค์กร
-      </p>
+            <span className="text-[13px] text-foreground-secondary">
+              Resource คือ Role ARN ของโปรเจกต์ที่ใช้บัญชีกลางอยู่ตอนนี้
+              ถ้ายังไม่มีโปรเจกต์ ให้แทนที่ค่าในเครื่องหมาย &lt; &gt; ด้วย Role
+              ARN ของ role ในบัญชีโปรเจกต์ และเพิ่ม Resource เมื่อมีโปรเจกต์ใหม่
+            </span>
+            <DocsLink href={AWS_DOCS.permissions}>
+              เอกสาร AWS เรื่องสิทธิ์ assume role
+            </DocsLink>
+          </li>
+          <li>
+            ใส่ Role ARN ของ role นี้ในการ์ดบัญชี AWS กลางขององค์กร ทดสอบ
+            แล้วบันทึก
+          </li>
+        </ol>
+        <p className="mt-4 text-[13px] text-foreground-secondary">
+          ผู้ที่แก้ไขหน้านี้ได้คือเจ้าของและผู้ดูแลขององค์กร
+        </p>
+      </details>
     </Card>
   );
 }

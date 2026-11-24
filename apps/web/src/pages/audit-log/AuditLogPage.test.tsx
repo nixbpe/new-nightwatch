@@ -29,6 +29,7 @@ import {
 } from "../../lib/queryClient";
 import { PREFERENCES_KEY } from "../../lib/preferences";
 import { AuditEventPage } from "./AuditEventPage";
+import { SEARCH_PLACEHOLDER } from "./AuditFilterBar";
 import { AuditLogPage } from "./AuditLogPage";
 import {
   makeDetail,
@@ -332,7 +333,7 @@ describe("AuditLogPage paging and filters", () => {
     });
     expect(screen.getByTestId("audit-filter-search")).toHaveValue("");
     expect(screen.getByTestId("audit-filter-range-7d")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true",
     );
   });
@@ -348,7 +349,7 @@ describe("AuditLogPage paging and filters", () => {
       q: "ada",
     });
     expect(screen.getByTestId("audit-filter-range-24h")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true",
     );
     expect(screen.getByTestId("audit-filter-actor")).toHaveValue("user-1");
@@ -359,11 +360,78 @@ describe("AuditLogPage paging and filters", () => {
     open("?range=bogus&page=-3&categories=nope");
     await screen.findByTestId("audit-events-table");
     expect(screen.getByTestId("audit-filter-range-7d")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true",
     );
     expect(
       screen.queryByTestId("audit-filter-range-error"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ORG-09 picks one range in a radio group and many categories in a labelled group", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    open();
+    await screen.findByTestId("audit-events-table");
+    const range = screen
+      .getByTestId("audit-filter-range-7d")
+      .closest('[role="radiogroup"]');
+    expect(range).not.toBeNull();
+    expect(within(range as HTMLElement).getAllByRole("radio")).toHaveLength(4);
+    expect(screen.getByTestId("audit-filter-range-7d")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(screen.getByTestId("audit-filter-range-24h"));
+    await waitFor(() => {
+      expect(screen.getByTestId("audit-filter-range-24h")).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+    });
+    expect(screen.getByTestId("audit-filter-range-7d")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+
+    // The category group says on the page that several can be picked.
+    const categories = screen
+      .getByTestId("audit-filter-category-member")
+      .closest('[role="group"]') as HTMLElement;
+    const labelId = categories.getAttribute("aria-labelledby");
+    const label = labelId === null ? null : document.getElementById(labelId);
+    expect(label).toBeVisible();
+    expect(label?.textContent).not.toBe("");
+    await user.click(screen.getByTestId("audit-filter-category-member"));
+    await user.click(screen.getByTestId("audit-filter-category-invitation"));
+    await waitFor(() => {
+      expect(
+        within(categories).getByTestId("audit-filter-category-member"),
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(
+        within(categories).getByTestId("audit-filter-category-invitation"),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("ORG-10 tells what the search matches and why a search found nothing", async () => {
+    listMock.mockResolvedValue(makeList([], 0));
+    const view = open("?q=zzz");
+    expect(await screen.findByTestId("audit-no-matches")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-filter-search")).toHaveAttribute(
+      "placeholder",
+      SEARCH_PLACEHOLDER,
+    );
+    expect(
+      screen.getByTestId("audit-no-matches-search-hint"),
+    ).toBeInTheDocument();
+    view.unmount();
+
+    listMock.mockResolvedValue(makeList([], 0));
+    open("?categories=member");
+    expect(await screen.findByTestId("audit-no-matches")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("audit-no-matches-search-hint"),
     ).not.toBeInTheDocument();
   });
 

@@ -1,18 +1,8 @@
 import { AUDIT_EXPORT_MAX_EVENTS } from "@nightwatch/api-contract";
-import {
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { useId, useRef, useState, type RefObject } from "react";
 
 import { Button } from "../../components/ui/button";
-import {
-  trapDialogTab,
-  useDialogFocusReturn,
-} from "../../components/ui/useDialogFocusReturn";
+import { Dialog } from "../../components/ui/dialog";
 import {
   EMPTY_REASON,
   REQUEST_FAILED_IN_DIALOG,
@@ -20,15 +10,6 @@ import {
   type ExportOutcome,
 } from "./exports";
 import { RecordingScopeNote } from "./RecordingScopeNote";
-
-const FOCUSABLE = [
-  "a[href]",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
 
 export type ExportDialogScope = {
   /** "HH:MM:SS" of the list the dialog was opened from. */
@@ -41,8 +22,7 @@ export type ExportDialogScope = {
 };
 
 // Not ConfirmDialog (M-3): focus starts on the first format, nothing uses `disabled`, and
-// the content scrolls inside while the title and the buttons stay in view. Same scrim,
-// shadow and focus trap (LAY-07, CMP-03).
+// the content scrolls inside while the title and the buttons stay in view.
 export function ExportDialog({
   scope,
   opener,
@@ -59,9 +39,7 @@ export function ExportDialog({
   onSubmit: (format: "csv" | "json") => Promise<ExportOutcome>;
   onCancel: () => void;
 }) {
-  const titleId = useId();
   const messageId = useId();
-  const dialog = useRef<HTMLDivElement>(null);
   const firstFormat = useRef<HTMLInputElement>(null);
   const [format, setFormat] = useState<"csv" | "json">("csv");
   const [total, setTotal] = useState(scope.total);
@@ -69,8 +47,6 @@ export function ExportDialog({
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
   const tooLarge = total > AUDIT_EXPORT_MAX_EVENTS;
-
-  useDialogFocusReturn(dialog, firstFormat, opener, fallbackFocus);
 
   const cancel = () => {
     if (!inFlight.current) onCancel();
@@ -89,145 +65,123 @@ export function ExportDialog({
     else if (outcome.kind === "failed") setMessage(REQUEST_FAILED_IN_DIALOG);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancel();
-      return;
-    }
-    trapDialogTab(event, dialog.current, FOCUSABLE);
-  };
-
   const reasonId = tooLarge ? messageId : undefined;
-  return createPortal(
-    <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
+  return (
+    <Dialog
+      data-testid="audit-export-dialog"
+      title="ส่งออกบันทึกกิจกรรม"
+      titleTestId="audit-export-dialog-title"
+      busy={submitting}
+      opener={opener}
+      fallbackFocus={fallbackFocus}
+      initialFocus={firstFormat}
+      onClose={cancel}
+    >
       <div
-        data-testid="audit-export-dialog"
-        ref={dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-busy={submitting ? true : undefined}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        className="overlay-enter flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col rounded-md border border-foreground/10 bg-surface text-foreground shadow-modal focus:outline-none"
+        data-testid="audit-export-dialog-body"
+        tabIndex={0}
+        role="region"
+        aria-label="รายละเอียดการส่งออก"
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary sm:px-6"
       >
-        <h2
-          data-testid="audit-export-dialog-title"
-          id={titleId}
-          className="px-4 pt-4 text-lg font-semibold text-heading sm:px-6 sm:pt-6"
-        >
-          ส่งออกบันทึกกิจกรรม
-        </h2>
-        <div
-          data-testid="audit-export-dialog-body"
-          tabIndex={0}
-          role="region"
-          aria-label="รายละเอียดการส่งออก"
-          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary sm:px-6"
-        >
-          <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-[max-content_1fr]">
-            <dt className="text-foreground-secondary">ขอบเขต</dt>
-            <dd data-testid="audit-export-dialog-range" className="break-words">
-              <span className="font-mono">{scope.rangeText}</span> (
-              {scope.timeZone})
-            </dd>
-            <dt className="text-foreground-secondary">ตัวกรอง</dt>
-            <dd
-              data-testid="audit-export-dialog-filters"
-              data-categories={categoryCode}
-              className="break-words"
-            >
-              {scope.filtersText}
-            </dd>
-            <dt className="text-foreground-secondary">จำนวน</dt>
-            <dd>
-              <span
-                data-testid="audit-export-dialog-total"
-                className="font-mono"
-              >
-                {total.toLocaleString("en-US")}
-              </span>{" "}
-              รายการ
-            </dd>
-          </dl>
-          <p
-            data-testid="audit-export-dialog-snapshot"
-            data-time-zone={scope.timeZone}
-            className="text-foreground-secondary"
-          >
-            ณ โหลดเมื่อ <span className="font-mono">{scope.loadedAt}</span> (
+        <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-[max-content_1fr]">
+          <dt className="text-foreground-secondary">ขอบเขต</dt>
+          <dd data-testid="audit-export-dialog-range" className="break-words">
+            <span className="font-mono">{scope.rangeText}</span> (
             {scope.timeZone})
+          </dd>
+          <dt className="text-foreground-secondary">ตัวกรอง</dt>
+          <dd
+            data-testid="audit-export-dialog-filters"
+            data-categories={categoryCode}
+            className="break-words"
+          >
+            {scope.filtersText}
+          </dd>
+          <dt className="text-foreground-secondary">จำนวน</dt>
+          <dd>
+            <span data-testid="audit-export-dialog-total" className="font-mono">
+              {total.toLocaleString("en-US")}
+            </span>{" "}
+            รายการ
+          </dd>
+        </dl>
+        <p
+          data-testid="audit-export-dialog-snapshot"
+          data-time-zone={scope.timeZone}
+          className="text-foreground-secondary"
+        >
+          ณ โหลดเมื่อ <span className="font-mono">{scope.loadedAt}</span> (
+          {scope.timeZone})
+        </p>
+        <fieldset
+          data-testid="audit-export-dialog-formats"
+          className="flex flex-col gap-2"
+        >
+          <legend className="mb-1 font-medium">รูปแบบไฟล์</legend>
+          {(["csv", "json"] as const).map((value) => (
+            <label key={value} className="flex items-center gap-2">
+              <input
+                data-testid={`audit-export-dialog-format-${value}`}
+                ref={value === "csv" ? firstFormat : undefined}
+                type="radio"
+                className="size-[18px] shrink-0 accent-primary"
+                name="export-format"
+                value={value}
+                checked={format === value}
+                onChange={() => {
+                  if (!inFlight.current) setFormat(value);
+                }}
+              />
+              {value === "csv" ? "CSV" : "JSON"}
+            </label>
+          ))}
+        </fieldset>
+        <RecordingScopeNote since={scope.recordingSince} />
+        {tooLarge ? (
+          <p
+            data-testid="audit-export-dialog-too-large"
+            id={messageId}
+            role="alert"
+            className="text-danger"
+          >
+            {tooLargeText(total)}
           </p>
-          <fieldset
-            data-testid="audit-export-dialog-formats"
-            className="flex flex-col gap-2"
+        ) : null}
+        {message === null ? null : (
+          <p
+            data-testid="audit-export-dialog-error"
+            data-outcome={message === EMPTY_REASON ? "empty" : "failed"}
+            role="alert"
+            className="text-danger"
           >
-            <legend className="mb-1 font-medium">รูปแบบไฟล์</legend>
-            {(["csv", "json"] as const).map((value) => (
-              <label key={value} className="flex items-center gap-2">
-                <input
-                  data-testid={`audit-export-dialog-format-${value}`}
-                  ref={value === "csv" ? firstFormat : undefined}
-                  type="radio"
-                  name="export-format"
-                  value={value}
-                  checked={format === value}
-                  onChange={() => {
-                    if (!inFlight.current) setFormat(value);
-                  }}
-                />
-                {value === "csv" ? "CSV" : "JSON"}
-              </label>
-            ))}
-          </fieldset>
-          <RecordingScopeNote since={scope.recordingSince} />
-          {tooLarge ? (
-            <p
-              data-testid="audit-export-dialog-too-large"
-              id={messageId}
-              role="alert"
-              className="text-danger"
-            >
-              {tooLargeText(total)}
-            </p>
-          ) : null}
-          {message === null ? null : (
-            <p
-              data-testid="audit-export-dialog-error"
-              data-outcome={message === EMPTY_REASON ? "empty" : "failed"}
-              role="alert"
-              className="text-danger"
-            >
-              {message}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <Button
-            data-testid="audit-export-dialog-cancel"
-            type="button"
-            variant="secondary"
-            wrap
-            aria-disabled={submitting ? true : undefined}
-            onClick={cancel}
-          >
-            ยกเลิก
-          </Button>
-          <Button
-            data-testid="audit-export-dialog-create"
-            type="button"
-            wrap
-            aria-disabled={submitting || tooLarge ? true : undefined}
-            aria-busy={submitting ? true : undefined}
-            aria-describedby={reasonId}
-            onClick={() => void submit()}
-          >
-            {submitting ? "กำลังส่งคำขอ…" : "สร้างไฟล์"}
-          </Button>
-        </div>
+            {message}
+          </p>
+        )}
       </div>
-    </div>,
-    document.body,
+      <div className="flex flex-col gap-2 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
+        <Button
+          data-testid="audit-export-dialog-cancel"
+          type="button"
+          variant="secondary"
+          wrap
+          aria-disabled={submitting ? true : undefined}
+          onClick={cancel}
+        >
+          ยกเลิก
+        </Button>
+        <Button
+          data-testid="audit-export-dialog-create"
+          type="button"
+          wrap
+          aria-disabled={submitting || tooLarge ? true : undefined}
+          aria-busy={submitting ? true : undefined}
+          aria-describedby={reasonId}
+          onClick={() => void submit()}
+        >
+          {submitting ? "กำลังส่งคำขอ…" : "สร้างไฟล์"}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

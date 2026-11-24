@@ -6,9 +6,9 @@ import type {
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import { textInputClass } from "../../components/ui";
-import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/select";
+import { StatusPill } from "../../components/ui/status-pill";
 import { ApiError } from "../../lib/api/client";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import {
@@ -32,8 +32,16 @@ export type RoleConfirmation = {
 
 const MEMBER_SELECT_ATTRIBUTE = "data-member-role-select";
 
+/** Setting Owner or Admin, or leaving Owner, is confirmed first (it adds or removes management power). */
+export function roleChangeNeedsConfirmation(
+  member: OrganizationMember,
+  role: OrganizationRole,
+): boolean {
+  return member.role === "owner" || role === "owner" || role === "admin";
+}
+
 /**
- * Role change flow for one Organization's member page: owner confirmation,
+ * Role change flow for one Organization's member page: owner and admin confirmation,
  * pending guard, the persisted-role check after the PATCH and the stale-scope
  * guard (`useOrganizationScope`). Reads the PATCH result only through a
  * refetch of the list, so success is never shown for an unpersisted role.
@@ -43,6 +51,7 @@ export function useMemberRoleChange({
   actorRole,
   actorUserId,
   listSettled,
+  filterRole,
   headingRef,
   refetchList,
   refreshMembershipContext,
@@ -51,6 +60,8 @@ export function useMemberRoleChange({
   actorRole: ActorRole;
   actorUserId: string | undefined;
   listSettled: boolean;
+  /** The list's role filter: a member saved to another role leaves the refreshed list. */
+  filterRole?: OrganizationRole;
   /** The dialog parks focus here when its opener unmounts with the table. */
   headingRef: RefObject<HTMLElement | null>;
   refetchList: () => Promise<{
@@ -75,8 +86,16 @@ export function useMemberRoleChange({
   // Member whose control had focus; the list skeleton unmounts it on refetch.
   const focusMemberId = useRef<string | null>(null);
 
+  // An actor who lost Owner can no longer confirm a change that involves it.
   useEffect(() => {
-    if (actorRole !== "owner") setConfirmation(null);
+    if (actorRole !== "owner") {
+      setConfirmation((current) =>
+        current !== null &&
+        (current.member.role === "owner" || current.role === "owner")
+          ? null
+          : current,
+      );
+    }
   }, [actorRole]);
 
   useEffect(() => {
@@ -90,7 +109,7 @@ export function useMemberRoleChange({
     const control = Array.from(
       document.querySelectorAll<HTMLElement>(`[${MEMBER_SELECT_ATTRIBUTE}]`),
     ).find((element) => element.dataset.memberRoleSelect === memberId);
-    control?.focus();
+    (control ?? headingRef.current)?.focus();
   }, [headingRef, isCurrentScope, listSettled, pending]);
 
   async function submit(member: OrganizationMember, role: OrganizationRole) {
@@ -100,12 +119,14 @@ export function useMemberRoleChange({
     setPendingChange({ name: member.name, role });
     setNotice(null);
     let failure: unknown = null;
+    let savedRole: OrganizationRole | null = null;
     try {
       const response = await updateOrganizationMemberRole(
         organizationId,
         member.id,
         role,
       );
+      savedRole = response.member.role;
       if (
         response.member.organizationId !== organizationId ||
         response.member.id !== member.id
@@ -116,6 +137,7 @@ export function useMemberRoleChange({
       failure = error;
     }
     if (!isCurrentScope()) return;
+    const savedText = `เปลี่ยนบทบาทของ ${member.name} เป็น${ROLE_LABELS[role] ?? role}แล้ว`;
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: [...MEMBER_LIST_QUERY_PREFIX, organizationId],
@@ -144,6 +166,14 @@ export function useMemberRoleChange({
             ? "องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน ไม่ได้เปลี่ยนบทบาท และโหลดบทบาทล่าสุดแล้ว"
             : "บันทึกบทบาทไม่สำเร็จ โหลดบทบาทล่าสุดแล้ว",
       });
+    } else if (
+      persisted === undefined &&
+      filterRole !== undefined &&
+      filterRole !== role &&
+      savedRole === role
+    ) {
+      // The filtered list no longer holds the member; the PATCH response confirms the role.
+      setNotice({ tone: "success", text: savedText });
     } else if (persisted === undefined) {
       setNotice({
         tone: "error",
@@ -155,7 +185,7 @@ export function useMemberRoleChange({
         text: "บทบาทของสมาชิกถูกเปลี่ยนโดยผู้อื่น โหลดบทบาทล่าสุดแล้ว",
       });
     } else {
-      setNotice({ tone: "success", text: "บันทึกบทบาทแล้ว" });
+      setNotice({ tone: "success", text: savedText });
     }
     const currentActor = refreshed.data?.members.find(
       (item) => item.userId === actorUserId,
@@ -191,7 +221,7 @@ export function useMemberRoleChange({
     ) {
       return;
     }
-    if (member.role === "owner" || role === "owner") {
+    if (roleChangeNeedsConfirmation(member, role)) {
       setConfirmation({ member, role, opener });
       return;
     }
@@ -239,15 +269,19 @@ export function MemberRoleActions({
   ) => void;
 }) {
   const [role, setRole] = useState<OrganizationRole>(member.role);
-  if (actorRole === "admin" && member.role === "owner") return null;
+  // The role column shows the role once: a pill when this actor cannot change it, a select when they can.
+  if (actorRole === "admin" && member.role === "owner") {
+    return <RolePill role={member.role} />;
+  }
   const roles = actorRole === "owner" ? INVITABLE_ROLES : ADMIN_INVITABLE_ROLES;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 py-1 sm:flex-nowrap">
-      <select
+    <div className="flex flex-wrap items-center gap-2 py-1 sm:flex-nowrap">
+      <Select
+        size="sm"
         data-testid={`member-role-select-${member.id}`}
         {...{ [MEMBER_SELECT_ATTRIBUTE]: member.id }}
-        aria-label={`บทบาทใหม่ของ ${member.name}`}
-        className={cn(textInputClass, "h-8 w-32 shrink-0 py-0 text-xs")}
+        aria-label={`บทบาทของ ${member.name}`}
+        className="w-32 shrink-0"
         value={role}
         disabled={pending}
         onChange={(event) => {
@@ -263,20 +297,30 @@ export function MemberRoleActions({
             {ROLE_LABELS[value]}
           </option>
         ))}
-      </select>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={pending || role === member.role}
-        data-testid={`member-role-save-${member.id}`}
-        aria-label={`บันทึกบทบาทของ ${member.name}`}
-        onClick={(event) => {
-          onSave(member, role, event.currentTarget);
-        }}
-      >
-        บันทึก
-      </Button>
+      </Select>
+      {role === member.role ? null : (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={pending}
+          data-testid={`member-role-save-${member.id}`}
+          aria-label={`บันทึกบทบาทของ ${member.name}`}
+          onClick={(event) => {
+            onSave(member, role, event.currentTarget);
+          }}
+        >
+          บันทึก
+        </Button>
+      )}
     </div>
+  );
+}
+
+export function RolePill({ role }: { role: OrganizationRole }) {
+  return (
+    <StatusPill tone={role === "owner" ? "primary" : "neutral"}>
+      {ROLE_LABELS[role] ?? role}
+    </StatusPill>
   );
 }

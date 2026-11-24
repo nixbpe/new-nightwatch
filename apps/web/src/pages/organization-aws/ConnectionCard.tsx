@@ -6,11 +6,13 @@ import {
   type OrganizationAwsConnectionTestResponse,
 } from "@nightwatch/api-contract";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { CopyButton } from "../../components/ui/copy-button";
 import { Notice } from "../../components/ui/notice";
 import { StatusPill } from "../../components/ui/status-pill";
 import { ApiError } from "../../lib/api/client";
@@ -20,12 +22,13 @@ import {
   testOrganizationAwsConnection,
 } from "../../lib/api/aws-connection";
 import { formatDateTime, usePreferences } from "../../lib/preferences";
-import { CopyButton } from "./CopyButton";
 import {
   FAILURE_REASONS,
   ROLE_ARN_FORMAT_ERROR,
+  SETUP_STEPS_ID,
   type DeniedCode,
 } from "./labels";
+import { trustPolicy } from "./policies";
 
 type Action = "test" | "save";
 
@@ -250,7 +253,7 @@ export function ConnectionCard({
         opener: disconnect.opener,
         pending: false,
         error:
-          "ยกเลิกการเชื่อมต่อไม่สำเร็จ ค่าที่บันทึกไว้ยังไม่เปลี่ยน ลองใหม่อีกครั้ง",
+          "ตัดการเชื่อมต่อไม่สำเร็จ ค่าที่บันทึกไว้ยังไม่เปลี่ยน ลองใหม่อีกครั้ง",
       });
     }
   }
@@ -340,49 +343,46 @@ export function ConnectionCard({
         )}
       </div>
 
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-6 pb-6 sm:grid-cols-2">
-        {connection === null ? null : (
-          <>
-            <Detail label="Account ID" mono testId="aws-connection-account">
-              {connection.accountId}
-            </Detail>
-            <Detail label="วิธีเชื่อมต่อ">Assume role จาก NightWatch</Detail>
-            <Detail label="Role ARN" mono testId="aws-connection-role-arn">
-              {connection.roleArn}
-            </Detail>
-          </>
-        )}
-        <div className="flex min-w-0 flex-col gap-1">
-          <dt className="text-[13px] text-foreground-secondary">External ID</dt>
-          <dd className="flex min-w-0 items-center gap-2">
-            <span
-              data-testid="aws-external-id"
-              className="font-mono text-[13px] break-all"
-            >
-              {data.externalId}
-            </span>
-            <CopyButton
-              value={data.externalId}
-              label="คัดลอก External ID"
-              copiedLabel="คัดลอก External ID แล้ว"
-              data-testid="aws-external-id-copy"
-            />
-          </dd>
-        </div>
-        {connection === null ? null : (
-          <>
-            <Detail label="ทดสอบล่าสุด" testId="aws-connection-tested">
-              <span className="font-mono text-[13px]">
-                {formatDateTime(new Date(connection.testedAt), preferences)}
-              </span>{" "}
-              · ผ่าน
-            </Detail>
-            <Detail label="ตั้งค่าโดย">
-              {connection.updatedBy?.name ?? "ผู้ใช้ที่ไม่ได้เป็นสมาชิกแล้ว"}
-            </Detail>
-          </>
-        )}
-      </dl>
+      {/* Before a connection there is nothing to list: the External ID is step 1 of the setup steps. */}
+      {connection === null ? null : (
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-6 pb-6 sm:grid-cols-2">
+          <Detail label="Account ID" mono testId="aws-connection-account">
+            {connection.accountId}
+          </Detail>
+          <Detail label="วิธีเชื่อมต่อ">Assume role จาก NightWatch</Detail>
+          <Detail label="Role ARN" mono testId="aws-connection-role-arn">
+            {connection.roleArn}
+          </Detail>
+          <div className="flex min-w-0 flex-col gap-1">
+            <dt className="text-[13px] text-foreground-secondary">
+              External ID
+            </dt>
+            <dd className="flex min-w-0 items-center gap-2">
+              <span
+                data-testid="aws-external-id"
+                className="font-mono text-[13px] break-all"
+              >
+                {data.externalId}
+              </span>
+              <CopyButton
+                value={data.externalId}
+                label="คัดลอก External ID"
+                copiedLabel="คัดลอก External ID แล้ว"
+                data-testid="aws-external-id-copy"
+              />
+            </dd>
+          </div>
+          <Detail label="ทดสอบล่าสุด" testId="aws-connection-tested">
+            <span className="font-mono text-[13px]">
+              {formatDateTime(new Date(connection.testedAt), preferences)}
+            </span>{" "}
+            · ผ่าน
+          </Detail>
+          <Detail label="ตั้งค่าโดย">
+            {connection.updatedBy?.name ?? "ผู้ใช้ที่ไม่ได้เป็นสมาชิกแล้ว"}
+          </Detail>
+        </dl>
+      )}
 
       <div className={`flex flex-col gap-4 px-6 ${hasMessages ? "pb-6" : ""}`}>
         {conflict ? (
@@ -390,7 +390,7 @@ export function ConnectionCard({
             data-testid="aws-connection-conflict"
             className="flex flex-col gap-3"
           >
-            <Alert tone="warning">
+            <Alert tone="warning" role="alert">
               การเชื่อมต่อ AWS ถูกแก้ไขจากคำขออื่น
               โหลดข้อมูลล่าสุดก่อนดำเนินการต่อ ค่าที่คุณกรอกยังอยู่
             </Alert>
@@ -441,12 +441,19 @@ export function ConnectionCard({
           ) : null}
           {attempt.kind === "saved" ? (
             <Notice data-testid="aws-connection-saved" tone="success">
-              บันทึกการเชื่อมต่อแล้ว
+              บันทึกการเชื่อมต่อแล้ว เลือกวิธีนี้ในโปรเจกต์ได้จาก{" "}
+              <Link
+                data-testid="aws-connection-saved-link"
+                to={`/organizations/${organizationId}/projects`}
+                className="text-primary underline underline-offset-4"
+              >
+                รายการโปรเจกต์
+              </Link>
             </Notice>
           ) : null}
           {disconnected ? (
             <Notice data-testid="aws-connection-disconnected" tone="success">
-              ยกเลิกการเชื่อมต่อแล้ว External ID ยังเป็นค่าเดิม
+              ตัดการเชื่อมต่อแล้ว External ID ยังเป็นค่าเดิม
             </Notice>
           ) : null}
           {draftOutdated ? (
@@ -463,6 +470,12 @@ export function ConnectionCard({
               result={shownResult.result}
               saved={!formOpen}
               stale={shownResult.revision !== data.revision}
+              externalId={data.externalId}
+              trust={
+                data.principalArn === null
+                  ? null
+                  : trustPolicy(data.principalArn, data.externalId)
+              }
             />
           )}
         </div>
@@ -545,7 +558,7 @@ export function ConnectionCard({
       {connection === null || formOpen ? null : (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/10 px-6 pt-4 pb-6">
           <span className="text-[13px] text-foreground-secondary">
-            ยกเลิกการเชื่อมต่อแล้ว{" "}
+            ถ้าตัดการเชื่อมต่อ{" "}
             <span className="font-mono">{affected.toString()}</span>{" "}
             โปรเจกต์ด้านล่างจะดึงข้อมูลจาก AWS ไม่ได้
           </span>
@@ -563,7 +576,7 @@ export function ConnectionCard({
                 });
               }}
             >
-              ยกเลิกการเชื่อมต่อ
+              ตัดการเชื่อมต่อ
             </Button>
             <Button
               data-testid="aws-connection-edit"
@@ -592,7 +605,7 @@ export function ConnectionCard({
         <ConfirmDialog
           data-testid="aws-disconnect-dialog"
           confirmTestId="aws-disconnect-confirm"
-          title="ยกเลิกการเชื่อมต่อบัญชี AWS กลาง"
+          title="ตัดการเชื่อมต่อบัญชี AWS กลาง"
           description={
             <div className="flex flex-col gap-3">
               <p data-testid="aws-disconnect-impact">
@@ -612,10 +625,10 @@ export function ConnectionCard({
               )}
             </div>
           }
-          confirmLabel="ยกเลิกการเชื่อมต่อ"
-          cancelLabel="ไม่ยกเลิก"
+          confirmLabel="ตัดการเชื่อมต่อบัญชีกลาง"
+          cancelLabel="ยกเลิก"
           confirmVariant="destructive"
-          pendingLabel="กำลังยกเลิกการเชื่อมต่อ…"
+          pendingLabel="กำลังตัดการเชื่อมต่อ…"
           pending={disconnect.pending}
           opener={disconnect.opener}
           fallbackFocus={heading}
@@ -661,10 +674,14 @@ function TestResult({
   result,
   saved,
   stale,
+  externalId,
+  trust,
 }: {
   result: OrganizationAwsConnectionTestResponse;
   saved: boolean;
   stale: boolean;
+  externalId: string;
+  trust: string | null;
 }) {
   if (result.result === "failed") {
     return (
@@ -678,6 +695,9 @@ function TestResult({
         <p data-testid="aws-test-reason" className="text-sm text-foreground">
           {FAILURE_REASONS[result.code]}
         </p>
+        {result.code === "AWS_ACCESS_DENIED" ? (
+          <AccessDeniedChecklist externalId={externalId} trust={trust} />
+        ) : null}
       </div>
     );
   }
@@ -715,6 +735,57 @@ function TestResult({
           ยังไม่ใช่การเชื่อมต่อที่บันทึก
         </p>
       )}
+    </div>
+  );
+}
+
+// AWS answers one code for three different mistakes, so the card lists them
+// with the values to compare. It never shows AWS text (AC-03).
+function AccessDeniedChecklist({
+  externalId,
+  trust,
+}: {
+  externalId: string;
+  trust: string | null;
+}) {
+  return (
+    <div data-testid="aws-test-checklist" className="flex flex-col gap-2">
+      <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
+        <li>Role ARN ตรงกับ role ที่สร้างในบัญชีกลาง ทั้งเลขบัญชีและชื่อ</li>
+        <li className="flex flex-wrap items-center gap-x-2">
+          trust policy ของ role ตรงกับ policy ในขั้นตอนตั้งค่า
+          {trust === null ? null : (
+            <CopyButton
+              value={trust}
+              label="คัดลอก trust policy"
+              copiedLabel="คัดลอก trust policy แล้ว"
+              showLabel
+              data-testid="aws-checklist-trust-copy"
+            />
+          )}
+        </li>
+        <li className="flex flex-wrap items-center gap-x-2">
+          External ID ใน trust policy ตรงกับ External ID ขององค์กร
+          <CopyButton
+            value={externalId}
+            label="คัดลอก External ID"
+            copiedLabel="คัดลอก External ID แล้ว"
+            showLabel
+            data-testid="aws-checklist-external-id-copy"
+          />
+        </li>
+      </ol>
+      <a
+        data-testid="aws-checklist-steps-link"
+        href={`#${SETUP_STEPS_ID}`}
+        className="w-fit text-sm text-primary underline-offset-4 hover:underline"
+        onClick={() => {
+          const steps = document.getElementById(SETUP_STEPS_ID);
+          if (steps instanceof HTMLDetailsElement) steps.open = true;
+        }}
+      >
+        ดูขั้นตอนตั้งค่า
+      </a>
     </div>
   );
 }

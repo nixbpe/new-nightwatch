@@ -1,4 +1,3 @@
-import { Notice } from "../../components/ui/notice";
 import { invitationCreateInputSchema } from "@nightwatch/api-contract";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,9 +9,12 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { Alert, Field, Input, textInputClass } from "../../components/ui";
+import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/select";
+import { Notice } from "../../components/ui/notice";
 import { ApiError } from "../../lib/api/client";
+import { INVITATION_LIFETIME } from "../../lib/auth/flow";
 import {
   createInvitation,
   pendingInvitationListQueryPrefix,
@@ -33,11 +35,13 @@ export function InvitationPanel({
   organizationId,
   organizationName,
   actorRole,
+  collapsed = false,
   onCreated,
 }: {
   organizationId: string;
   organizationName: string;
   actorRole: "owner" | "admin";
+  collapsed?: boolean;
   onCreated: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -90,9 +94,13 @@ export function InvitationPanel({
   const inFlight = useRef(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
+  // A success keeps the admin in the form for the next address; the live region
+  // announces it. A warning or error moves focus to its message.
   useEffect(() => {
-    if (notice !== null) noticeRef.current?.focus();
-  }, [notice]);
+    if (notice === null || collapsed) return;
+    if (notice.tone === "success") emailRef.current?.focus();
+    else noticeRef.current?.focus();
+  }, [notice, collapsed]);
 
   async function submit() {
     if (inFlight.current) return;
@@ -120,19 +128,22 @@ export function InvitationPanel({
       setEmail("");
       setNotice(
         result.emailDispatch === "accepted"
-          ? { tone: "success", text: "สร้างคำเชิญแล้ว" }
-          : { tone: "warning", text: "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ" },
+          ? { tone: "success", text: `ส่งคำเชิญถึง ${parsed.data.email} แล้ว` }
+          : {
+              tone: "warning",
+              text: `สร้างคำเชิญถึง ${parsed.data.email} แล้ว แต่อีเมลส่งไม่สำเร็จ`,
+            },
       );
     } catch (error) {
       if (!isCurrentScope()) return;
       const text =
         error instanceof ApiError
           ? error.code === "INVITATION_LIMIT_REACHED"
-            ? "องค์กรมีคำเชิญที่รอดำเนินการครบ 100 รายการแล้ว"
+            ? "องค์กรมีคำเชิญที่รอตอบรับครบ 100 รายการแล้ว"
             : error.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
               ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว"
               : error.code === "INVITATION_ALREADY_PENDING"
-                ? "มีคำเชิญที่รอดำเนินการสำหรับอีเมลนี้แล้ว"
+                ? "มีคำเชิญที่รอตอบรับสำหรับอีเมลนี้แล้ว"
                 : error.status === 403
                   ? "คุณไม่มีสิทธิ์เชิญสมาชิกในองค์กรนี้"
                   : "สร้างคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
@@ -152,7 +163,10 @@ export function InvitationPanel({
       aria-labelledby="invite-card-title"
       className="rounded-md border border-foreground/10 bg-surface text-foreground"
     >
-      <div className="border-b border-foreground/10 px-5 py-3.5">
+      <div
+        hidden={collapsed}
+        className="border-b border-foreground/10 px-5 py-3.5"
+      >
         <h2
           id="invite-card-title"
           data-testid="members-invitation-heading"
@@ -161,33 +175,31 @@ export function InvitationPanel({
           เชิญสมาชิกเข้าสู่ {organizationName}
         </h2>
       </div>
-      {notice && (
-        <div
-          ref={noticeRef}
-          data-testid="members-invitation-notice-focus"
-          tabIndex={-1}
-          className="mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          {notice.tone === "error" ? (
-            <Alert data-testid="members-invitation-error" tone="error">
-              {notice.text}
-            </Alert>
-          ) : notice.tone === "success" ? (
-            <Notice data-testid="members-invitation-success" tone="success">
-              {notice.text}
-            </Notice>
-          ) : (
-            <Alert
-              data-testid="members-invitation-warning"
-              tone="warning"
-              role="status"
-            >
-              {notice.text}
-            </Alert>
-          )}
-        </div>
-      )}
+      <div aria-live="polite">
+        {notice && (
+          <div
+            ref={noticeRef}
+            data-testid="members-invitation-notice-focus"
+            tabIndex={-1}
+            className="mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {notice.tone === "success" ? (
+              <Notice data-testid="members-invitation-success" tone="success">
+                {notice.text}
+              </Notice>
+            ) : (
+              <Alert
+                data-testid={`members-invitation-${notice.tone}`}
+                tone={notice.tone}
+              >
+                {notice.text}
+              </Alert>
+            )}
+          </div>
+        )}
+      </div>
       <form
+        hidden={collapsed}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -215,14 +227,13 @@ export function InvitationPanel({
             />
           </Field>
           <Field label="บทบาท" className="sm:w-[200px]">
-            <select
+            <Select
               data-testid="members-invitation-role"
               name="invite-role"
               value={role}
               onChange={(event) => {
                 setRole(event.target.value as InvitableRole);
               }}
-              className={textInputClass}
             >
               {(actorRole === "owner"
                 ? INVITABLE_ROLES
@@ -236,7 +247,7 @@ export function InvitationPanel({
                   {ROLE_LABELS[value]}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Button
             data-testid="members-invitation-send"
@@ -256,9 +267,11 @@ export function InvitationPanel({
             {fieldError}
           </span>
         )}
-        <p className="text-xs text-foreground-secondary">
-          ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
-          คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
+        <p
+          data-testid="members-invitation-hint"
+          className="text-xs text-foreground-secondary"
+        >
+          {`ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร คำเชิญใช้ได้ ${INVITATION_LIFETIME} และใช้ได้กับอีเมลที่ระบุเท่านั้น`}
         </p>
       </form>
     </section>

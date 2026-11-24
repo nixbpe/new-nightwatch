@@ -18,3 +18,6 @@ export const DENIED_MESSAGES = {
   PERMISSION_DENIED: "เฉพาะเจ้าของและผู้ดูแลองค์กรจัดการการเชื่อมต่อ AWS ได้",
 } as const;
 export type DeniedCode = keyof typeof DENIED_MESSAGES;
+
+/** The folded setup steps; a failed test links back to them. */
+export const SETUP_STEPS_ID = "aws-setup-steps";

@@ -120,6 +120,27 @@ describe("AuditEventPage", () => {
     expect(container.textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
   });
 
+  it("ORG-11 copies the event id, confirms it on screen and reports a refused write", async () => {
+    open(makeDetail());
+    const user = userEvent.setup();
+    const button = await screen.findByTestId("audit-event-copy");
+    await user.click(button);
+    expect(await navigator.clipboard.readText()).toBe(EVENT_ID);
+    const status = screen.getByTestId("audit-event-copy-status");
+    await waitFor(() => {
+      expect(status).toHaveAttribute("data-status", "copied");
+    });
+    expect(status.querySelector('[data-slot="notice"]')).not.toBeNull();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(
+      new Error("denied"),
+    );
+    await user.click(button);
+    await waitFor(() => {
+      expect(status).toHaveAttribute("data-status", "failed");
+    });
+    expect(status.querySelector('[data-slot="notice"]')).toBeNull();
+  });
+
   it("links a live monitor target by name and shows a deleted one as text", async () => {
     const { unmount } = open(makeDetail());
     expect(

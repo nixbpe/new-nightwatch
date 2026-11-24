@@ -30,7 +30,7 @@ export type InvitationFocusTarget = string;
 /**
  * Cancel flow for one Organization's pending list: confirmation, pending guard,
  * list refetch and stale-scope guard (`useOrganizationScope`). Success is shown
- * only when the DELETE succeeded and the list refetch succeeded. "กลับ" and
+ * only when the DELETE succeeded and the list refetch succeeded. The cancel button and
  * Escape send no request. A server denial refreshes the
  * membership context. Resend reuses this shape: `request` opens the
  * confirmation, `confirm` submits once, `cancel` closes without a request.
