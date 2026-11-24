@@ -6,6 +6,7 @@ import { STS } from "@aws-sdk/client-sts";
 import { createStsVerifier, loadEnv, StsError } from "@nightwatch/shared";
 
 import { startApi } from "../server";
+import { e2eResolver } from "./e2e-resolver";
 
 if (loadEnv().NODE_ENV === "production") {
   throw new Error("the e2e API entry refuses NODE_ENV=production");
@@ -75,4 +76,4 @@ const awsSts = createStsVerifier(
     new STS({ endpoint, region, credentials, maxAttempts: 1 }),
 );
 
-await startApi({ awsSts, awsPrincipalArn: source.arn });
+await startApi({ awsSts, awsPrincipalArn: source.arn, resolver: e2eResolver });
