@@ -26,14 +26,35 @@ import { useResendCooldown } from "../lib/auth/useResendCooldown";
 // Signup issues no session before verification, so arrivals may be anonymous and get an email form.
 // The sent confirmation stays generic to avoid account enumeration.
 export function VerifyEmailPage() {
+  const session = authClient.useSession();
+  return (
+    <VerificationForm
+      key={
+        session.data === null
+          ? "anonymous"
+          : `${session.data.user.id}:${session.data.user.email}`
+      }
+      session={session}
+    />
+  );
+}
+
+// Reset identity-owned feedback and pending completions when the session owner changes.
+function VerificationForm({
+  session,
+}: {
+  session: ReturnType<typeof authClient.useSession>;
+}) {
   const navigate = useNavigate();
   const flow = readAuthFlowState(useLocation().state);
-  const { data, isPending, refetch } = authClient.useSession();
+  const { data, isPending, refetch } = session;
   const [status, setStatus] = useState<"idle" | "sent" | "failed">("idle");
   const cooldown = useResendCooldown();
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [notVerified, setNotVerified] = useState(false);
+  const [checkState, setCheckState] = useState<"idle" | "done" | "failed">(
+    "idle",
+  );
 
   const signedIn = data !== null;
 
@@ -54,14 +75,12 @@ export function VerifyEmailPage() {
 
   const form = useForm({
     defaultValues: {
-      email: flow.email ?? data?.user.email ?? "",
+      email: data?.user.email ?? flow.email ?? "",
     },
     onSubmit: async ({ value }) => {
       setError(null);
       const resolvedEmail =
-        value.email.trim() === "" && data !== null
-          ? data.user.email
-          : value.email.trim();
+        data !== null ? data.user.email : value.email.trim();
       try {
         const { error: resendError } = await authClient.sendVerificationEmail({
           email: resolvedEmail,
@@ -91,19 +110,22 @@ export function VerifyEmailPage() {
     }
   }, [form, invitationPreview.data]);
 
-  // A verified session re-renders into the redirect below, so the notice only outlives the check
-  // when the server still reports the email as unverified (or the check itself failed).
   async function checkVerification() {
     setChecking(true);
+    setCheckState("idle");
     try {
+      // Better Auth resolves refetch even on HTTP failure; session.error owns that result.
       await refetch();
+      setCheckState("done");
     } catch {
-      // A failed check leaves the same notice.
+      setCheckState("failed");
     } finally {
       setChecking(false);
-      setNotVerified(true);
     }
   }
+
+  const checkFailed =
+    checkState === "failed" || (checkState === "done" && session.error != null);
 
   if (isPending) {
     return (
@@ -247,7 +269,11 @@ export function VerifyEmailPage() {
           </div>
         ) : null}
         <div className="flex flex-col gap-3">
-          {notVerified ? (
+          {checkFailed ? (
+            <Alert data-testid="verify-email-check-error" tone="error">
+              ตรวจสอบการยืนยันไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+            </Alert>
+          ) : checkState === "done" ? (
             <Alert
               data-testid="verify-email-not-verified"
               tone="info"

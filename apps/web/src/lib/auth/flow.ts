@@ -8,11 +8,12 @@ export const TRUST_DEVICE_LIFETIME = "30 วัน";
 
 export type AuthNotice = "email-verified" | "password-reset";
 
-// Context handed to the next auth page through router `state`: it stays in this tab's history, out of
-// URLs and logs, and nobody can forge it with a link. Pages map each notice key to their own copy.
+// Router `state` is an untrusted UI hint in this tab's history, not a security guarantee.
+// Pages map each notice key to their own copy; state does not prove an auth action succeeded.
 export type AuthFlowState = {
   notice?: AuthNotice;
   email?: string;
+  /** The verification email was just sent (signup), so the page may say so. */
   sent?: boolean;
 };
 

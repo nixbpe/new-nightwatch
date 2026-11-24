@@ -1,13 +1,21 @@
-import { bindQueryClientIdentity } from "../lib/queryClient";
+import {
+  bindQueryClientIdentity,
+  claimContextPublication,
+  createContextPublicationClaim,
+  publishContextPublication,
+  failContextPublication,
+  resetQueryClientRegistry,
+} from "../lib/queryClient";
+import { SessionQueryProvider } from "../lib/auth/SessionQueryProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, createMemoryRouter, RouterProvider } from "react-router";
 import { AppShell } from "../components/shell/AppShell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
-import { fetchMeContext } from "../lib/api/me";
+import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import {
   fetchOrganizationNotificationSettings,
   updateOrganizationNotificationSettings,
@@ -44,10 +52,18 @@ vi.mock("../lib/api/monitors", async (importOriginal) => ({
     }),
   ),
 }));
+const session = vi.hoisted(() => ({ id: "user-1" }));
+
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
     useSession: () => ({
-      data: { user: { name: "Test", email: "test@nightwatch.invalid" } },
+      data: {
+        user: {
+          id: session.id,
+          name: "Test",
+          email: "test@nightwatch.invalid",
+        },
+      },
       isPending: false,
     }),
   }),
@@ -67,8 +83,9 @@ function renderPage(
   bootstrap?: ReturnType<
     typeof Promise.withResolvers<Awaited<ReturnType<typeof fetchMeContext>>>
   >,
+  sessionBoundary = false,
 ) {
-  fetchMeContextMock.mockResolvedValue({
+  const context: Awaited<ReturnType<typeof fetchMeContext>> = {
     user: {
       id: "user-1",
       name: "นภัส วงศ์สกุล",
@@ -78,7 +95,8 @@ function renderPage(
     },
     organizations: [{ id: ORG_A, name: "Org A", slug: "org-a", role: "owner" }],
     lastActiveTenantId: ORG_A,
-  });
+  };
+  fetchMeContextMock.mockResolvedValue(context);
   if (bootstrap !== undefined)
     fetchMeContextMock.mockReturnValueOnce(bootstrap.promise);
   const queryClient = new QueryClient({
@@ -89,11 +107,9 @@ function renderPage(
     [
       {
         element: (
-          <QueryClientProvider client={queryClient}>
-            <TenantProvider>
-              <AppShell />
-            </TenantProvider>
-          </QueryClientProvider>
+          <TenantProvider>
+            <AppShell />
+          </TenantProvider>
         ),
         children: [
           {
@@ -110,13 +126,36 @@ function renderPage(
     ],
     { initialEntries: [`/organizations/${ORG_A}/notification-settings`] },
   );
-  return render(<RouterProvider router={router} />);
+  function Harness({ identity = "user-1" }: { identity?: string }) {
+    session.id = identity;
+    return sessionBoundary ? (
+      <SessionQueryProvider>
+        <RouterProvider router={router} />
+      </SessionQueryProvider>
+    ) : (
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+  }
+  const view = render(<Harness />);
+  return {
+    ...view,
+    router,
+    queryClient,
+    context,
+    replaceIdentity: (identity: string) => {
+      view.rerender(<Harness identity={identity} />);
+    },
+  };
 }
 
 afterEach(() => {
   fetchSettingsMock.mockReset();
   updateSettingsMock.mockReset();
   fetchMeContextMock.mockReset();
+  session.id = "user-1";
+  resetQueryClientRegistry();
 });
 
 describe("OrganizationNotificationSettingsPage", () => {
@@ -359,6 +398,107 @@ describe("OrganizationNotificationSettingsPage", () => {
     });
   });
 
+  it("retires the failed submission on edit and saves the visible draft", async () => {
+    const initial = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    };
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: false,
+      version: 5,
+    };
+    const retry = Promise.withResolvers<typeof saved>();
+    fetchSettingsMock.mockResolvedValue(initial);
+    updateSettingsMock
+      .mockRejectedValueOnce(new ApiError("INTERNAL", "boom", 500))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(
+      await screen.findByTestId("organization-notifications-save-retry"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    );
+    expect(
+      screen.queryByTestId("organization-notifications-save-retry"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("organization-notifications-save-error"),
+    ).toBeNull();
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(2, ORG_A, {
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: false,
+      expectedVersion: 4,
+    });
+    fetchSettingsMock.mockResolvedValue(saved);
+    retry.resolve(saved);
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTestId("organization-notifications-success"),
+      ).toHaveTextContent("บันทึกแล้ว"),
+    );
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-save"),
+    ).toBeDisabled();
+  });
+
+  it("disables the actual checkboxes while a save is pending", async () => {
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
+      version: 5,
+    };
+    fetchSettingsMock.mockResolvedValue({
+      ...saved,
+      settingsChangedEnabled: true,
+      version: 4,
+    });
+    const pending = Promise.withResolvers<typeof saved>();
+    updateSettingsMock.mockReturnValue(pending.promise);
+    const user = userEvent.setup();
+    renderPage();
+    const settingsChanged = await screen.findByTestId(
+      "organization-notifications-settings-changed",
+    );
+    const monitorAlerts = screen.getByTestId(
+      "organization-notifications-monitor-alerts",
+    );
+    await user.click(settingsChanged);
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    await vi.waitFor(() => expect(settingsChanged).toBeDisabled());
+    expect(monitorAlerts).toBeDisabled();
+    await user.click(settingsChanged);
+    await user.click(monitorAlerts);
+    expect(settingsChanged).not.toBeChecked();
+    expect(monitorAlerts).toBeChecked();
+    expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith(ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
+    fetchSettingsMock.mockResolvedValue(saved);
+    pending.resolve(saved);
+    await vi.waitFor(() => expect(settingsChanged).toBeEnabled());
+    expect(settingsChanged).not.toBeChecked();
+    expect(monitorAlerts).toBeChecked();
+  });
+
   it("drops an unsaved draft when navigating to another organization", async () => {
     fetchSettingsMock.mockImplementation((organizationId) =>
       Promise.resolve({
@@ -392,6 +532,384 @@ describe("OrganizationNotificationSettingsPage", () => {
     expect(
       await screen.findByTestId("organization-notifications-settings-changed"),
     ).toBeChecked();
+    expect(updateSettingsMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current A operation locked through the old A response and authoritative refetch after A to B to A", async () => {
+    fetchSettingsMock.mockImplementation((organizationId) =>
+      Promise.resolve({
+        organizationId,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
+        version: organizationId === ORG_A ? 4 : 9,
+      }),
+    );
+    const oldSave =
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof updateOrganizationNotificationSettings>>
+      >();
+    const currentSave =
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof updateOrganizationNotificationSettings>>
+      >();
+    updateSettingsMock
+      .mockReturnValueOnce(oldSave.promise)
+      .mockReturnValueOnce(currentSave.promise);
+    const user = userEvent.setup();
+    const { router } = renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(1, ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
+    await act(() =>
+      router.navigate(`/organizations/${ORG_B}/notification-settings`),
+    );
+    expect(
+      await screen.findByTestId("organization-notifications-settings"),
+    ).toHaveAttribute("data-organization-id", ORG_B);
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).toBeChecked();
+    await act(() =>
+      router.navigate(`/organizations/${ORG_A}/notification-settings`),
+    );
+    await user.click(
+      await screen.findByTestId("organization-notifications-monitor-alerts"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(2, ORG_A, {
+      monitorAlertsEnabled: false,
+      expectedVersion: 4,
+    });
+    const requestsBeforeOldResponse = fetchSettingsMock.mock.calls.length;
+    const authoritativeRead =
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof fetchOrganizationNotificationSettings>>
+      >();
+    fetchSettingsMock.mockReturnValueOnce(authoritativeRead.promise);
+    await act(async () => {
+      oldSave.resolve({
+        organizationId: ORG_A,
+        settingsChangedEnabled: false,
+        monitorAlertsEnabled: true,
+        version: 5,
+      });
+      await oldSave.promise;
+    });
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTestId("organization-notifications-save"),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).toBeDisabled();
+    expect(
+      screen.queryByTestId("organization-notifications-success"),
+    ).toBeNull();
+    expect(updateSettingsMock).toHaveBeenCalledTimes(2);
+    expect(fetchSettingsMock).toHaveBeenCalledTimes(
+      requestsBeforeOldResponse + 1,
+    );
+    expect(fetchSettingsMock).toHaveBeenLastCalledWith(ORG_A);
+    await act(async () => {
+      authoritativeRead.resolve({
+        organizationId: ORG_A,
+        settingsChangedEnabled: false,
+        monitorAlertsEnabled: true,
+        version: 5,
+      });
+      await authoritativeRead.promise;
+    });
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).toBeDisabled();
+    expect(
+      screen.queryByTestId("organization-notifications-success"),
+    ).toBeNull();
+    await act(async () => {
+      currentSave.reject(
+        new ApiError("SETTINGS_VERSION_CONFLICT", "conflict", 409),
+      );
+      await currentSave.promise.catch(() => {});
+    });
+    expect(
+      await screen.findByTestId("organization-notifications-version-conflict"),
+    ).toHaveRole("alert");
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).not.toBeChecked();
+    expect(
+      screen.queryByTestId("organization-notifications-success"),
+    ).toBeNull();
+    expect(updateSettingsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["user-2", "user-1"])(
+    "isolates an old completion from a replacement client ending as %s",
+    async (destination) => {
+      const initial = {
+        organizationId: ORG_A,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
+        version: 4,
+      };
+      fetchSettingsMock.mockResolvedValue(initial);
+      const oldSave = Promise.withResolvers<typeof initial>();
+      const currentSave = Promise.withResolvers<typeof initial>();
+      updateSettingsMock
+        .mockReturnValueOnce(oldSave.promise)
+        .mockReturnValueOnce(currentSave.promise);
+      const user = userEvent.setup();
+      const { replaceIdentity, context } = renderPage(null, undefined, true);
+      await user.click(
+        await screen.findByTestId(
+          "organization-notifications-settings-changed",
+        ),
+      );
+      await user.click(screen.getByTestId("organization-notifications-save"));
+      fetchMeContextMock.mockResolvedValue({
+        ...context,
+        user: { ...context.user, id: "user-2" },
+      });
+      replaceIdentity("user-2");
+      await screen.findByTestId("organization-notifications-settings-changed");
+      if (destination === "user-1") {
+        fetchMeContextMock.mockResolvedValue(context);
+        replaceIdentity("user-1");
+        await screen.findByTestId(
+          "organization-notifications-settings-changed",
+        );
+      }
+      await user.click(
+        screen.getByTestId("organization-notifications-monitor-alerts"),
+      );
+      await user.click(screen.getByTestId("organization-notifications-save"));
+      expect(updateSettingsMock).toHaveBeenNthCalledWith(2, ORG_A, {
+        monitorAlertsEnabled: false,
+        expectedVersion: 4,
+      });
+      const reads = fetchSettingsMock.mock.calls.length;
+      await act(async () => {
+        oldSave.resolve({
+          organizationId: ORG_A,
+          settingsChangedEnabled: false,
+          monitorAlertsEnabled: true,
+          version: 5,
+        });
+        await oldSave.promise;
+      });
+      expect(
+        screen.getByTestId("organization-notifications-monitor-alerts"),
+      ).not.toBeChecked();
+      expect(
+        screen.getByTestId("organization-notifications-settings-changed"),
+      ).toBeChecked();
+      expect(
+        screen.getByTestId("organization-notifications-save"),
+      ).toBeDisabled();
+      expect(
+        screen.queryByTestId("organization-notifications-success"),
+      ).toBeNull();
+      expect(fetchSettingsMock).toHaveBeenCalledTimes(reads);
+      expect(updateSettingsMock).toHaveBeenNthCalledWith(1, ORG_A, {
+        settingsChangedEnabled: false,
+        expectedVersion: 4,
+      });
+      expect(updateSettingsMock).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        currentSave.reject(
+          new ApiError("SETTINGS_VERSION_CONFLICT", "conflict", 409),
+        );
+        await currentSave.promise.catch(() => {});
+      });
+      expect(
+        await screen.findByTestId(
+          "organization-notifications-version-conflict",
+        ),
+      ).toHaveRole("alert");
+      expect(
+        screen.getByTestId("organization-notifications-monitor-alerts"),
+      ).not.toBeChecked();
+      expect(
+        screen.queryByTestId("organization-notifications-success"),
+      ).toBeNull();
+    },
+  );
+
+  it.each([false, true])(
+    "withdraws settings conservatively during same-org publication (transient failure: %s)",
+    async (fail) => {
+      fetchSettingsMock.mockResolvedValue({
+        organizationId: ORG_A,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
+        version: 4,
+      });
+      const user = userEvent.setup();
+      const { queryClient } = renderPage();
+      await user.click(
+        await screen.findByTestId(
+          "organization-notifications-settings-changed",
+        ),
+      );
+      const context =
+        queryClient.getQueryData<Awaited<ReturnType<typeof fetchMeContext>>>(
+          ME_CONTEXT_QUERY_KEY,
+        );
+      if (context === undefined) throw new Error("Expected verified bootstrap");
+      const claim = createContextPublicationClaim();
+      act(() => {
+        claimContextPublication(queryClient, claim, "membership");
+      });
+      expect(
+        await screen.findByTestId("shell-admission-loading"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("organization-notifications-settings"),
+      ).toBeNull();
+      expect(
+        screen.queryByTestId("organization-notifications-denied"),
+      ).toBeNull();
+      if (fail) {
+        act(() => {
+          failContextPublication(
+            queryClient,
+            claim,
+            new ApiError("INTERNAL", "transient", 500),
+          );
+        });
+        expect(
+          await screen.findByTestId("shell-admission-error"),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByTestId("organization-notifications-denied"),
+        ).toBeNull();
+      } else {
+        act(() => {
+          publishContextPublication(queryClient, claim, context);
+        });
+        expect(
+          await screen.findByTestId(
+            "organization-notifications-settings-changed",
+          ),
+        ).toBeChecked();
+        // Existing shell policy remounts settings: this is baseline proof, not a new retention policy.
+        expect(
+          screen.getByTestId("organization-notifications-save"),
+        ).toBeDisabled();
+      }
+      expect(updateSettingsMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a pending save locked when same-org publication retains known authority", async () => {
+    const initial = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    };
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
+      version: 5,
+    };
+    fetchSettingsMock.mockResolvedValue(initial);
+    const pending = Promise.withResolvers<typeof saved>();
+    updateSettingsMock.mockReturnValueOnce(pending.promise);
+    const user = userEvent.setup();
+    const { queryClient, context } = renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    const claim = createContextPublicationClaim();
+    act(() => {
+      claimContextPublication(queryClient, claim, "switch");
+    });
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId("organization-notifications-save"),
+    ).toBeDisabled();
+    act(() => {
+      publishContextPublication(queryClient, claim, context);
+    });
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).toBeDisabled();
+    expect(
+      screen.queryByTestId("organization-notifications-success"),
+    ).toBeNull();
+    expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith(ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
+    fetchSettingsMock.mockResolvedValue(saved);
+    await act(async () => {
+      pending.resolve(saved);
+      await pending.promise;
+    });
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTestId("organization-notifications-monitor-alerts"),
+      ).toBeEnabled(),
+    );
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-save"),
+    ).toBeDisabled();
+  });
+
+  it("withdraws private controls when a settings refetch returns a known 403 after an edit", async () => {
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    });
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    fetchSettingsMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "withdrawn", 403),
+    );
+    await act(() => queryClient.invalidateQueries({ queryKey: ["tenant"] }));
+    expect(
+      await screen.findByTestId("organization-notifications-denied"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("organization-notifications-settings"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("organization-notifications-save-retry"),
+    ).toBeNull();
     expect(updateSettingsMock).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import { Button } from "./button";
 export type SortDirection = "asc" | "desc";
 
 export type DataTableSort = {
+  /** Key of the sorted column; null when the order is not one a column offers. */
   key: string | null;
   direction: SortDirection;
   onSortChange: (key: string, direction: SortDirection) => void;
@@ -59,8 +60,10 @@ export function DataTable<Row>({
   columnHeaderTestId?: (column: DataTableColumn<Row>) => string;
   rowActions?: (row: Row) => ReactNode;
   empty?: ReactNode;
+  /** Names the table for assistive technology; visible only with `captionVisible`. */
   caption?: ReactNode;
   captionVisible?: boolean;
+  /** Renders this many placeholder rows instead of `rows` while data loads. */
   skeleton?: number;
   sort?: DataTableSort;
   className?: string;

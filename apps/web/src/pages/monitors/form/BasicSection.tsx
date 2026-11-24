@@ -48,6 +48,7 @@ export function BasicSection({
   onShowAdvanced,
 }: SectionProps & {
   advanced: boolean;
+  /** Opens advanced mode, where the status code and the timeout are edited. */
   onShowAdvanced: () => void;
   /** Beside the URL: why Save and Test are off (a kept secret and a new origin). */
   urlNote: string | null;

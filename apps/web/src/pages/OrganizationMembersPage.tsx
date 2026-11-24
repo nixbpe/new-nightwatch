@@ -521,6 +521,7 @@ function OrganizationMembersPageForOrganization({
                 header: "บทบาท",
                 width: "280px",
                 cell: (m) => (
+                  // The marker keeps the saved role readable while the select shows a draft.
                   <div
                     data-testid="member-current-role"
                     data-member-role={m.role}
@@ -641,8 +642,9 @@ function OrganizationMembersPageForOrganization({
         titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       {selfLeaveSection}
-      <div id="members-invite-panel" ref={invitePanelRef} hidden={!inviteOpen}>
+      <div id="members-invite-panel" ref={invitePanelRef}>
         <InvitationPanel
+          collapsed={!inviteOpen}
           key={organization.role}
           organizationId={organizationId}
           organizationName={organization.name}

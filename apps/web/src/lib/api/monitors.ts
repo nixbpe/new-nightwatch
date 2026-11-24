@@ -52,6 +52,7 @@ export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
 // Rows per "load more" on the checks history page: the contract maximum of `limit`.
 export const MONITOR_CHECKS_CHUNK_SIZE = 50;
+// Time presets of the checks history filter; the longest is the 30-day retention.
 export const MONITOR_CHECKS_RANGE_MS = {
   "24h": 86_400_000,
   "7d": 7 * 86_400_000,

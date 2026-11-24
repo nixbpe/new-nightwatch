@@ -200,10 +200,12 @@ describe("inventory row list", () => {
 
     expect(await products("")).toEqual(["Nginx", "Redis", "Ubuntu", "Ubuntu"]);
     expect(await products("owner=team%20al")).toEqual(["Nginx", "Ubuntu"]);
+    // Whitespace runs collapse, as they do in the stored Owner.
     expect(await products("owner=team%20%20%20al")).toEqual([
       "Nginx",
       "Ubuntu",
     ]);
+    // A prefix, not a substring, and no LIKE wildcard.
     expect(await products("owner=lpha")).toEqual([]);
     expect(await products("owner=%25")).toEqual([]);
     expect(await products("owner=_")).toEqual([]);
@@ -287,7 +289,9 @@ describe("inventory row list", () => {
        insert into inventory_rows
          (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
           layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
-       select $1, $2, s.id, n + 1, 'o', 'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
+       select $1, $2, s.id, n + 1,
+              case when n <= 26 then 'Team 100%_ops' else 'Team other' end,
+              'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
               true, 'import', 'big.csv', 'u'
        from s, generate_series(1, 30) n`,
       [org.id, project],
@@ -300,6 +304,16 @@ describe("inventory row list", () => {
     const beyond = await listRows("page=9", project);
     expect(beyond.page).toBe(2);
     expect(beyond.rows).toHaveLength(5);
+    const filtered = await listRows("owner=TEAM%20100%25_&page=2", project);
+    expect(filtered).toMatchObject({ total: 26, page: 2, pageSize: 25 });
+    expect(filtered.rows.map((row) => row.product)).toEqual(["p26"]);
+    expect(filtered.rows[0]?.owner).toBe("Team 100%_ops");
+    const filteredBeyond = await listRows(
+      "owner=TEAM%20100%25_&page=9",
+      project,
+    );
+    expect(filteredBeyond).toMatchObject({ total: 26, page: 2 });
+    expect(filteredBeyond.rows.map((row) => row.product)).toEqual(["p26"]);
   });
 });
 
@@ -500,6 +514,7 @@ describe("inventory row writes", () => {
     expect((await listRows(`system=${billing?.id ?? ""}`, project)).total).toBe(
       1,
     );
+    // The same key in another System is a different key.
     const other = await ctx.call(org.users.owner, "POST", rowsPath(project), {
       systemId: hr?.id,
       ...input({ owner: "ทีม B" }),

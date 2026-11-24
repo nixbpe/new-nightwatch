@@ -103,10 +103,20 @@ for (const action of ["revoke", "leave"] as const) {
           ]),
         });
       }
+      // The roster can render before the shell's unread-count transaction
+      // finishes (member -> user locks). Closing the page aborts the browser
+      // request, not that transaction; user-cascade cleanup must wait for it.
+      const unreadCount = page.waitForResponse(
+        (reply) =>
+          new URL(reply.url()).pathname === "/api/notifications/unread-count",
+      );
       await page.goto(`/organizations/${f.org}/projects/${f.first}/members`);
       await expect(
         page.getByTestId(`project-member-row-${f.target.userId}`),
       ).toBeVisible();
+      const unread = await unreadCount;
+      expect(unread.status()).toBe(200);
+      expect(await unread.finished()).toBeNull();
     } finally {
       await page.close();
       await cleanUp(pool, [f.owner.userId, f.target.userId], [f.org]);

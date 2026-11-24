@@ -1,3 +1,4 @@
+import { defaultPreferences, writePreferences } from "../../lib/preferences";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
@@ -2443,3 +2444,27 @@ describe("A failed Project lookup", () => {
     expect(screen.queryByTestId("monitor-overview-access-error")).toBeNull();
   });
 });
+
+it.each(["table", "cards"])(
+  "%s last-check time and zone follow Display instead of browser",
+  async (view) => {
+    writePreferences({
+      ...defaultPreferences(),
+      timeZone: "Pacific/Kiritimati",
+      hourCycle: "h23",
+    });
+    localStorage.setItem("nightwatch:monitors-view", view);
+    fetchListMock.mockResolvedValue(
+      list([item({ lastCheckAt: "2026-09-30T23:30:00Z" })]),
+    );
+    try {
+      renderPage();
+      const times = await screen.findAllByTestId("monitor-list-check-time");
+      expect(times[0]).toHaveTextContent("1 ต.ค.");
+      expect(times[0]).toHaveTextContent("13:30");
+      expect(document.body).toHaveTextContent("Pacific/Kiritimati");
+    } finally {
+      localStorage.removeItem("nightwatch-preferences");
+    }
+  },
+);

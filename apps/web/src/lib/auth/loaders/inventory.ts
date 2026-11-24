@@ -1,4 +1,7 @@
-import { type LoaderFunctionArgs } from "react-router";
+import {
+  type ShouldRevalidateFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 
 import {
   fetchImportPreview,
@@ -101,4 +104,41 @@ export function inventoryMappingsLoader(args: LoaderFunctionArgs) {
       staleTime: 0,
     }),
   );
+}
+
+// Table-only navigation fetches rows and permissions in the mounted page without
+// withdrawing admission and unmounting the active keyboard input.
+export function inventoryShouldRevalidate(args: ShouldRevalidateFunctionArgs) {
+  const { currentUrl, nextUrl, defaultShouldRevalidate } = args;
+  if (
+    args.formMethod !== undefined ||
+    args.actionStatus !== undefined ||
+    args.actionResult !== undefined ||
+    currentUrl.pathname !== nextUrl.pathname ||
+    currentUrl.search === nextUrl.search
+  )
+    return defaultShouldRevalidate;
+  const filters = new Set([
+    "system",
+    "layer",
+    "environment",
+    "exposure",
+    "owner",
+    "status",
+    "q",
+    "page",
+  ]);
+  const keys = new Set([
+    ...currentUrl.searchParams.keys(),
+    ...nextUrl.searchParams.keys(),
+  ]);
+  for (const key of keys) {
+    if (
+      !filters.has(key) &&
+      JSON.stringify(currentUrl.searchParams.getAll(key)) !==
+        JSON.stringify(nextUrl.searchParams.getAll(key))
+    )
+      return defaultShouldRevalidate;
+  }
+  return false;
 }

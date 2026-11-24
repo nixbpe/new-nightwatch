@@ -161,6 +161,21 @@ test.describe("owner manages members", () => {
     await expect(select).toHaveValue("admin");
     await expect(row.getByTestId("project-member-remove")).toBeDisabled();
     await expect(page.getByTestId("project-rule-last-admin")).toBeVisible();
+    // Disabled controls are not authorization: bypass the UI with an authenticated request.
+    for (const [method, body] of [
+      ["PATCH", { role: "member" }],
+      ["DELETE", undefined],
+    ] as const) {
+      const response = await ownerSession.request(
+        method,
+        `${membersApi()}/${people.owner.userId}`,
+        body,
+      );
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        error: { code: "LAST_PROJECT_ADMIN" },
+      });
+    }
     expect((await projectRoles())[people.owner.userId]).toBe("admin");
   });
 

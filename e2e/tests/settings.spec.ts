@@ -375,6 +375,28 @@ test.describe("signed-in settings", () => {
     await mfa.getByTestId("mfa-verify-submit").click();
     await expect(mfa.getByTestId("mfa-status-enabled")).toHaveText(/\S/);
 
+    // SET-04: server-issued replacement codes survive a detour through disable/cancel.
+    await mfa.getByTestId("mfa-regenerate-open").click();
+    await mfa.getByTestId("mfa-regenerate-password").fill(PASSWORD!);
+    await mfa.getByTestId("mfa-regenerate-submit").click();
+    await expect(mfa.getByTestId("mfa-recovery-codes")).toBeVisible();
+    const replacement = await mfa
+      .getByTestId("mfa-recovery-code")
+      .allTextContents();
+    expect(replacement.length).toBeGreaterThan(0);
+    await expect(mfa.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    await mfa.getByTestId("mfa-disable-open").click();
+    await mfa.getByTestId("mfa-disable-cancel").click();
+    // Compare in memory; never attach recovery material to screenshots or logs.
+    const retained = await mfa
+      .getByTestId("mfa-recovery-code")
+      .allTextContents();
+    expect(JSON.stringify(retained) === JSON.stringify(replacement)).toBe(true);
+    await expect(mfa.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    await mfa.getByTestId("mfa-regenerate-acknowledge").check();
+    await mfa.getByTestId("mfa-regenerate-done").click();
+    await expect(mfa.getByTestId("mfa-recovery-codes")).toHaveCount(0);
+
     await mfa.getByTestId("mfa-disable-open").click();
     await mfa.getByTestId("mfa-disable-password").fill(PASSWORD!);
     await mfa.getByTestId("mfa-disable-submit").click();

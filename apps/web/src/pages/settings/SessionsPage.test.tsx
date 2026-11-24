@@ -78,6 +78,7 @@ function expectVisibleAbsoluteTime(item: HTMLElement, row: SessionRow): void {
   expect(time).toBeVisible();
   expect(time.textContent).toBe(value);
   expect(time).not.toHaveAttribute("aria-hidden", "true");
+  // Sign-in and expiry times let a user judge whether a session is theirs.
   for (const [testId, date] of [
     ["session-created-at", row.createdAt],
     ["session-expires-at", row.expiresAt],
@@ -294,6 +295,7 @@ describe("SessionsPage", () => {
       const button = within(row).queryByTestId("session-revoke-open");
       if (button === null) continue;
       named += 1;
+      // The accessible name carries the device the row describes.
       expect(button.getAttribute("aria-label")).toContain(
         within(row).getByTestId("session-device").textContent,
       );
@@ -336,6 +338,7 @@ describe("SessionsPage", () => {
       expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
     });
     expect(screen.queryByTestId("sessions-others-open")).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: /\S/ })).toHaveFocus();
   });
 
   it("a failed revoke keeps the row and shows the message", async () => {

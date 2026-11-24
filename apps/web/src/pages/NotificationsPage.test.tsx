@@ -237,6 +237,7 @@ describe("NotificationsPage", () => {
       screen.getByTestId("notifications-filter-category-monitor"),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("notifications-mark-all")).toBeEnabled();
+    // Mark-all ignores the filter, so the button says it covers every category.
     expect(screen.getByTestId("notifications-mark-all-scope")).toBeVisible();
     expect(screen.getByTestId("notifications-count-recent")).toHaveTextContent(
       "5 รายการใน 7 วัน",

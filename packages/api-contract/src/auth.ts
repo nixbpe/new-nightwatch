@@ -43,6 +43,7 @@ const pagedListQuerySchema = z.object({
   offset: decimalInteger.pipe(z.number().min(0)).default(0),
 });
 
+/** Longest member search text the list accepts (matches name or email). */
 export const ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH = 100;
 
 export const organizationMemberListQuerySchema = pagedListQuerySchema.extend({

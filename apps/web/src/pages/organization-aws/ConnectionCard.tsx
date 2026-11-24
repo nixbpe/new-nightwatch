@@ -343,6 +343,7 @@ export function ConnectionCard({
         )}
       </div>
 
+      {/* Before a connection there is nothing to list: the External ID is step 1 of the setup steps. */}
       {connection === null ? null : (
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-6 pb-6 sm:grid-cols-2">
           <Detail label="Account ID" mono testId="aws-connection-account">

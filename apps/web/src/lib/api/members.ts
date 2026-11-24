@@ -12,6 +12,7 @@ export const MEMBER_LIST_QUERY_PREFIX = ["tenant", "members"] as const;
 
 export type MemberListFilter = { q?: string; role?: OrganizationRole };
 
+// An empty filter adds no key, so the unfiltered key and request stay as before.
 const activeFilter = (filter: MemberListFilter): MemberListFilter => ({
   ...(filter.q === undefined ? {} : { q: filter.q }),
   ...(filter.role === undefined ? {} : { role: filter.role }),

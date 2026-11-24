@@ -1118,6 +1118,7 @@ describe("ORG-03 ORG-05 ORG-06 ORG-16 setup steps and guidance", () => {
     expect(
       steps.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+    // Step 1 owns the External ID before a connection; the card does not repeat it.
     expect(within(steps).getByTestId("aws-external-id")).toBeInTheDocument();
     expect(screen.getAllByTestId("aws-external-id")).toHaveLength(1);
     expect(within(steps).getAllByRole("listitem")).toHaveLength(4);

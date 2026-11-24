@@ -122,13 +122,13 @@ function renderPage(from?: string, state?: unknown) {
 
 function deferSignIn() {
   const { promise, resolve } = Promise.withResolvers<{
-    data: { token: string };
+    data: TestSessionData;
     error: null;
   }>();
   signInEmailMock.mockReturnValue(promise);
   return async () => {
     await act(async () => {
-      resolve({ data: { token: "t" }, error: null });
+      resolve({ data: sessionStore.get().data, error: null });
       await promise;
     });
   };
@@ -286,6 +286,7 @@ describe("LoginPage", () => {
     renderPage();
     await screen.findByTestId("login-submit");
 
+    // A real success carries the session payload; only the two-factor plugin adds twoFactorRedirect.
     signInEmailMock.mockResolvedValue({ data: { token: "t" }, error: null });
     await submitLogin("member@example.com", "correct-password");
     expect(signInEmailMock).toHaveBeenCalledWith({
@@ -455,6 +456,7 @@ describe("LoginPage", () => {
     renderPage("/settings/security");
 
     await submitLogin("member@example.com", "correct-password");
+    // Back-restored pages must not be left with a disabled button.
     await waitFor(() => {
       expect(screen.getByTestId("login-submit")).toBeEnabled();
     });

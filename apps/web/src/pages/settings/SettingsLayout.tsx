@@ -17,6 +17,7 @@ export function SettingsLayout() {
     isActiveTab(tab.path, pathname),
   );
   const name = me?.user.name ?? "";
+  // Display preferences live in this browser's storage; every other tab belongs to the account.
   const scope =
     activeTab?.path === "/settings/display"
       ? "ใช้กับเบราว์เซอร์นี้เท่านั้น"

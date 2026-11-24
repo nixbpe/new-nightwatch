@@ -285,6 +285,69 @@ describe("MappingQueuePage", () => {
     });
   });
 
+  it.each(["decision", "suggestion"])(
+    "follows visible queue order after a %s removes a filtered row",
+    async (action) => {
+      const proposed = action === "decision";
+      const first = mapping(A, {
+        product: "Visible Alpha",
+        cpe: proposed ? F5 : null,
+      });
+      const hidden = mapping(B, {
+        product: "Hidden Beta",
+        cpe: proposed ? F5 : null,
+      });
+      const last = mapping(C, {
+        product: "Visible Gamma",
+        cpe: proposed ? F5 : null,
+      });
+      fetchMock.mockResolvedValue({
+        canManage: true,
+        counts: { pending: 3, confirmed: 0, unmapped: 0 },
+        items: [first, hidden, last],
+      });
+      decideMock.mockImplementation((_org, _project, id) =>
+        Promise.resolve({ ...(id === A ? first : last), status: "confirmed" }),
+      );
+      suggestMock.mockImplementation((_org, _project, id) =>
+        Promise.resolve({
+          item: { ...(id === A ? first : last), cpe: F5 },
+          candidates: [],
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByTestId(`mapping-row-${A}`);
+      await user.type(screen.getByTestId("mapping-filter-search"), "Visible");
+      await user.click(
+        screen.getByTestId(
+          `mapping-proposal-${proposed ? "proposed" : "none"}`,
+        ),
+      );
+      expect(screen.queryByTestId(`mapping-row-${B}`)).toBeNull();
+      const button = proposed ? "confirm" : "suggest";
+      await user.click(screen.getByTestId(`mapping-${button}-${A}`));
+      await waitFor(() =>
+        expect(screen.getByTestId(`mapping-${button}-${C}`)).toHaveFocus(),
+      );
+      expect(screen.getByTestId("mapping-filter-search")).toHaveValue(
+        "Visible",
+      );
+      expect(
+        screen.getByTestId(
+          `mapping-proposal-${proposed ? "proposed" : "none"}`,
+        ),
+      ).toHaveAttribute("aria-checked", "true");
+      await user.click(screen.getByTestId(`mapping-${button}-${C}`));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("heading", { level: 2, name: /รอยืนยัน/ }),
+        ).toHaveFocus(),
+      );
+      expect(screen.queryByTestId(`mapping-row-${B}`)).toBeNull();
+    },
+  );
+
   it("keeps focus on the row that got a suggestion, on its new confirm button", async () => {
     fetchMock.mockResolvedValue(list());
     suggestMock.mockResolvedValueOnce({
@@ -395,6 +458,7 @@ describe("MappingDialog", () => {
     await user.type(screen.getByTestId("mapping-query"), "big-ip");
     await user.click(screen.getByTestId("mapping-search"));
 
+    // The Search button is disabled while it works; focus must not fall to the page behind.
     expect(
       screen.getByTestId("mapping-dialog").contains(document.activeElement),
     ).toBe(true);

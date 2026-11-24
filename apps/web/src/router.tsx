@@ -51,6 +51,7 @@ import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import {
   inventoryImportLoader,
   inventoryLoader,
+  inventoryShouldRevalidate,
   inventoryMappingsLoader,
   inventorySystemLoader,
 } from "./lib/auth/loaders/inventory";
@@ -130,6 +131,39 @@ export const projectsShouldRevalidate: ShouldRevalidateFunction = ({
   !nextUrl.searchParams.has(CREATE_PROJECT_PARAM)
     ? false
     : defaultShouldRevalidate;
+
+// Checks filters are read by the mounted query observer, not by the admission loader.
+export const checksHistoryShouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  actionResult,
+  actionStatus,
+  defaultShouldRevalidate,
+}) => {
+  if (
+    currentUrl.pathname !== nextUrl.pathname ||
+    currentUrl.search === nextUrl.search ||
+    formMethod !== undefined ||
+    actionResult !== undefined ||
+    actionStatus !== undefined
+  ) {
+    return defaultShouldRevalidate;
+  }
+  const current = new URLSearchParams(currentUrl.search);
+  const next = new URLSearchParams(nextUrl.search);
+  const filtersChanged = ["outcome", "range"].some(
+    (key) =>
+      JSON.stringify(current.getAll(key)) !== JSON.stringify(next.getAll(key)),
+  );
+  for (const key of ["outcome", "range"]) {
+    current.delete(key);
+    next.delete(key);
+  }
+  return filtersChanged && current.toString() === next.toString()
+    ? false
+    : defaultShouldRevalidate;
+};
 
 export const routes: RouteObject[] = [
   {
@@ -219,6 +253,7 @@ export const routes: RouteObject[] = [
               {
                 path: "/organizations/:organizationId/projects/:projectId/inventory",
                 loader: inventoryLoader,
+                shouldRevalidate: inventoryShouldRevalidate,
                 element: <InventoryPage />,
               },
               {
@@ -264,6 +299,7 @@ export const routes: RouteObject[] = [
               {
                 path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
                 loader: monitorDetailLoader,
+                shouldRevalidate: checksHistoryShouldRevalidate,
                 element: <ChecksHistoryPage />,
               },
               {
@@ -307,6 +343,7 @@ export const routes: RouteObject[] = [
                 loader: auditLogEventLoader,
                 element: <AuditEventPage />,
               },
+              // The layout loader gates the session and prefetches me/context for every tab.
               {
                 path: "/settings",
                 loader: settingsLoader,

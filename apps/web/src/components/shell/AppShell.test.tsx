@@ -1270,6 +1270,7 @@ describe("AppShell", () => {
         return element;
       }),
     ).toHaveTextContent("1");
+    // The button's own name carries the count, since a label replaces its content.
     expect(screen.getByTestId("shell-notifications-open")).toHaveAccessibleName(
       expect.stringContaining("1"),
     );

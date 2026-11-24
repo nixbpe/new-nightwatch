@@ -1847,6 +1847,7 @@ describe("organization member list filters HTTP contract", () => {
       organizationMemberListResponseSchema.parse(noMatch.json),
     ).toMatchObject({ members: [], page: { total: 0 } });
 
+    // The same user is a member of the other organization; its row never shows here.
     const other = await ownerClient(
       "GET",
       `/api/organizations/${filterOtherOrganizationId}/members?q=filter`,

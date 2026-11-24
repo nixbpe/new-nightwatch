@@ -185,6 +185,7 @@ function OrganizationAws({ organizationId }: { organizationId: string }) {
             </Button>
           </div>
         ) : null}
+        {/* Before a connection the steps come first, in the order the customer does them. */}
         {data.connection === null ? <SetupSteps data={data} /> : null}
         <ConnectionCard
           organizationId={organizationId}

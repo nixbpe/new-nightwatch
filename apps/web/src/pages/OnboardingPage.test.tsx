@@ -132,6 +132,7 @@ describe("OnboardingPage transitions", () => {
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-verify-email")).toBeInTheDocument();
+    // A reused link may mean the email is already verified, so sign-in is offered first.
     expect(
       screen
         .getByTestId("onboarding-login")

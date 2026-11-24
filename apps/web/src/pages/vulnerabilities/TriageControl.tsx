@@ -52,11 +52,11 @@ export function TriageControl({
     mutationFn: (input: TriageInput) =>
       putTriage(organizationId, projectId, input),
     onSuccess: async () => {
-      setAsking(false);
-      setReason("");
       await queryClient.invalidateQueries({
         queryKey: vulnerabilityKeys.all(organizationId, projectId),
       });
+      setAsking(false);
+      setReason("");
     },
   });
   const testId = `${target.cveId}-${target.mappingId}-${target.version}`;
@@ -109,7 +109,9 @@ export function TriageControl({
   useEffect(() => {
     if (asking) reasonInput.current?.focus();
   }, [asking]);
+  // Reset only before submission or after settlement; reset does not abort a request.
   const cancelAsking = () => {
+    if (save.isPending) return;
     setAsking(false);
     setReason("");
     save.reset();
@@ -163,7 +165,7 @@ export function TriageControl({
             onClick={openMenu}
             className="inline-flex h-8 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-[13px] text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-disabled:opacity-60"
           >
-            {statusText}
+            {save.isPending && !asking ? "กำลังบันทึก" : statusText}
             <ChevronsUpDownIcon size={14} />
           </button>
         ) : (
@@ -218,6 +220,7 @@ export function TriageControl({
                   aria-checked={choice.checked}
                   data-testid={`triage-${choice.status}-${testId}`}
                   onClick={() => {
+                    if (save.isPending) return;
                     menu.close();
                     choice.choose();
                   }}
@@ -236,6 +239,7 @@ export function TriageControl({
       {canManage && asking ? (
         <form
           className="flex w-full max-w-64 flex-col items-start gap-2"
+          aria-busy={save.isPending}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
@@ -244,6 +248,7 @@ export function TriageControl({
           }}
           onSubmit={(event) => {
             event.preventDefault();
+            if (save.isPending) return;
             save.mutate({
               ...target,
               status: "not_affected",
@@ -274,12 +279,13 @@ export function TriageControl({
               data-testid={`triage-save-${testId}`}
               disabled={save.isPending || reason.trim() === ""}
             >
-              บันทึก
+              {save.isPending ? "กำลังบันทึก" : "บันทึก"}
             </Button>
             <Button
               type="button"
               variant="outline"
               data-testid={`triage-cancel-${testId}`}
+              disabled={save.isPending}
               onClick={cancelAsking}
             >
               ยกเลิก

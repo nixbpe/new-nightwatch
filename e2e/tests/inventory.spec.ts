@@ -286,12 +286,26 @@ for (const theme of ["light", "dark"] as const) {
       page,
     }) => {
       await signIn(page, owner);
+      // Rows can arrive before the project metadata that adds the header's scope line.
+      let releaseProjects!: () => void;
+      const projectsReady = new Promise<void>((resolve) => {
+        releaseProjects = resolve;
+      });
+      await page.route(
+        `**/api/organizations/${org}/projects`,
+        async (route) => {
+          await projectsReady;
+          await route.continue();
+        },
+      );
       await page.goto(inventoryUrl());
       const table = page.getByTestId("inventory-rows-table");
       await expect(table.locator("tbody tr")).toHaveCount(6);
 
       // A tooltip stays open while the pointer travels onto it (WCAG 1.4.13).
       const firstEdit = table.getByRole("button", { name: /^แก้แถว/ }).first();
+      releaseProjects();
+      await expect(page.getByTestId("page-scope")).toBeVisible();
       await firstEdit.hover();
       const bubble = page.getByTestId("tooltip");
       await expect(bubble).toBeVisible();

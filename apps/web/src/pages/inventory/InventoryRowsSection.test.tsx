@@ -272,6 +272,40 @@ describe("InventoryRowsSection table", () => {
     });
   });
 
+  it.each(["search", "owner"])(
+    "keeps %s input identity through last-character deletion, continued typing and URL navigation",
+    async (field) => {
+      fetchMock.mockImplementation(pagedRows(30));
+      const user = userEvent.setup();
+      const key = field === "search" ? "q" : "owner";
+      const router = renderSection({ search: `?${key}=x&page=2` });
+      const input = await screen.findByTestId(`inventory-rows-${field}`);
+      await user.click(input);
+      await user.keyboard("{End}{Backspace}");
+      await waitFor(() => {
+        expect(router.state.location.search).toBe("");
+      });
+      expect(screen.getByTestId(`inventory-rows-${field}`)).toBe(input);
+      expect(input).toHaveFocus();
+      await user.keyboard("Redis{Enter}");
+      await waitFor(() => {
+        expect(router.state.location.search).toBe(`?${key}=Redis`);
+      });
+      expect(input).toHaveValue("Redis");
+      expect(input).toHaveFocus();
+      await user.clear(input);
+      expect(input).toHaveFocus();
+      await user.keyboard("nginx");
+      expect(input).toHaveValue("nginx");
+      await router.navigate(`${BASE}?${key}=external&page=2`);
+      await waitFor(() => expect(input).toHaveValue("external"));
+      await router.navigate(-1);
+      await waitFor(() => expect(input).toHaveValue(""));
+      await router.navigate(1);
+      await waitFor(() => expect(input).toHaveValue("external"));
+    },
+  );
+
   it("drops the search filter when the box is emptied without a submit, and leaves an unset filter alone", async () => {
     fetchMock.mockImplementation(pagedRows(60));
     const user = userEvent.setup();

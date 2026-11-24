@@ -32,6 +32,7 @@ export function SecurityPage() {
     return refreshed.data?.user.twoFactorEnabled;
   };
 
+  // Only the MFA card needs `me`; the password card works without it, so it stays usable.
   return (
     <div className="flex flex-col gap-6">
       <Card className="divide-y divide-foreground/10">

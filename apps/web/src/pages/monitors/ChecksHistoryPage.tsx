@@ -3,13 +3,21 @@ import {
   type MonitorChecksResponse,
 } from "@nightwatch/api-contract";
 import {
+  hashKey,
   useInfiniteQuery,
   useQuery,
   type InfiniteData,
   type Query,
   type UseInfiniteQueryResult,
 } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
@@ -72,6 +80,7 @@ const RANGE_LABELS: Record<MonitorChecksRange, string> = {
 };
 const RANGES = Object.keys(RANGE_LABELS) as MonitorChecksRange[];
 
+/** The filter lives in the URL (`outcome`, `range`); a value that is not an option counts as unset. */
 function parseFilter(params: URLSearchParams): MonitorChecksFilter {
   const outcome = CHECK_OUTCOMES.find(
     (value) => value === params.get("outcome"),
@@ -337,13 +346,14 @@ function ChecksHistoryForMonitor({
     setParams(updated, { replace: true });
   }
 
+  const checksKey = monitorQueryKeys.checksHistory(
+    organizationId,
+    projectId,
+    monitorId,
+    filter,
+  );
   const checks = useInfiniteQuery({
-    queryKey: monitorQueryKeys.checksHistory(
-      organizationId,
-      projectId,
-      monitorId,
-      filter,
-    ),
+    queryKey: checksKey,
     queryFn: ({ pageParam }) =>
       fetchMonitorChecks(organizationId, projectId, monitorId, {
         limit: MONITOR_CHECKS_CHUNK_SIZE,
@@ -516,6 +526,7 @@ function ChecksHistoryForMonitor({
       {header(monitor?.name)}
       <ChecksHistorySection
         checks={checks}
+        queryIdentity={hashKey(checksKey)}
         filter={filter}
         onFilterChange={changeFilter}
       />
@@ -524,10 +535,12 @@ function ChecksHistoryForMonitor({
 }
 
 function ChecksHistorySection({
+  queryIdentity,
   checks,
   filter,
   onFilterChange,
 }: {
+  queryIdentity: string;
   checks: ChecksQuery;
   filter: MonitorChecksFilter;
   onFilterChange: (next: MonitorChecksFilter) => void;
@@ -561,7 +574,16 @@ function ChecksHistorySection({
   const [focusSummary, setFocusSummary] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const summary = useRef<HTMLParagraphElement>(null);
-  const pressed = useRef(false);
+  const operation = useRef<{ pressed: boolean } | null>(null);
+  // Only the committed query owns UI continuations; transport requests may still finish.
+  useLayoutEffect(() => {
+    operation.current = { pressed: false };
+    setAnnouncement("");
+    setFocusSummary(false);
+    return () => {
+      operation.current = null;
+    };
+  }, [queryIdentity]);
 
   // The final load removes the button: its focus moves to the summary once the summary shows the final count.
   useEffect(() => {
@@ -570,6 +592,7 @@ function ChecksHistorySection({
     summary.current?.focus();
   }, [focusSummary, hasNext]);
 
+  // The result of a filter change is announced once, when the chunk for the new filter arrives.
   const announceFilter = useRef(false);
   useEffect(() => {
     if (!announceFilter.current || accumulated === null) return;
@@ -590,13 +613,19 @@ function ChecksHistorySection({
   }
 
   async function loadMore() {
-    if (pressed.current || checks.isFetchingNextPage) return;
-    pressed.current = true;
+    const owner = operation.current;
+    if (owner === null || owner.pressed || checks.isFetchingNextPage) return;
+    owner.pressed = true;
     const before = shown;
     setAnnouncement("");
     try {
       const result = await checks.fetchNextPage();
-      if (result.isError || result.data === undefined) return;
+      if (
+        operation.current !== owner ||
+        result.isError ||
+        result.data === undefined
+      )
+        return;
       const now = accumulate(result.data.pages).checks.length;
       const added = now - before;
       if (!result.hasNextPage && document.activeElement === button.current) {
@@ -612,7 +641,7 @@ function ChecksHistorySection({
           : `โหลดเพิ่ม ${String(added)} แถว (แถวที่ ${String(now - added + 1)}–${String(now)} จาก ${String(latest)})`,
       );
     } finally {
-      pressed.current = false;
+      if (operation.current === owner) owner.pressed = false;
     }
   }
 
@@ -814,6 +843,7 @@ function ChecksHistorySection({
                 `monitor-check-heading-${column.key}`
               }
               ariaLabel="ตารางประวัติการตรวจ"
+              className="max-h-none"
               columns={buildColumns()}
               rows={rows}
               rowKey={({ check }) => check.scheduledFor}

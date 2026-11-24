@@ -50,6 +50,7 @@ function groupedSecret(secret: string): string {
   return secret.replace(/(.{4})/g, "$1 ").trim();
 }
 
+// The account and date tell apart files from several accounts or sets.
 function downloadCodes(
   codes: string[],
   accountEmail: string | undefined,
@@ -404,7 +405,11 @@ export function MfaCard({
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setRegen(null);
+                    // A generated set already invalidated the old codes; only Done or
+                    // server-confirmed disable may discard it.
+                    setRegen((current) =>
+                      current === "form" ? null : current,
+                    );
                     setRegenError(null);
                     setDisableError(null);
                     setJustEnabled(false);
@@ -1057,6 +1062,7 @@ function CodesHeader({
   onDownload,
 }: {
   title: string;
+  /** Makes the title focusable so a view that replaces a form can move focus onto it. */
   titleRef?: RefObject<HTMLParagraphElement | null>;
   description: string;
   codes: string[];

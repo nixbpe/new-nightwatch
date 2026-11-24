@@ -48,6 +48,7 @@ function meContext(): MeContextResponse {
   };
 }
 
+// The unsaved-changes guard needs a data router.
 function pageRouter(queryClient: QueryClient) {
   return createMemoryRouter(
     [
@@ -166,10 +167,12 @@ describe("ProfilePage", () => {
     expect(updateUserMock).toHaveBeenCalledTimes(1);
     expect(updateUserMock).toHaveBeenCalledWith({ name: "ปวีณา ยอดเยี่ยม" });
     expect(await screen.findByTestId("profile-save-success")).toBeVisible();
+    // Success is a status message, not an interrupting alert (CMP-10).
     expect(screen.getByTestId("profile-save-success")).toHaveAttribute(
       "role",
       "status",
     );
+    // Both buttons disable themselves; focus returns to the name field instead of the body.
     await waitFor(() => {
       expect(screen.getByTestId("profile-name")).toHaveFocus();
     });

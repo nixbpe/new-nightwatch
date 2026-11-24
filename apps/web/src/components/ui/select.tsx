@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
+// Heights follow LAY-06: 40 px for forms, 32 px for row actions and filter bars.
 const SIZES = {
   sm: "h-8 px-2 text-sm",
   md: "h-10 px-3 text-base",
@@ -11,6 +12,7 @@ type SelectProps = Omit<ComponentProps<"select">, "size"> & {
   size?: keyof typeof SIZES;
 };
 
+/** Native `<select>` with the `Input` field styling. The caller supplies the label. */
 function Select({ className, size = "md", ...props }: SelectProps) {
   return (
     <select

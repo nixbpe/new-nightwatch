@@ -5,7 +5,10 @@ import { Button } from "./button";
 import { IconButton } from "./icon-button";
 import { Notice } from "./notice";
 
-// The status region stays mounted so a repeat copy is announced again.
+/**
+ * Copies `value` and says so next to the button. The status region stays mounted so a
+ * second copy is announced again; a refused clipboard write is reported, never silent.
+ */
 export function CopyButton({
   value,
   label,
@@ -14,8 +17,10 @@ export function CopyButton({
   "data-testid": testId,
 }: {
   value: string;
+  /** The accessible name and tooltip: it says what is copied. */
   label: string;
   copiedLabel: string;
+  /** A text button with the icon; otherwise an icon-only button whose tooltip is `label`. */
   showLabel?: boolean;
   "data-testid"?: string;
 }) {

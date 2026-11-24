@@ -21,6 +21,7 @@ export function ResetPasswordPage() {
   const token = searchParams.get("token");
 
   const [error, setError] = useState<string | null>(null);
+  // Only a dead link is fixed by asking for a new one; any other failure leaves this link usable.
   const [linkDead, setLinkDead] = useState(false);
 
   const form = useForm({
@@ -168,6 +169,7 @@ export function ResetPasswordPage() {
           name="confirm"
           validators={{
             onChangeListenTo: ["password"],
+            // Empty stays quiet while the user is still typing the first field; submit asks for it.
             onChange: ({ value, fieldApi }) =>
               value === ""
                 ? undefined

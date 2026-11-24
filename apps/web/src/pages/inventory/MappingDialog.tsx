@@ -90,6 +90,7 @@ export function MappingDialog({
     }
     setErrors(next);
     if (next.cpe !== undefined || next.purl !== undefined) {
+      // The first field with a reason takes focus, as in the row dialog.
       (next.cpe === undefined ? purlInput : cpeInput).current?.focus();
       return;
     }

@@ -26,9 +26,11 @@ const SIZE_CLASS = {
 } as const;
 
 /**
- * Modal shell (CMP-03, LAY-07). Focus returns to `opener` (or `fallbackFocus` once it is gone);
- * a scrim click does nothing. The caller owns the body and footer (use the `px-4 sm:px-6`
- * rhythm), the mutation, and whether `onClose` may act while busy.
+ * Modal shell (CMP-03, LAY-07): scrim, portal, `role="dialog"` panel with a title (and optional
+ * description), focus on `initialFocus`, a Tab trap, Escape and focus return to `opener` (or
+ * `fallbackFocus` once the opener is gone). A scrim click does nothing. The caller owns the
+ * body and footer in `children` (use the `px-4 sm:px-6` rhythm), the mutation, and whether
+ * `onClose` may act while busy.
  */
 export function Dialog({
   title,
@@ -48,14 +50,20 @@ export function Dialog({
   "data-testid"?: string;
   title: ReactNode;
   titleTestId?: string;
+  /** Sets `aria-describedby`; omit for a dialog whose title is enough. */
   description?: ReactNode;
   descriptionTestId?: string;
+  /** Panel max width: md 520 px, lg 560 px, xl 640 px. */
   size?: keyof typeof SIZE_CLASS;
+  /** Sets `aria-busy` while the caller's mutation runs. */
   busy?: boolean;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
+  /** The control that takes focus on open and when focus escapes the dialog. */
   initialFocus: RefObject<HTMLElement | null>;
+  /** Pass a ref when the caller needs the panel element (focus it, query inside it). */
   dialogRef?: RefObject<HTMLDivElement | null>;
+  /** Called on Escape; the caller decides whether to ignore it while busy. */
   onClose: () => void;
   children: ReactNode;
 }) {

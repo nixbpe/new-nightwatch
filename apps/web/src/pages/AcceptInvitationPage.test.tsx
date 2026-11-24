@@ -505,6 +505,7 @@ describe("AcceptInvitationPage", () => {
     );
     expect(acceptInvitationMock).not.toHaveBeenCalled();
     expect(signUpEmailMock).not.toHaveBeenCalled();
+    // A missing invitation will not come back, so there is nothing to retry.
     expect(screen.queryByTestId("invitation-preview-retry")).toBeNull();
   });
 

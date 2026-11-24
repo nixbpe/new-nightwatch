@@ -485,6 +485,7 @@ function ProjectMembers({
       member.email.toLowerCase().includes(needle),
   );
   const orgRoleLabel = ROLE_LABELS[orgRole ?? ""] ?? orgRole;
+  // The API still answers 409 if the count is stale.
   const isLastAdmin = (member: ProjectMember) =>
     member.projectRole === "admin" && project.adminCount <= 1;
 
