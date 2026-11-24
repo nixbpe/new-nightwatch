@@ -35,11 +35,13 @@ export function InvitationPanel({
   organizationId,
   organizationName,
   actorRole,
+  collapsed = false,
   onCreated,
 }: {
   organizationId: string;
   organizationName: string;
   actorRole: "owner" | "admin";
+  collapsed?: boolean;
   onCreated: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -95,10 +97,10 @@ export function InvitationPanel({
   // A success keeps the admin in the form for the next address; the live region
   // announces it. A warning or error moves focus to its message.
   useEffect(() => {
-    if (notice === null) return;
+    if (notice === null || collapsed) return;
     if (notice.tone === "success") emailRef.current?.focus();
     else noticeRef.current?.focus();
-  }, [notice]);
+  }, [notice, collapsed]);
 
   async function submit() {
     if (inFlight.current) return;
@@ -161,7 +163,10 @@ export function InvitationPanel({
       aria-labelledby="invite-card-title"
       className="rounded-md border border-foreground/10 bg-surface text-foreground"
     >
-      <div className="border-b border-foreground/10 px-5 py-3.5">
+      <div
+        hidden={collapsed}
+        className="border-b border-foreground/10 px-5 py-3.5"
+      >
         <h2
           id="invite-card-title"
           data-testid="members-invitation-heading"
@@ -194,6 +199,7 @@ export function InvitationPanel({
         )}
       </div>
       <form
+        hidden={collapsed}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();

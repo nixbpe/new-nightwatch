@@ -642,8 +642,9 @@ function OrganizationMembersPageForOrganization({
         titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       {selfLeaveSection}
-      <div id="members-invite-panel" ref={invitePanelRef} hidden={!inviteOpen}>
+      <div id="members-invite-panel" ref={invitePanelRef}>
         <InvitationPanel
+          collapsed={!inviteOpen}
           key={organization.role}
           organizationId={organizationId}
           organizationName={organization.name}
