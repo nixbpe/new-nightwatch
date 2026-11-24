@@ -10,18 +10,28 @@ import { repoRoot } from "./ports.mjs";
 export function testPostgresCommand(ownerUrl) {
   const container = process.env.TEST_POSTGRES_CONTAINER;
   let prefix;
+  let childEnv = process.env;
   if (container) {
     if (!/^[0-9a-f]{64}$/.test(container))
       throw new Error("Invalid CI PostgreSQL container ID");
     prefix = ["exec", "-i", container];
   } else {
-    const { ports, hasLocalEnv } = resolveDevEnv();
+    const { env, ports, redisPort, hasLocalEnv } = resolveDevEnv();
     const local = readEnvFile(LOCAL_ENV_PATH);
     if (
       !hasLocalEnv ||
       buildLocalComposeUrls(local, ports).ownerUrl !== ownerUrl
     )
       throw new Error("Expected owning worktree database");
+    childEnv = {
+      ...env,
+      NW_SLOT: String(ports.slot),
+      NW_DB_PORT: String(ports.dbPort),
+      NW_REDIS_PORT: String(redisPort),
+      NW_MAIL_SMTP_PORT: String(ports.mailSmtpPort),
+      NW_MAIL_UI_PORT: String(ports.mailUiPort),
+      ...local,
+    };
     prefix = [
       "compose",
       "-f",
@@ -36,6 +46,7 @@ export function testPostgresCommand(ownerUrl) {
   return (args, input) =>
     new Promise((resolve, reject) => {
       const child = spawn("docker", [...prefix, ...args], {
+        env: childEnv,
         stdio: ["pipe", "pipe", "pipe"],
       });
       let output = "";
