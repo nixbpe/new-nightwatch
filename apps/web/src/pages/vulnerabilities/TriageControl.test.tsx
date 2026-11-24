@@ -379,6 +379,64 @@ describe("TriageControl", () => {
     expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("เหตุผล");
   });
 
+  it.each(["cancel", "Escape"] as const)(
+    "keeps one request pending after %s and retries the retained justification after rejection",
+    async (dismiss) => {
+      let reject!: (error: Error) => void;
+      putMock.mockReturnValueOnce(
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+      );
+      const invalidate = renderControl({ canManage: true, triage: null });
+      await choose("not-affected");
+      const input = screen.getByTestId(`triage-reason-${KEY}`);
+      await userEvent.type(input, "  module disabled  ");
+      await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
+      if (dismiss === "cancel") {
+        await userEvent.click(screen.getByTestId(`triage-cancel-${KEY}`));
+      } else {
+        await userEvent.click(input);
+        await userEvent.keyboard("{Escape}");
+      }
+      await userEvent.click(trigger());
+      const alternative = screen.queryByTestId(`triage-affected-${KEY}`);
+      if (alternative) await userEvent.click(alternative);
+      expect(putMock).toHaveBeenCalledTimes(1);
+      expect(putMock).toHaveBeenLastCalledWith(ORG, PROJECT, {
+        ...target,
+        status: "not_affected",
+        reason: "module disabled",
+      });
+      expect(trigger()).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByTestId(`triage-cancel-${KEY}`)).toBeDisabled();
+      expect(screen.getByTestId(`triage-save-${KEY}`)).toBeDisabled();
+      expect(input).toHaveValue("  module disabled  ");
+      // Enter is another submit path, not just a click on the disabled Save.
+      await userEvent.click(input);
+      await userEvent.keyboard("{Enter}");
+      await userEvent.click(document.body);
+      expect(putMock).toHaveBeenCalledTimes(1);
+      reject(new ApiError("X", "x", 500));
+      await screen.findByTestId(`triage-error-${KEY}`);
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(input).toHaveValue("  module disabled  ");
+      expect(screen.getByTestId(`triage-save-${KEY}`)).toBeEnabled();
+      putMock.mockResolvedValueOnce(triage());
+      await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
+      await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+      expect(putMock).toHaveBeenCalledTimes(2);
+      expect(putMock).toHaveBeenLastCalledWith(ORG, PROJECT, {
+        ...target,
+        status: "not_affected",
+        reason: "module disabled",
+      });
+      expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
+      await choose("not-affected");
+      expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("");
+    },
+  );
+
   it("announces the save as it runs and when it is done", async () => {
     let finish: (value: Triage) => void = () => undefined;
     putMock.mockReturnValue(

@@ -109,8 +109,9 @@ export function TriageControl({
   useEffect(() => {
     if (asking) reasonInput.current?.focus();
   }, [asking]);
-  // Closes the reason row without saving and hands focus back to the status button.
+  // Reset only before submission or after settlement; reset does not abort a request.
   const cancelAsking = () => {
+    if (save.isPending) return;
     setAsking(false);
     setReason("");
     save.reset();
@@ -219,6 +220,7 @@ export function TriageControl({
                   aria-checked={choice.checked}
                   data-testid={`triage-${choice.status}-${testId}`}
                   onClick={() => {
+                    if (save.isPending) return;
                     menu.close();
                     choice.choose();
                   }}
@@ -245,6 +247,7 @@ export function TriageControl({
           }}
           onSubmit={(event) => {
             event.preventDefault();
+            if (save.isPending) return;
             save.mutate({
               ...target,
               status: "not_affected",
@@ -281,6 +284,7 @@ export function TriageControl({
               type="button"
               variant="outline"
               data-testid={`triage-cancel-${testId}`}
+              disabled={save.isPending}
               onClick={cancelAsking}
             >
               ยกเลิก
