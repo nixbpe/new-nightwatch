@@ -120,7 +120,6 @@ describe("ResetPasswordPage", () => {
       screen.getByTestId("reset-password-password"),
       "first-pass-123",
     );
-    // Typing the first field alone raises nothing on the untouched confirm field.
     expect(screen.queryByTestId("reset-password-confirm-error")).toBeNull();
     await userEvent.type(
       screen.getByTestId("reset-password-confirm"),
@@ -139,7 +138,6 @@ describe("ResetPasswordPage", () => {
     expect(screen.queryByTestId("reset-password-error")).toBeNull();
     expect(screen.queryByTestId("reset-password-request-link")).toBeNull();
 
-    // Editing the first field to match clears the mismatch without touching confirm.
     await userEvent.clear(screen.getByTestId("reset-password-password"));
     await userEvent.type(
       screen.getByTestId("reset-password-password"),

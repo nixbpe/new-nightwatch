@@ -104,7 +104,6 @@ export function OnboardingPage() {
       if (invitationId !== null) {
         rememberInvitation(invitationId);
       }
-      // Only a verification consumed on this page earns the banner; a bare visit gets none.
       void navigate("/login", {
         replace: true,
         ...(tokenPhase === "done"

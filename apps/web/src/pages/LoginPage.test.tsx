@@ -456,7 +456,6 @@ describe("LoginPage", () => {
     renderPage("/settings/security");
 
     await submitLogin("member@example.com", "correct-password");
-    // Back-restored pages must not be left with a disabled button.
     await waitFor(() => {
       expect(screen.getByTestId("login-submit")).toBeEnabled();
     });

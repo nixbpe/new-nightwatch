@@ -98,7 +98,6 @@ export function VerifyEmailPage() {
     try {
       await refetch();
     } catch {
-      // The same notice applies: the user cannot continue yet.
     } finally {
       setChecking(false);
       setNotVerified(true);

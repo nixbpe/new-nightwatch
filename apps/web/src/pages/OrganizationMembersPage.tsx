@@ -521,7 +521,6 @@ function OrganizationMembersPageForOrganization({
                 header: "บทบาท",
                 width: "280px",
                 cell: (m) => (
-                  // The marker keeps the saved role readable while the select shows a draft.
                   <div
                     data-testid="member-current-role"
                     data-member-role={m.role}

@@ -912,7 +912,6 @@ describe("Checks history saved-result wording", () => {
       { reason: null, tls: null },
     ]);
     expect(new Set(records.map((x) => x.text)).size).toBe(3);
-    // An empty cell reads "ไม่มีข้อมูล" to a screen reader (the dash itself is aria-hidden).
     expect(records.filter((x) => x.reason === null).map((x) => x.text)).toEqual(
       [`—${NO_DATA}`],
     );

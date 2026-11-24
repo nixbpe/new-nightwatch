@@ -63,7 +63,6 @@ function invitationProblemMessage(error: unknown): string {
   return "โหลดข้อมูลคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
 }
 
-// A 404 or 410 is final; a dropped connection, a server fault or an unknown failure may pass on a second try.
 function previewFailure(error: unknown): { title: string; retryable: boolean } {
   const final =
     error instanceof ApiError && (error.status === 404 || error.status === 410);
@@ -264,7 +263,6 @@ function UnverifiedInvitation({
   );
 }
 
-// The API answers 404 for an invitation past `expiresAt`, so say until when the link works.
 function InvitationExpiry({ expiresAt }: { expiresAt: string }) {
   const { preferences } = usePreferences();
   return (

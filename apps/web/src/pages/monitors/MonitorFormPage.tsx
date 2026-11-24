@@ -216,7 +216,6 @@ function MonitorFormForOrganization({
       </Page>
     );
   }
-  // Loading states are as wide as the form, so the header does not jump when it opens.
   if (mePending || me === undefined || access.pending) {
     return (
       <Page>

@@ -81,7 +81,6 @@ function MappingQueue({ organizationId, projectId }: Scope) {
   const queue = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [proposal, setProposal] = useState<ProposalFilter>("all");
-  // The row that takes focus once the buttons of the one just handled are back.
   const [focusRow, setFocusRow] = useState<{ id: string | null } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<{
@@ -95,8 +94,7 @@ function MappingQueue({ organizationId, projectId }: Scope) {
     retry: false,
   });
   const changed = (saved: InventoryMapping, text: string) => {
-    // The button that was pressed leaves with its row: focus follows to the row that
-    // took its place, or to the pending heading when none is left.
+    // Focus follows to the row that took its place, or to the pending heading.
     const before = queryClient.getQueryData<typeof query.data>(
       inventoryKeys.mappings(organizationId, projectId),
     )?.items;

@@ -17,7 +17,6 @@ import { RESET_LINK_LIFETIME } from "../lib/auth/flow";
 import { useResendCooldown } from "../lib/auth/useResendCooldown";
 
 export function ForgotPasswordPage() {
-  // The address the user typed; the confirmation echoes it back and resend reuses it.
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resending, setResending] = useState(false);

@@ -1643,7 +1643,6 @@ describe("OrganizationMembersPage pending invitations", () => {
       directory.compareDocumentPosition(waiting) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-    // The form is folded away until asked for, and the toggle says so.
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByTestId("members-invitation-email")).not.toBeVisible();
 
