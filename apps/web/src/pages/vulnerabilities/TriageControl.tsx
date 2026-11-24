@@ -239,6 +239,7 @@ export function TriageControl({
       {canManage && asking ? (
         <form
           className="flex w-full max-w-64 flex-col items-start gap-2"
+          aria-busy={save.isPending}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
@@ -278,7 +279,7 @@ export function TriageControl({
               data-testid={`triage-save-${testId}`}
               disabled={save.isPending || reason.trim() === ""}
             >
-              บันทึก
+              {save.isPending ? "กำลังบันทึก" : "บันทึก"}
             </Button>
             <Button
               type="button"

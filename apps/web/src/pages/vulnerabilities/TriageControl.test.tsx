@@ -411,6 +411,7 @@ describe("TriageControl", () => {
       expect(trigger()).toHaveAttribute("aria-disabled", "true");
       expect(screen.getByTestId(`triage-cancel-${KEY}`)).toBeDisabled();
       expect(screen.getByTestId(`triage-save-${KEY}`)).toBeDisabled();
+      expect(input.closest("form")).toHaveAttribute("aria-busy", "true");
       expect(input).toHaveValue("  module disabled  ");
       // Enter is another submit path, not just a click on the disabled Save.
       await userEvent.click(input);
@@ -420,6 +421,7 @@ describe("TriageControl", () => {
       reject(new ApiError("X", "x", 500));
       await screen.findByTestId(`triage-error-${KEY}`);
       expect(invalidate).not.toHaveBeenCalled();
+      expect(input.closest("form")).toHaveAttribute("aria-busy", "false");
       expect(input).toHaveValue("  module disabled  ");
       expect(screen.getByTestId(`triage-save-${KEY}`)).toBeEnabled();
       putMock.mockResolvedValueOnce(triage());
