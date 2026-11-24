@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +100,17 @@ describe("TwoFactorPage challenge", () => {
     expect(screen.getByTestId("two-factor-submit")).toBeInTheDocument();
   });
 
+  it("offers a way back to sign-in when the challenge cannot be completed", async () => {
+    // The challenge cookie expires on its own; without this link the error that says
+    // "sign in again" leaves the user on a page with no way to do it.
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("two-factor-login"));
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/login");
+  });
+
   it("does not authorize a successful verification response before the full session resolves", async () => {
     rememberInvitation("inv-await-session");
     rememberReturnTo("/settings/security");
@@ -122,6 +133,38 @@ describe("TwoFactorPage challenge", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/accept-invitation/inv-await-session",
     );
+  });
+
+  it("keeps the submit pending after a successful verification until the session arrives", async () => {
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: { token: "session-token", user: SIGNED_IN },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByTestId("two-factor-code"), "123456");
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    await waitFor(() => {
+      expect(twoFactorMock.verifyTotp).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId("two-factor-submit")).toBeDisabled();
+  });
+
+  it("lets the user submit again after a refused code", async () => {
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: null,
+      error: { code: "INVALID_CODE", status: 401 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByTestId("two-factor-code"), "123456");
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+    expect(screen.getByTestId("two-factor-submit")).toBeEnabled();
   });
 
   it("keeps a deep return when full session arrives before TOTP verification settles", async () => {
@@ -150,6 +193,67 @@ describe("TwoFactorPage challenge", () => {
       "/settings/security?tab=sessions#current",
     );
     expect(readReturnTo()).toBe("/workspace");
+  });
+
+  it("a pasted code with spaces is sent as six digits", async () => {
+    twoFactorMock.verifyTotp.mockResolvedValue({ data: null, error: null });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("two-factor-code"));
+    await user.paste("123 456");
+    expect(screen.getByTestId("two-factor-code")).toHaveValue("123456");
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({
+      code: "123456",
+      trustDevice: false,
+    });
+  });
+
+  it("puts the cursor in the code field in both modes and keeps recovery codes as typed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(screen.getByTestId("two-factor-code")).toHaveFocus();
+
+    await user.click(screen.getByTestId("two-factor-mode-recovery"));
+    const recovery = screen.getByTestId("two-factor-code");
+    expect(recovery).toHaveFocus();
+    await user.type(recovery, "ab-12 cd");
+    expect(recovery).toHaveValue("ab-12 cd");
+  });
+
+  it("starts on the app code and switches to a recovery code and back, clearing the field and error", async () => {
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: null,
+      error: { code: "INVALID_CODE", message: "Invalid code" },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByTestId("two-factor-code")).toHaveAttribute(
+      "autocomplete",
+      "one-time-code",
+    );
+    await user.type(screen.getByTestId("two-factor-code"), "000000");
+    await user.click(screen.getByTestId("two-factor-submit"));
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+
+    await user.click(screen.getByTestId("two-factor-mode-recovery"));
+    expect(screen.queryByTestId("two-factor-error")).toBeNull();
+    expect(screen.getByTestId("two-factor-code")).toHaveValue("");
+    expect(screen.getByTestId("two-factor-code")).toHaveAttribute(
+      "autocomplete",
+      "off",
+    );
+
+    await user.click(screen.getByTestId("two-factor-mode-totp"));
+    expect(screen.getByTestId("two-factor-code")).toHaveAttribute(
+      "autocomplete",
+      "one-time-code",
+    );
+    expect(screen.getByTestId("two-factor-code")).toHaveFocus();
   });
 
   it("an invalid TOTP stays on the challenge with a visible error", async () => {
@@ -271,7 +375,8 @@ describe("TwoFactorPage challenge", () => {
 
     expect(await screen.findByTestId("two-factor-error")).toBeVisible();
     expect(screen.getByTestId("two-factor-code")).toHaveValue("used-code");
-    expect(screen.getByTestId("two-factor-mode-recovery")).toBeChecked();
+    expect(screen.getByTestId("two-factor-mode-totp")).toBeInTheDocument();
+    expect(screen.queryByTestId("two-factor-mode-recovery")).toBeNull();
     expect(screen.getByTestId("two-factor-submit")).toBeEnabled();
     expect(twoFactorMock.verifyBackupCode).toHaveBeenCalledWith({
       code: "used-code",

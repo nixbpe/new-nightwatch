@@ -57,7 +57,16 @@ describe("WorkspaceEntryFallback", () => {
       { me: undefined, meError: new Error("offline") },
       "workspace-context-error",
     ],
-    ["no active Organization", { activeOrg: null }, "workspace-access-needed"],
+    [
+      "no membership",
+      { activeOrg: null, me: context("owner", []) },
+      "workspace-access-needed",
+    ],
+    [
+      "memberships but none selected",
+      { activeOrg: null },
+      "workspace-org-choice",
+    ],
     ["last Project failed", {}, "workspace-entry-error"],
   ] as const)(
     "shows the four loader-null states without monitor data and never navigates by itself (AC-07): %s",
@@ -71,6 +80,26 @@ describe("WorkspaceEntryFallback", () => {
       expect(screen.queryByTestId("workspace-project")).toBeNull();
     },
   );
+  it("offers a way to the Projects list when the last Project cannot be opened", async () => {
+    tenant();
+    const organizationId = vi.mocked(useTenant)().activeOrg?.id;
+    const { router } = renderEntry();
+    await screen.findByTestId("workspace-entry-error");
+    expect(screen.queryByText("// overview")).toBeNull();
+    const link = screen.getByTestId("workspace-entry-projects");
+    expect(link.getAttribute("href")).toBe(
+      `/organizations/${organizationId ?? ""}/projects`,
+    );
+    expect(router.state.location.pathname).toBe("/workspace");
+  });
+
+  it("does not show the raw context error message", async () => {
+    tenant({ me: undefined, meError: new Error("upstream 503 raw detail") });
+    renderEntry();
+    await screen.findByTestId("workspace-context-alert");
+    expect(screen.queryByText(/upstream 503 raw detail/)).toBeNull();
+  });
+
   it("retry re-runs the workspace loader and lands on the overview", async () => {
     tenant();
     const loader = vi
@@ -82,6 +111,38 @@ describe("WorkspaceEntryFallback", () => {
     await screen.findByTestId("destination");
     expect(loader).toHaveBeenCalledTimes(2);
   });
+  it("with no membership, retry refetches the context then re-runs the entry loader", async () => {
+    const retryMe = vi.fn().mockResolvedValue(undefined);
+    tenant({ activeOrg: null, me: context("owner", []), retryMe });
+    const { loader } = renderEntry();
+    await userEvent.click(await screen.findByTestId("workspace-access-retry"));
+
+    expect(retryMe).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(loader).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("with memberships but none selected, choosing one switches to it and re-runs the entry loader", async () => {
+    const switchOrg = vi.fn().mockResolvedValue(true);
+    tenant({ activeOrg: null, switchOrg });
+    const { loader } = renderEntry();
+
+    const options = await screen.findAllByTestId("workspace-org-option");
+    expect(options).toHaveLength(2);
+    expect(screen.queryByTestId("workspace-access-retry")).toBeNull();
+    const second = options[1];
+    if (second === undefined) throw new Error("missing Organization option");
+    await userEvent.click(second);
+
+    expect(switchOrg).toHaveBeenCalledWith(
+      second.getAttribute("data-organization-id"),
+    );
+    await waitFor(() => {
+      expect(loader).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("retries context before revalidating the entry loader", async () => {
     const retry = Promise.withResolvers<undefined>();
     const retryMe = vi.fn(() => retry.promise);

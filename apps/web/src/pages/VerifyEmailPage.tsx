@@ -1,31 +1,39 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 
 import {
   Alert,
   Field,
   FieldValidationError,
+  FullPageLoading,
   Input,
   SubmitButton,
 } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
 import { readInvitation } from "../lib/auth/continuation";
-
-const RESEND_COOLDOWN_MS = 60_000;
+import {
+  readAuthFlowState,
+  VERIFICATION_LINK_LIFETIME,
+} from "../lib/auth/flow";
+import { useResendCooldown } from "../lib/auth/useResendCooldown";
 
 // Signup issues no session before verification, so arrivals may be anonymous and get an email form.
 // The sent confirmation stays generic to avoid account enumeration.
 export function VerifyEmailPage() {
   const navigate = useNavigate();
+  const flow = readAuthFlowState(useLocation().state);
   const { data, isPending, refetch } = authClient.useSession();
   const [status, setStatus] = useState<"idle" | "sent" | "failed">("idle");
-  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
+  const cooldown = useResendCooldown();
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [notVerified, setNotVerified] = useState(false);
 
   const signedIn = data !== null;
 
@@ -46,7 +54,7 @@ export function VerifyEmailPage() {
 
   const form = useForm({
     defaultValues: {
-      email: data?.user.email ?? "",
+      email: flow.email ?? data?.user.email ?? "",
     },
     onSubmit: async ({ value }) => {
       setError(null);
@@ -68,7 +76,7 @@ export function VerifyEmailPage() {
           return;
         }
         setStatus("sent");
-        setCooldownUntil(Date.now() + RESEND_COOLDOWN_MS);
+        cooldown.start();
       } catch {
         setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
         setStatus("failed");
@@ -83,40 +91,47 @@ export function VerifyEmailPage() {
     }
   }, [form, invitationPreview.data]);
 
-  useEffect(() => {
-    if (cooldownUntil === 0) {
-      return;
+  // A verified session re-renders into the redirect below, so the notice only outlives the check
+  // when the server still reports the email as unverified (or the check itself failed).
+  async function checkVerification() {
+    setChecking(true);
+    try {
+      await refetch();
+    } catch {
+      // The same notice applies: the user cannot continue yet.
+    } finally {
+      setChecking(false);
+      setNotVerified(true);
     }
-
-    const remainingMs = cooldownUntil - Date.now();
-    if (remainingMs <= 0) {
-      setCooldownUntil(0);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setCooldownUntil((currentDeadline) =>
-        currentDeadline === cooldownUntil ? 0 : currentDeadline,
-      );
-    }, remainingMs);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [cooldownUntil]);
+  }
 
   if (isPending) {
-    return null;
+    return (
+      <FullPageLoading
+        data-testid="verify-email-loading"
+        label="กำลังตรวจสอบเซสชัน…"
+      />
+    );
   }
   if (data !== null && data.user.emailVerified) {
     return <Navigate to="/onboarding" replace />;
   }
 
-  const coolingDown = Date.now() < cooldownUntil;
+  const coolingDown = cooldown.secondsLeft > 0;
+  const resendLabel = coolingDown
+    ? `ส่งใหม่ได้ในอีก ${String(cooldown.secondsLeft)} วินาที`
+    : "ส่งอีเมลยืนยันอีกครั้ง";
+  // Only a hand-off from signup may claim an email was sent; a login refusal carries the address alone.
+  const signupEmail =
+    data === null && flow.sent === true ? flow.email : undefined;
+  const justSignedUp = signupEmail !== undefined;
+  const lifetime = `ลิงก์ใช้ได้ ${VERIFICATION_LINK_LIFETIME} ตรวจโฟลเดอร์สแปมด้วย`;
   const subtitle =
-    data === null
-      ? "กรอกอีเมลที่ใช้สมัครบัญชี เราจะส่งลิงก์ยืนยันใหม่ให้คุณ"
-      : `เราส่งลิงก์ยืนยันไปที่ ${data.user.email} กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ`;
+    data !== null
+      ? `เราส่งลิงก์ยืนยันไปที่ ${data.user.email} กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ ${lifetime}`
+      : justSignedUp
+        ? `เราส่งลิงก์ยืนยันไปที่ ${signupEmail} แล้ว กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ ${lifetime}`
+        : "กรอกอีเมลที่ใช้สมัครบัญชี เราจะส่งลิงก์ยืนยันใหม่ให้คุณ";
 
   return (
     <AuthPageFrame
@@ -143,10 +158,10 @@ export function VerifyEmailPage() {
               </Alert>
             )}
             {status === "sent" ? (
-              <Alert data-testid="verify-email-sent" tone="success">
+              <Notice tone="success" data-testid="verify-email-sent">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
-              </Alert>
+              </Notice>
             ) : null}
             <form.Field
               name="email"
@@ -192,10 +207,9 @@ export function VerifyEmailPage() {
                   pending={isSubmitting}
                   pendingLabel="กำลังส่ง…"
                   disabled={isSubmitting || coolingDown}
+                  variant={justSignedUp ? "secondary" : "default"}
                 >
-                  {coolingDown
-                    ? "ส่งแล้ว กรุณารอสักครู่"
-                    : "ส่งอีเมลยืนยันอีกครั้ง"}
+                  {resendLabel}
                 </SubmitButton>
               )}
             />
@@ -209,10 +223,10 @@ export function VerifyEmailPage() {
               </Alert>
             )}
             {status === "sent" ? (
-              <Alert data-testid="verify-email-sent" tone="success">
+              <Notice tone="success" data-testid="verify-email-sent">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
-              </Alert>
+              </Notice>
             ) : null}
             <form.Subscribe
               selector={(state) => state.isSubmitting}
@@ -226,22 +240,55 @@ export function VerifyEmailPage() {
                     void form.handleSubmit();
                   }}
                 >
-                  {isSubmitting
-                    ? "กำลังส่ง…"
-                    : coolingDown
-                      ? "ส่งแล้ว กรุณารอสักครู่"
-                      : "ส่งอีเมลยืนยันอีกครั้ง"}
+                  {isSubmitting ? "กำลังส่ง…" : resendLabel}
                 </Button>
               )}
             />
           </div>
         ) : null}
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex flex-col gap-3">
+          {notVerified ? (
+            <Alert
+              data-testid="verify-email-not-verified"
+              tone="info"
+              role="status"
+            >
+              ยังไม่พบการยืนยัน กรุณาเปิดลิงก์ในอีเมลก่อน
+            </Alert>
+          ) : null}
           {signedIn ? (
-            <button
+            <Button
+              data-testid="verify-email-continue"
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={checking}
+              onClick={() => {
+                void checkVerification();
+              }}
+            >
+              {checking ? "กำลังตรวจสอบ…" : "ฉันยืนยันแล้ว ดำเนินการต่อ"}
+            </Button>
+          ) : (
+            <Button
+              data-testid="verify-email-login"
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                void navigate("/login", { replace: true });
+              }}
+            >
+              ไปเข้าสู่ระบบ
+            </Button>
+          )}
+          {signedIn ? (
+            <Button
               data-testid="verify-email-sign-out"
               type="button"
-              className="text-foreground-secondary underline"
+              variant="link"
+              size="quiet"
+              className="self-center text-foreground-secondary underline"
               onClick={() => {
                 void authClient.signOut({
                   fetchOptions: {
@@ -253,29 +300,8 @@ export function VerifyEmailPage() {
               }}
             >
               ออกจากระบบ
-            </button>
-          ) : (
-            <button
-              data-testid="verify-email-login"
-              type="button"
-              className="text-foreground-secondary underline"
-              onClick={() => {
-                void navigate("/login", { replace: true });
-              }}
-            >
-              กลับไปเข้าสู่ระบบ
-            </button>
-          )}
-          <button
-            data-testid="verify-email-continue"
-            type="button"
-            className="text-primary underline"
-            onClick={() => {
-              void navigate("/onboarding", { replace: true });
-            }}
-          >
-            ฉันยืนยันแล้ว ดำเนินการต่อ
-          </button>
+            </Button>
+          ) : null}
         </div>
       </div>
     </AuthPageFrame>

@@ -44,10 +44,10 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function renderPage() {
+function renderPage(state?: unknown) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={["/verify-email"]}>
+      <MemoryRouter initialEntries={[{ pathname: "/verify-email", state }]}>
         <Routes>
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="*" element={<LocationProbe />} />
@@ -77,6 +77,15 @@ describe("VerifyEmailPage", () => {
     vi.useRealTimers();
   });
 
+  it("shows a loading status, not a blank page, while the session resolves", () => {
+    sessionState.isPending = true;
+    renderPage();
+
+    expect(screen.getByTestId("verify-email-loading")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByTestId("verify-email-page")).toBeNull();
+  });
+
   it("anonymous signup resends to the invited email", async () => {
     // No session exists before verification, so the hub serves anonymous arrivals from the remembered invitation.
     rememberInvitation("inv-123");
@@ -102,6 +111,58 @@ describe("VerifyEmailPage", () => {
       callbackURL: "/onboarding?invitationId=inv-123",
     });
     expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
+  });
+
+  it("a signup hand-off prefills the address and says where the link went", async () => {
+    renderPage({ email: "new@example.com", sent: true });
+
+    expect(await screen.findByTestId("verify-email-email")).toHaveValue(
+      "new@example.com",
+    );
+    expect(screen.getByTestId("verify-email-recipient")).toHaveTextContent(
+      "new@example.com",
+    );
+    await userEvent.click(screen.getByTestId("verify-email-resend"));
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({
+      email: "new@example.com",
+      callbackURL: "/onboarding",
+    });
+  });
+
+  it("a sign-in refusal prefills the address but does not claim an email was sent", async () => {
+    renderPage({ email: "typed@example.com" });
+
+    expect(await screen.findByTestId("verify-email-email")).toHaveValue(
+      "typed@example.com",
+    );
+    expect(screen.getByTestId("verify-email-recipient")).not.toHaveTextContent(
+      "typed@example.com",
+    );
+  });
+
+  it("ignores hand-off state of the wrong shape", async () => {
+    renderPage({ email: 42, sent: "yes" });
+
+    expect(await screen.findByTestId("verify-email-email")).toHaveValue("");
+  });
+
+  it("counts the seconds left on the resend button", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-11T00:00:00.000Z"));
+    renderPage();
+    fireEvent.change(screen.getByTestId("verify-email-email"), {
+      target: { value: "member@example.com" },
+    });
+    fireEvent.click(screen.getByTestId("verify-email-resend"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("verify-email-resend")).toHaveTextContent("60");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId("verify-email-resend")).toHaveTextContent("50");
   });
 
   it("signed-in unverified user resends to session email", async () => {
@@ -196,6 +257,34 @@ describe("VerifyEmailPage", () => {
       vi.advanceTimersByTime(60_000);
     },
   );
+
+  it("continue re-checks the session and stays put with a notice while unverified", async () => {
+    sessionState.data = {
+      user: { id: "u-1", email: "member@example.com", emailVerified: false },
+    };
+    sessionState.refetch.mockResolvedValue(undefined);
+    renderPage();
+    await screen.findByTestId("verify-email-recipient");
+    expect(screen.queryByTestId("verify-email-not-verified")).toBeNull();
+    const before = sessionState.refetch.mock.calls.length;
+
+    await userEvent.click(screen.getByTestId("verify-email-continue"));
+
+    expect(
+      await screen.findByTestId("verify-email-not-verified"),
+    ).toHaveAttribute("role", "status");
+    expect(sessionState.refetch.mock.calls.length).toBe(before + 1);
+    expect(screen.queryByTestId("location")).toBeNull();
+    expect(screen.getByTestId("verify-email-continue")).toBeEnabled();
+  });
+
+  it("an anonymous visitor gets one way to sign in and no unverifiable continue", async () => {
+    renderPage();
+
+    expect(screen.queryByTestId("verify-email-continue")).toBeNull();
+    await userEvent.click(await screen.findByTestId("verify-email-login"));
+    expect(await screen.findByTestId("location")).toHaveTextContent("/login");
+  });
 
   it("shows an error and stays retryable when resend fails", async () => {
     sendVerificationEmailMock.mockResolvedValue({

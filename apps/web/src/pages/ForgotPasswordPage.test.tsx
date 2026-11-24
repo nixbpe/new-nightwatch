@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -69,6 +69,55 @@ describe("ForgotPasswordPage", () => {
     });
     expect(screen.queryByTestId("forgot-password-email")).toBeNull();
     expect(screen.getByTestId("forgot-password-login")).toBeInTheDocument();
+  });
+
+  it("the confirmation names the typed address and resend asks the server again after the cooldown", async () => {
+    requestPasswordResetMock.mockResolvedValue({ data: {}, error: null });
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(
+      screen.getByTestId("forgot-password-email"),
+      "member@example.com",
+    );
+    await user.click(screen.getByTestId("forgot-password-submit"));
+
+    expect(
+      await screen.findByTestId("forgot-password-success"),
+    ).toHaveTextContent("member@example.com");
+    // The request that produced the confirmation starts the cooldown.
+    const resend = screen.getByTestId("forgot-password-resend");
+    expect(resend).toBeDisabled();
+    expect(resend).toHaveTextContent("60");
+    expect(requestPasswordResetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resend sends the same request again once the cooldown has passed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      requestPasswordResetMock.mockResolvedValue({ data: {}, error: null });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderPage();
+      await user.type(
+        screen.getByTestId("forgot-password-email"),
+        "member@example.com",
+      );
+      await user.click(screen.getByTestId("forgot-password-submit"));
+      await screen.findByTestId("forgot-password-success");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      await user.click(screen.getByTestId("forgot-password-resend"));
+
+      expect(requestPasswordResetMock).toHaveBeenCalledTimes(2);
+      expect(requestPasswordResetMock).toHaveBeenLastCalledWith({
+        email: "member@example.com",
+        redirectTo: "/reset-password",
+      });
+      expect(screen.getByTestId("forgot-password-resend")).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a failed request keeps the form with a retryable error", async () => {

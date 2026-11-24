@@ -10,31 +10,47 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
+import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { authClient, authErrorMessage } from "../lib/auth-client";
+import { RESET_LINK_LIFETIME } from "../lib/auth/flow";
+import { useResendCooldown } from "../lib/auth/useResendCooldown";
 
 export function ForgotPasswordPage() {
-  const [sent, setSent] = useState(false);
+  // The address the user typed; the confirmation echoes it back and resend reuses it.
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const cooldown = useResendCooldown();
+
+  async function requestLink(email: string): Promise<boolean> {
+    setError(null);
+    try {
+      const { error: requestError } = await authClient.requestPasswordReset({
+        email,
+        redirectTo: "/reset-password",
+      });
+      // Always show the same confirmation to avoid account enumeration.
+      if (requestError != null) {
+        setError(authErrorMessage(requestError, "ส่งอีเมลไม่สำเร็จ"));
+        return false;
+      }
+      cooldown.start();
+      return true;
+    } catch {
+      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      return false;
+    }
+  }
 
   const form = useForm({
     defaultValues: {
       email: "",
     },
     onSubmit: async ({ value }) => {
-      setError(null);
-      try {
-        const { error: requestError } = await authClient.requestPasswordReset({
-          email: value.email.trim(),
-          redirectTo: "/reset-password",
-        });
-        // Always show the same confirmation to avoid account enumeration.
-        if (requestError != null) {
-          setError(authErrorMessage(requestError, "ส่งอีเมลไม่สำเร็จ"));
-          return;
-        }
-        setSent(true);
-      } catch {
-        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      const email = value.email.trim();
+      if (await requestLink(email)) {
+        setSentTo(email);
       }
     },
   });
@@ -45,11 +61,39 @@ export function ForgotPasswordPage() {
       title="ลืมรหัสผ่าน"
       subtitle="กรอกอีเมลที่ใช้เข้าสู่ระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้คุณ"
     >
-      {sent ? (
+      {sentTo !== null ? (
         <div className="flex flex-col gap-4">
-          <Alert data-testid="forgot-password-success" tone="success">
-            หากอีเมลนี้มีบัญชีในระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้โดยเร็ว
-          </Alert>
+          {error === null ? null : (
+            <Alert data-testid="forgot-password-error" tone="error">
+              {error}
+            </Alert>
+          )}
+          <Notice
+            tone="success"
+            data-testid="forgot-password-success"
+            className="items-start break-words"
+          >
+            {`หากอีเมล ${sentTo} มีบัญชีในระบบ เราจะส่งลิงก์ที่ใช้ได้ ${RESET_LINK_LIFETIME} ตรวจโฟลเดอร์สแปมด้วย`}
+          </Notice>
+          <Button
+            data-testid="forgot-password-resend"
+            type="button"
+            variant="secondary"
+            className="w-full"
+            disabled={resending || cooldown.secondsLeft > 0}
+            onClick={() => {
+              setResending(true);
+              void requestLink(sentTo).finally(() => {
+                setResending(false);
+              });
+            }}
+          >
+            {resending
+              ? "กำลังส่ง…"
+              : cooldown.secondsLeft > 0
+                ? `ส่งใหม่ได้ในอีก ${String(cooldown.secondsLeft)} วินาที`
+                : "ส่งอีกครั้ง"}
+          </Button>
           <Link
             to="/login"
             data-testid="forgot-password-login"

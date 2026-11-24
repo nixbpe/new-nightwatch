@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
+import { Link } from "react-router";
 
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
 import {
@@ -11,23 +12,22 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
+import { OtpCodeInput } from "../components/ui/otp-code-input";
+import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { authClient, authErrorMessage } from "../lib/auth-client";
+import { TRUST_DEVICE_LIFETIME } from "../lib/auth/flow";
 
 type ChallengeMode = "totp" | "recovery";
 
-const MODE_OPTIONS: ReadonlyArray<{
-  value: ChallengeMode;
-  label: string;
-}> = [
-  { value: "totp", label: "รหัสจากแอปยืนยันตัวตน (TOTP)" },
-  { value: "recovery", label: "รหัสกู้คืนบัญชี (ใช้ได้ครั้งเดียว)" },
-];
-
-// No session exists until verification succeeds, so never render the workspace here. The user
-// picks the mode explicitly; the code is never routed by guessing its shape.
+// No session exists until verification succeeds, so never render the workspace here. The app
+// code is the default; the user switches to a recovery code explicitly, so the code is never
+// routed by guessing its shape.
 export function TwoFactorPage() {
   const { data, isPending } = authClient.useSession();
   const [error, setError] = useState<string | null>(null);
+  // Set once verification succeeded: the page changes only after the session refetch.
+  const [redirecting, setRedirecting] = useState(false);
 
   const form = useForm({
     defaultValues: {
@@ -55,7 +55,9 @@ export function TwoFactorPage() {
                 : "รหัสยืนยันไม่ถูกต้อง",
             ),
           );
+          return;
         }
+        setRedirecting(true);
       } catch {
         setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
       }
@@ -73,8 +75,8 @@ export function TwoFactorPage() {
     <AuthPageFrame
       data-testid="two-factor-page"
       eyebrow="// two-factor"
-      title="ยืนยันตัวตนสองขั้นตอน"
-      subtitle="เลือกวิธียืนยันและกรอกรหัสเพื่อเข้าสู่พื้นที่ทำงาน"
+      title="ยืนยันสองขั้นตอน (MFA)"
+      subtitle="กรอกรหัสยืนยันเพื่อเข้าสู่พื้นที่ทำงาน"
     >
       <form
         onSubmit={(event) => {
@@ -90,34 +92,6 @@ export function TwoFactorPage() {
             {error}
           </Alert>
         )}
-        <form.Field name="mode">
-          {(modeField) => (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium">วิธียืนยัน</legend>
-              {MODE_OPTIONS.map((option) => (
-                <label
-                  key={option.value}
-                  className="flex items-center gap-2 text-sm"
-                >
-                  <input
-                    data-testid={`two-factor-mode-${option.value}`}
-                    type="radio"
-                    name="challenge-mode"
-                    value={option.value}
-                    checked={modeField.state.value === option.value}
-                    onChange={() => {
-                      modeField.handleChange(option.value);
-                      form.resetField("code");
-                      setError(null);
-                    }}
-                    className="size-4 accent-[var(--primary)]"
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </fieldset>
-          )}
-        </form.Field>
         <form.Subscribe selector={(state) => state.values.mode}>
           {(mode) => (
             <form.Field
@@ -134,30 +108,45 @@ export function TwoFactorPage() {
                 <Field
                   label={
                     mode === "recovery"
-                      ? "รหัสกู้คืนบัญชี"
-                      : "รหัสยืนยัน 6 หลัก"
+                      ? "รหัสกู้คืนบัญชี (ใช้ได้ครั้งเดียว)"
+                      : "รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน"
                   }
                 >
-                  <Input
-                    data-testid="two-factor-code"
-                    type="text"
-                    name="challenge-code"
-                    inputMode={mode === "recovery" ? "text" : "numeric"}
-                    autoComplete={mode === "recovery" ? "off" : "one-time-code"}
-                    value={field.state.value}
-                    onChange={(event) => {
-                      field.handleChange(event.target.value);
-                    }}
-                    onBlur={field.handleBlur}
-                    aria-invalid={field.state.meta.errors.length > 0}
-                    aria-describedby={
-                      field.state.meta.errors.length > 0
-                        ? mode === "recovery"
+                  {mode === "recovery" ? (
+                    // Recovery codes keep their exact text; only the TOTP field strips non-digits.
+                    <Input
+                      data-testid="two-factor-code"
+                      type="text"
+                      name="challenge-code"
+                      autoFocus
+                      autoComplete="off"
+                      value={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value);
+                      }}
+                      onBlur={field.handleBlur}
+                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-describedby={
+                        field.state.meta.errors.length > 0
                           ? "two-factor-recovery-error"
-                          : "two-factor-totp-error"
-                        : undefined
-                    }
-                  />
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <OtpCodeInput
+                      data-testid="two-factor-code"
+                      name="challenge-code"
+                      value={field.state.value}
+                      onValueChange={field.handleChange}
+                      onBlur={field.handleBlur}
+                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-describedby={
+                        field.state.meta.errors.length > 0
+                          ? "two-factor-totp-error"
+                          : undefined
+                      }
+                    />
+                  )}
                   <FieldValidationError
                     data-testid="two-factor-code-error"
                     id={
@@ -172,21 +161,45 @@ export function TwoFactorPage() {
             </form.Field>
           )}
         </form.Subscribe>
+        <form.Field name="mode">
+          {(modeField) => (
+            <Button
+              data-testid={
+                modeField.state.value === "totp"
+                  ? "two-factor-mode-recovery"
+                  : "two-factor-mode-totp"
+              }
+              type="button"
+              variant="link"
+              size="quiet"
+              className="self-start px-0"
+              onClick={() => {
+                modeField.handleChange(
+                  modeField.state.value === "totp" ? "recovery" : "totp",
+                );
+                form.resetField("code");
+                setError(null);
+              }}
+            >
+              {modeField.state.value === "totp"
+                ? "ใช้รหัสกู้คืนแทน"
+                : "ใช้รหัสจากแอปยืนยันตัวตนแทน"}
+            </Button>
+          )}
+        </form.Field>
         <form.Field name="trustDevice">
           {(field) => (
             <label className="flex items-center gap-2 text-sm">
-              <input
+              <Checkbox
                 data-testid="two-factor-trust-device"
-                type="checkbox"
                 name="trust-device"
                 checked={field.state.value}
                 onChange={(event) => {
                   field.handleChange(event.target.checked);
                 }}
                 onBlur={field.handleBlur}
-                className="size-4 rounded border-control-border accent-[var(--primary)]"
               />
-              เชื่อถืออุปกรณ์นี้ (จะไม่ต้องยืนยันอีกบนอุปกรณ์นี้)
+              {`เชื่อถืออุปกรณ์นี้ ${TRUST_DEVICE_LIFETIME} (จะไม่ต้องยืนยันอีกบนอุปกรณ์นี้)`}
             </label>
           )}
         </form.Field>
@@ -195,13 +208,20 @@ export function TwoFactorPage() {
           children={(isSubmitting) => (
             <SubmitButton
               data-testid="two-factor-submit"
-              pending={isSubmitting}
+              pending={isSubmitting || redirecting}
               pendingLabel="กำลังยืนยัน…"
             >
               ยืนยัน
             </SubmitButton>
           )}
         />
+        <Link
+          to="/login"
+          data-testid="two-factor-login"
+          className="text-center text-sm text-primary underline"
+        >
+          กลับไปเข้าสู่ระบบ
+        </Link>
       </form>
     </AuthPageFrame>
   );
