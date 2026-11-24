@@ -5,7 +5,6 @@ import type {
 
 import { currentPreferences } from "../../lib/preferences";
 
-/** Zone named in column headers and notes; follows Settings > Display. */
 export const NO_DATA = "ไม่มีข้อมูล";
 
 export function timeZone(): string {

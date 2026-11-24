@@ -50,7 +50,6 @@ function groupedSecret(secret: string): string {
   return secret.replace(/(.{4})/g, "$1 ").trim();
 }
 
-// The account and date tell apart files from several accounts or sets.
 function downloadCodes(
   codes: string[],
   accountEmail: string | undefined,
@@ -1058,7 +1057,6 @@ function CodesHeader({
   onDownload,
 }: {
   title: string;
-  /** Makes the title focusable so a view that replaces a form can move focus onto it. */
   titleRef?: RefObject<HTMLParagraphElement | null>;
   description: string;
   codes: string[];

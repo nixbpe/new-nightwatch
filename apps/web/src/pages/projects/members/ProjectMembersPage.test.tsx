@@ -219,7 +219,6 @@ const row = (userId: string) =>
 const select = (userId: string) =>
   within(row(userId)).getByTestId("project-member-role-select");
 
-// Selects a role and confirms it in the dialog the select opens.
 async function changeRoleTo(
   user: ReturnType<typeof userEvent.setup>,
   userId: string,

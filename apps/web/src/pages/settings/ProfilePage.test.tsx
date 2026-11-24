@@ -172,7 +172,6 @@ describe("ProfilePage", () => {
       "role",
       "status",
     );
-    // Both buttons disable themselves; focus returns to the name field instead of the body.
     await waitFor(() => {
       expect(screen.getByTestId("profile-name")).toHaveFocus();
     });

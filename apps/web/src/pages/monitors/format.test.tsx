@@ -30,7 +30,6 @@ describe("monitor times follow Settings > Display", () => {
 
   it("follows the 12/24-hour choice", () => {
     usePreferencesOf("Asia/Bangkok", "h12");
-    // 12:00Z is 19:00 in Bangkok; a 12-hour clock prints 07:00 with an evening marker.
     const text = formatTime("2026-11-23T12:00:00Z");
     expect(text).toMatch(/^07:00/);
     expect(text).not.toMatch(/^07:00 น\.$/);
@@ -38,7 +37,6 @@ describe("monitor times follow Settings > Display", () => {
 
   it("window bounds use the same zone as the header", () => {
     usePreferencesOf("Asia/Tokyo", "h23");
-    // 00:00Z is 09:00 in Tokyo.
     expect(formatDateTimeSeconds("2026-11-23T00:00:00Z")).toContain("09:00:00");
   });
 

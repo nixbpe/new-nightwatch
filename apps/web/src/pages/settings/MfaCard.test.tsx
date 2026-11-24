@@ -336,7 +336,6 @@ describe("MfaCard enrolment steps", () => {
     expect(blob).toBeInstanceOf(Blob);
     const text = await (blob as Blob).text();
     expect(text).toContain("code-1\ncode-2");
-    // The header names the account and the day, so files from several accounts or sets can be told apart.
     expect(text).toContain("member@example.com");
     expect(text).toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(click).toHaveBeenCalledTimes(1);

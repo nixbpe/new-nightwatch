@@ -109,7 +109,6 @@ export function TriageControl({
   useEffect(() => {
     if (asking) reasonInput.current?.focus();
   }, [asking]);
-  // Closes the reason row without saving and hands focus back to the status button.
   const cancelAsking = () => {
     setAsking(false);
     setReason("");

@@ -76,9 +76,7 @@ describe("InvitationPanel", () => {
     });
     const success = await screen.findByTestId("members-invitation-success");
     expect(success).toHaveAttribute("role", "status");
-    // The notice names the address the invitation went to (the input is lower-cased on send).
     expect(success).toHaveTextContent("new@example.com");
-    // Focus stays in the form so the next address can be typed at once.
     expect(screen.getByTestId("members-invitation-email")).toHaveFocus();
     expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
   });

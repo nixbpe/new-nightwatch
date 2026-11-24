@@ -79,12 +79,10 @@ const active = (component: VulnerabilityComponent) =>
   component.findings.filter((finding) => !finding.backport);
 const filtered = (component: VulnerabilityComponent) =>
   component.findings.filter((finding) => finding.backport);
-/** Findings the count above includes but a Project admin marked not affected (VEX). */
 const notAffectedCount = (findings: VulnerabilityFinding[]) =>
   findings.filter((finding) => finding.triage?.status === "not_affected")
     .length;
 
-/** When each match feed last answered, formatted; a source the run never asked is absent. */
 type FeedTimes = Partial<Record<keyof typeof SOURCE_LABELS, string>>;
 
 function vexText(finding: VulnerabilityFinding) {

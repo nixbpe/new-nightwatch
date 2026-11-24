@@ -19,5 +19,4 @@ export const DENIED_MESSAGES = {
 } as const;
 export type DeniedCode = keyof typeof DENIED_MESSAGES;
 
-/** The folded setup steps; a failed test links back to them. */
 export const SETUP_STEPS_ID = "aws-setup-steps";

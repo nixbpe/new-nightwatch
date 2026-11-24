@@ -131,7 +131,6 @@ describe("DisplayPage", () => {
       "role",
       "status",
     );
-    // Both buttons disable themselves; focus stays on the form instead of falling to the body.
     expect(screen.getByTestId("display-time-zone")).toHaveFocus();
     const stored = JSON.parse(
       localStorage.getItem(PREFERENCES_KEY) ?? "{}",
@@ -203,7 +202,6 @@ describe("DisplayPage", () => {
     const dialog = await screen.findByTestId("unsaved-changes-dialog");
     expect(dialog).toHaveAttribute("role", "dialog");
 
-    // Cancel keeps the draft and the page.
     await user.click(within(dialog).getByTestId("confirmation-cancel"));
     expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
     expect(screen.getByTestId("display-hour-cycle")).toHaveValue("h12");

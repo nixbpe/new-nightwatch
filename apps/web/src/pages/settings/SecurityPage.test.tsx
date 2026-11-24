@@ -237,7 +237,6 @@ describe("SecurityPage enrollment", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("mfa-enable-open")).toBeNull();
     expect(screen.queryByTestId("mfa-status-disabled")).toBeNull();
-    // The password card does not need the MFA status, so it stays usable.
     expect(screen.getByTestId("password-change-section")).toBeVisible();
     expect(screen.getByTestId("change-current-password")).toBeEnabled();
 
@@ -255,8 +254,6 @@ describe("SecurityPage mockup", () => {
     renderPage();
     await screen.findByTestId("mfa-card");
 
-    // The real regenerate and enroll actions live in the MFA card; the placeholder block
-    // below it (issue 64) carries data rows only.
     expect(
       within(screen.getByTestId("security-mockup")).queryAllByRole("button"),
     ).toHaveLength(0);
