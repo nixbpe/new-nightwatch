@@ -204,6 +204,15 @@ and provisioning. Local runs reuse this worktree's services with a separate
 database, Redis prefix and generated credentials. The dev migration ledger must
 match the repository. No application data or cluster roles are copied or changed;
 schema-snapshot bootstrap does not prove clean migration replay.
+The E2E wrapper and notification measured-plan fixture share
+[`prepareTestDatabase`](../../packages/db/tests/support/snapshot.ts), with an
+injected PostgreSQL command runner. The plan fixture creates a unique database
+on the supplied cluster, preserves runtime-role checks and SQL deadlines, and
+closes its clients before dropping only that database (without forced sessions).
+Its literal seed IDs must be absent from the ordinary API database. The local
+runner targets only the owning Compose PostgreSQL service; CI binds
+`TEST_POSTGRES_CONTAINER` to `job.services.postgres.id`. This binding is test-only,
+not a runtime or production setting.
 
 Cleanup removes only the run's database and prefixed Redis keys, never dev
 containers or unprefixed keys. SIGKILL cannot run cleanup. Keep namespace
@@ -237,6 +246,12 @@ eligibility only in verified test namespaces. Preserve natural first-result,
 cadence and Resume pending-window tests. Never use accelerated monitors for
 uptime, chart or elapsed-duration assertions; notification dispatch keeps its
 normal cadence.
+
+The test-only API entry supplies a deterministic DNS failure for
+`dns-not-found.nw-e2e.invalid` through the outbound resolver dependency. The
+monitor form case exercises the real API, executor classification and UI with
+that synthetic low-level failure; it does not prove external DNS availability
+or OS NXDOMAIN timing. Other hostnames retain the real resolver.
 
 E2E supplements unit and integration tests. Execution stages are listed
 [below](#test-changes-and-execution-stages).

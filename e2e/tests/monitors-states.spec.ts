@@ -377,7 +377,7 @@ test.describe("create form", () => {
 
     await page
       .getByTestId("monitor-form-url")
-      .fill(`http://no-such-host-${run}.invalid/`);
+      .fill("http://dns-not-found.nw-e2e.invalid/");
     await page.getByTestId("monitor-form-test").click();
     await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
       "data-failure-reason",

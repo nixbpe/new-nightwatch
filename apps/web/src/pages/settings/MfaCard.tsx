@@ -405,7 +405,11 @@ export function MfaCard({
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setRegen(null);
+                    // A generated set already invalidated the old codes; only Done or
+                    // server-confirmed disable may discard it.
+                    setRegen((current) =>
+                      current === "form" ? null : current,
+                    );
                     setRegenError(null);
                     setDisableError(null);
                     setJustEnabled(false);

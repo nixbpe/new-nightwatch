@@ -303,6 +303,123 @@ describe("SecurityPage recovery regeneration", () => {
     expect(screen.getByTestId("mfa-regenerate-open")).toBeInTheDocument();
   });
 
+  it("SET-04 preserves unacknowledged regenerated codes through disable cancel and failed confirmation", async () => {
+    meState.twoFactorEnabled = true;
+    const user = userEvent.setup();
+    twoFactorMock.generateBackupCodes.mockResolvedValue({
+      data: { backupCodes: ["replacement-1", "replacement-2"] },
+      error: null,
+    });
+    twoFactorMock.disable.mockResolvedValue({
+      data: { status: true },
+      error: null,
+    });
+    renderPage();
+    await user.click(await screen.findByTestId("mfa-regenerate-open"));
+    await user.type(
+      screen.getByTestId("mfa-regenerate-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-regenerate-submit"));
+    await screen.findByTestId("mfa-recovery-codes");
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    await user.click(screen.getByTestId("mfa-disable-cancel"));
+    expect(screen.getByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "replacement-1",
+    );
+    expect(screen.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    expect(twoFactorMock.disable).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    await user.type(
+      screen.getByTestId("mfa-disable-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-disable-submit"));
+    await screen.findByTestId("mfa-disable-password-error");
+    expect(screen.getByTestId("mfa-status-enabled")).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "replacement-2",
+    );
+    await user.click(screen.getByTestId("mfa-disable-cancel"));
+    await user.click(screen.getByTestId("mfa-regenerate-acknowledge"));
+    await user.click(screen.getByTestId("mfa-regenerate-done"));
+    expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
+  });
+
+  it("SET-04 retains a late server-issued set after cancelling the pending regeneration form", async () => {
+    meState.twoFactorEnabled = true;
+    let finish!: (result: unknown) => void;
+    twoFactorMock.generateBackupCodes.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByTestId("mfa-regenerate-open"));
+    await user.type(
+      screen.getByTestId("mfa-regenerate-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-regenerate-submit"));
+    expect(screen.getByTestId("mfa-regenerate-submit")).toBeDisabled();
+    await user.click(screen.getByTestId("mfa-regenerate-cancel"));
+    act(() => {
+      finish({ data: { backupCodes: ["late-replacement"] }, error: null });
+    });
+    expect(await screen.findByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "late-replacement",
+    );
+    expect(screen.getByTestId("mfa-regenerate-done")).toBeDisabled();
+    expect(twoFactorMock.generateBackupCodes).toHaveBeenCalledTimes(1);
+  });
+
+  it("SET-04 keeps codes after cancelling a pending disable until the server confirms off", async () => {
+    meState.twoFactorEnabled = true;
+    let finish!: () => void;
+    twoFactorMock.generateBackupCodes.mockResolvedValue({
+      data: { backupCodes: ["saved-until-disabled"] },
+      error: null,
+    });
+    twoFactorMock.disable.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => {
+            meState.twoFactorEnabled = false;
+            resolve({ data: { status: true }, error: null });
+          };
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByTestId("mfa-regenerate-open"));
+    await user.type(
+      screen.getByTestId("mfa-regenerate-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-regenerate-submit"));
+    await screen.findByTestId("mfa-recovery-codes");
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    await user.type(
+      screen.getByTestId("mfa-disable-password"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(screen.getByTestId("mfa-disable-submit"));
+    expect(screen.getByTestId("mfa-disable-submit")).toBeDisabled();
+    await user.click(screen.getByTestId("mfa-disable-cancel"));
+    expect(screen.getByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "saved-until-disabled",
+    );
+    expect(screen.getByTestId("mfa-status-enabled")).toBeInTheDocument();
+    act(() => {
+      finish();
+    });
+    await screen.findByTestId("mfa-status-disabled");
+    expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
+    expect(twoFactorMock.disable).toHaveBeenCalledTimes(1);
+  });
+
   it("invalid credentials on regeneration show an error and never a false set of codes", async () => {
     meState.twoFactorEnabled = true;
     const user = userEvent.setup();
