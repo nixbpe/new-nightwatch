@@ -109,6 +109,26 @@ export function InfoIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+export function AlertCircleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </svg>
+  );
+}
+
+export function AlertTriangleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
 export function PanelLeftIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>
@@ -255,6 +275,24 @@ export function ArrowRightIcon({ size = 16 }: { size?: number }) {
     <svg {...iconProps(size)}>
       <path d="M5 12h14" />
       <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+export function ArrowUpIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m5 12 7-7 7 7" />
+      <path d="M12 19V5" />
+    </svg>
+  );
+}
+
+export function ArrowDownIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M12 5v14" />
+      <path d="m19 12-7 7-7-7" />
     </svg>
   );
 }

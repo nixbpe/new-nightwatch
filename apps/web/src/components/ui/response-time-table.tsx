@@ -1,4 +1,4 @@
-import { TIME_ZONE, formatNumber } from "../../pages/monitors/format";
+import { timeZone, formatNumber } from "../../pages/monitors/format";
 import {
   entryTime,
   RANGE_LABELS,
@@ -60,7 +60,7 @@ export function ResponseTimeTable({
               scope="col"
               className="h-10 px-3 font-medium"
             >
-              เวลา ({TIME_ZONE})
+              เวลา ({timeZone()})
             </th>
             <th
               data-testid="monitor-response-heading-average"

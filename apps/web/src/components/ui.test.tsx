@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FieldValidationError } from "./ui";
+import { Alert, FieldValidationError } from "./ui";
 
 describe("FieldValidationError", () => {
   it.each([
@@ -39,6 +39,44 @@ describe("FieldValidationError", () => {
     (...errors) => {
       render(<FieldValidationError id="email-error" errors={errors} />);
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+});
+
+describe("Alert", () => {
+  it.each([
+    ["error", "alert"],
+    ["warning", "status"],
+    ["info", "status"],
+  ] as const)("announces a %s alert as role %s by default", (tone, role) => {
+    render(
+      <Alert data-testid="banner" tone={tone}>
+        text
+      </Alert>,
+    );
+    expect(screen.getByTestId("banner")).toHaveAttribute("role", role);
+  });
+
+  it("lets a caller raise a warning to role alert", () => {
+    render(
+      <Alert data-testid="banner" tone="warning" role="alert">
+        text
+      </Alert>,
+    );
+    expect(screen.getByTestId("banner")).toHaveAttribute("role", "alert");
+  });
+
+  it.each(["error", "warning", "info"] as const)(
+    "pairs a %s alert with a hidden icon beside its text",
+    (tone) => {
+      render(
+        <Alert data-testid="banner" tone={tone}>
+          text
+        </Alert>,
+      );
+      const banner = screen.getByTestId("banner");
+      expect(banner.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+      expect(banner).toHaveTextContent("text");
     },
   );
 });

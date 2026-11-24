@@ -4,6 +4,7 @@ import {
   formatDateTime,
   formatNumber,
   formatTime,
+  monitorFormatter,
 } from "../../pages/monitors/format";
 
 export type ChartRange = MonitorResponseTimesResponse["range"];
@@ -109,37 +110,21 @@ export function chartWindow(props: ResponseTimeChartProps): Span | undefined {
   };
 }
 
-const dayTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  day: "numeric",
-  month: "short",
-});
-const clockTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-const clockSecondsTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
 /**
  * X-axis ticks with distinct labels. A young monitor gives a window of seconds, where
  * `HH:mm` would repeat on every tick, so such a span reads in seconds; any label that
- * still repeats is dropped.
+ * still repeats is dropped. Labels use the preference zone; the tick positions come from the
+ * chart's time scale, which snaps to browser-local hours and days, so in a half-hour zone the
+ * labels can read :30.
  */
 export function axisTicks(
   ticks: readonly Date[],
   spanMs: number,
   clock: boolean,
 ): { at: Date; label: string }[] {
-  const format = !clock
-    ? dayTickFormat
-    : spanMs < 10 * 60_000
-      ? clockSecondsTickFormat
-      : clockTickFormat;
+  const format = monitorFormatter(
+    !clock ? "dayMonth" : spanMs < 10 * 60_000 ? "timeSeconds" : "time",
+  );
   const seen = new Set<string>();
   const result: { at: Date; label: string }[] = [];
   for (const at of ticks) {
@@ -374,9 +359,10 @@ function formatAt(range: ChartRange, at: number): string {
 export function entryTime(range: ChartRange, entry: SeriesEntry): string {
   const start = formatAt(range, entry.at);
   if (entry.end <= entry.at) return start;
+  const day = monitorFormatter("day");
   const sameDay =
     range !== "24h" &&
-    new Date(entry.at).toDateString() === new Date(entry.end).toDateString();
+    day.format(new Date(entry.at)) === day.format(new Date(entry.end));
   const end = sameDay
     ? formatTime(new Date(entry.end).toISOString())
     : formatAt(range, entry.end);

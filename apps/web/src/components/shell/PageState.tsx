@@ -9,7 +9,7 @@ type LoadingState = {
   kind: "loading";
   /** Announced to assistive technology; shown only when `visibleLabel` is set. */
   label: string;
-  layout?: "lines" | "rows" | "table";
+  layout?: "lines" | "rows" | "table" | "inline";
   rows?: number;
   visibleLabel?: boolean;
 };
@@ -63,6 +63,20 @@ export function PageState(
           <Skeleton className="h-7 w-56" />
           <Skeleton className="h-4 w-full max-w-lg" />
         </Card>
+      );
+    }
+    if (layout === "inline") {
+      // A block inside a card or section that already has its own frame.
+      return (
+        <div
+          data-testid={props["data-testid"]}
+          aria-busy="true"
+          className="flex flex-col gap-3"
+        >
+          {label}
+          <Skeleton className="h-4 w-64 max-w-full" />
+          <Skeleton className="h-4 w-48 max-w-full" />
+        </div>
       );
     }
     const count = props.rows ?? (layout === "rows" ? 3 : 5);

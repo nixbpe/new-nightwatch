@@ -206,6 +206,24 @@ describe("Project scope in the navigation definition", () => {
     ).toBe(ORG);
   });
 
+  it("gives each Inventory sub-page a crumb after the Inventory crumb, linked back to it", () => {
+    const inventory = `/organizations/${ORG}/projects/${P1}/inventory`;
+    const [own] = getBreadcrumbTrail(inventory);
+    expect(getBreadcrumbTrail(inventory)).toHaveLength(1);
+    for (const page of ["/import", "/mappings", "/systems/9f1c", "/import/"]) {
+      const trail = getBreadcrumbTrail(`${inventory}${page}`);
+      expect(trail).toHaveLength(2);
+      expect(trail[0]).toEqual(own);
+      expect(trail[0]?.path).toBe(inventory);
+      expect(trail[1]?.path).toBe(`${inventory}${page}`);
+      expect(trail[1]?.label).not.toBe(own?.label);
+    }
+    const labels = ["/import", "/mappings", "/systems/9f1c"].map(
+      (page) => getBreadcrumbTrail(`${inventory}${page}`)[1]?.label,
+    );
+    expect(new Set(labels).size).toBe(3);
+  });
+
   it("names the Project page, not the Project list, on a Project route", () => {
     expect(
       getBreadcrumbTrail(`/organizations/${ORG}/projects/${P1}/members`).map(

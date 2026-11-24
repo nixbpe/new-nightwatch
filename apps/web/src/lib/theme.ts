@@ -26,22 +26,26 @@ function subscribe(onChange: () => void): () => void {
 
 // "system" removes data-theme so prefers-color-scheme decides; index.html applies the stored
 // value before first paint to avoid a theme flash.
-export function setTheme(next: ThemePreference): void {
+// Returns `false` when storage refused the write: the theme applies until the page reloads.
+export function setTheme(next: ThemePreference): boolean {
   current = next;
   if (next === "system") {
     document.documentElement.removeAttribute("data-theme");
   } else {
     document.documentElement.setAttribute("data-theme", next);
   }
+  let persisted = true;
   try {
     localStorage.setItem(STORAGE_KEY, next);
   } catch {
     // Storage unavailable (private mode): the choice applies but won't survive a reload.
+    persisted = false;
   }
   for (const listener of listeners) {
     listener();
   }
   syncThemeColor();
+  return persisted;
 }
 
 // Canvas tokens from docs/design-system.md; the meta keeps browser chrome on the same plane.
@@ -58,7 +62,7 @@ function syncThemeColor(): void {
 
 export function useTheme(): {
   theme: ThemePreference;
-  setTheme: (theme: ThemePreference) => void;
+  setTheme: (theme: ThemePreference) => boolean;
 } {
   const theme = useSyncExternalStore(
     subscribe,

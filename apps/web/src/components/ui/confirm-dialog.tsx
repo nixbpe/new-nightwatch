@@ -132,7 +132,10 @@ export function ConfirmDialog({
         onKeyDown={onKeyDown}
         className="overlay-enter max-h-[calc(100dvh-2rem)] w-full max-w-[480px] overflow-y-auto rounded-md border border-foreground/10 bg-surface p-4 text-foreground shadow-modal focus:outline-none sm:p-6"
       >
-        <h2 id={titleId} className="text-lg font-semibold text-heading">
+        <h2
+          id={titleId}
+          className="text-xl font-semibold break-words text-heading"
+        >
           {title}
         </h2>
         <div
