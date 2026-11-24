@@ -1,3 +1,4 @@
+import { defaultPreferences, writePreferences } from "../../lib/preferences";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import type {
@@ -3394,4 +3395,30 @@ describe("A failed Project lookup", () => {
     await readyDetail();
     expect(screen.getByTestId("monitor-detail-edit")).toBeInTheDocument();
   });
+});
+
+it("response window bounds and labels use Display zone across a UTC day boundary", async () => {
+  writePreferences({
+    ...defaultPreferences(),
+    timeZone: "America/New_York",
+    hourCycle: "h23",
+  });
+  fetchResponseTimesMock.mockResolvedValue({
+    ...noResponseTimes,
+    window: { from: "2026-09-30T00:30:00Z", to: "2026-09-30T07:30:00Z" },
+  });
+  try {
+    renderResponseCard();
+    const bounds = await screen.findByTestId("monitor-response-caption-window");
+    expect(bounds).toHaveAttribute("data-time-zone", "America/New_York");
+    expect(bounds).toHaveTextContent("America/New_York");
+    expect(
+      screen.getByTestId("monitor-response-window-from"),
+    ).toHaveTextContent("29 ก.ย. 2569 20:30:00");
+    expect(screen.getByTestId("monitor-response-window-to")).toHaveTextContent(
+      "30 ก.ย. 2569 03:30:00",
+    );
+  } finally {
+    localStorage.removeItem("nightwatch-preferences");
+  }
 });

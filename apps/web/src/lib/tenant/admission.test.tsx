@@ -22,7 +22,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  type RouteObject,
+} from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { SessionQueryProvider } from "../auth/SessionQueryProvider";
@@ -39,6 +43,7 @@ import {
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
+import { authClient } from "../auth-client";
 import { ApiError } from "../api/client";
 import {
   createMonitor,
@@ -56,6 +61,7 @@ import {
   fetchMonitorLastResponse,
   fetchMonitorEvents,
 } from "../api/monitors";
+import { routes } from "../../router";
 import { ChecksHistoryPage } from "../../pages/monitors/ChecksHistoryPage";
 import { MonitorFormPage } from "../../pages/monitors/MonitorFormPage";
 import { DetailPage } from "../../pages/monitors/DetailPage";
@@ -81,7 +87,7 @@ const { sessionState } = vi.hoisted<{
   },
 }));
 vi.mock("../auth-client", () => ({
-  authClient: { useSession: () => sessionState },
+  authClient: { useSession: () => sessionState, getSession: vi.fn() },
 }));
 vi.mock("../../components/shell/Header", () => ({ Header: () => null }));
 vi.mock("../../components/shell/Sidebar", () => ({ Sidebar: () => null }));
@@ -2273,8 +2279,8 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
   await act(async () => {
     await router.navigate(`/organizations/${B}/projects/${P}/monitors/new/`);
   });
-  // The draft makes the unsaved-changes guard ask before leaving; the user confirms.
-  fireEvent.click(await screen.findByTestId("unsaved-changes-leave"));
+  expect(await screen.findByTestId("unsaved-changes-dialog")).toBeVisible();
+  fireEvent.click(screen.getByTestId("unsaved-changes-leave"));
   await waitFor(() => {
     expect(router.state.location.pathname).toContain(`/${B}/`);
   });
@@ -2291,3 +2297,125 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
   await c.cancelQueries();
   c.clear();
 });
+
+// Registered loader + filter exception + real AppShell admission observer share one cache.
+it.each(["outcome", "range"] as const)(
+  "registered checks %s navigation retains focus, but current 403 withdraws cached history until membership confirmation",
+  async (filter) => {
+    vi.mocked(authClient.getSession).mockResolvedValue({
+      data: { user: { id: "user-1", emailVerified: true } },
+      error: null,
+    } as Awaited<ReturnType<typeof authClient.getSession>>);
+    const c = resolveQueryClientForIdentity("user-1");
+    c.setDefaultOptions({ queries: { retry: false } });
+    function findChecks(items: RouteObject[]): RouteObject | undefined {
+      for (const route of items) {
+        if (route.path?.endsWith(":monitorId/checks")) return route;
+        const found = findChecks(route.children ?? []);
+        if (found) return found;
+      }
+    }
+    const route = findChecks(routes);
+    if (!route) throw new Error("registered checks route missing");
+    vi.mocked(fetchMonitorChecks).mockResolvedValue(historyChunk(0));
+    const path = `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`;
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <TenantProvider>
+              <AppShell />
+            </TenantProvider>
+          ),
+          children: [route],
+        },
+      ],
+      { initialEntries: [path] },
+    );
+    render(
+      <QueryClientProvider client={c}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("monitor-check-row");
+    const admissionCalls = vi.mocked(fetchMeContext).mock.calls.length;
+    const sessionCalls = vi.mocked(authClient.getSession).mock.calls.length;
+    const control = screen.getByTestId(`monitor-checks-filter-${filter}`);
+    control.focus();
+    fireEvent.change(control, {
+      target: { value: filter === "outcome" ? "fail" : "24h" },
+    });
+    await waitFor(() => {
+      expect(fetchMonitorChecks).toHaveBeenCalledTimes(2);
+    });
+    await screen.findByTestId("monitor-check-row");
+    expect(control).toHaveFocus();
+    expect(fetchMonitorChecks).toHaveBeenLastCalledWith(
+      A,
+      P,
+      MONITOR_ID,
+      expect.objectContaining(
+        filter === "outcome" ? { offset: 0, outcome: "fail" } : { offset: 0 },
+      ),
+    );
+    if (filter === "range") {
+      expect(vi.mocked(fetchMonitorChecks).mock.lastCall?.[3].since).toEqual(
+        expect.any(String),
+      );
+    }
+    expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(
+      detail().name,
+    );
+    expect(fetchMeContext).toHaveBeenCalledTimes(admissionCalls);
+    expect(authClient.getSession).toHaveBeenCalledTimes(sessionCalls);
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    vi.mocked(fetchMonitorChecks).mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "Denied", 403),
+    );
+    // Refuse the CURRENT filter key while it still has cached private rows.
+    await act(async () => {
+      await c.invalidateQueries({
+        queryKey: monitorQueryKeys.checksHistory(
+          A,
+          P,
+          MONITOR_ID,
+          filter === "outcome" ? { outcome: "fail" } : { range: "24h" },
+        ),
+      });
+    });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    const withdrawn = () => {
+      expect(screen.queryByTestId("monitor-check-row")).toBeNull();
+      expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
+      expect(screen.queryByText(detail().name)).toBeNull();
+    };
+    withdrawn();
+    await act(async () => {
+      pending.resolve(context("owner", []));
+      await pending.promise;
+    });
+    await screen.findByTestId("monitor-checks-denied");
+    withdrawn();
+    // Same-URL navigation and explicit revalidation still execute the real full gate.
+    vi.mocked(fetchMeContext).mockResolvedValue(context("owner", []));
+    let before = vi.mocked(fetchMeContext).mock.calls.length;
+    await act(async () => {
+      await router.navigate(router.state.location);
+    });
+    expect(fetchMeContext).toHaveBeenCalledTimes(before + 1);
+    before = vi.mocked(fetchMeContext).mock.calls.length;
+    await act(async () => {
+      await router.revalidate();
+    });
+    expect(fetchMeContext).toHaveBeenCalledTimes(before + 1);
+    expect(authClient.getSession).toHaveBeenCalledTimes(sessionCalls + 2);
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);

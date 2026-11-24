@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { createDatabase, runMigrations } from "@nightwatch/db";
+import { createDatabase } from "@nightwatch/db";
+import { prepareTestDatabase } from "@nightwatch/db/testing-snapshot";
+import { testPostgresCommand } from "../../../../scripts/test-postgres-command.mjs";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,18 +10,44 @@ import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { notificationListStatement } from "./service";
 
 const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-const database = createDatabase(runtimeUrl);
-const owner = new Client({ connectionString: ownerUrl });
+const name = `nw_plan_${crypto.randomUUID().replaceAll("-", "")}`;
+const isolatedOwnerUrl = new URL(ownerUrl);
+isolatedOwnerUrl.pathname = `/${name}`;
+const isolatedRuntimeUrl = new URL(runtimeUrl);
+isolatedRuntimeUrl.pathname = `/${name}`;
+const database = createDatabase(isolatedRuntimeUrl.toString());
+const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
+const ordinary = new Client({ connectionString: ownerUrl });
+let ordinaryConnected = false;
 const migrationsDir = fileURLToPath(
   new URL("../../../../packages/db/migrations", import.meta.url),
 );
 beforeAll(async () => {
-  await runMigrations({ url: ownerUrl, migrationsDir });
+  await ordinary.connect();
+  ordinaryConnected = true;
+  await prepareTestDatabase({
+    ownerUrl,
+    name,
+    migrationsDir,
+    command: testPostgresCommand(ownerUrl),
+  });
   await owner.connect();
 });
 afterAll(async () => {
-  await owner.end();
-  await database.close();
+  try {
+    await database.close();
+  } finally {
+    try {
+      await owner.end();
+    } finally {
+      try {
+        if (ordinaryConnected)
+          await ordinary.query(`drop database if exists "${name}"`);
+      } finally {
+        await ordinary.end();
+      }
+    }
+  }
 });
 
 describe("notification list runtime-role measured plans", () => {
@@ -36,6 +64,20 @@ describe("notification list runtime-role measured plans", () => {
       const monitor = crypto.randomUUID();
       const client = await database.sql.connect();
       try {
+        expect(
+          (
+            await owner.query<{ name: string }>(
+              "select current_database() as name",
+            )
+          ).rows,
+        ).toEqual([{ name }]);
+        expect(
+          (
+            await ordinary.query<{ name: string }>(
+              "select current_database() as name",
+            )
+          ).rows,
+        ).not.toEqual([{ name }]);
         await owner.query(
           "insert into organization (id, name, slug) values ($1, 'Plan', $2)",
           [org, `plan-${org}`],
@@ -98,6 +140,28 @@ describe("notification list runtime-role measured plans", () => {
         );
         assert(cardinality.rows[0]);
         expect(cardinality.rows[0].seeded).toBe(visible + others);
+        const ids = (
+          await owner.query<{ id: string }>(
+            "select id from notification_plan_seed",
+          )
+        ).rows.map((row) => row.id);
+        for (const table of [
+          "notification_intents",
+          "notification_intent_recipients",
+          "notification_dispatch_ledger",
+          "notification_inbox_items",
+        ]) {
+          const key =
+            table === "notification_intent_recipients" ? "intent_id" : "id";
+          expect(
+            (
+              await ordinary.query<{ count: number }>(
+                `select count(*)::int as count from ${table} where ${key} = any($1::text[])`,
+                [ids],
+              )
+            ).rows,
+          ).toEqual([{ count: 0 }]);
+        }
         await owner.query(
           "analyze notification_inbox_items; analyze notification_dispatch_ledger",
         );
@@ -116,6 +180,14 @@ describe("notification list runtime-role measured plans", () => {
           )
         ).rows[0];
         assert(role);
+        expect(
+          (
+            await client.query<{ name: string }>(
+              "select current_database() as name",
+            )
+          ).rows,
+        ).toEqual([{ name }]);
+        expect(role.current_user).toBe(new URL(runtimeUrl).username);
         expect(role.rolsuper).toBe(false);
         expect(role.rolbypassrls).toBe(false);
         const middle = (

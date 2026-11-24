@@ -12,7 +12,11 @@ import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
 } from "../../queryClient";
-import { inventoryImportLoader, inventoryLoader } from "./inventory";
+import {
+  inventoryImportLoader,
+  inventoryLoader,
+  inventoryShouldRevalidate,
+} from "./inventory";
 
 guardUnassignedNetwork();
 
@@ -140,5 +144,56 @@ describe("inventoryImportLoader", () => {
     await expect(loadImport()).resolves.toBeNull();
     expect(summaryMock).toHaveBeenCalledTimes(1);
     expect(previewMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("inventoryShouldRevalidate", () => {
+  const base = `http://localhost/organizations/${ORG}/projects/${PROJECT}/inventory`;
+  const args = (next: string, extra = {}) => ({
+    currentUrl: new URL(base + "?q=x"),
+    nextUrl: new URL(base + next),
+    currentParams: { organizationId: ORG, projectId: PROJECT },
+    nextParams: { organizationId: ORG, projectId: PROJECT },
+    defaultShouldRevalidate: true,
+    ...extra,
+  });
+  it("skips only actual recognized filter changes", () => {
+    for (const next of [
+      "",
+      "?q=redis&page=2",
+      "?owner=Payments",
+      "?environment=Production&exposure=Internal&layer=DB&status=rejected",
+    ])
+      expect(inventoryShouldRevalidate(args(next))).toBe(false);
+  });
+  it("retains admission for manual revalidation, unknown keys, paths and form/actions", () => {
+    for (const extra of [
+      {},
+      { formMethod: "GET" },
+      { formMethod: "POST" },
+      { actionStatus: 200 },
+      { actionResult: {} },
+    ]) {
+      expect(inventoryShouldRevalidate(args("?q=x", extra))).toBe(true);
+    }
+    expect(inventoryShouldRevalidate(args("?q=y", { formMethod: "GET" }))).toBe(
+      true,
+    );
+    expect(inventoryShouldRevalidate(args("?q=y", { actionStatus: 200 }))).toBe(
+      true,
+    );
+    expect(inventoryShouldRevalidate(args("?q=y&unknown=1"))).toBe(true);
+    expect(
+      inventoryShouldRevalidate(
+        args("?q=y", {
+          nextUrl: new URL(base.replace(PROJECT, SYSTEM) + "?q=y"),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      inventoryShouldRevalidate(
+        args("?q=y", { defaultShouldRevalidate: false, actionStatus: 403 }),
+      ),
+    ).toBe(false);
   });
 });

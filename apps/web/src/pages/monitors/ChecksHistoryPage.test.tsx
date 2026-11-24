@@ -1197,7 +1197,9 @@ describe("Checks history access", () => {
         );
       });
       expect(await waitCount([3])).toBeInTheDocument();
-      expect(historyRows()).toHaveLength(3);
+      await waitFor(() => {
+        expect(historyRows()).toHaveLength(3);
+      });
       expect(fetchChecksMock).toHaveBeenCalledWith(A, P, MONITOR_ID, {
         limit: 50,
         offset: 0,
@@ -1552,6 +1554,132 @@ describe("Checks history filter", () => {
       offset: 0,
       outcome: "fail",
     });
+  });
+
+  it.each([
+    ["outcome", "success"],
+    ["outcome", "error"],
+    ["range", "success"],
+    ["range", "error"],
+  ] as const)(
+    "owns pending load-more by %s query identity after old %s",
+    async (field, settlement) => {
+      const old = deferred<MonitorChecksResponse>();
+      const first = deferred<MonitorChecksResponse>();
+      const current = deferred<MonitorChecksResponse>();
+      fetchChecksMock
+        .mockResolvedValueOnce(chunk([0, 1], 0, 10))
+        .mockReturnValueOnce(old.promise)
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(current.promise)
+        .mockResolvedValueOnce(chunk([103], 3, 4));
+      const user = userEvent.setup();
+      renderChecks();
+      await user.click(await loadMoreButton());
+      const select = await (field === "outcome"
+        ? outcomeSelect()
+        : rangeSelect());
+      await user.selectOptions(select, field === "outcome" ? "fail" : "24h");
+      expect(select).toHaveFocus();
+      expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+      expect(fetchChecksMock).toHaveBeenNthCalledWith(3, A, P, MONITOR_ID, {
+        limit: 50,
+        offset: 0,
+        ...(field === "outcome"
+          ? { outcome: "fail" }
+          : { since: FILTER_SINCE_24H }),
+      });
+      await act(async () => {
+        first.resolve({
+          ...chunk([100, 101], 0, 4),
+          checks: [
+            result(100, { outcome: field === "outcome" ? "fail" : "pass" }),
+            result(101, { outcome: field === "outcome" ? "fail" : "pass" }),
+          ],
+        });
+        await first.promise;
+      });
+      expect(select).toHaveFocus();
+      await screen.findByTestId("monitor-checks-table");
+      expect(historyRows()).toHaveLength(2);
+      expect(
+        screen
+          .getAllByTestId("monitor-check-time-cell")
+          .map((cell) => cell.getAttribute("data-outcome")),
+      ).toEqual(field === "outcome" ? ["fail", "fail"] : ["pass", "pass"]);
+      await user.click(await loadMoreButton());
+      expect(fetchChecksMock).toHaveBeenCalledTimes(4);
+      const region = screen.getByTestId("monitor-checks-announcement");
+      const before = region.textContent;
+      await act(async () => {
+        if (settlement === "success") old.resolve(chunk([2, 3], 2, 10));
+        else old.reject(network());
+        await old.promise.catch(() => undefined);
+      });
+      expect(region.textContent).toBe(before);
+      expect(historyRows()).toHaveLength(2);
+      expect(
+        screen
+          .getAllByTestId("monitor-check-time-cell")
+          .map((cell) => cell.getAttribute("data-outcome")),
+      ).toEqual(field === "outcome" ? ["fail", "fail"] : ["pass", "pass"]);
+      await user.click(await loadMoreButton());
+      expect(fetchChecksMock).toHaveBeenCalledTimes(4);
+      await act(async () => {
+        current.resolve(chunk([102], 2, 4));
+        await current.promise;
+      });
+      await waitFor(() => {
+        expect(historyRows()).toHaveLength(3);
+      });
+      expect(
+        screen
+          .getAllByTestId("monitor-check-time")
+          .map((time) => time.getAttribute("datetime")),
+      ).toEqual([
+        "2026-09-29T23:35:00.000Z",
+        "2026-09-29T23:30:00.000Z",
+        "2026-09-29T23:25:00.000Z",
+      ]);
+      await user.click(await loadMoreButton());
+      await waitFor(() => {
+        expect(historyRows()).toHaveLength(4);
+      });
+      expect(fetchChecksMock).toHaveBeenLastCalledWith(A, P, MONITOR_ID, {
+        limit: 50,
+        offset: 3,
+        ...(field === "outcome"
+          ? { outcome: "fail" }
+          : { since: FILTER_SINCE_24H }),
+      });
+    },
+  );
+
+  it("does not carry a late load-more completion into a new mount", async () => {
+    const old = deferred<MonitorChecksResponse>();
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk([0, 1], 0, 4))
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(chunk([100, 101], 0, 4));
+    const user = userEvent.setup();
+    const previous = renderChecks();
+    await user.click(await loadMoreButton());
+    previous.unmount();
+    renderChecks();
+    await screen.findByTestId("monitor-checks-table");
+    const region = screen.getByTestId("monitor-checks-announcement");
+    const before = region.textContent;
+    await act(async () => {
+      old.resolve(chunk([2, 3], 2, 4));
+      await old.promise;
+    });
+    expect(region.textContent).toBe(before);
+    expect(historyRows()).toHaveLength(2);
+    expect(
+      screen
+        .getAllByTestId("monitor-check-time")
+        .map((time) => time.getAttribute("datetime")),
+    ).toEqual(["2026-09-29T23:35:00.000Z", "2026-09-29T23:30:00.000Z"]);
   });
 
   it("loads more inside the filter with the same parameters", async () => {

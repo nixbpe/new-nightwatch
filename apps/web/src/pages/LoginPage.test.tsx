@@ -122,13 +122,13 @@ function renderPage(from?: string, state?: unknown) {
 
 function deferSignIn() {
   const { promise, resolve } = Promise.withResolvers<{
-    data: { token: string };
+    data: TestSessionData;
     error: null;
   }>();
   signInEmailMock.mockReturnValue(promise);
   return async () => {
     await act(async () => {
-      resolve({ data: { token: "t" }, error: null });
+      resolve({ data: sessionStore.get().data, error: null });
       await promise;
     });
   };

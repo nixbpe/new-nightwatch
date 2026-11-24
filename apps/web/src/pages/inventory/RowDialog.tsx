@@ -96,8 +96,12 @@ export function RowDialog({
   onCancel,
   onSaved,
   onStale,
+  writeAllowed = true,
+  permissionRecovery,
 }: {
   mode: Mode;
+  writeAllowed?: boolean;
+  permissionRecovery?: { pending: boolean; retry: () => void };
   scope: Scope;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
@@ -238,7 +242,7 @@ export function RowDialog({
 
   const submit = (event: SyntheticEvent) => {
     event.preventDefault();
-    if (!save.isPending && !stale) save.mutate();
+    if (writeAllowed && !save.isPending && !stale) save.mutate();
   };
   const change = (key: FieldKey, value: string) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -282,6 +286,22 @@ export function RowDialog({
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
+          {writeAllowed ? null : (
+            <Alert tone="error" data-testid="inventory-row-permissions">
+              ยังยืนยันสิทธิ์บันทึกไม่ได้ ข้อมูลที่กรอกยังอยู่ โปรดลองใหม่
+              {permissionRecovery === undefined ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  data-testid="inventory-row-permissions-retry"
+                  disabled={permissionRecovery.pending}
+                  onClick={permissionRecovery.retry}
+                >
+                  ลองใหม่
+                </Button>
+              )}
+            </Alert>
+          )}
           {general === null ? null : (
             <Alert tone="error" data-testid="inventory-row-error">
               {general}
@@ -443,7 +463,7 @@ export function RowDialog({
             <Button
               type="submit"
               data-testid="inventory-row-save"
-              disabled={save.isPending || stale}
+              disabled={!writeAllowed || save.isPending || stale}
             >
               {save.isPending ? "กำลังบันทึก…" : "บันทึก"}
             </Button>

@@ -1,6 +1,13 @@
 import type { InventorySummary } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +18,7 @@ import {
   downloadInventory,
   fetchInventory,
   fetchRows,
+  inventoryKeys,
 } from "../../lib/api/inventory";
 import { InventoryPage } from "./InventoryPage";
 
@@ -107,7 +115,7 @@ function renderPage(state?: unknown) {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return Object.assign(router, { unmount: view.unmount });
+  return Object.assign(router, { unmount: view.unmount, client });
 }
 
 beforeEach(() => {
@@ -119,6 +127,29 @@ beforeEach(() => {
 });
 
 describe("InventoryPage", () => {
+  it("withdraws cached summary actions when rows are refused and keeps viewer permissions after retry", async () => {
+    fetchMock.mockResolvedValue(summary());
+    rowsMock.mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "refused", 403),
+    );
+    renderPage();
+    await screen.findByRole("button", { name: "ลองใหม่" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+      expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+      expect(screen.queryByTestId("inventory-export")).toBeNull();
+    });
+    expect(screen.queryByTestId("inventory-rows-table")).toBeNull();
+    fetchMock.mockResolvedValue(summary({ canUpload: false }));
+    rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await screen.findByTestId("inventory-rows-empty");
+    expect(screen.queryByTestId("inventory-row-add")).toBeNull();
+    expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+  });
+
   it("shows totals and the quality of each System with a link only where rows failed", async () => {
     fetchMock.mockResolvedValue(summary());
     renderPage();
@@ -308,6 +339,189 @@ describe("InventoryPage", () => {
         first.exposure,
       );
     }
+
+    it.each([
+      new ApiError("SERVICE_UNAVAILABLE", "unavailable", 503),
+      new TypeError("Failed to fetch"),
+    ])(
+      "preserves the System draft but blocks submission through summary failure and retry: %s",
+      async (error) => {
+        fetchMock.mockResolvedValue(summary());
+        createMock.mockResolvedValue({ ...BASE_SYSTEM, name: "Cache" });
+        const user = userEvent.setup();
+        const { client } = renderPage();
+        await user.click(await screen.findByTestId("inventory-add-system"));
+        const name = screen.getByTestId("inventory-row-name");
+        await user.type(name, "Cache");
+        await fillRow(user);
+        const form = screen.getByTestId("inventory-row-save").closest("form");
+        if (form === null) throw new Error("missing row form");
+        let fail!: (error: unknown) => void;
+        fetchMock.mockReturnValue(
+          new Promise((_, reject) => {
+            fail = reject;
+          }),
+        );
+        let refresh!: Promise<void>;
+        act(() => {
+          refresh = client.invalidateQueries({
+            queryKey: inventoryKeys.summary(ORG, PROJECT),
+          });
+        });
+        await waitFor(() =>
+          expect(screen.getByTestId("inventory-row-save")).toBeDisabled(),
+        );
+        fireEvent.submit(form);
+        expect(createMock).not.toHaveBeenCalled();
+        await act(async () => {
+          fail(error);
+          await refresh;
+        });
+        await waitFor(() => {
+          expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+        });
+        expect(screen.getByTestId("inventory-row-name")).toBe(name);
+        expect(name).toHaveValue("Cache");
+        for (const [key, value] of Object.entries(first)) {
+          expect(screen.getByTestId(`inventory-row-${key}`)).toHaveValue(value);
+        }
+        expect(screen.getByTestId("inventory-row-save")).toBeDisabled();
+        await user.click(screen.getByTestId("inventory-row-save"));
+        await user.click(name);
+        await user.keyboard("{Enter}");
+        fireEvent.submit(form);
+        expect(createMock).not.toHaveBeenCalled();
+
+        let recover!: (value: InventorySummary) => void;
+        fetchMock.mockReturnValue(
+          new Promise((resolve) => {
+            recover = resolve;
+          }),
+        );
+        // Retry must be reachable inside the modal's Tab trap.
+        await user.click(name);
+        await user.tab({ shift: true });
+        expect(
+          screen.getByTestId("inventory-row-permissions-retry"),
+        ).toHaveFocus();
+        await user.keyboard("{Enter}");
+        await waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(3);
+        });
+        expect(screen.getByTestId("inventory-row-save")).toBeDisabled();
+        expect(
+          screen.getByTestId("inventory-row-permissions-retry"),
+        ).toBeDisabled();
+        expect(name).toHaveValue("Cache");
+        fireEvent.submit(form);
+        expect(createMock).not.toHaveBeenCalled();
+        act(() => {
+          recover(summary());
+        });
+        await waitFor(() =>
+          expect(screen.getByTestId("inventory-row-save")).toBeEnabled(),
+        );
+        await user.click(screen.getByTestId("inventory-row-save"));
+        await waitFor(() => {
+          expect(createMock).toHaveBeenCalledWith(ORG, PROJECT, {
+            name: "Cache",
+            ...first,
+          });
+        });
+        expect(
+          await screen.findByTestId("inventory-success"),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("allows Cancel to discard the retained draft while summary retry is pending", async () => {
+      fetchMock.mockResolvedValue(summary());
+      const user = userEvent.setup();
+      const { client } = renderPage();
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      await user.type(screen.getByTestId("inventory-row-name"), "Unsaved");
+      fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+      await act(async () => {
+        await client.invalidateQueries({
+          queryKey: inventoryKeys.summary(ORG, PROJECT),
+        });
+      });
+      await screen.findByTestId("inventory-row-permissions-retry");
+      let recover!: (value: InventorySummary) => void;
+      fetchMock.mockReturnValue(
+        new Promise((resolve) => {
+          recover = resolve;
+        }),
+      );
+      await user.click(screen.getByTestId("inventory-row-permissions-retry"));
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("inventory-row-permissions-retry"),
+        ).toBeDisabled(),
+      );
+      expect(screen.getByTestId("inventory-row-cancel")).toBeEnabled();
+      await user.click(screen.getByTestId("inventory-row-cancel"));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(createMock).not.toHaveBeenCalled();
+      act(() => {
+        recover(summary());
+      });
+      await user.click(await screen.findByTestId("inventory-add-system"));
+      expect(screen.getByTestId("inventory-row-name")).toHaveValue("");
+    });
+
+    it.each([401, 403, 404, "viewer", "rows"] as const)(
+      "withdraws an open private draft on authoritative refusal: %s",
+      async (refusal) => {
+        fetchMock.mockResolvedValue(summary());
+        const user = userEvent.setup();
+        const { client } = renderPage();
+        await user.click(await screen.findByTestId("inventory-add-system"));
+        await user.type(
+          screen.getByTestId("inventory-row-name"),
+          "Private draft",
+        );
+        if (refusal === "viewer")
+          fetchMock.mockResolvedValue(summary({ canUpload: false }));
+        else if (refusal === "rows")
+          rowsMock.mockRejectedValue(
+            new ApiError("MEMBERSHIP_DENIED", "refused", 403),
+          );
+        else
+          fetchMock.mockRejectedValue(
+            new ApiError(`HTTP_${String(refusal)}`, "refused", refusal),
+          );
+        await act(async () => {
+          await client.invalidateQueries({
+            queryKey:
+              refusal === "rows"
+                ? inventoryKeys.all(ORG, PROJECT)
+                : inventoryKeys.summary(ORG, PROJECT),
+          });
+        });
+        await waitFor(() => {
+          expect(screen.queryByTestId("inventory-row-dialog")).toBeNull();
+        });
+        expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+        expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+        expect(screen.queryByTestId("inventory-row-add")).toBeNull();
+        expect(createMock).not.toHaveBeenCalled();
+        fetchMock.mockResolvedValue(summary());
+        rowsMock.mockResolvedValue({
+          rows: [],
+          total: 0,
+          page: 1,
+          pageSize: 25,
+        });
+        await act(async () => {
+          await client.invalidateQueries({
+            queryKey: inventoryKeys.all(ORG, PROJECT),
+          });
+        });
+        await user.click(await screen.findByTestId("inventory-add-system"));
+        expect(screen.getByTestId("inventory-row-name")).toHaveValue("");
+      },
+    );
 
     it("shows the add button to a maintainer only, and opens a dialog whose first field is the name", async () => {
       fetchMock.mockResolvedValue(summary());

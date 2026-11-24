@@ -1657,6 +1657,44 @@ describe("OrganizationMembersPage pending invitations", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByTestId("members-invitation-email")).not.toBeVisible();
   });
+  it.each(["accepted", "failed"] as const)(
+    "ORG-33 keeps the recipient notice visible after folding a pending invite (%s)",
+    async (emailDispatch) => {
+      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+      vi.mocked(fetchPendingInvitations).mockResolvedValue(pending([]));
+      let complete!: (result: InvitationCreateResponse) => void;
+      vi.mocked(createInvitation).mockReturnValue(
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      const toggle = await screen.findByTestId("members-invite-toggle");
+      await user.click(toggle);
+      await user.type(
+        screen.getByTestId("members-invitation-email"),
+        "new@example.com",
+      );
+      await user.click(screen.getByTestId("members-invitation-send"));
+      await user.click(toggle);
+      expect(screen.getByTestId("members-invitation-email")).not.toBeVisible();
+      act(() => {
+        complete({ created: true, emailDispatch });
+      });
+      const notice = await screen.findByTestId(
+        emailDispatch === "accepted"
+          ? "members-invitation-success"
+          : "members-invitation-warning",
+      );
+      expect(notice).toBeVisible();
+      expect(notice).toHaveTextContent("new@example.com");
+      expect(toggle).toHaveFocus();
+      expect(createInvitation).toHaveBeenCalledOnce();
+      await user.click(toggle);
+      expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
+    },
+  );
   it.each(["owner", "admin"] as const)(
     "exposes invite, pending and member capabilities for %s",
     async (role) => {

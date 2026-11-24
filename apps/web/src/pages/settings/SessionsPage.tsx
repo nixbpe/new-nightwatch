@@ -153,7 +153,7 @@ export function SessionsPage() {
           id="sessions-card-title"
           headingRef={headingRef}
           headingTabIndex={-1}
-          headingClassName="focus:outline-none"
+          headingClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           title="เซสชันที่เข้าสู่ระบบอยู่"
         />
         <p className="text-sm text-foreground-secondary">

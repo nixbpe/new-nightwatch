@@ -107,9 +107,9 @@ export function NotificationsPopover() {
         data-testid="shell-notifications-open"
         type="button"
         aria-label={
-          unreadCount
-            ? `การแจ้งเตือน ${String(unreadCount)} รายการยังไม่อ่าน`
-            : "การแจ้งเตือน"
+          unreadCount === undefined
+            ? "การแจ้งเตือน"
+            : `การแจ้งเตือน · ${String(unreadCount)} รายการยังไม่อ่าน`
         }
         aria-haspopup="dialog"
         aria-expanded={popover.open}
@@ -127,7 +127,7 @@ export function NotificationsPopover() {
         {unreadCount ? (
           <span
             data-testid="shell-notifications-unread-count"
-            aria-hidden="true"
+            aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
             // A Text-filled counter: the count is a fact, not a status colour.
             className="absolute -top-[7px] -right-[7px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground px-[5px] font-mono text-[11px] leading-none font-semibold text-background"
           >
@@ -279,7 +279,7 @@ export function NotificationsPopover() {
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-foreground/10 px-4 py-2.5 text-xs">
             {me === undefined ? (
-              <span className="text-foreground-secondary">
+              <span className="text-foreground-tertiary">
                 ดูการแจ้งเตือนทั้งหมด
               </span>
             ) : (

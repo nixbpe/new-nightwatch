@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
-import { createDatabase, listMigrations } from "../packages/db/src/index.ts";
+import { createDatabase } from "../packages/db/src/index.ts";
+import { prepareTestDatabase } from "../packages/db/tests/support/snapshot.ts";
 import { createRedisClient } from "../apps/api/src/rate-limit/redis.ts";
 import {
   buildLocalComposeUrls,
@@ -89,70 +90,20 @@ async function postgresCommand(args, input) {
 }
 
 async function prepare() {
-  const source = await owner.sql.connect();
-  const target = createDatabase(targetOwnerUrl.toString());
-  try {
-    await source.query("begin isolation level repeatable read read only");
-    const ledger = (
-      await source.query(
-        "select name, sha256, applied_at from __nightwatch_migrations",
-      )
-    ).rows;
-    const migrations = await listMigrations(
-      `${repoRoot}/packages/db/migrations`,
-    );
-    if (
-      ledger.length !== migrations.length ||
-      migrations.some(
-        (migration) =>
-          !ledger.some(
-            (row) =>
-              row.name === migration.name && row.sha256 === migration.sha256,
-          ),
-      )
-    ) {
-      throw new Error(
-        "Local schema must match repository migrations; run bun run db:migrate first",
-      );
-    }
-    const snapshot = (
-      await source.query("select pg_export_snapshot() as snapshot")
-    ).rows[0].snapshot;
-    const schema = await postgresCommand([
-      "pg_dump",
-      "-U",
-      "nightwatch_owner",
-      "-d",
-      "nightwatch",
-      "--schema-only",
-      `--snapshot=${snapshot}`,
-    ]);
-    await owner.sql.query(
-      `create database "${name}" owner nightwatch_owner template template0`,
-    );
-    await postgresCommand(
-      ["psql", "-U", "nightwatch_owner", "-d", name, "-v", "ON_ERROR_STOP=1"],
-      schema,
-    );
-    for (const row of ledger) {
-      await target.sql.query(
-        "insert into __nightwatch_migrations (name, sha256, applied_at) values ($1, $2, $3)",
-        [row.name, row.sha256, row.applied_at],
-      );
-    }
-    console.log(
-      JSON.stringify({
-        DATABASE_OWNER_URL: targetOwnerUrl.toString(),
-        DATABASE_URL: targetRuntimeUrl.toString(),
-        REDIS_URL: env.REDIS_URL,
-        REDIS_KEY_PREFIX: name,
-      }),
-    );
-  } finally {
-    await source.query("rollback");
-    source.release();
-    await target.close();
-  }
+  await prepareTestDatabase({
+    ownerUrl,
+    name,
+    migrationsDir: `${repoRoot}/packages/db/migrations`,
+    command: postgresCommand,
+  });
+  console.log(
+    JSON.stringify({
+      DATABASE_OWNER_URL: targetOwnerUrl.toString(),
+      DATABASE_URL: targetRuntimeUrl.toString(),
+      REDIS_URL: env.REDIS_URL,
+      REDIS_KEY_PREFIX: name,
+    }),
+  );
 }
 
 async function cleanup() {
