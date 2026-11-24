@@ -623,9 +623,55 @@ describe("organization notification settings read revocation linearization", () 
   const linearizationOwnerMemberId = crypto.randomUUID();
   const linearizationTargetMemberId = crypto.randomUUID();
 
+  // Observe real queries on fixture-owned clients; never replace SQL or permission results.
+  function observedDatabase(
+    observe: (
+      text: string,
+      pid: number,
+      completed: boolean,
+    ) => Promise<void> | undefined,
+  ): Database {
+    return {
+      ...database,
+      sql: new Proxy(database.sql, {
+        get(target, property, receiver) {
+          if (property !== "connect")
+            return Reflect.get(target, property, receiver) as unknown;
+          return async (): Promise<PoolClient> => {
+            const client = await target.connect();
+            const originalQuery = client.query.bind(client);
+            const backend = await originalQuery<{ pid: number }>(
+              "select pg_backend_pid() as pid",
+            );
+            const pid = backend.rows[0]?.pid;
+            if (!pid) throw new Error("fixture backend PID was not returned");
+            const query = async <Row extends QueryResultRow>(
+              text: string,
+              values?: unknown[],
+            ): Promise<QueryResult<Row>> => {
+              await observe(text, pid, false);
+              const result = await originalQuery<Row>(text, values);
+              await observe(text, pid, true);
+              return result;
+            };
+            client.query = query as PoolClient["query"];
+            const originalRelease = client.release.bind(client);
+            client.release = (error?: Error | boolean): void => {
+              client.query = originalQuery;
+              client.release = originalRelease;
+              originalRelease(error);
+            };
+            return client;
+          };
+        },
+      }),
+    };
+  }
+
   async function waitForBlockedQuery(
     queryPattern: string,
     blockerPid: number,
+    blockedPid: number,
     message: string,
   ): Promise<number> {
     const deadline = Date.now() + 5_000;
@@ -633,12 +679,12 @@ describe("organization notification settings read revocation linearization", () 
       const blocked = await owner.query<{ pid: number }>(
         `select pid from pg_stat_activity
          where datname = current_database()
-           and pid <> pg_backend_pid()
+           and pid = $3
            and state = 'active'
            and wait_event_type = 'Lock'
            and query like $1
            and $2 = any(pg_blocking_pids(pid))`,
-        [queryPattern, blockerPid],
+        [queryPattern, blockerPid, blockedPid],
       );
       const pid = blocked.rows[0]?.pid;
       if (pid) return pid;
@@ -723,6 +769,7 @@ describe("organization notification settings read revocation linearization", () 
     let holderOpen = false;
     let revoke: Promise<unknown> | undefined;
     let read: Promise<unknown> | undefined;
+    let otherRead: Promise<unknown> | undefined;
     try {
       await holder.connect();
       await holder.query("begin");
@@ -735,7 +782,15 @@ describe("organization notification settings read revocation linearization", () 
       const holderPid = held.rows[0]?.pid;
       if (!holderPid) throw new Error("holder backend PID was not returned");
 
-      revoke = revokeOrganizationMember(database, {
+      const revokeBackend = Promise.withResolvers<number>();
+      const revokeDatabase = observedDatabase((text, pid, completed) => {
+        if (
+          !completed &&
+          text === "select id from organization where id = $1 for update"
+        )
+          revokeBackend.resolve(pid);
+      });
+      revoke = revokeOrganizationMember(revokeDatabase, {
         organizationId: linearizationOrganizationId,
         actorUserId: linearizationOwnerId,
         memberId: linearizationTargetMemberId,
@@ -743,29 +798,71 @@ describe("organization notification settings read revocation linearization", () 
       const revokePid = await waitForBlockedQuery(
         "%from member%and id = $2%for update%",
         holderPid,
+        await revokeBackend.promise,
         "revoke did not wait on the target membership lock",
       );
-      read = getOrganizationNotificationSettings(database, {
-        organizationId: linearizationOrganizationId,
-        userId: linearizationTargetId,
-      });
+      // A different request reaches the identical SQL/blocker first. SQL alone is not identity.
+      const otherBackend = Promise.withResolvers<number>();
+      otherRead = getOrganizationNotificationSettings(
+        observedDatabase((text, pid, completed) => {
+          if (
+            !completed &&
+            text === "select id from organization where id = $1 for share"
+          )
+            otherBackend.resolve(pid);
+        }),
+        {
+          organizationId: linearizationOrganizationId,
+          userId: linearizationOwnerId,
+        },
+      );
+      const otherPid = await otherBackend.promise;
       await waitForBlockedQuery(
         "%select id from organization where id = $1 for share%",
         revokePid,
-        "settings read did not wait behind the revocation transaction",
+        otherPid,
+        "other request did not reach the same organization lock",
       );
+      const readBackend = Promise.withResolvers<number>();
+      const readDatabase = observedDatabase((text, pid, completed) => {
+        if (
+          !completed &&
+          text === "select id from organization where id = $1 for share"
+        )
+          readBackend.resolve(pid);
+      });
+      read = getOrganizationNotificationSettings(readDatabase, {
+        organizationId: linearizationOrganizationId,
+        userId: linearizationTargetId,
+      });
+      const readPid = await readBackend.promise;
+      expect(readPid).not.toBe(otherPid);
+      expect(
+        await waitForBlockedQuery(
+          "%select id from organization where id = $1 for share%",
+          revokePid,
+          readPid,
+          "settings read did not wait behind the revocation transaction",
+        ),
+      ).toBe(readPid);
 
-      await holder.query("commit");
-      holderOpen = false;
-      await revoke;
-      await expect(read).rejects.toMatchObject({
+      const deniedRead = expect(read).rejects.toMatchObject({
         statusCode: 403,
         code: "MEMBERSHIP_DENIED",
       });
+      await holder.query("commit");
+      holderOpen = false;
+      await revoke;
+      await expect(otherRead).resolves.toMatchObject({
+        organizationId: linearizationOrganizationId,
+        settingsChangedEnabled: true,
+        version: 1,
+      });
+      await deniedRead;
     } finally {
       if (holderOpen) await holder.query("rollback").catch(() => undefined);
       await Promise.allSettled(
-        [revoke, read].filter(
+        [revoke, read, otherRead].filter(
           (promise): promise is Promise<unknown> => promise !== undefined,
         ),
       );
@@ -774,33 +871,40 @@ describe("organization notification settings read revocation linearization", () 
   });
 
   it("returns settings when the read holds the organization lock before revoke", async () => {
-    const holder = new Client({ connectionString: ownerUrl });
-    let holderOpen = false;
+    const settingsRead = Promise.withResolvers<number>();
+    const releaseRead = Promise.withResolvers<undefined>();
+    const revokeBackend = Promise.withResolvers<number>();
+    const readDatabase = observedDatabase(async (text, pid, completed) => {
+      if (completed && text.includes("from notification_org_settings")) {
+        settingsRead.resolve(pid);
+        // The real SELECT completed under the real organization guard; hold its transaction open.
+        await releaseRead.promise;
+      }
+    });
+    const revokeDatabase = observedDatabase((text, pid, completed) => {
+      if (
+        !completed &&
+        text === "select id from organization where id = $1 for update"
+      )
+        revokeBackend.resolve(pid);
+    });
     let read: Promise<OrganizationNotificationSettings> | undefined;
     let revoke: Promise<unknown> | undefined;
     try {
-      await holder.connect();
-      await holder.query("begin");
-      holderOpen = true;
-      const held = await holder.query<{ pid: number }>(
-        "select pg_backend_pid() as pid",
-      );
-      const holderPid = held.rows[0]?.pid;
-      if (!holderPid) throw new Error("holder backend PID was not returned");
-      await holder.query(
-        "lock table notification_org_settings in access exclusive mode",
-      );
-
-      read = getOrganizationNotificationSettings(database, {
+      read = getOrganizationNotificationSettings(readDatabase, {
         organizationId: linearizationOrganizationId,
         userId: linearizationTargetId,
       });
-      const readPid = await waitForBlockedQuery(
-        "%from notification_org_settings%",
-        holderPid,
-        "settings read did not reach its settings select",
-      );
-      revoke = revokeOrganizationMember(database, {
+      const readPid = await settingsRead.promise;
+
+      // Same settings SQL, different organization: it must finish before releasing this read.
+      await expect(
+        getOrganizationNotificationSettings(database, {
+          organizationId,
+          userId: ownerId,
+        }),
+      ).resolves.toMatchObject({ organizationId });
+      revoke = revokeOrganizationMember(revokeDatabase, {
         organizationId: linearizationOrganizationId,
         actorUserId: linearizationOwnerId,
         memberId: linearizationTargetMemberId,
@@ -808,11 +912,11 @@ describe("organization notification settings read revocation linearization", () 
       await waitForBlockedQuery(
         "%select id from organization where id = $1 for update%",
         readPid,
+        await revokeBackend.promise,
         "revoke did not wait behind the settings read organization lock",
       );
 
-      await holder.query("commit");
-      holderOpen = false;
+      releaseRead.resolve(undefined);
       await expect(read).resolves.toMatchObject({
         organizationId: linearizationOrganizationId,
         settingsChangedEnabled: true,
@@ -820,13 +924,12 @@ describe("organization notification settings read revocation linearization", () 
       });
       await revoke;
     } finally {
-      if (holderOpen) await holder.query("rollback").catch(() => undefined);
+      releaseRead.resolve(undefined);
       await Promise.allSettled(
         [read, revoke].filter(
           (promise): promise is Promise<unknown> => promise !== undefined,
         ),
       );
-      await holder.end();
     }
   });
 });
