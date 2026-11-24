@@ -4,6 +4,7 @@ import {
   ORGANIZATION_MEMBER_LIMIT,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
+  pendingInvitationListQuerySchema,
 } from "./auth";
 
 describe("organizationMemberListQuerySchema", () => {
@@ -12,6 +13,34 @@ describe("organizationMemberListQuerySchema", () => {
       limit: 50,
       offset: 0,
     });
+  });
+
+  it("trims q, bounds its length and limits role to the organization roles", () => {
+    expect(
+      organizationMemberListQuerySchema.parse({
+        q: "  Ann  ",
+        role: "auditor",
+      }),
+    ).toMatchObject({ q: "Ann", role: "auditor" });
+    for (const query of [
+      { q: "" },
+      { q: "   " },
+      { q: "a".repeat(101) },
+      { q: "a\u0000b" },
+      { q: ["a", "b"] },
+      { role: "superuser" },
+      { role: "" },
+    ]) {
+      expect(organizationMemberListQuerySchema.safeParse(query).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("keeps the pending invitation list free of member filters", () => {
+    expect(
+      pendingInvitationListQuerySchema.parse({ q: "ann", role: "owner" }),
+    ).toEqual({ limit: 50, offset: 0 });
   });
 });
 

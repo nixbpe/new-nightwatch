@@ -120,6 +120,9 @@ export async function listRows(
         query.layer ?? null,
         query.status,
         query.q === undefined || query.q === "" ? null : query.q,
+        query.owner === undefined || query.owner === "" ? null : query.owner,
+        query.environment ?? null,
+        query.exposure ?? null,
       ];
       const scoped = `select ${ROW_COLUMNS} from ${ROW_FROM}
         where r.tenant_id = $1 and r.project_id = $2`;
@@ -128,7 +131,10 @@ export async function listRows(
         and ($5 = 'all' or ($5 = 'rejected' and not t.usable) or ($5 = 'duplicate' and t.duplicate))
         and ($6::text is null
              or position(lower($6) in lower(t.vendor)) > 0
-             or position(lower($6) in lower(t.product)) > 0)`;
+             or position(lower($6) in lower(t.product)) > 0)
+        and ($7::text is null or starts_with(lower(t.owner), lower($7)))
+        and ($8::text is null or t.environment = $8)
+        and ($9::text is null or t.exposure = $9)`;
       const counted = await client.query<{ total: number }>(
         `select count(*)::int as total from (${scoped}) t ${where}`,
         filters,
@@ -140,7 +146,7 @@ export async function listRows(
       );
       const { rows } = await client.query<RowRecord>(
         `select t.* from (${scoped}) t ${where}
-         order by t.name_key, t.line_no limit $7 offset $8`,
+         order by t.name_key, t.line_no limit $10 offset $11`,
         [
           ...filters,
           INVENTORY_ROWS_PAGE_SIZE,

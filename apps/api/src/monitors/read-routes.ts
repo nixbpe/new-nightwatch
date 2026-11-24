@@ -6,6 +6,7 @@ import {
   monitorChecksResponseSchema,
   monitorDetailResponseSchema,
   monitorEventsResponseSchema,
+  monitorChecksQuerySchema,
   monitorHistoryQuerySchema,
   monitorIncidentsResponseSchema,
   monitorLastResponseResponseSchema,
@@ -122,8 +123,9 @@ export const monitorReadRouteDeclarations = {
     method: "get",
     path: `${monitorBase}/{monitorId}/checks`,
     tags,
-    summary: "Check history, newest first",
-    request: { params: monitorParamsSchema, query: monitorHistoryQuerySchema },
+    summary:
+      "Check history, newest first, optionally by outcome and start time",
+    request: { params: monitorParamsSchema, query: monitorChecksQuerySchema },
     responses: {
       200: {
         description: "One page of results and the URL changes inside it",

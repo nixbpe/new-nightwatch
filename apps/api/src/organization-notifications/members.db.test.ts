@@ -387,4 +387,158 @@ describe("listOrganizationMembers", () => {
       ]);
     }
   });
+
+  it("filters by q and normalized role, counts the filtered total and never crosses organizations", async () => {
+    const filterOrg = crypto.randomUUID();
+    const otherOrg = crypto.randomUUID();
+    const people = [
+      {
+        id: crypto.randomUUID(),
+        name: "Alice Rivers",
+        email: `alice-${run}@corp.test`,
+        role: "owner",
+        org: filterOrg,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "bob 100%_off",
+        email: `bob-${run}@corp.test`,
+        role: "admin,auditor",
+        org: filterOrg,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "Carol",
+        email: `carol-${run}@ALICE.test`,
+        role: "viewer,auditor",
+        org: filterOrg,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "Dave",
+        email: `dave-${run}@corp.test`,
+        role: "auditor",
+        org: filterOrg,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "Alice Elsewhere",
+        email: `alice2-${run}@corp.test`,
+        role: "owner",
+        org: otherOrg,
+      },
+    ];
+    const list = (
+      actorUserId: string,
+      extra: {
+        q?: string;
+        role?: "owner" | "admin" | "viewer" | "auditor";
+        limit?: number;
+        offset?: number;
+      } = {},
+      organizationId = filterOrg,
+    ) =>
+      listOrganizationMembers(database, {
+        organizationId,
+        actorUserId,
+        limit: 50,
+        offset: 0,
+        ...extra,
+      });
+    const nameOf = (result: Awaited<ReturnType<typeof list>>) =>
+      result.members.map((member) => member.name);
+    try {
+      await owner.query(
+        "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now()), ($4, $5, $6, now())",
+        [
+          filterOrg,
+          `Filter ${run}`,
+          `filter-${run}`,
+          otherOrg,
+          `Filter other ${run}`,
+          `filter-other-${run}`,
+        ],
+      );
+      for (const person of people) {
+        await owner.query(
+          'insert into "user" (id, name, email, email_verified, created_at, updated_at) values ($1, $2, $3, true, now(), now())',
+          [person.id, person.name, person.email],
+        );
+        await owner.query(
+          "insert into member (id, organization_id, user_id, role, created_at, updated_at) values ($1, $2, $3, $4, now(), now())",
+          [crypto.randomUUID(), person.org, person.id, person.role],
+        );
+      }
+      const [alice, bob, carol, dave, elsewhere] = people;
+      if (!alice || !bob || !carol || !dave || !elsewhere)
+        throw new Error("fixture");
+
+      // Name and email, case-insensitive; the other organization's Alice is absent.
+      expect(nameOf(await list(alice.id, { q: "ALICE" }))).toEqual([
+        "Alice Rivers",
+        "Carol",
+      ]);
+      // LIKE wildcards in the search text match literally.
+      expect(nameOf(await list(alice.id, { q: "100%_" }))).toEqual([
+        "bob 100%_off",
+      ]);
+      expect(nameOf(await list(alice.id, { q: "%" }))).toEqual([
+        "bob 100%_off",
+      ]);
+      expect(nameOf(await list(alice.id, { q: "_" }))).toEqual([
+        "bob 100%_off",
+      ]);
+
+      // Role filter follows the displayed (highest-priority) role of composite values.
+      expect(nameOf(await list(alice.id, { role: "admin" }))).toEqual([
+        "bob 100%_off",
+      ]);
+      expect(nameOf(await list(alice.id, { role: "viewer" }))).toEqual([
+        "Carol",
+      ]);
+      expect(nameOf(await list(alice.id, { role: "auditor" }))).toEqual([
+        "Dave",
+      ]);
+      expect(
+        nameOf(await list(alice.id, { q: "alice", role: "viewer" })),
+      ).toEqual(["Carol"]);
+
+      // Total counts the filtered rows and pagination applies to them.
+      const paged = await list(alice.id, { q: "alice", limit: 1, offset: 1 });
+      expect(nameOf(paged)).toEqual(["Carol"]);
+      expect(paged.page).toEqual({ limit: 1, offset: 1, total: 2 });
+      const none = await list(alice.id, { q: `nobody-${run}` });
+      expect(none.members).toEqual([]);
+      expect(none.page.total).toBe(0);
+
+      // Without filters the order and rows are unchanged.
+      expect(nameOf(await list(alice.id))).toEqual([
+        "Alice Rivers",
+        "bob 100%_off",
+        "Carol",
+        "Dave",
+      ]);
+
+      // Filters never lift the authorization checks.
+      for (const filter of [{ q: "alice" }, { role: "owner" as const }]) {
+        await expect(list(carol.id, filter)).rejects.toMatchObject({
+          code: "PERMISSION_DENIED",
+        });
+        await expect(list(dave.id, filter)).rejects.toMatchObject({
+          code: "PERMISSION_DENIED",
+        });
+        // An owner of another organization is not a member here.
+        await expect(list(elsewhere.id, filter)).rejects.toMatchObject({
+          code: "MEMBERSHIP_DENIED",
+        });
+      }
+    } finally {
+      await owner.query("delete from organization where id = any($1::uuid[])", [
+        [filterOrg, otherOrg],
+      ]);
+      await owner.query('delete from "user" where id = any($1::text[])', [
+        people.map((person) => person.id),
+      ]);
+    }
+  });
 });
