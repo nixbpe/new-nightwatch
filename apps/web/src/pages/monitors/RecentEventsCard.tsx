@@ -7,9 +7,10 @@ import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card, CardHeader } from "../../components/ui/card";
 import { StatusPill } from "../../components/ui/status-pill";
-import { Skeleton } from "../../components/shell/Skeleton";
+import { PageState } from "../../components/shell/PageState";
 import {
   fetchMonitorRecentEvents,
+  MONITOR_RECENT_EVENTS_LIMIT,
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
@@ -148,16 +149,27 @@ export function RecentEventsCard({
           ไม่มีเหตุการณ์ล่มหรือ SSL เตือนในช่วงที่เก็บข้อมูล
         </p>
       ) : (
-        <ul>
-          {events.data.events.map((event) => (
-            <EventRow
-              key={`${event.kind}:${event.monitorId}:${event.at}`}
-              organizationId={organizationId}
-              projectId={projectId}
-              event={event}
-            />
-          ))}
-        </ul>
+        <>
+          <ul>
+            {events.data.events.map((event) => (
+              <EventRow
+                key={`${event.kind}:${event.monitorId}:${event.at}`}
+                organizationId={organizationId}
+                projectId={projectId}
+                event={event}
+              />
+            ))}
+          </ul>
+          {events.data.events.length >= MONITOR_RECENT_EVENTS_LIMIT ? (
+            <p
+              data-testid="monitor-overview-events-cap"
+              data-limit={MONITOR_RECENT_EVENTS_LIMIT}
+              className="border-t border-foreground/10 px-4 py-3 text-xs text-foreground-secondary"
+            >
+              แสดง {MONITOR_RECENT_EVENTS_LIMIT} รายการล่าสุด
+            </p>
+          ) : null}
+        </>
       );
   } else if (events.isError) {
     body = (
@@ -172,18 +184,18 @@ export function RecentEventsCard({
           size="sm"
           onClick={() => void events.refetch()}
         >
-          ลองอีกครั้ง
+          ลองใหม่
         </Button>
       </div>
     );
   } else {
     body = (
-      <div aria-busy="true" className="flex flex-col gap-3 p-4">
-        <p role="status" className="sr-only">
-          กำลังโหลดเหตุการณ์ล่าสุด
-        </p>
-        <Skeleton className="h-4 w-64 max-w-full" />
-        <Skeleton className="h-4 w-48 max-w-full" />
+      <div className="p-4">
+        <PageState
+          kind="loading"
+          layout="inline"
+          label="กำลังโหลดเหตุการณ์ล่าสุด…"
+        />
       </div>
     );
   }
@@ -202,7 +214,9 @@ export function RecentEventsCard({
       {body}
       {events.data !== undefined && events.isError ? (
         <div className="border-t border-foreground/10 p-4">
-          <Alert tone="warning">อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ</Alert>
+          <Alert tone="warning" role="alert">
+            อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ
+          </Alert>
         </div>
       ) : null}
     </Card>

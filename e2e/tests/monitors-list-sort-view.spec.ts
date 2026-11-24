@@ -239,7 +239,7 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await expect(
     page.getByTestId("monitor-overview-table-region"),
   ).toHaveAccessibleName(/\S/);
-  for (const key of ["name", "health", "p95", "h24", "lastCheck"]) {
+  for (const key of ["name", "health", "ssl", "p95", "h24", "lastCheck"]) {
     await expect(
       table.getByTestId(`monitor-list-heading-${key}`),
     ).toHaveAttribute("scope", "col");
@@ -247,7 +247,7 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
       /\S/,
     );
   }
-  for (const key of ["method", "interval", "ssl", "responseTime"]) {
+  for (const key of ["method", "interval", "responseTime"]) {
     await expect(table.getByTestId(`monitor-list-heading-${key}`)).toHaveCount(
       0,
     );
@@ -385,7 +385,7 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   expect(await orderOf(cardItems(page))).toEqual(PROBLEMS_ORDER);
 });
 
-test("Overview: summary line, status filter counts and the Project footer", async ({
+test("Overview: summary line, status filter counts and no pager for one page", async ({
   page,
 }) => {
   await signIn(page, owner);
@@ -415,9 +415,8 @@ test("Overview: summary line, status filter counts and the Project footer", asyn
     filter.getByTestId("monitor-overview-health-down"),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(tableRows(page)).toHaveCount(1);
-  await expect(page.getByTestId("monitor-overview-pagination")).toContainText(
-    `เฉพาะมอนิเตอร์ของ ${projectName}`,
-  );
+  await expect(page.getByTestId("monitor-overview-results")).toContainText("1");
+  await expect(page.getByTestId("monitor-overview-pagination")).toHaveCount(0);
 });
 
 async function openWorkspaceCertificate(page: Page) {

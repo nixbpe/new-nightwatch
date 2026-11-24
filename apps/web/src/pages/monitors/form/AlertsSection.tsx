@@ -6,6 +6,7 @@ import {
 } from "../../../lib/api/notifications";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { Card } from "../../../components/ui/card";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { ORG_ALERTS_OFF_MESSAGE } from "../detail/labels";
 import { SelectControl, TextControl, type SectionProps } from "./controls";
@@ -100,12 +101,11 @@ export function AlertsSection({
         <option value="3">3 ครั้ง</option>
       </SelectControl>
       <label className={CHECKBOX_CARD}>
-        <input
+        <Checkbox
           data-testid="monitor-form-alert-down"
-          type="checkbox"
           checked={alerts.downEnabled}
           aria-disabled={disabled}
-          className="mt-0.5 h-4 w-4 accent-primary"
+          className="mt-0.5"
           onChange={(event) => {
             if (disabled) return;
             onChange(
@@ -117,12 +117,11 @@ export function AlertsSection({
         <span className="font-medium">แจ้งเมื่อล่มและกลับมาปกติ</span>
       </label>
       <label className={CHECKBOX_CARD}>
-        <input
+        <Checkbox
           data-testid="monitor-form-alert-ssl"
-          type="checkbox"
           checked={alerts.sslEnabled}
           aria-disabled={disabled}
-          className="mt-0.5 h-4 w-4 accent-primary"
+          className="mt-0.5"
           onChange={(event) => {
             if (disabled) return;
             onChange(

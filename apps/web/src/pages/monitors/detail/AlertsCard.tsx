@@ -58,7 +58,7 @@ function OrgAlertsValue({
           data-testid="monitor-alerts-org-retry"
           onClick={() => void org.refetch()}
         >
-          ลองอีกครั้ง
+          ลองใหม่
         </Button>
       </span>
     );

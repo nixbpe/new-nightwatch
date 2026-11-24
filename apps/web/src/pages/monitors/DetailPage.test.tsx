@@ -259,6 +259,27 @@ describe("Detail health and special states", () => {
     ).toHaveTextContent(/HTTP 503/);
   });
 
+  it("orders the main column as uptime, incidents, response time, then the activity feed", async () => {
+    showDetail(detail());
+    renderDetail();
+    await expectHealth("up");
+    const ids = [
+      "monitor-status",
+      "monitor-incidents",
+      "monitor-response-times",
+      "monitor-event-feed",
+    ];
+    const inPageOrder = ids
+      .map((id) => screen.getByTestId(id))
+      .sort((left, right) =>
+        left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : 1,
+      )
+      .map((section) => section.dataset.testid);
+    expect(inPageOrder).toEqual(ids);
+  });
+
   it("hides the notifications link when the route organization is not the server-active one", async () => {
     // /notifications shows the server-active (A) inbox; a bookmarked monitor of B must not link to it.
     showDetail(
@@ -978,6 +999,24 @@ describe("Detail access", () => {
     expect(screen.getByTestId("monitor-detail-delete")).toBeVisible();
     expect(screen.queryByTestId("monitor-detail-read-only")).toBeNull();
   });
+  it("keeps delete with the configuration, apart from the daily header actions", async () => {
+    fetchMeContextMock.mockResolvedValue(context("admin"));
+    showDetail(detail());
+    renderDetail();
+    await readyDetail();
+    const remove = screen.getByTestId("monitor-detail-delete");
+    expect(
+      within(screen.getByTestId("monitor-detail-config")).getByTestId(
+        "monitor-detail-delete",
+      ),
+    ).toBe(remove);
+    expect(remove.parentElement).not.toContainElement(
+      screen.getByTestId("monitor-detail-edit"),
+    );
+    expect(remove.parentElement).not.toContainElement(
+      screen.getByTestId("monitor-detail-toggle"),
+    );
+  });
   it("shows denied to a non-member without fetching or naming the monitor", async () => {
     renderDetail(B.replace("2222", "3333"));
     expect(
@@ -1642,12 +1681,6 @@ function expectNoChartInDom() {
   expect(document.body.innerHTML).not.toContain("data-chart-part=");
 }
 
-function expectNoStateAttributes(toggle: HTMLElement) {
-  for (const attribute of ["aria-expanded", "aria-controls", "aria-pressed"]) {
-    expect(toggle).not.toHaveAttribute(attribute);
-  }
-}
-
 const T = (time: string) => `2026-09-30T${time}:00.000Z`;
 const inWindow = (minutes: number) =>
   new Date(
@@ -1794,7 +1827,9 @@ describe("Detail response-time chart", () => {
     expect(
       within(card).queryByTestId("monitor-response-empty-time"),
     ).toBeNull();
-    expect(within(card).queryByTestId("monitor-response-toggle")).toBeNull();
+    expect(
+      within(card).queryByTestId("monitor-response-view-table"),
+    ).toBeNull();
   });
 
   it("tells a monitor with no results in the window from one that was never checked", async () => {
@@ -1834,12 +1869,12 @@ describe("Detail response-time chart", () => {
       await within(card).findByTestId("monitor-response-chart"),
     ).toBeInTheDocument();
     expect(
-      within(card).getByTestId("monitor-response-toggle"),
+      within(card).getByTestId("monitor-response-view-table"),
     ).toBeInTheDocument();
     expect(
       within(card).getByTestId("monitor-response-summary"),
     ).toHaveAttribute("data-paused", "true");
-    await user.click(within(card).getByTestId("monitor-response-toggle"));
+    await user.click(within(card).getByTestId("monitor-response-view-table"));
     expect(records()).toEqual([
       record("pause", inWindow(-60), DATA_AS_OF, 0, "–", null, true),
     ]);
@@ -1903,7 +1938,7 @@ describe("Detail response-time chart", () => {
       /^0$/,
     );
     await user.click(
-      within(responseCard()).getByTestId("monitor-response-toggle"),
+      within(responseCard()).getByTestId("monitor-response-view-table"),
     );
     expect(records()).toEqual([
       {
@@ -1934,7 +1969,7 @@ describe("Detail response-time chart", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    await user.click(await screen.findByTestId("monitor-response-toggle"));
+    await user.click(await screen.findByTestId("monitor-response-view-table"));
     const rows = records();
     expect(rows).toEqual([
       record("value", inWindow(1330), inWindow(1330), 1, "100"),
@@ -1960,7 +1995,7 @@ describe("Detail response-time chart", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByTestId("monitor-response-toggle");
+    const button = await screen.findByTestId("monitor-response-view-table");
     await user.click(button);
     const rows = records();
     expect(rows).toEqual([
@@ -2009,14 +2044,18 @@ describe("Detail response-time chart", () => {
     );
   });
 
-  it("swaps the chart for the same data as a real table with one toggle that keeps focus", async () => {
+  it("swaps the chart for the same data as a real table with a two-option view control that keeps focus", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
     const user = userEvent.setup();
     renderDetail();
     const toggle = await screen.findByTestId("monitor-response-toggle");
+    const chartOption = screen.getByTestId("monitor-response-view-chart");
+    const tableOption = screen.getByTestId("monitor-response-view-table");
     const group = await screen.findByTestId("monitor-response-chart");
-    expectNoStateAttributes(toggle);
+    expect(toggle).toHaveRole("radiogroup");
+    expect(chartOption).toBeChecked();
+    expect(tableOption).not.toBeChecked();
     noTable();
     expect(screen.getByTestId("monitor-response-readout")).toHaveAttribute(
       "aria-hidden",
@@ -2027,8 +2066,6 @@ describe("Detail response-time chart", () => {
       "polite",
     );
     expect(group).toHaveRole("group");
-    expect(toggle).toHaveRole("button");
-    const chartAction = toggle.textContent;
     group.focus();
     await user.keyboard("{Home}");
     expect(screen.getByTestId("monitor-response-readout")).toHaveTextContent(
@@ -2049,12 +2086,11 @@ describe("Detail response-time chart", () => {
       formatTime(inWindow(10)),
     );
 
-    toggle.focus();
-    await user.keyboard("{Enter}");
-    expect(toggle).toHaveAttribute("data-view", "table");
-    expect(toggle.textContent).not.toBe(chartAction);
-    expect(toggle).toHaveFocus();
-    expectNoStateAttributes(toggle);
+    chartOption.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(tableOption).toBeChecked();
+    expect(chartOption).not.toBeChecked();
+    expect(tableOption).toHaveFocus();
     noChart();
     expect(screen.queryByTestId("monitor-response-readout")).toBeNull();
     expect(document.body.innerHTML).not.toContain("data-chart-part=");
@@ -2070,10 +2106,10 @@ describe("Detail response-time chart", () => {
     ).toBeNull();
     expect(records()).toEqual(standardRecords());
 
-    await user.keyboard(" ");
-    expect(toggle).toHaveAttribute("data-view", "chart");
-    expect(toggle.textContent).toBe(chartAction);
-    expect(toggle).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(chartOption).toBeChecked();
+    expect(tableOption).not.toBeChecked();
+    expect(chartOption).toHaveFocus();
     noTable();
     expect(rootChart()).toHaveRole("group");
     expect(screen.getByTestId("monitor-response-readout")).toBeInTheDocument();
@@ -2148,7 +2184,7 @@ describe("Detail response-time chart", () => {
       ).toHaveAttribute("aria-checked", "true");
       for (const group of responseCard().querySelectorAll('[role="group"]'))
         expect(group).not.toHaveAccessibleName(/^ตัวอย่าง: p50 p95/);
-      await user.click(screen.getByTestId("monitor-response-toggle"));
+      await user.click(screen.getByTestId("monitor-response-view-table"));
       const table = responseTable();
       expect(summaryNumbers()).toEqual([200, 500, 1, 60]);
       expect(
@@ -2328,9 +2364,13 @@ describe("Detail redesign behaviours", () => {
     showDetail(detail());
     renderDetail();
     await readyDetail();
-    const frame = within(screen.getByTestId("monitor-status")).getByTestId(
-      "monitor-uptime-sample",
-    );
+    const frame = screen.getByTestId("monitor-uptime-sample");
+    // The sample sits after the incidents, so it never separates the real uptime from them.
+    expect(screen.getByTestId("monitor-status")).not.toContainElement(frame);
+    expect(
+      screen.getByTestId("monitor-incidents").compareDocumentPosition(frame) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(frame).toHaveRole("group");
     expect(frame).toHaveAccessibleName(/^ตัวอย่าง:/);
     expect(frame.textContent).not.toMatch(/HTTP\/\d/);
@@ -2469,7 +2509,7 @@ describe("response-time state and selection", () => {
       expect(
         screen.getByTestId("monitor-response-times").innerHTML,
       ).not.toMatch(/<a\b/);
-      const table = responseElement("toggle");
+      const table = responseElement("view-table");
       table.focus();
       await user.keyboard("{Enter}");
       expect(chartTable()).toBeInTheDocument();
@@ -2515,7 +2555,7 @@ describe("response-time state and selection", () => {
     await waitFor(() => {
       expectKpis([null, null, "2", "2"]);
     });
-    expect(responseElement("caption-population")).toHaveTextContent(/\S/);
+    expect(responseElement("caption-population")).toHaveAccessibleName(/\S/);
     const user = userEvent.setup();
     (await responseScope().findByTestId("monitor-response-chart")).focus();
     await user.keyboard("{End}");
@@ -2525,7 +2565,7 @@ describe("response-time state and selection", () => {
     );
     expect(responseElement("live")).toHaveTextContent(formatTime(DATA_AS_OF));
     expect(responseElement("live")).not.toHaveTextContent(/\d+ ms/);
-    await user.click(responseElement("toggle"));
+    await user.click(responseElement("view-table"));
     const expected = {
       kind: "no-response",
       at: Date.parse(DATA_AS_OF),
@@ -2765,14 +2805,16 @@ function expectCaption(
   expect(c.getByTestId("monitor-response-caption-source")).toHaveTextContent(
     /\S/,
   );
-  expect(
-    c.getByTestId("monitor-response-caption-population"),
-  ).toHaveTextContent(/\S/);
+  // The counting rules sit behind an info icon, not in the visible line.
+  const population = c.getByTestId("monitor-response-caption-population");
+  expect(population).toHaveRole("button");
+  expect(population).toHaveAccessibleName(/\S/);
   if (options.window) {
     const bounds = c.getByTestId("monitor-response-caption-window");
     expect(bounds).toHaveAttribute("data-time-zone", timeZone());
     expect(bounds).toHaveTextContent(timeZone());
     const format = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+      timeZone: timeZone(),
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -3003,7 +3045,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     const user = userEvent.setup();
     renderResponseCard();
     const toggle = await responseScope().findByTestId(
-      "monitor-response-toggle",
+      "monitor-response-view-table",
     );
 
     const steps24 = await chartSteps(user, 5);
@@ -3012,7 +3054,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
 
     await user.click(responseElement("range-7d"));
     expect(
-      await responseScope().findByTestId("monitor-response-toggle"),
+      await responseScope().findByTestId("monitor-response-view-table"),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(responseElement("table-region")).toHaveAttribute(
@@ -3022,7 +3064,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     );
     expect(responseScope().queryByTestId("monitor-response-chart")).toBeNull();
     const rows7 = tableSteps();
-    await user.click(responseElement("toggle"));
+    await user.click(responseElement("view-chart"));
     expectSameSteps(await chartSteps(user, 3), rows7, true);
 
     await user.click(responseElement("range-30d"));
@@ -3031,7 +3073,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     ).toBeInTheDocument();
     expectNoTableInDom();
     const steps30 = await chartSteps(user, 3);
-    await user.click(responseElement("toggle"));
+    await user.click(responseElement("view-table"));
     expect(responseElement("table-region")).toHaveAttribute(
       "data-range",
       "30d",
@@ -3041,7 +3083,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
 
     await user.click(responseElement("range-24h"));
     expect(
-      await responseScope().findByTestId("monitor-response-toggle"),
+      await responseScope().findByTestId("monitor-response-view-table"),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(responseElement("table-region")).toHaveAttribute(
@@ -3074,9 +3116,9 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     );
 
     for (const view of ["table", "chart"] as const) {
-      await user.click(responseElement("toggle"));
+      await user.click(responseElement(`view-${view}`));
       expect(responseElement("toggle")).toBe(toggle);
-      expect(toggle).toHaveAttribute("data-view", view);
+      expect(responseElement(`view-${view}`)).toBeChecked();
       expect(responseElement("range-controls")).toBe(range);
       expect(responseElement("kpis")).toBe(kpis);
       expect(responseElement("summary")).toBe(summary);
@@ -3103,7 +3145,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
       await responseScope().findByTestId("monitor-response-range-7d"),
     );
     await user.click(
-      await responseScope().findByTestId("monitor-response-toggle"),
+      await responseScope().findByTestId("monitor-response-view-table"),
     );
     await waitFor(() => {
       expectAnnouncement("7d");
@@ -3119,7 +3161,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     );
     expect(chartTable()).toBeInTheDocument();
 
-    await user.click(responseElement("toggle"));
+    await user.click(responseElement("view-chart"));
     await user.click(responseElement("range-7d"));
     await waitFor(() => {
       expectAnnouncement("7d");
@@ -3161,7 +3203,7 @@ describe("response-time data notes in both views", () => {
         );
       }
       const toggle = await responseScope().findByTestId(
-        "monitor-response-toggle",
+        "monitor-response-view-table",
       );
       const chartRoot = responseElement("chart");
       expect(chartRoot).toHaveAttribute("data-range", range);

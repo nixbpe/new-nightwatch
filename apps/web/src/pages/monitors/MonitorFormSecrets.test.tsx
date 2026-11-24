@@ -1455,6 +1455,7 @@ describe("Secret hygiene", () => {
       const user = await openCreate();
       await typeToken(user);
       await user.click(screen.getByTestId("monitor-form-cancel"));
+      await user.click(await screen.findByTestId("unsaved-changes-leave"));
       expect(passwordInputs()).toHaveLength(0);
       await reopenCreateFromOverview(user);
       expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(

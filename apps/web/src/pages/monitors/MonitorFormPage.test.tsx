@@ -131,6 +131,36 @@ describe("Create form defaults", () => {
     expect(screen.getByTestId("monitor-form-name")).toHaveValue("");
   });
 
+  it("links back to the monitor list", async () => {
+    await openCreate();
+    expect(screen.getByTestId("monitor-form-back")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/projects/${P}/monitors`,
+    );
+  });
+
+  it("opens advanced mode on the status code field from the basic summary", async () => {
+    const user = await openCreate();
+    await user.click(screen.getByTestId("monitor-form-edit-status"));
+    expect(screen.getByTestId("monitor-form-mode-advanced")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-expected-status")).toHaveFocus();
+    expect(screen.queryByTestId("monitor-form-edit-status")).toBeNull();
+  });
+
+  it("opens advanced mode on the timeout field from the basic summary", async () => {
+    const user = await openCreate();
+    await user.click(screen.getByTestId("monitor-form-edit-timeout"));
+    expect(screen.getByTestId("monitor-form-mode-advanced")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-timeout")).toHaveFocus();
+  });
+
+  it("moves focus to the failure threshold in the alerts card, staying in basic mode", async () => {
+    const user = await openCreate();
+    await user.click(screen.getByTestId("monitor-form-edit-threshold"));
+    expect(screen.getByTestId("monitor-form-alert-threshold")).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-mode-basic")).toBeChecked();
+  });
+
   it("moves the interval with the arrow keys", async () => {
     const user = await openCreate();
     screen.getByTestId("monitor-form-interval-300").focus();
@@ -327,6 +357,66 @@ describe("Access", () => {
       await screen.findByTestId("monitor-form-denied"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+  });
+});
+
+describe("Unsaved changes", () => {
+  const overview = `/organizations/${A}/projects/${P}/monitors`;
+
+  it("leaves an untouched form without asking", async () => {
+    const user = await openCreate();
+    await user.click(screen.getByTestId("monitor-form-cancel"));
+    expect(await screen.findByTestId("location")).toHaveTextContent(overview);
+    expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
+  });
+
+  it("asks before Cancel drops typed values, keeps them on stay and leaves on confirm", async () => {
+    const user = await openCreate();
+    await fillBasic(user);
+    await user.click(screen.getByTestId("monitor-form-cancel"));
+    await screen.findByTestId("unsaved-changes-dialog");
+    expect(screen.getByTestId("location")).toHaveTextContent(newPath());
+
+    await user.click(screen.getByTestId("confirmation-cancel"));
+    expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue("Payments API");
+
+    await user.click(screen.getByTestId("monitor-form-cancel"));
+    await user.click(await screen.findByTestId("unsaved-changes-leave"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(overview);
+    });
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+  });
+
+  it("asks on any other navigation away from a dirty form", async () => {
+    const user = userEvent.setup();
+    const { router } = renderForm(newPath());
+    await screen.findByTestId("monitor-form-name");
+    await fillBasic(user);
+    await act(async () => {
+      await router.navigate(`/organizations/${A}/projects`);
+    });
+    await screen.findByTestId("unsaved-changes-dialog");
+    expect(router.state.location.pathname).toBe(newPath());
+  });
+
+  it("does not ask on Edit once the values are back to the saved ones", async () => {
+    fetchDetailMock.mockResolvedValue({
+      monitor: detail({ name: "Payments API", version: 3 }),
+    });
+    const user = userEvent.setup();
+    renderForm(editPath());
+    const name = await waitFor(expectSavedFormName);
+    await user.type(name, "x");
+    await user.type(name, "{Backspace}");
+    await user.click(screen.getByTestId("monitor-form-cancel"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/monitors/${MONITOR_ID}`,
+      );
+    });
+    expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
   });
 });
 

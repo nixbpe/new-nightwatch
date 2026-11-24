@@ -2,9 +2,10 @@ import type { LastResponse } from "@nightwatch/api-contract";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import { Skeleton } from "../../../components/shell/Skeleton";
+import { PageState } from "../../../components/shell/PageState";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { ApiError } from "../../../lib/api/client";
 import {
@@ -46,10 +47,11 @@ function Shell({
   children: ReactNode;
 }) {
   return (
-    <section
+    <Card
+      as="section"
       data-testid="monitor-last-response"
       aria-labelledby="detail-last-response"
-      className="flex min-w-0 flex-col gap-4"
+      className="min-w-0 gap-4 p-4"
     >
       <SectionHeader
         id="detail-last-response"
@@ -58,7 +60,7 @@ function Shell({
         meta={meta}
       />
       <div className="flex min-w-0 flex-col gap-3">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -285,18 +287,16 @@ function LastResponsePanel({
             data-testid="monitor-response-retry"
             onClick={() => void query.refetch()}
           >
-            ลองอีกครั้ง
+            ลองใหม่
           </Button>
         </>
       ) : null}
       {data === undefined && !query.isError ? (
-        <div aria-busy="true" className="flex flex-col gap-3">
-          <p role="status" className="sr-only">
-            กำลังโหลดการตอบกลับล่าสุด
-          </p>
-          <Skeleton className="h-4 w-48 max-w-full" />
-          <Skeleton className="h-4 w-32 max-w-full" />
-        </div>
+        <PageState
+          kind="loading"
+          layout="inline"
+          label="กำลังโหลดการตอบกลับล่าสุด…"
+        />
       ) : null}
       {data !== undefined && data.response === null ? (
         <p
@@ -310,7 +310,11 @@ function LastResponsePanel({
         <ResponseBody response={data.response} />
       )}
       {data !== undefined && query.isError ? (
-        <Alert data-testid="monitor-response-refresh-error" tone="warning">
+        <Alert
+          data-testid="monitor-response-refresh-error"
+          tone="warning"
+          role="alert"
+        >
           อัปเดตการตอบกลับล่าสุดไม่สำเร็จ
         </Alert>
       ) : null}

@@ -132,6 +132,39 @@ export const projectsShouldRevalidate: ShouldRevalidateFunction = ({
     ? false
     : defaultShouldRevalidate;
 
+// Checks filters are read by the mounted query observer, not by the admission loader.
+export const checksHistoryShouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  actionResult,
+  actionStatus,
+  defaultShouldRevalidate,
+}) => {
+  if (
+    currentUrl.pathname !== nextUrl.pathname ||
+    currentUrl.search === nextUrl.search ||
+    formMethod !== undefined ||
+    actionResult !== undefined ||
+    actionStatus !== undefined
+  ) {
+    return defaultShouldRevalidate;
+  }
+  const current = new URLSearchParams(currentUrl.search);
+  const next = new URLSearchParams(nextUrl.search);
+  const filtersChanged = ["outcome", "range"].some(
+    (key) =>
+      JSON.stringify(current.getAll(key)) !== JSON.stringify(next.getAll(key)),
+  );
+  for (const key of ["outcome", "range"]) {
+    current.delete(key);
+    next.delete(key);
+  }
+  return filtersChanged && current.toString() === next.toString()
+    ? false
+    : defaultShouldRevalidate;
+};
+
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
@@ -268,6 +301,7 @@ export const routes: RouteObject[] = [
               {
                 path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
                 loader: monitorDetailLoader,
+                shouldRevalidate: checksHistoryShouldRevalidate,
                 element: <ChecksHistoryPage />,
               },
               {

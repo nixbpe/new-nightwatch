@@ -598,9 +598,8 @@ for (const theme of ["light", "dark"] as const) {
       await shot(page, `detail-${theme}`);
       expect(headings.h2).toBeGreaterThanOrEqual(6);
       expect(headings.h1).toBe(1);
-      const toggle = page.getByTestId("monitor-response-toggle");
-      await toggle.focus();
-      await page.keyboard.press("Enter");
+      await page.getByTestId("monitor-response-view-chart").focus();
+      await page.keyboard.press("ArrowRight");
       await expect(page.getByTestId("monitor-response-table")).toBeVisible();
 
       const pause = page.getByTestId("monitor-detail-toggle");

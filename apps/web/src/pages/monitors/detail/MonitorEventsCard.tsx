@@ -6,7 +6,7 @@ import type {
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Skeleton } from "../../../components/shell/Skeleton";
+import { PageState } from "../../../components/shell/PageState";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { DataTablePagination } from "../../../components/ui/data-table";
@@ -227,14 +227,14 @@ export function MonitorEventsCard({
     >
       <SectionHeader
         id="detail-event-feed"
-        title="ฟีดเหตุการณ์"
+        title="เหตุการณ์ของมอนิเตอร์"
         meta={<>30 วันล่าสุด · เวลาแสดงตามเขตเวลา {timeZone()}</>}
       />
       <div className="flex flex-col gap-3">
         {data === undefined && events.isError ? (
           <>
             <Alert data-testid="monitor-event-feed-error" tone="error">
-              โหลดฟีดเหตุการณ์ไม่สำเร็จ
+              โหลดเหตุการณ์ของมอนิเตอร์ไม่สำเร็จ
             </Alert>
             <Button
               type="button"
@@ -244,36 +244,31 @@ export function MonitorEventsCard({
               data-testid="monitor-event-feed-retry"
               onClick={() => void events.refetch()}
             >
-              ลองอีกครั้ง
+              ลองใหม่
             </Button>
           </>
         ) : null}
         {data === undefined && !events.isError ? (
-          <div aria-busy="true" className="flex flex-col gap-3">
-            <p
-              data-testid="monitor-event-feed-loading"
-              role="status"
-              className="sr-only"
-            >
-              กำลังโหลดฟีดเหตุการณ์
-            </p>
-            <Skeleton className="h-4 w-64 max-w-full" />
-            <Skeleton className="h-4 w-48 max-w-full" />
-          </div>
+          <PageState
+            kind="loading"
+            layout="inline"
+            statusTestId="monitor-event-feed-loading"
+            label="กำลังโหลดเหตุการณ์ของมอนิเตอร์…"
+          />
         ) : null}
         {data !== undefined && data.page.total === 0 ? (
           <p
             data-testid="monitor-event-feed-empty"
             className="text-sm text-foreground-secondary"
           >
-            ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด
+            ยังไม่มีกิจกรรมใน 30 วันล่าสุด
           </p>
         ) : null}
         {data !== undefined && data.page.total > 0 ? (
           <>
             <ol
               data-testid="monitor-event-feed-list"
-              aria-label="ฟีดเหตุการณ์ของมอนิเตอร์"
+              aria-label="เหตุการณ์ของมอนิเตอร์"
               className="divide-y divide-foreground/10 text-sm"
             >
               {data.events.map((event) => (
@@ -323,7 +318,7 @@ export function MonitorEventsCard({
                 previousTestId="monitor-event-feed-previous"
                 nextTestId="monitor-event-feed-next"
                 summaryTestId="monitor-event-feed-summary"
-                ariaLabel="หน้าฟีดเหตุการณ์"
+                ariaLabel="หน้าเหตุการณ์ของมอนิเตอร์"
                 summary={
                   <>
                     แสดง {data.page.offset + 1}–
@@ -346,8 +341,12 @@ export function MonitorEventsCard({
           </>
         ) : null}
         {data !== undefined && events.isError ? (
-          <Alert data-testid="monitor-event-feed-refresh-error" tone="warning">
-            อัปเดตฟีดเหตุการณ์ไม่สำเร็จ
+          <Alert
+            data-testid="monitor-event-feed-refresh-error"
+            tone="warning"
+            role="alert"
+          >
+            อัปเดตเหตุการณ์ของมอนิเตอร์ไม่สำเร็จ
           </Alert>
         ) : null}
       </div>

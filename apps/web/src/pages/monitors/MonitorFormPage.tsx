@@ -165,7 +165,6 @@ function MonitorFormForOrganization({
             data-testid="monitor-form-admission-error"
             retryTestId="monitor-form-admission-retry"
             message="ไม่สามารถยืนยันสิทธิ์ของคุณได้"
-            retryLabel="ลองอีกครั้ง"
             onRetry={() => void refreshMembershipContext()}
           />
         ) : null}
@@ -212,15 +211,15 @@ function MonitorFormForOrganization({
           data-testid="monitor-form-admission-error"
           retryTestId="monitor-form-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ของคุณได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
     );
   }
+  // Loading states are as wide as the form, so the header does not jump when it opens.
   if (mePending || me === undefined || access.pending) {
     return (
-      <Page width="form">
+      <Page>
         {header}
         <PageState kind="loading" label="กำลังโหลดการตั้งค่า" />
       </Page>
@@ -235,7 +234,6 @@ function MonitorFormForOrganization({
           data-testid="monitor-form-access-error"
           retryTestId="monitor-form-access-retry"
           message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
-          retryLabel="ลองอีกครั้ง"
           onRetry={access.retry}
         />
       </Page>
@@ -264,7 +262,7 @@ function MonitorFormForOrganization({
     return denied;
   }
   return (
-    <Page width="form">
+    <Page>
       {header}
       {detail.isError ? (
         <PageState
@@ -272,7 +270,6 @@ function MonitorFormForOrganization({
           data-testid="monitor-form-load-error"
           retryTestId="monitor-form-load-retry"
           message="โหลดการตั้งค่าไม่สำเร็จ"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void detail.refetch()}
         />
       ) : (

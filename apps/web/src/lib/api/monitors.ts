@@ -12,6 +12,7 @@ import {
   monitorResponseTimesResponseSchema,
   monitorTestResponseSchema,
   monitorWriteResponseSchema,
+  type CheckResultView,
   type MonitorChecksResponse,
   type MonitorDetailResponse,
   type MonitorEventsResponse,
@@ -51,6 +52,17 @@ export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
 // Rows per "load more" on the checks history page: the contract maximum of `limit`.
 export const MONITOR_CHECKS_CHUNK_SIZE = 50;
+// Time presets of the checks history filter; the longest is the 30-day retention.
+export const MONITOR_CHECKS_RANGE_MS = {
+  "24h": 86_400_000,
+  "7d": 7 * 86_400_000,
+  "30d": 30 * 86_400_000,
+} as const;
+export type MonitorChecksRange = keyof typeof MONITOR_CHECKS_RANGE_MS;
+export type MonitorChecksFilter = {
+  outcome?: CheckResultView["outcome"];
+  range?: MonitorChecksRange;
+};
 export const MONITOR_RECENT_EVENTS_LIMIT = MONITOR_RECENT_EVENTS_DEFAULT;
 // The Overview and its recent-events card refetch on this interval without announcing it.
 export const MONITOR_REFETCH_INTERVAL_MS = 30_000;
@@ -108,10 +120,12 @@ export const monitorQueryKeys = {
       monitorId,
     ] as const,
   // `useInfiniteQuery` of the checks history page: its own shape, never shared with a single-page query.
+  // The filter is part of the key only when set: a position (offset) is valid within one filter combination.
   checksHistory: (
     organizationId: string,
     projectId: string,
     monitorId: string,
+    filter: MonitorChecksFilter = {},
   ) =>
     [
       ...TENANT_QUERY_PREFIX,
@@ -120,6 +134,9 @@ export const monitorQueryKeys = {
       projectId,
       "checks-history",
       monitorId,
+      ...(filter.outcome === undefined && filter.range === undefined
+        ? []
+        : [filter]),
     ] as const,
   incidents: (
     organizationId: string,
@@ -232,7 +249,12 @@ export function fetchMonitorChecks(
   organizationId: string,
   projectId: string,
   monitorId: string,
-  page: { limit: number; offset: number },
+  page: {
+    limit: number;
+    offset: number;
+    outcome?: CheckResultView["outcome"];
+    since?: string;
+  },
 ): Promise<MonitorChecksResponse> {
   return request(
     "/api/organizations/{organizationId}/projects/{projectId}/monitors/{monitorId}/checks",

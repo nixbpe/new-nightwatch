@@ -854,16 +854,22 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       }
       await expect(card.getByTestId("monitor-response-chart")).toBeVisible();
       await shot(page, `57-kpi-${range}-${theme}`);
-      await card.getByTestId("monitor-response-toggle").focus();
-      await page.keyboard.press("Enter");
+      await card.getByTestId("monitor-response-view-chart").focus();
+      await page.keyboard.press("ArrowRight");
       await expect(card.getByTestId("monitor-response-table")).toBeVisible();
-      const backToChart = card.getByTestId("monitor-response-toggle");
-      await expect(backToChart).toBeFocused();
+      await expect(
+        card.getByTestId("monitor-response-view-table"),
+      ).toBeFocused();
+      await expect(
+        card.getByTestId("monitor-response-view-table"),
+      ).toBeChecked();
       await expect(radio).toBeChecked();
       await shot(page, `57-known-${range}-${theme}`);
-      await page.keyboard.press("Enter");
+      await page.keyboard.press("ArrowLeft");
       await expect(card.getByTestId("monitor-response-table")).toHaveCount(0);
-      await expect(card.getByTestId("monitor-response-toggle")).toBeFocused();
+      await expect(
+        card.getByTestId("monitor-response-view-chart"),
+      ).toBeFocused();
     }
   }
   for (const role of ["owner", "admin", "viewer", "auditor"] as const) {

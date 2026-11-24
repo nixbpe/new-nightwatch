@@ -144,6 +144,15 @@ describe("Edit opens with the saved configuration", () => {
     ).toHaveValue("800");
   });
 
+  it("links back to the monitor itself", async () => {
+    renderForm(editPath());
+    await waitFor(expectSavedFormName);
+    expect(screen.getByTestId("monitor-form-back")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+    );
+  });
+
   it("opens in basic mode when nothing advanced is set", async () => {
     renderForm(editPath());
     await waitFor(expectSavedFormName);
