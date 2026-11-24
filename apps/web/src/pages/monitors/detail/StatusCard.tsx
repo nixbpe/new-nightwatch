@@ -13,7 +13,7 @@ import {
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../format";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { cn } from "@/lib/utils";
@@ -208,7 +208,7 @@ export function StatusCard({
                   format={formatTimeWithSeconds}
                 />
               </span>{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
             </span>
           </span>
         }

@@ -164,6 +164,8 @@ jobs:
       - name: Ensure monitor partitions
         run: bun run db:partitions
       - run: bun run test:coverage ${{ matrix.filters }}
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
       # test:coverage runs vitest on Node. These suites run on the pinned Bun
       # runtime: the SSRF helper (shared), the checker (worker) and the Test
       # endpoint on a real Bun.serve listener (api).

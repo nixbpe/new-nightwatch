@@ -7,7 +7,7 @@ import {
 } from "../../../components/shell/initials";
 import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { cn } from "../../../lib/utils";
-import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import { formatNumber, formatTimeOrDate, Time, timeZone } from "../format";
 import { IntervalText } from "../detail/IntervalText";
 import { HealthPill } from "../HealthPill";
 import { NO_DATA, NoData, StatusDetail, Uptime } from "../MonitorTable";
@@ -157,7 +157,7 @@ export function MonitorCards({
                         format={formatTimeOrDate}
                       />
                     </span>
-                    <span>({TIME_ZONE})</span>
+                    <span>({timeZone()})</span>
                   </>
                 )}
               </div>

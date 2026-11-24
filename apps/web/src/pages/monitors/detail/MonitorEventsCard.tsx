@@ -22,7 +22,7 @@ import {
   formatDuration,
   formatNumber,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../format";
 import {
   configChangeValueText,
@@ -228,7 +228,7 @@ export function MonitorEventsCard({
       <SectionHeader
         id="detail-event-feed"
         title="ฟีดเหตุการณ์"
-        meta={<>30 วันล่าสุด · เวลาแสดงตามเขตเวลา {TIME_ZONE}</>}
+        meta={<>30 วันล่าสุด · เวลาแสดงตามเขตเวลา {timeZone()}</>}
       />
       <div className="flex flex-col gap-3">
         {data === undefined && events.isError ? (
