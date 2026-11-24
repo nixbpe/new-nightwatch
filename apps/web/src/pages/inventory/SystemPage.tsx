@@ -20,7 +20,9 @@ import {
   deleteSystem,
   downloadRejectedRows,
   fetchInventory,
+  INVENTORY_DENIED_MESSAGE,
   inventoryErrorMessage,
+  isInventoryAccessDenied,
   inventoryKeys,
   inventoryRowIssues,
   renameSystem,
@@ -259,7 +261,7 @@ function ProjectSystem(scope: Scope) {
                   ? "ไม่มีแถว"
                   : system.lowQuality
                     ? `คุณภาพต่ำ (ต่ำกว่า ${String(QUALITY_THRESHOLD)}%)`
-                    : "ผ่าน"}
+                    : `ผ่านเกณฑ์ ${String(QUALITY_THRESHOLD)}%`}
               </StatusPill>
             </>
           )
@@ -286,20 +288,6 @@ function ProjectSystem(scope: Scope) {
                     {download.isPending
                       ? "กำลังสร้างไฟล์…"
                       : "ดาวน์โหลดแถวที่ไม่ผ่านตาม Owner"}
-                  </Button>
-                ) : null}
-                {canEdit ? (
-                  <Button
-                    variant="destructive-outline"
-                    data-testid="inventory-system-delete"
-                    onClick={(event) => {
-                      setNotice(null);
-                      setFailure(null);
-                      remove.reset();
-                      setConfirming(event.currentTarget);
-                    }}
-                  >
-                    ลบ System
                   </Button>
                 ) : null}
                 <Button asChild>
@@ -341,6 +329,12 @@ function ProjectSystem(scope: Scope) {
           layout="lines"
           visibleLabel
         />
+      ) : isInventoryAccessDenied(query.error) ? (
+        <PageState
+          kind="denied"
+          data-testid="inventory-system-denied"
+          message={INVENTORY_DENIED_MESSAGE}
+        />
       ) : query.isError ? (
         <PageState
           kind="error"
@@ -355,21 +349,45 @@ function ProjectSystem(scope: Scope) {
           message="ไม่พบ System นี้ อาจถูกลบแล้ว"
         />
       ) : canEdit ? (
-        <RenameForm
-          key={`${system.id}:${String(system.revision)}`}
-          system={system}
-          scope={scope}
-          onRenamed={() => {
-            setFailure(null);
-            setNotice("เปลี่ยนชื่อ System แล้ว");
-            void refresh();
-          }}
-          onStale={(message) => {
-            setNotice(null);
-            setFailure(message);
-            void refresh();
-          }}
-        />
+        <>
+          <RenameForm
+            key={`${system.id}:${String(system.revision)}`}
+            system={system}
+            scope={scope}
+            onRenamed={() => {
+              setFailure(null);
+              setNotice("เปลี่ยนชื่อ System แล้ว");
+              void refresh();
+            }}
+            onStale={(message) => {
+              setNotice(null);
+              setFailure(message);
+              void refresh();
+            }}
+          />
+          {/* Apart from the header actions so a stray click beside "ดูแถว" or Export cannot open it. */}
+          <section
+            aria-labelledby="inventory-system-delete-heading"
+            className="space-y-3"
+          >
+            <SectionHeader
+              id="inventory-system-delete-heading"
+              title="ลบ System"
+            />
+            <Button
+              variant="destructive-outline"
+              data-testid="inventory-system-delete"
+              onClick={(event) => {
+                setNotice(null);
+                setFailure(null);
+                remove.reset();
+                setConfirming(event.currentTarget);
+              }}
+            >
+              ลบ System
+            </Button>
+          </section>
+        </>
       ) : (
         <p
           data-testid="inventory-system-restricted"

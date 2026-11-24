@@ -272,6 +272,166 @@ describe("InventoryRowsSection table", () => {
     });
   });
 
+  it.each(["search", "owner"])(
+    "keeps %s input identity through last-character deletion, continued typing and URL navigation",
+    async (field) => {
+      fetchMock.mockImplementation(pagedRows(30));
+      const user = userEvent.setup();
+      const key = field === "search" ? "q" : "owner";
+      const router = renderSection({ search: `?${key}=x&page=2` });
+      const input = await screen.findByTestId(`inventory-rows-${field}`);
+      await user.click(input);
+      await user.keyboard("{End}{Backspace}");
+      await waitFor(() => {
+        expect(router.state.location.search).toBe("");
+      });
+      expect(screen.getByTestId(`inventory-rows-${field}`)).toBe(input);
+      expect(input).toHaveFocus();
+      await user.keyboard("Redis{Enter}");
+      await waitFor(() => {
+        expect(router.state.location.search).toBe(`?${key}=Redis`);
+      });
+      expect(input).toHaveValue("Redis");
+      expect(input).toHaveFocus();
+      await user.clear(input);
+      expect(input).toHaveFocus();
+      await user.keyboard("nginx");
+      expect(input).toHaveValue("nginx");
+      await router.navigate(`${BASE}?${key}=external&page=2`);
+      await waitFor(() => expect(input).toHaveValue("external"));
+      await router.navigate(-1);
+      await waitFor(() => expect(input).toHaveValue(""));
+      await router.navigate(1);
+      await waitFor(() => expect(input).toHaveValue("external"));
+    },
+  );
+
+  it("drops the search filter when the box is emptied without a submit, and leaves an unset filter alone", async () => {
+    fetchMock.mockImplementation(pagedRows(60));
+    const user = userEvent.setup();
+    const router = renderSection({ search: "?q=redis&page=2" });
+    await screen.findByTestId(`inventory-row-${ROW_A}`);
+
+    await user.clear(screen.getByTestId("inventory-rows-search"));
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+    expect(fetchMock.mock.calls.at(-1)?.[2]).toEqual({
+      status: "all",
+      page: 1,
+    });
+
+    // With no search active, typing and deleting must not reset the page.
+    await user.click(screen.getByTestId("inventory-rows-next"));
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("?page=2");
+    });
+    await user.type(
+      screen.getByTestId("inventory-rows-search"),
+      "a{Backspace}",
+    );
+    expect(router.state.location.search).toBe("?page=2");
+  });
+
+  it("filters by Environment, Exposure and Owner, keeps them in the address and asks the API for them", async () => {
+    fetchMock.mockImplementation(pagedRows(60));
+    const user = userEvent.setup();
+    const router = renderSection({ search: "?page=2" });
+    await screen.findByTestId(`inventory-row-${ROW_A}`);
+
+    await user.selectOptions(
+      screen.getByTestId("inventory-rows-environment"),
+      "Production",
+    );
+    await user.selectOptions(
+      screen.getByTestId("inventory-rows-exposure"),
+      "Internet-facing",
+    );
+    await user.type(
+      screen.getByTestId("inventory-rows-owner"),
+      " ทีม A {Enter}",
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(
+        `?environment=Production&exposure=Internet-facing&owner=%E0%B8%97%E0%B8%B5%E0%B8%A1+A`,
+      );
+    });
+    expect(fetchMock.mock.calls.at(-1)?.[2]).toEqual({
+      environment: "Production",
+      exposure: "Internet-facing",
+      owner: "ทีม A",
+      status: "all",
+      page: 1,
+    });
+    expect(screen.getByTestId("inventory-rows-environment")).toHaveValue(
+      "Production",
+    );
+    expect(screen.getByTestId("inventory-rows-owner")).toHaveValue("ทีม A");
+
+    await user.selectOptions(screen.getByTestId("inventory-rows-exposure"), "");
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(
+        `?environment=Production&owner=%E0%B8%97%E0%B8%B5%E0%B8%A1+A`,
+      );
+    });
+  });
+
+  it("shows the no-match state with a clear button when only a new filter is set, and keeps the empty Project state apart", async () => {
+    fetchMock.mockResolvedValue(list([], 0));
+    const user = userEvent.setup();
+    const router = renderSection({ search: "?exposure=Isolated" });
+
+    expect(await screen.findByTestId("inventory-rows-no-match")).toBeVisible();
+    expect(screen.queryByTestId("inventory-rows-empty")).toBeNull();
+    await user.click(screen.getByTestId("inventory-rows-clear"));
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+    expect(await screen.findByTestId("inventory-rows-empty")).toBeVisible();
+    expect(screen.queryByTestId("inventory-rows-no-match")).toBeNull();
+  });
+
+  it("marks the table busy while the rows of a changed filter load, then clears it", async () => {
+    let release: (value: ReturnType<typeof list>) => void = () => undefined;
+    fetchMock.mockResolvedValueOnce(list([row()]));
+    fetchMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByTestId(`inventory-row-${ROW_A}`);
+    expect(screen.getByTestId("inventory-rows-body")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+
+    await user.selectOptions(screen.getByTestId("inventory-rows-layer"), "DB");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("inventory-rows-body")).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+    });
+    expect(screen.getByTestId(`inventory-row-${ROW_A}`)).toBeInTheDocument();
+    expect(
+      screen.getByTestId("inventory-rows-summary").querySelector(".sr-only"),
+    ).not.toBeNull();
+
+    release(list([row()]));
+    await waitFor(() => {
+      expect(screen.getByTestId("inventory-rows-body")).toHaveAttribute(
+        "aria-busy",
+        "false",
+      );
+    });
+    expect(
+      screen.getByTestId("inventory-rows-summary").querySelector(".sr-only"),
+    ).toBeNull();
+  });
+
   it("changes page with icon buttons whose tooltip is their label", async () => {
     fetchMock.mockImplementation(pagedRows(60));
     const user = userEvent.setup();

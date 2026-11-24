@@ -349,6 +349,10 @@ export function inventoryRowIssues(error: unknown): InventoryIssue[] {
   return details.success ? details.data.issues : [];
 }
 
+/** Shown when a read is refused; retrying cannot change the answer. */
+export const INVENTORY_DENIED_MESSAGE =
+  "คุณไม่มีสิทธิ์ดู inventory ของโปรเจกต์นี้";
+
 export function isInventoryAccessDenied(error: unknown): boolean {
   return (
     error instanceof ApiError &&

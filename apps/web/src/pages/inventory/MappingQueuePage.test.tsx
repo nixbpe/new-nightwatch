@@ -155,6 +155,16 @@ describe("MappingQueuePage", () => {
     expect(screen.queryByTestId(`mapping-confirm-${A}`)).toBeNull();
     expect(screen.queryByTestId(`mapping-edit-${A}`)).toBeNull();
     expect(screen.queryByTestId(`mapping-none-${A}`)).toBeNull();
+    expect(screen.getByTestId("mapping-restricted")).toBeInTheDocument();
+    expect(screen.getByTestId("mapping-status-pending")).toHaveTextContent("2");
+  });
+
+  it("shows no restricted notice to a Project maintainer", async () => {
+    fetchMock.mockResolvedValue(list());
+    renderPage();
+
+    await screen.findByTestId(`mapping-row-${A}`);
+    expect(screen.queryByTestId("mapping-restricted")).toBeNull();
   });
 
   it("confirms the stored suggestion and moves the row to decided", async () => {
@@ -233,6 +243,148 @@ describe("MappingQueuePage", () => {
     expect(suggestMock).toHaveBeenCalledTimes(1);
   });
 
+  it("moves focus to the next pending row after a decision, and to the pending heading when none is left", async () => {
+    const redis = mapping(A, {
+      vendor: "Redis",
+      product: "Redis",
+      cpe: "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*",
+      confidence: 1,
+      source: "nvd",
+    });
+    fetchMock.mockResolvedValue({
+      canManage: true,
+      counts: { pending: 2, confirmed: 0, unmapped: 0 },
+      items: [redis, mapping(B, { cpe: F5, confidence: 0.8, source: "nvd" })],
+    });
+    decideMock.mockImplementation((_org, _project, id) =>
+      Promise.resolve(
+        mapping(id, {
+          status: "confirmed",
+          cpe: id === A ? (redis.cpe ?? F5) : F5,
+          source: "nvd",
+          confirmedAt: "2026-11-21T11:00:00.000Z",
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-confirm-${A}`));
+    await screen.findByTestId("mapping-notice");
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId(`mapping-row-${B}`)).getAllByRole(
+          "button",
+        )[0],
+      ).toHaveFocus();
+    });
+
+    await user.click(screen.getByTestId(`mapping-confirm-${B}`));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /รอยืนยัน 0/ })).toHaveFocus();
+    });
+  });
+
+  it.each(["decision", "suggestion"])(
+    "follows visible queue order after a %s removes a filtered row",
+    async (action) => {
+      const proposed = action === "decision";
+      const first = mapping(A, {
+        product: "Visible Alpha",
+        cpe: proposed ? F5 : null,
+      });
+      const hidden = mapping(B, {
+        product: "Hidden Beta",
+        cpe: proposed ? F5 : null,
+      });
+      const last = mapping(C, {
+        product: "Visible Gamma",
+        cpe: proposed ? F5 : null,
+      });
+      fetchMock.mockResolvedValue({
+        canManage: true,
+        counts: { pending: 3, confirmed: 0, unmapped: 0 },
+        items: [first, hidden, last],
+      });
+      decideMock.mockImplementation((_org, _project, id) =>
+        Promise.resolve({ ...(id === A ? first : last), status: "confirmed" }),
+      );
+      suggestMock.mockImplementation((_org, _project, id) =>
+        Promise.resolve({
+          item: { ...(id === A ? first : last), cpe: F5 },
+          candidates: [],
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByTestId(`mapping-row-${A}`);
+      await user.type(screen.getByTestId("mapping-filter-search"), "Visible");
+      await user.click(
+        screen.getByTestId(
+          `mapping-proposal-${proposed ? "proposed" : "none"}`,
+        ),
+      );
+      expect(screen.queryByTestId(`mapping-row-${B}`)).toBeNull();
+      const button = proposed ? "confirm" : "suggest";
+      await user.click(screen.getByTestId(`mapping-${button}-${A}`));
+      await waitFor(() =>
+        expect(screen.getByTestId(`mapping-${button}-${C}`)).toHaveFocus(),
+      );
+      expect(screen.getByTestId("mapping-filter-search")).toHaveValue(
+        "Visible",
+      );
+      expect(
+        screen.getByTestId(
+          `mapping-proposal-${proposed ? "proposed" : "none"}`,
+        ),
+      ).toHaveAttribute("aria-checked", "true");
+      await user.click(screen.getByTestId(`mapping-${button}-${C}`));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("heading", { level: 2, name: /รอยืนยัน/ }),
+        ).toHaveFocus(),
+      );
+      expect(screen.queryByTestId(`mapping-row-${B}`)).toBeNull();
+    },
+  );
+
+  it("keeps focus on the row that got a suggestion, on its new confirm button", async () => {
+    fetchMock.mockResolvedValue(list());
+    suggestMock.mockResolvedValueOnce({
+      item: mapping(B, { cpe: F5, confidence: 0.82, source: "nvd" }),
+      candidates: [{ cpe: F5, title: null, confidence: 0.82 }],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-suggest-${B}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`mapping-confirm-${B}`)).toHaveFocus();
+    });
+  });
+
+  it("filters both tables by vendor or product and the pending one by whether it has a proposal", async () => {
+    fetchMock.mockResolvedValue(list());
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId(`mapping-row-${A}`);
+
+    await user.click(screen.getByTestId("mapping-proposal-none"));
+    expect(screen.queryByTestId(`mapping-row-${A}`)).toBeNull();
+    expect(screen.getByTestId(`mapping-row-${B}`)).toBeInTheDocument();
+    await user.click(screen.getByTestId("mapping-proposal-proposed"));
+    expect(screen.getByTestId(`mapping-row-${A}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`mapping-row-${B}`)).toBeNull();
+    await user.click(screen.getByTestId("mapping-proposal-all"));
+
+    await user.type(screen.getByTestId("mapping-filter-search"), "  internal ");
+    expect(screen.getByTestId(`mapping-row-${D}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`mapping-row-${C}`)).toBeNull();
+    expect(screen.queryByTestId(`mapping-row-${A}`)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the wait message when a suggestion is limited", async () => {
     fetchMock.mockResolvedValue(list());
     suggestMock.mockRejectedValue(new ApiError("X", "x", 429));
@@ -248,6 +400,16 @@ describe("MappingQueuePage", () => {
 });
 
 describe("messages", () => {
+  it("shows the denied state with no retry when the read is refused", async () => {
+    fetchMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    renderPage();
+
+    expect(
+      await screen.findByTestId("inventory-mapping-denied"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ลองใหม่" })).toBeNull();
+  });
+
   it("does not call a refused decision an upload problem", async () => {
     fetchMock.mockResolvedValue(list());
     decideMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
@@ -285,6 +447,23 @@ describe("messages", () => {
 });
 
 describe("MappingDialog", () => {
+  it("keeps focus inside the dialog while a search is running, so Escape still reaches it", async () => {
+    fetchMock.mockResolvedValue(list());
+    const pending = Promise.withResolvers<{ candidates: never[] }>();
+    searchMock.mockReturnValue(pending.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId(`mapping-edit-${B}`));
+    await user.type(screen.getByTestId("mapping-query"), "big-ip");
+    await user.click(screen.getByTestId("mapping-search"));
+
+    // The Search button is disabled while it works; focus must not fall to the page behind.
+    expect(
+      screen.getByTestId("mapping-dialog").contains(document.activeElement),
+    ).toBe(true);
+    pending.resolve({ candidates: [] });
+  });
   it("searches the dictionary and confirms the chosen CPE", async () => {
     fetchMock.mockResolvedValue(list());
     searchMock.mockResolvedValue({
@@ -314,6 +493,10 @@ describe("MappingDialog", () => {
     const options = await screen.findAllByTestId("mapping-candidate");
     expect(options).toHaveLength(2);
     expect(options[0]).toBeChecked();
+    // Only the candidate that carries a title shows one; a null title renders no empty line.
+    const titles = screen.getAllByTestId("mapping-candidate-title");
+    expect(titles).toHaveLength(1);
+    expect(titles[0]).toHaveTextContent("F5 BIG-IP LTM");
     await user.click(options[1] as HTMLElement);
     await user.click(screen.getByTestId("mapping-save"));
 
@@ -397,9 +580,12 @@ describe("MappingDialog", () => {
     await user.click(screen.getByTestId("mapping-save"));
     expect(screen.getByTestId("mapping-purl-error")).toBeInTheDocument();
     expect(screen.getByTestId("mapping-cpe-error")).toBeInTheDocument();
+    expect(screen.getByTestId("mapping-cpe")).toHaveFocus();
     expect(decideMock).not.toHaveBeenCalled();
 
     await user.clear(screen.getByTestId("mapping-cpe"));
+    await user.click(screen.getByTestId("mapping-save"));
+    expect(screen.getByTestId("mapping-purl")).toHaveFocus();
     await user.clear(screen.getByTestId("mapping-purl"));
     await user.type(
       screen.getByTestId("mapping-purl"),
@@ -427,6 +613,7 @@ describe("MappingDialog", () => {
     expect(screen.getByTestId("mapping-cpe-error")).toHaveTextContent(
       "เลือกผลการค้น หรือกรอก CPE หรือ purl",
     );
+    expect(screen.getByTestId("mapping-cpe")).toHaveFocus();
 
     await user.type(screen.getByTestId("mapping-cpe"), F5);
     await user.click(screen.getByTestId("mapping-save"));

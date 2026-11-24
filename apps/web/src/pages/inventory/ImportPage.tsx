@@ -1,4 +1,6 @@
 import {
+  INVENTORY_MAX_FILE_BYTES,
+  INVENTORY_MAX_ROWS,
   inventoryImportReasonMessage,
   type InventoryImportCounts,
   type InventoryImportPreview,
@@ -13,7 +15,7 @@ import { PageState } from "../../components/shell/PageState";
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { DataTable } from "../../components/ui/data-table";
+import { DataTable, DataTablePagination } from "../../components/ui/data-table";
 import { HairlineGrid } from "../../components/ui/hairline-grid";
 import { InfoTip } from "../../components/ui/icon-button";
 import { Notice } from "../../components/ui/notice";
@@ -26,7 +28,9 @@ import {
   createImportPreview,
   fetchImportPreview,
   fetchInventory,
+  INVENTORY_DENIED_MESSAGE,
   inventoryErrorMessage,
+  isInventoryAccessDenied,
   inventoryKeys,
 } from "../../lib/api/inventory";
 import { usePreferences } from "../../lib/preferences";
@@ -38,8 +42,7 @@ import { ImportHistory } from "./ImportHistory";
 
 type Scope = { organizationId: string; projectId: string };
 
-const FORMAT_HINT =
-  "รับ .xlsx (sheet ชื่อ Inventory) หรือ .csv UTF-8 คอลัมน์ System, Owner, Vendor, Product, Version, Layer, Environment, Exposure ระบบไม่เก็บไฟล์ต้นฉบับ";
+const FORMAT_HINT = `รับ .xlsx (sheet ชื่อ Inventory) หรือ .csv UTF-8 ไม่เกิน ${String(INVENTORY_MAX_FILE_BYTES / 1024 / 1024)} MB และ ${String(INVENTORY_MAX_ROWS)} แถว คอลัมน์ System, Owner, Vendor, Product, Version, Layer, Environment, Exposure ระบบไม่เก็บไฟล์ต้นฉบับ`;
 
 export function ImportPage() {
   const { organizationId, projectId } = useParams();
@@ -156,15 +159,97 @@ function TemplateLink() {
   );
 }
 
+const SKIPPED_PAGE_SIZE = 50;
+
+// The preview can carry up to INVENTORY_MAX_ROWS rows; the table has no scroll box of its own
+// (LAY-02), so it pages instead of growing with the file.
+function SkippedRowsTable({ rows }: { rows: InventoryImportPreview["rows"] }) {
+  const [page, setPage] = useState(0);
+  const last = Math.max(0, Math.ceil(rows.length / SKIPPED_PAGE_SIZE) - 1);
+  const current = Math.min(page, last);
+  const from = current * SKIPPED_PAGE_SIZE;
+  const shown = rows.slice(from, from + SKIPPED_PAGE_SIZE);
+  return (
+    <>
+      <DataTable
+        ariaLabel="แถวที่ข้ามและไม่ผ่าน"
+        dense
+        columns={[
+          {
+            key: "line",
+            header: "แถวในไฟล์",
+            align: "end",
+            mono: true,
+            cell: (row) => String(row.line),
+          },
+          {
+            key: "system",
+            header: "System",
+            cell: (row) => (row.system === "" ? "—" : row.system),
+          },
+          {
+            key: "product",
+            header: "Product",
+            cell: (row) =>
+              [row.vendor, row.product, row.version]
+                .filter((part) => part !== "")
+                .join(" "),
+          },
+          {
+            key: "outcome",
+            header: "ผล",
+            cell: (row) => (
+              <StatusPill
+                dot
+                neutralLabel
+                tone={row.outcome === "failed" ? "caution" : "muted"}
+              >
+                {row.outcome === "failed" ? "ไม่ผ่าน" : "ข้าม"}
+              </StatusPill>
+            ),
+          },
+          {
+            key: "reason",
+            header: "เหตุผล",
+            cell: (row) => inventoryImportReasonMessage(row.reason),
+          },
+        ]}
+        rows={shown}
+        rowKey={(row) => String(row.line)}
+        rowTestId={(row) => `inventory-import-row-${String(row.line)}`}
+      />
+      {rows.length <= SKIPPED_PAGE_SIZE ? null : (
+        <DataTablePagination
+          data-testid="inventory-import-rows-pagination"
+          ariaLabel="หน้าของแถวที่ข้ามและไม่ผ่าน"
+          summary={`แสดง ${String(from + 1)} ถึง ${String(from + shown.length)} จาก ${String(rows.length)} แถว`}
+          previousLabel="ก่อนหน้า"
+          nextLabel="ถัดไป"
+          hasPrevious={current > 0}
+          hasNext={current < last}
+          onPrevious={() => {
+            setPage(current - 1);
+          }}
+          onNext={() => {
+            setPage(current + 1);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 function PreviewView({
   preview,
   pending,
+  stale,
   onConfirm,
   onCancel,
   onFile,
 }: {
   preview: InventoryImportPreview;
   pending: boolean;
+  stale: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   onFile: (file: File) => void;
@@ -202,7 +287,7 @@ function PreviewView({
               }}
             />
             <Button
-              variant="outline"
+              variant={stale ? "default" : "outline"}
               disabled={pending}
               data-testid="inventory-import-replace"
               onClick={() => replace.current?.click()}
@@ -218,7 +303,7 @@ function PreviewView({
               ยกเลิก
             </Button>
             <Button
-              disabled={pending}
+              disabled={pending || stale}
               data-testid="inventory-import-confirm"
               onClick={onConfirm}
             >
@@ -226,6 +311,14 @@ function PreviewView({
             </Button>
           </div>
         </div>
+        {stale ? (
+          <p
+            data-testid="inventory-import-stale"
+            className="text-[13px] text-foreground-secondary"
+          >
+            ตัวเลขนี้อาจล้าสมัย
+          </p>
+        ) : null}
         <CountTiles counts={preview.totals} />
         {preview.warnings.map((warning) => (
           <Alert
@@ -271,53 +364,7 @@ function PreviewView({
             title="แถวที่ข้ามและไม่ผ่าน"
             meta={`${String(preview.rows.length)} แถว`}
           />
-          <DataTable
-            ariaLabel="แถวที่ข้ามและไม่ผ่าน"
-            dense
-            columns={[
-              {
-                key: "line",
-                header: "แถวในไฟล์",
-                align: "end",
-                mono: true,
-                cell: (row) => String(row.line),
-              },
-              {
-                key: "system",
-                header: "System",
-                cell: (row) => (row.system === "" ? "—" : row.system),
-              },
-              {
-                key: "product",
-                header: "Product",
-                cell: (row) =>
-                  [row.vendor, row.product, row.version]
-                    .filter((part) => part !== "")
-                    .join(" "),
-              },
-              {
-                key: "outcome",
-                header: "ผล",
-                cell: (row) => (
-                  <StatusPill
-                    dot
-                    neutralLabel
-                    tone={row.outcome === "failed" ? "caution" : "muted"}
-                  >
-                    {row.outcome === "failed" ? "ไม่ผ่าน" : "ข้าม"}
-                  </StatusPill>
-                ),
-              },
-              {
-                key: "reason",
-                header: "เหตุผล",
-                cell: (row) => inventoryImportReasonMessage(row.reason),
-              },
-            ]}
-            rows={preview.rows}
-            rowKey={(row) => String(row.line)}
-            rowTestId={(row) => `inventory-import-row-${String(row.line)}`}
-          />
+          <SkippedRowsTable rows={preview.rows} />
         </section>
       )}
     </>
@@ -351,6 +398,17 @@ function ResultView({
           <Button variant="outline" onClick={onAnother}>
             import ไฟล์อื่น
           </Button>
+          {result.totals.failed > 0 ? (
+            <Button variant="outline" asChild>
+              <Link
+                data-testid="inventory-import-fix-failed"
+                to={{ pathname: base, search: "?status=rejected" }}
+                state={{ focusRows: true }}
+              >
+                ไปแก้ {result.totals.failed} แถวที่ไม่ผ่าน
+              </Link>
+            </Button>
+          ) : null}
           <Button asChild>
             <Link data-testid="inventory-import-done" to={base}>
               ไปที่ Inventory
@@ -403,6 +461,8 @@ function ProjectImport({ organizationId, projectId }: Scope) {
   const heading = useRef<HTMLHeadingElement>(null);
   const [result, setResult] = useState<InventoryImportResult | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // A stale preview can never be confirmed; only a new file replaces it.
+  const [stalePreviewId, setStalePreviewId] = useState<string | null>(null);
   const base = `/organizations/${organizationId}/projects/${projectId}/inventory`;
   const previewKey = inventoryKeys.importPreview(organizationId, projectId);
 
@@ -456,9 +516,15 @@ function ProjectImport({ organizationId, projectId }: Scope) {
         queryKey: inventoryKeys.all(organizationId, projectId),
       });
     },
-    onError: (error) => {
+    onError: (error, target) => {
       setFailure(inventoryErrorMessage(error));
       // A preview that expired or is gone can never be confirmed; a stale one stays to be read.
+      if (
+        error instanceof ApiError &&
+        error.code === "INVENTORY_PREVIEW_STALE"
+      ) {
+        setStalePreviewId(target.id);
+      }
       if (
         error instanceof ApiError &&
         (error.code === "INVENTORY_PREVIEW_EXPIRED" ||
@@ -543,6 +609,12 @@ function ProjectImport({ organizationId, projectId }: Scope) {
           layout="lines"
           visibleLabel
         />
+      ) : isInventoryAccessDenied(summary.error) ? (
+        <PageState
+          kind="denied"
+          data-testid="inventory-import-denied"
+          message={INVENTORY_DENIED_MESSAGE}
+        />
       ) : summary.isError ? (
         <PageState
           kind="error"
@@ -551,15 +623,13 @@ function ProjectImport({ organizationId, projectId }: Scope) {
           onRetry={() => void summary.refetch()}
         />
       ) : !canImport ? (
-        <div className="space-y-3">
-          <p
-            data-testid="inventory-import-restricted"
-            className="text-sm text-foreground-secondary"
-          >
-            เฉพาะผู้ดูแล Project import ได้
-          </p>
-          <TemplateLink />
-        </div>
+        <PageState
+          kind="denied"
+          tone="info"
+          data-testid="inventory-import-restricted"
+          message="เฉพาะผู้ดูแล Project import ได้"
+          action={<TemplateLink />}
+        />
       ) : pending.isPending ? (
         <PageState
           kind="loading"
@@ -588,6 +658,7 @@ function ProjectImport({ organizationId, projectId }: Scope) {
           key={preview.id}
           preview={preview}
           pending={busy}
+          stale={stalePreviewId === preview.id}
           onConfirm={() => {
             confirm.mutate(preview);
           }}

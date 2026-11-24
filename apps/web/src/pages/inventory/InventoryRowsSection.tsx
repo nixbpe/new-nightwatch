@@ -1,4 +1,6 @@
 import {
+  INVENTORY_ENVIRONMENTS,
+  INVENTORY_EXPOSURES,
   INVENTORY_LAYERS,
   inventoryIssueMessage,
   type InventoryRowItem,
@@ -20,8 +22,9 @@ import {
   SearchIcon,
   TrashIcon,
 } from "../../components/shell/icons";
+import { EmptyState } from "../../components/shell/EmptyState";
 import { PageState } from "../../components/shell/PageState";
-import { Alert, Input, textInputClass } from "../../components/ui";
+import { Alert, Input } from "../../components/ui";
 import { cn } from "@/lib/utils";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -33,6 +36,7 @@ import { IconButton, InfoTip } from "../../components/ui/icon-button";
 import { Notice } from "../../components/ui/notice";
 import { SectionHeader } from "../../components/ui/section-header";
 import { SegmentedControl } from "../../components/ui/segmented-control";
+import { Select } from "../../components/ui/select";
 import { StatusPill } from "../../components/ui/status-pill";
 import { ApiError } from "../../lib/api/client";
 import {
@@ -40,6 +44,7 @@ import {
   fetchRows,
   inventoryErrorMessage,
   inventoryKeys,
+  isInventoryAccessDenied,
 } from "../../lib/api/inventory";
 import {
   hasFilters,
@@ -68,41 +73,67 @@ const STATUS_OPTIONS = [
   { value: "duplicate", label: "key ซ้ำ" },
 ] as const;
 
-function SearchForm({
+function TextFilterForm({
   initial,
   onSearch,
+  label,
+  placeholder,
+  testId,
+  submitLabel,
+  search,
 }: {
   initial: string;
-  onSearch: (q: string) => void;
+  onSearch: (value: string) => void;
+  label: string;
+  placeholder: string;
+  testId: string;
+  submitLabel: string;
+  search?: boolean;
 }) {
   const [text, setText] = useState(initial);
+  const [previous, setPrevious] = useState(initial);
+  const submitted = useRef<string | null>(null);
+  if (initial !== previous) {
+    setPrevious(initial);
+    // Our own URL update must not overwrite typing that continued during navigation.
+    if (initial !== submitted.current) setText(initial);
+    submitted.current = null;
+  }
+  const submit = (value: string) => {
+    submitted.current = value;
+    onSearch(value);
+  };
   return (
     <form
-      role="search"
+      role={search === true ? "search" : undefined}
+      aria-label={search === true ? undefined : label}
       className="flex items-center gap-1"
       onSubmit={(event) => {
         event.preventDefault();
-        onSearch(text.trim());
+        setText(text.trim());
+        submit(text.trim());
       }}
     >
       <Input
         type="search"
-        data-testid="inventory-rows-search"
-        aria-label="ค้นหา Vendor หรือ Product"
-        placeholder="Vendor หรือ Product"
+        data-testid={testId}
+        aria-label={label}
+        placeholder={placeholder}
         maxLength={200}
         value={text}
         className="w-[220px]"
         onChange={(event) => {
           setText(event.target.value);
+          // The clear button of a search box fires no submit; a filter that is on must go with it.
+          if (event.target.value === "" && initial !== "") submit("");
         }}
       />
       <IconButton
         type="submit"
         variant="secondary"
         size="icon"
-        label="ค้นหา"
-        data-testid="inventory-rows-search-submit"
+        label={submitLabel}
+        data-testid={`${testId}-submit`}
         icon={<SearchIcon size={16} />}
       />
     </form>
@@ -112,9 +143,11 @@ function SearchForm({
 export function InventoryRowsSection({
   summary,
   scope,
+  onAccessDenied,
 }: {
   summary: InventorySummary;
   scope: Scope;
+  onAccessDenied?: (denied: boolean) => void;
 }) {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
@@ -134,6 +167,12 @@ export function InventoryRowsSection({
     placeholderData: keepPreviousData,
     retry: false,
   });
+
+  const denied = isInventoryAccessDenied(rows.error);
+  useEffect(() => {
+    if (denied || rows.isSuccess) onAccessDenied?.(denied);
+  }, [denied, rows.isSuccess, onAccessDenied]);
+  if ((denied || !summary.canUpload) && dialog !== null) setDialog(null);
 
   // A link from another part of the page (the quality table) asks for the table to take focus.
   const asked = (location.state as { focusRows?: boolean } | null)?.focusRows;
@@ -178,7 +217,7 @@ export function InventoryRowsSection({
     },
   });
 
-  const canEdit = summary.canUpload;
+  const canEdit = summary.canUpload && !denied;
   // A System with no name takes no new row until it is renamed; its rows stay listed.
   const addable = summary.systems.filter((system) => system.name !== "");
   const systemName = (name: string) => (name === "" ? NO_SYSTEM_NAME : name);
@@ -243,7 +282,7 @@ export function InventoryRowsSection({
               neutralLabel={row.usable}
               tone={row.usable ? "neutral" : "caution"}
             >
-              {row.usable ? "ข้อมูลครบ" : "ข้อมูลไม่ผ่าน"}
+              {row.usable ? "ใช้งานได้" : "ไม่ผ่าน"}
             </StatusPill>
             {row.duplicate ? (
               <StatusPill tone="muted">key ซ้ำ</StatusPill>
@@ -312,6 +351,9 @@ export function InventoryRowsSection({
         title="แถวทั้งหมด"
         meta={
           <span aria-live="polite" data-testid="inventory-rows-summary">
+            {rows.isPlaceholderData ? (
+              <span className="sr-only">กำลังโหลดแถว</span>
+            ) : null}
             {data === undefined ? null : (
               <>
                 <span className="font-mono">{data.total}</span> แถว
@@ -324,10 +366,10 @@ export function InventoryRowsSection({
         คุณภาพข้อมูลตรวจความครบถ้วนและรูปแบบ ไม่ใช่ผลตรวจความปลอดภัย
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           data-testid="inventory-rows-system"
           aria-label="System"
-          className={cn(textInputClass, "w-auto")}
+          className="w-auto"
           value={filters.system}
           onChange={(event) => {
             go({ system: event.target.value });
@@ -339,11 +381,11 @@ export function InventoryRowsSection({
               {systemName(system.name)}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           data-testid="inventory-rows-layer"
           aria-label="Layer"
-          className={cn(textInputClass, "w-auto")}
+          className="w-auto"
           value={filters.layer}
           onChange={(event) => {
             const layer = INVENTORY_LAYERS.find(
@@ -358,7 +400,45 @@ export function InventoryRowsSection({
               {layer}
             </option>
           ))}
-        </select>
+        </Select>
+        <Select
+          data-testid="inventory-rows-environment"
+          aria-label="Environment"
+          className="w-auto"
+          value={filters.environment}
+          onChange={(event) => {
+            const environment = INVENTORY_ENVIRONMENTS.find(
+              (item) => item === event.target.value,
+            );
+            go({ environment: environment ?? "" });
+          }}
+        >
+          <option value="">ทุก Environment</option>
+          {INVENTORY_ENVIRONMENTS.map((environment) => (
+            <option key={environment} value={environment}>
+              {environment}
+            </option>
+          ))}
+        </Select>
+        <Select
+          data-testid="inventory-rows-exposure"
+          aria-label="Exposure"
+          className="w-auto"
+          value={filters.exposure}
+          onChange={(event) => {
+            const exposure = INVENTORY_EXPOSURES.find(
+              (item) => item === event.target.value,
+            );
+            go({ exposure: exposure ?? "" });
+          }}
+        >
+          <option value="">ทุก Exposure</option>
+          {INVENTORY_EXPOSURES.map((exposure) => (
+            <option key={exposure} value={exposure}>
+              {exposure}
+            </option>
+          ))}
+        </Select>
         <SegmentedControl
           testId="inventory-rows-status"
           label="สถานะ"
@@ -373,9 +453,23 @@ export function InventoryRowsSection({
           data-testid="inventory-rows-key-info"
           label="key ของแถวคือ System + Vendor + Product + Version ไม่สนตัวพิมพ์เล็กใหญ่และช่องว่างหัวท้าย แถวที่ key ซ้ำมาจากไฟล์ก่อนระบบห้ามซ้ำ ยังคงอยู่ครบ แก้หรือลบได้"
         />
-        <SearchForm
-          key={filters.q}
+        <TextFilterForm
+          initial={filters.owner}
+          label="Owner"
+          placeholder="Owner ขึ้นต้นด้วย"
+          testId="inventory-rows-owner"
+          submitLabel="กรอง Owner"
+          onSearch={(owner) => {
+            go({ owner });
+          }}
+        />
+        <TextFilterForm
+          search
           initial={filters.q}
+          label="ค้นหา Vendor หรือ Product"
+          placeholder="Vendor หรือ Product"
+          testId="inventory-rows-search"
+          submitLabel="ค้นหา"
           onSearch={(q) => {
             go({ q });
           }}
@@ -407,137 +501,139 @@ export function InventoryRowsSection({
           </Notice>
         )}
       </div>
-      {rows.isPending ? (
-        <PageState
-          kind="loading"
-          label="กำลังโหลดแถว"
-          layout="table"
-          visibleLabel
-        />
-      ) : rows.isError ? (
-        <PageState
-          kind="error"
-          message={inventoryErrorMessage(rows.error)}
-          retryLabel="ลองใหม่"
-          onRetry={() => void rows.refetch()}
-        />
-      ) : data === undefined ? null : data.total === 0 ? (
-        filtered ? (
-          <div
-            data-testid="inventory-rows-no-match"
-            className="flex flex-col items-center gap-3 rounded-md border border-foreground/10 bg-surface p-8 text-center"
-          >
-            <p className="text-sm text-foreground-secondary">
-              ไม่มีแถวตามตัวกรอง
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="inventory-rows-clear"
-              onClick={() => {
-                setParams(writeFilters(NO_FILTERS));
-              }}
-            >
-              ล้างตัวกรอง
-            </Button>
-          </div>
-        ) : (
-          <p
-            data-testid="inventory-rows-empty"
-            className="rounded-md border border-foreground/10 bg-surface p-8 text-center text-sm text-foreground-secondary"
-          >
-            ยังไม่มีแถวใน inventory
-          </p>
-        )
-      ) : (
-        <>
-          <DataTable
-            ariaLabel="แถวทั้งหมดของ inventory"
-            dense
-            stickyRowActions
-            tableTestId="inventory-rows-table"
-            columns={columns}
-            rows={data.rows}
-            rowKey={(row) => row.id}
-            rowTestId={(row) => `inventory-row-${row.id}`}
-            rowActions={
-              canEdit
-                ? (row) => (
-                    <span className="inline-flex gap-1">
-                      <IconButton
-                        label={`แก้แถว ${row.product} ${row.version}`}
-                        data-testid={`inventory-row-edit-${row.id}`}
-                        icon={<PencilIcon />}
-                        onClick={(event) => {
-                          setNotice(null);
-                          setFailure(null);
-                          setDialog({
-                            kind: "edit",
-                            row,
-                            opener: event.currentTarget,
-                          });
-                        }}
-                      />
-                      <IconButton
-                        label={`ลบแถว ${row.product} ${row.version}`}
-                        data-testid={`inventory-row-delete-${row.id}`}
-                        icon={<TrashIcon />}
-                        onClick={(event) => {
-                          setNotice(null);
-                          setFailure(null);
-                          remove.reset();
-                          setDialog({
-                            kind: "delete",
-                            row,
-                            opener: event.currentTarget,
-                          });
-                        }}
-                      />
-                    </span>
-                  )
-                : undefined
-            }
+      <div
+        aria-busy={rows.isPlaceholderData}
+        data-testid="inventory-rows-body"
+        className={cn("space-y-3", rows.isPlaceholderData && "opacity-60")}
+      >
+        {rows.isPending ? (
+          <PageState
+            kind="loading"
+            label="กำลังโหลดแถว"
+            layout="table"
+            visibleLabel
           />
-          <nav
-            aria-label="เปลี่ยนหน้าแถว"
-            className="flex flex-wrap items-center justify-between gap-4"
-          >
-            <p
-              data-testid="inventory-rows-page"
-              className="text-xs text-foreground-secondary tabular-nums"
+        ) : rows.isError ? (
+          <PageState
+            kind="error"
+            message={inventoryErrorMessage(rows.error)}
+            retryLabel="ลองใหม่"
+            onRetry={() => void rows.refetch()}
+          />
+        ) : data === undefined ? null : data.total === 0 ? (
+          filtered ? (
+            <EmptyState
+              data-testid="inventory-rows-no-match"
+              title="ไม่มีแถวตามตัวกรอง"
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  data-testid="inventory-rows-clear"
+                  onClick={() => {
+                    setParams(writeFilters(NO_FILTERS));
+                  }}
+                >
+                  ล้างตัวกรอง
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              data-testid="inventory-rows-empty"
+              title="ยังไม่มีแถวใน inventory"
+            />
+          )
+        ) : (
+          <>
+            <DataTable
+              ariaLabel="แถวทั้งหมดของ inventory"
+              dense
+              stickyRowActions
+              tableTestId="inventory-rows-table"
+              columns={columns}
+              rows={data.rows}
+              rowKey={(row) => row.id}
+              rowTestId={(row) => `inventory-row-${row.id}`}
+              rowActions={
+                canEdit
+                  ? (row) => (
+                      <span className="inline-flex gap-1">
+                        <IconButton
+                          label={`แก้แถว ${row.product} ${row.version}`}
+                          data-testid={`inventory-row-edit-${row.id}`}
+                          icon={<PencilIcon />}
+                          onClick={(event) => {
+                            setNotice(null);
+                            setFailure(null);
+                            setDialog({
+                              kind: "edit",
+                              row,
+                              opener: event.currentTarget,
+                            });
+                          }}
+                        />
+                        <IconButton
+                          label={`ลบแถว ${row.product} ${row.version}`}
+                          data-testid={`inventory-row-delete-${row.id}`}
+                          icon={<TrashIcon />}
+                          onClick={(event) => {
+                            setNotice(null);
+                            setFailure(null);
+                            remove.reset();
+                            setDialog({
+                              kind: "delete",
+                              row,
+                              opener: event.currentTarget,
+                            });
+                          }}
+                        />
+                      </span>
+                    )
+                  : undefined
+              }
+            />
+            <nav
+              aria-label="เปลี่ยนหน้าแถว"
+              className="flex flex-wrap items-center justify-between gap-4"
             >
-              <span className="font-mono">
-                {from}-{to}
-              </span>{" "}
-              จาก <span className="font-mono">{data.total}</span> · หน้า{" "}
-              <span className="font-mono">{data.page}</span>/
-              <span className="font-mono">{pages}</span>
-            </p>
-            <div className="flex gap-2">
-              <IconButton
-                variant="secondary"
-                label="หน้าก่อนหน้า"
-                data-testid="inventory-rows-previous"
-                icon={<ChevronLeftIcon />}
-                disabled={data.page <= 1}
-                onClick={() => {
-                  go({ page: data.page - 1 });
-                }}
-              />
-              <IconButton
-                variant="secondary"
-                label="หน้าถัดไป"
-                data-testid="inventory-rows-next"
-                icon={<ChevronRightIcon />}
-                disabled={data.page >= pages}
-                onClick={() => {
-                  go({ page: data.page + 1 });
-                }}
-              />
-            </div>
-          </nav>
-        </>
-      )}
+              <p
+                data-testid="inventory-rows-page"
+                className="text-xs text-foreground-secondary tabular-nums"
+              >
+                <span className="font-mono">
+                  {from}-{to}
+                </span>{" "}
+                จาก <span className="font-mono">{data.total}</span> · หน้า{" "}
+                <span className="font-mono">{data.page}</span>/
+                <span className="font-mono">{pages}</span>
+              </p>
+              <div className="flex gap-2">
+                <IconButton
+                  variant="secondary"
+                  label="หน้าก่อนหน้า"
+                  data-testid="inventory-rows-previous"
+                  icon={<ChevronLeftIcon />}
+                  disabled={data.page <= 1}
+                  onClick={() => {
+                    go({ page: data.page - 1 });
+                  }}
+                />
+                <IconButton
+                  variant="secondary"
+                  label="หน้าถัดไป"
+                  data-testid="inventory-rows-next"
+                  icon={<ChevronRightIcon />}
+                  disabled={data.page >= pages}
+                  onClick={() => {
+                    go({ page: data.page + 1 });
+                  }}
+                />
+              </div>
+            </nav>
+          </>
+        )}
+      </div>
       {dialog?.kind === "add" || dialog?.kind === "edit" ? (
         <RowDialog
           mode={
