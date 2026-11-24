@@ -1,3 +1,4 @@
+import type { InvitationResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +14,8 @@ import {
 } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
+import { Label } from "../components/ui/label";
+import { PasswordInput } from "../components/ui/password-input";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
 import {
   acceptInvitation,
@@ -31,6 +34,8 @@ import {
 } from "../lib/auth/continuation";
 import { assertContextIdentity } from "../lib/tenant/bootstrap";
 import { ApiError } from "../lib/api/client";
+import { INVITATION_LIFETIME, type AuthFlowState } from "../lib/auth/flow";
+import { formatDateTime, usePreferences } from "../lib/preferences";
 import { ROLE_LABELS } from "../lib/roles";
 import {
   claimContextPublication,
@@ -39,19 +44,35 @@ import {
   publishContextPublication,
 } from "../lib/queryClient";
 
+// The API answers 404 for unknown, expired, revoked and accepted invitations alike (it does not
+// reveal which), so the message names expiry as one cause.
+const INVITATION_NOT_FOUND_MESSAGE = `ไม่พบคำเชิญนี้ หรือคำเชิญหมดอายุแล้ว (ใช้ได้ ${INVITATION_LIFETIME}) กรุณาขอคำเชิญใหม่จากเจ้าของหรือผู้ดูแลองค์กร`;
+
 function invitationProblemMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) {
-      return "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ";
+      return INVITATION_NOT_FOUND_MESSAGE;
     }
     if (error.status === 410 || error.code === "INVITATION_EXPIRED") {
-      return "คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากผู้ดูแลองค์กร";
+      return "คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากเจ้าของหรือผู้ดูแลองค์กร";
     }
     if (error.status === 0) {
       return "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
     }
   }
   return "โหลดข้อมูลคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+}
+
+// A 404 or 410 is final; a dropped connection, a server fault or an unknown failure may pass on a second try.
+function previewFailure(error: unknown): { title: string; retryable: boolean } {
+  const final =
+    error instanceof ApiError && (error.status === 404 || error.status === 410);
+  const transient =
+    !(error instanceof ApiError) || error.status === 0 || error.status >= 500;
+  return {
+    title: final ? "ไม่พบคำเชิญ" : "โหลดคำเชิญไม่สำเร็จ",
+    retryable: transient,
+  };
 }
 
 export function AcceptInvitationPage() {
@@ -68,23 +89,48 @@ export function AcceptInvitationPage() {
   });
 
   if (invitationId.length === 0 || preview.error !== null) {
+    const failure = previewFailure(preview.error);
+    const signedIn = session.data !== null;
     return (
       <AuthPageFrame
         data-testid="invitation-page"
         eyebrow="// invitation"
-        title="คำเชิญ"
+        title={failure.title}
       >
         <div className="flex flex-col gap-4">
           <Alert data-testid="invitation-preview-error" tone="error">
             {invitationProblemMessage(preview.error)}
           </Alert>
-          <Link
-            data-testid="invitation-login"
-            to="/login"
-            className="text-sm text-primary underline"
-          >
-            ไปที่หน้าเข้าสู่ระบบ
-          </Link>
+          {failure.retryable && preview.error !== null ? (
+            <Button
+              data-testid="invitation-preview-retry"
+              type="button"
+              className="w-full"
+              disabled={preview.isFetching}
+              onClick={() => {
+                void preview.refetch();
+              }}
+            >
+              {preview.isFetching ? "กำลังโหลด…" : "ลองใหม่"}
+            </Button>
+          ) : null}
+          {signedIn ? (
+            <Link
+              data-testid="invitation-preview-workspace"
+              to="/workspace"
+              className="text-sm text-primary underline"
+            >
+              ไปที่พื้นที่ทำงาน
+            </Link>
+          ) : (
+            <Link
+              data-testid="invitation-login"
+              to="/login"
+              className="text-sm text-primary underline"
+            >
+              ไปที่หน้าเข้าสู่ระบบ
+            </Link>
+          )}
         </div>
       </AuthPageFrame>
     );
@@ -104,33 +150,7 @@ export function AcceptInvitationPage() {
 
   if (user !== undefined) {
     if (!user.emailVerified) {
-      rememberInvitation(invitation.id);
-      return (
-        <AuthPageFrame
-          data-testid="invitation-unverified"
-          subtitleTestId="invitation-recipient"
-          eyebrow="// invitation"
-          title="ยืนยันอีเมลก่อนเข้าร่วม"
-          subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
-        >
-          <div className="flex flex-col gap-4">
-            <Alert tone="info">
-              เราส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว
-              คำเชิญจะรอการยอมรับหลังยืนยันสำเร็จ
-            </Alert>
-            <Button
-              data-testid="invitation-verify-email"
-              type="button"
-              className="w-full"
-              onClick={() => {
-                void navigate("/verify-email");
-              }}
-            >
-              ไปที่หน้ายืนยันอีเมล
-            </Button>
-          </div>
-        </AuthPageFrame>
-      );
+      return <UnverifiedInvitation invitation={invitation} />;
     }
 
     if (!sameEmail(user.email, invitation.email)) {
@@ -152,7 +172,6 @@ export function AcceptInvitationPage() {
                 data-testid="invitation-sign-out"
                 type="button"
                 className="w-full"
-                style={{ outlineColor: "var(--primary)" }}
                 onClick={() => {
                   void authClient.signOut({
                     fetchOptions: {
@@ -177,6 +196,7 @@ export function AcceptInvitationPage() {
         invitationId={invitation.id}
         organizationName={invitation.organizationName}
         role={invitation.role}
+        expiresAt={invitation.expiresAt}
       />
     );
   }
@@ -196,9 +216,64 @@ export function AcceptInvitationPage() {
         queryClient.removeQueries({
           queryKey: invitationQueryKey(invitation.id),
         });
-        void navigate("/verify-email");
+        void navigate("/verify-email", {
+          state: {
+            email: invitation.email,
+            sent: true,
+          } satisfies AuthFlowState,
+        });
       }}
     />
+  );
+}
+
+// The invitation is remembered in an effect, not while rendering, so a discarded render leaves no storage write.
+function UnverifiedInvitation({
+  invitation,
+}: {
+  invitation: InvitationResponse["invitation"];
+}) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    rememberInvitation(invitation.id);
+  }, [invitation.id]);
+  return (
+    <AuthPageFrame
+      data-testid="invitation-unverified"
+      subtitleTestId="invitation-recipient"
+      eyebrow="// invitation"
+      title="ยืนยันอีเมลก่อนเข้าร่วม"
+      subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
+    >
+      <div className="flex flex-col gap-4">
+        <Alert tone="info">
+          บัญชีนี้ยังไม่ได้ยืนยันอีเมล ตรวจอีเมลของคุณหรือขอลิงก์ใหม่
+        </Alert>
+        <Button
+          data-testid="invitation-verify-email"
+          type="button"
+          className="w-full"
+          onClick={() => {
+            void navigate("/verify-email");
+          }}
+        >
+          ไปที่หน้ายืนยันอีเมล
+        </Button>
+      </div>
+    </AuthPageFrame>
+  );
+}
+
+// The API answers 404 for an invitation past `expiresAt`, so say until when the link works.
+function InvitationExpiry({ expiresAt }: { expiresAt: string }) {
+  const { preferences } = usePreferences();
+  return (
+    <p className="text-sm text-foreground-secondary">
+      คำเชิญใช้ได้ถึง{" "}
+      <time data-testid="invitation-expires-at" dateTime={expiresAt}>
+        {formatDateTime(new Date(expiresAt), preferences)}
+      </time>
+    </p>
   );
 }
 
@@ -206,10 +281,12 @@ function VerifiedAcceptance({
   invitationId,
   organizationName,
   role,
+  expiresAt,
 }: {
   invitationId: string;
   organizationName: string;
   role: string;
+  expiresAt: string;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -272,11 +349,11 @@ function VerifiedAcceptance({
       setError(
         cause instanceof ApiError &&
           cause.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
-          ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว คำเชิญยังรอดำเนินการ กรุณาติดต่อผู้ดูแลองค์กร"
+          ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว คำเชิญยังรอตอบรับ กรุณาติดต่อเจ้าของหรือผู้ดูแลองค์กร"
           : cause instanceof ApiError && cause.status === 404
-            ? "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ"
+            ? INVITATION_NOT_FOUND_MESSAGE
             : joined
-              ? "เข้าร่วมองค์กรแล้ว แต่เลือกองค์กรไม่สำเร็จ กรุณาไปหน้าองค์กร"
+              ? "เข้าร่วมองค์กรแล้ว แต่เลือกองค์กรไม่สำเร็จ กรุณาไปที่พื้นที่ทำงาน"
               : "รับคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
       );
     } finally {
@@ -313,20 +390,20 @@ function VerifiedAcceptance({
             </Alert>
           </div>
         )}
+        {accepted ? null : <InvitationExpiry expiresAt={expiresAt} />}
         {accepted ? (
           <Link
             data-testid="invitation-workspace"
             to="/workspace"
             className="text-primary underline"
           >
-            ไปหน้าองค์กร
+            ไปที่พื้นที่ทำงาน
           </Link>
         ) : (
           <Button
             data-testid="invitation-accept"
             type="submit"
             className="w-full"
-            style={{ outlineColor: "var(--primary)" }}
             disabled={pending}
           >
             {pending ? "กำลังเข้าร่วม…" : "เข้าร่วมองค์กร"}
@@ -396,7 +473,7 @@ function SignupGate({
     >
       {expired ? (
         <Alert data-testid="invitation-expired" tone="error">
-          คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากผู้ดูแลองค์กร
+          คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากเจ้าของหรือผู้ดูแลองค์กร
         </Alert>
       ) : (
         <form
@@ -413,6 +490,7 @@ function SignupGate({
               {error}
             </Alert>
           )}
+          <InvitationExpiry expiresAt={expiresAt} />
           <Field label="อีเมล (ตามคำเชิญ)">
             <Input
               data-testid="invitation-signup-email"
@@ -478,10 +556,17 @@ function SignupGate({
             }}
           >
             {(field) => (
-              <Field label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)">
-                <Input
+              <div>
+                <Label
+                  htmlFor="invitation-signup-password"
+                  className="mb-2 block"
+                >
+                  รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)
+                </Label>
+                <PasswordInput
+                  id="invitation-signup-password"
                   data-testid="invitation-signup-password"
-                  type="password"
+                  toggleTestId="invitation-signup-password-toggle"
                   name="password"
                   autoComplete="new-password"
                   value={field.state.value}
@@ -501,7 +586,7 @@ function SignupGate({
                   data-testid="invitation-password-error"
                   errors={field.state.meta.errors}
                 />
-              </Field>
+              </div>
             )}
           </form.Field>
           <form.Subscribe

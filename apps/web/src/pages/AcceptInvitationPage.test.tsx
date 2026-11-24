@@ -4,7 +4,7 @@ import type {
   InvitationResponse,
   MeContextResponse,
 } from "@nightwatch/api-contract";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -127,7 +127,16 @@ const invitation: InvitationResponse = {
 
 function LocationProbe() {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
+  const state = location.state as { email?: string; sent?: boolean } | null;
+  return (
+    <div
+      data-testid="location"
+      data-email={state?.email}
+      data-sent={state?.sent}
+    >
+      {location.pathname}
+    </div>
+  );
 }
 
 // Real anonymous-gate loader and root layout, so a session resolving mid-sign-in continues as in the app.
@@ -198,9 +207,10 @@ describe("AcceptInvitationPage", () => {
     );
     await userEvent.click(screen.getByTestId("invitation-signup-submit"));
 
-    expect(await screen.findByTestId("location")).toHaveTextContent(
-      "/verify-email",
-    );
+    const location = await screen.findByTestId("location");
+    expect(location).toHaveTextContent("/verify-email");
+    expect(location).toHaveAttribute("data-email", "new@example.com");
+    expect(location).toHaveAttribute("data-sent", "true");
     expect(readInvitation()).toBe("inv-123");
     expect(signUpEmailMock).toHaveBeenCalledWith(
       {
@@ -272,6 +282,51 @@ describe("AcceptInvitationPage", () => {
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
       organizationId: ORG,
     });
+  });
+
+  it("shows until when the invitation works on the signup and the accept pages", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    renderPage();
+
+    const signupExpiry = await screen.findByTestId("invitation-expires-at");
+    expect(signupExpiry).toHaveAttribute(
+      "datetime",
+      "2099-01-01T00:00:00.000Z",
+    );
+    expect(screen.getByTestId("invitation-signup-page")).toContainElement(
+      signupExpiry,
+    );
+    cleanup();
+
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: true },
+    });
+    renderPage();
+
+    const acceptExpiry = await screen.findByTestId("invitation-expires-at");
+    expect(acceptExpiry).toHaveAttribute(
+      "datetime",
+      "2099-01-01T00:00:00.000Z",
+    );
+    expect(screen.getByTestId("invitation-accept-page")).toContainElement(
+      acceptExpiry,
+    );
+  });
+
+  it("reveals and hides the signup password with the toggle", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    renderPage();
+
+    const password = await screen.findByTestId("invitation-signup-password");
+    expect(password).toHaveAttribute("type", "password");
+    await userEvent.click(
+      screen.getByTestId("invitation-signup-password-toggle"),
+    );
+    expect(password).toHaveAttribute("type", "text");
+    await userEvent.click(
+      screen.getByTestId("invitation-signup-password-toggle"),
+    );
+    expect(password).toHaveAttribute("type", "password");
   });
 
   it("keeps the invitation pending on cap denial, announces the cap, and focuses the error", async () => {
@@ -394,6 +449,21 @@ describe("AcceptInvitationPage", () => {
     expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
   });
 
+  it("an unverified signed-in account keeps the invitation and is sent on to verify its email", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: false },
+    });
+    renderPage();
+
+    expect(await screen.findByTestId("invitation-unverified")).toBeVisible();
+    expect(readInvitation()).toBe("inv-123");
+    await userEvent.click(screen.getByTestId("invitation-verify-email"));
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/verify-email",
+    );
+  });
+
   it("refuses an invitation addressed to a different email", async () => {
     fetchInvitationMock.mockResolvedValue(invitation);
     sessionStore.set({
@@ -435,5 +505,36 @@ describe("AcceptInvitationPage", () => {
     );
     expect(acceptInvitationMock).not.toHaveBeenCalled();
     expect(signUpEmailMock).not.toHaveBeenCalled();
+    // A missing invitation will not come back, so there is nothing to retry.
+    expect(screen.queryByTestId("invitation-preview-retry")).toBeNull();
+  });
+
+  it("offers a retry for a failed load that can pass and shows the invitation after it does", async () => {
+    fetchInvitationMock
+      .mockRejectedValueOnce(new ApiError("SERVER_ERROR", "down", 503))
+      .mockResolvedValue(invitation);
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByTestId("invitation-preview-retry"),
+    );
+
+    expect(await screen.findByTestId("invitation-signup-page")).toBeVisible();
+    expect(fetchInvitationMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends a signed-in visitor with a dead link to the workspace, not to sign-in", async () => {
+    fetchInvitationMock.mockRejectedValue(
+      new ApiError("INVITATION_NOT_FOUND", "not found", 404),
+    );
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: true },
+    });
+    renderPage();
+
+    expect(
+      await screen.findByTestId("invitation-preview-workspace"),
+    ).toHaveAttribute("href", "/workspace");
+    expect(screen.queryByTestId("invitation-login")).toBeNull();
   });
 });

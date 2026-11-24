@@ -9,9 +9,14 @@ import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import { readInvitation, rememberInvitation } from "../lib/auth/continuation";
+import {
+  VERIFICATION_LINK_LIFETIME,
+  type AuthFlowState,
+} from "../lib/auth/flow";
 
-const EMAIL_VERIFICATION_FAILURE_TEXT =
-  "ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว";
+// The link is also dead once used, and the email says reopening it after a successful verification does
+// nothing, so a user who already verified lands here too; sign-in comes first for that reason.
+const EMAIL_VERIFICATION_FAILURE_TEXT = `ลิงก์นี้ใช้ไม่ได้ อาจหมดอายุ (${VERIFICATION_LINK_LIFETIME}) หรือยืนยันไปแล้ว ลองเข้าสู่ระบบ หรือขอลิงก์ใหม่`;
 
 type TokenPhase = "none" | "running" | "failed" | "done";
 
@@ -99,7 +104,13 @@ export function OnboardingPage() {
       if (invitationId !== null) {
         rememberInvitation(invitationId);
       }
-      void navigate("/login", { replace: true });
+      // Only a verification consumed on this page earns the banner; a bare visit gets none.
+      void navigate("/login", {
+        replace: true,
+        ...(tokenPhase === "done"
+          ? { state: { notice: "email-verified" } satisfies AuthFlowState }
+          : {}),
+      });
       return;
     }
     if (!user.emailVerified) {
@@ -135,25 +146,25 @@ export function OnboardingPage() {
             {tokenError}
           </Alert>
           <Button
+            data-testid="onboarding-login"
+            type="button"
+            className="w-full"
+            onClick={() => {
+              void navigate("/login", { replace: true });
+            }}
+          >
+            เข้าสู่ระบบ
+          </Button>
+          <Button
             data-testid="onboarding-verify-email"
             type="button"
+            variant="secondary"
             className="w-full"
             onClick={() => {
               void navigate("/verify-email", { replace: true });
             }}
           >
             ส่งอีเมลยืนยันใหม่
-          </Button>
-          <Button
-            data-testid="onboarding-login"
-            type="button"
-            variant="secondary"
-            className="w-full"
-            onClick={() => {
-              void navigate("/login", { replace: true });
-            }}
-          >
-            กลับไปเข้าสู่ระบบ
           </Button>
         </div>
       </AuthPageFrame>

@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import {
   readReturnTo,
   rememberInvitation,
 } from "../lib/auth/continuation";
+import { fetchInvitation } from "../lib/api/invitations";
 import { requireAnonLoader } from "../lib/auth/loaders";
 import { RootLayout } from "../router";
 import { LoginPage } from "./LoginPage";
@@ -45,6 +46,12 @@ const { sessionStore, signInEmailMock } = vi.hoisted(() => {
     signInEmailMock: vi.fn(),
   };
 });
+vi.mock("../lib/api/invitations", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchInvitation: vi.fn(),
+}));
+const fetchInvitationMock = vi.mocked(fetchInvitation);
+
 vi.mock("better-auth/react", async () => {
   // vi.mock factories are hoisted above static imports, so react must be imported lazily.
   const { useSyncExternalStore } = await import("react");
@@ -65,14 +72,17 @@ vi.mock("better-auth/react", async () => {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <div data-testid="location">
+    <div
+      data-testid="location"
+      data-email={(location.state as { email?: string } | null)?.email}
+    >
       {location.pathname + location.search + location.hash}
     </div>
   );
 }
 
 // Real anonymous-gate loader and root layout, so a session resolving mid-sign-in continues as in the app.
-function renderPage(from?: string) {
+function renderPage(from?: string, state?: unknown) {
   const router = createMemoryRouter(
     [
       {
@@ -86,9 +96,11 @@ function renderPage(from?: string) {
     ],
     {
       initialEntries: [
-        from === undefined
-          ? "/login"
-          : `/login?from=${encodeURIComponent(from)}`,
+        {
+          pathname: "/login",
+          search: from === undefined ? "" : `?from=${encodeURIComponent(from)}`,
+          state,
+        },
       ],
     },
   );
@@ -134,7 +146,115 @@ describe("LoginPage", () => {
   afterEach(() => {
     sessionStore.reset();
     signInEmailMock.mockReset();
+    fetchInvitationMock.mockReset();
     sessionStorage.clear();
+  });
+
+  it.each(["email-verified", "password-reset"])(
+    "shows a status notice for the %s hand-off and drops it once an error appears",
+    async (notice) => {
+      signInEmailMock.mockResolvedValue({
+        data: null,
+        error: { code: "INVALID_EMAIL_OR_PASSWORD", status: 401 },
+      });
+      renderPage(undefined, { notice });
+
+      expect(await screen.findByTestId("login-notice")).toHaveAttribute(
+        "role",
+        "status",
+      );
+      await submitLogin("member@example.com", "wrong-password");
+      expect(await screen.findByTestId("login-auth-error")).toBeVisible();
+      expect(screen.queryByTestId("login-notice")).toBeNull();
+    },
+  );
+
+  it("shows no notice for an unknown state or a notice forged in the query", async () => {
+    renderPage("/workspace?notice=email-verified", { notice: "<b>x</b>" });
+
+    await screen.findByTestId("login-submit");
+    expect(screen.queryByTestId("login-notice")).toBeNull();
+  });
+
+  it("names the invitation being accepted and prefills the invited address", async () => {
+    rememberInvitation("inv-77");
+    fetchInvitationMock.mockResolvedValue({
+      invitation: {
+        id: "inv-77",
+        email: "invited@example.com",
+        organizationName: "Acme Corp",
+        role: "viewer",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    });
+    renderPage();
+
+    const banner = await screen.findByTestId("login-invitation");
+    expect(banner).toHaveTextContent("Acme Corp");
+    expect(banner).toHaveTextContent("invited@example.com");
+    expect(screen.getByTestId("login-email")).toHaveValue(
+      "invited@example.com",
+    );
+    expect(fetchInvitationMock).toHaveBeenCalledWith("inv-77");
+  });
+
+  it("has the page heading before any other heading", async () => {
+    renderPage();
+
+    await screen.findByTestId("login-submit");
+    expect(screen.getAllByRole("heading")[0]).toHaveProperty("tagName", "H1");
+  });
+
+  it("says where sign-in leads when a loader sent the user from a deeper page", async () => {
+    renderPage("/organizations/org-1/projects");
+
+    expect(await screen.findByTestId("login-return-notice")).toBeVisible();
+  });
+
+  it.each([
+    ["no origin", undefined, undefined],
+    ["the default entry", "/workspace", undefined],
+    ["an unsafe origin", "//evil.example/x", undefined],
+    ["a hand-off notice", "/organizations/org-1/projects", "password-reset"],
+  ])("shows no return notice for %s", async (_label, from, notice) => {
+    renderPage(from, notice === undefined ? undefined : { notice });
+
+    await screen.findByTestId("login-submit");
+    expect(screen.queryByTestId("login-return-notice")).toBeNull();
+  });
+
+  it("keeps the submit pending after a successful sign-in until the page changes", async () => {
+    // A real success carries the session payload; only the two-factor plugin adds twoFactorRedirect.
+    signInEmailMock.mockResolvedValue({ data: { token: "t" }, error: null });
+    renderPage();
+
+    await submitLogin("member@example.com", "correct-password");
+
+    await waitFor(() => {
+      expect(signInEmailMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId("login-submit")).toBeDisabled();
+  });
+
+  it("reveals and hides the password with the toggle", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const password = await screen.findByTestId("login-password");
+    expect(password).toHaveAttribute("type", "password");
+    await user.click(screen.getByTestId("login-password-toggle"));
+    expect(password).toHaveAttribute("type", "text");
+    await user.click(screen.getByTestId("login-password-toggle"));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("shows no invitation banner and asks nothing when none is remembered", async () => {
+    renderPage();
+
+    await screen.findByTestId("login-submit");
+    expect(screen.queryByTestId("login-invitation")).toBeNull();
+    expect(fetchInvitationMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("login-email")).toHaveValue("");
   });
 
   it("blocks an empty submission and links adjacent field errors", async () => {
@@ -166,7 +286,8 @@ describe("LoginPage", () => {
     renderPage();
     await screen.findByTestId("login-submit");
 
-    signInEmailMock.mockResolvedValue({ data: null, error: null });
+    // A real success carries the session payload; only the two-factor plugin adds twoFactorRedirect.
+    signInEmailMock.mockResolvedValue({ data: { token: "t" }, error: null });
     await submitLogin("member@example.com", "correct-password");
     expect(signInEmailMock).toHaveBeenCalledWith({
       email: "member@example.com",
@@ -238,6 +359,11 @@ describe("LoginPage", () => {
       const user = await submitLogin("new@example.com", "super-secret-1");
 
       expect(await screen.findByTestId("login-auth-error")).toBeVisible();
+      // A failed sign-in must interrupt assistive technology even when the tone is "info".
+      expect(screen.getByTestId("login-auth-error")).toHaveAttribute(
+        "role",
+        "alert",
+      );
       expect(screen.getByTestId("login-email")).toHaveValue("new@example.com");
       expect(screen.getByTestId("login-password")).toHaveValue(
         "super-secret-1",
@@ -246,9 +372,9 @@ describe("LoginPage", () => {
       expect(screen.getByTestId("login-submit")).toBeEnabled();
       expect(screen.getByTestId("login-verify-email")).toBeInTheDocument();
       await user.click(screen.getByTestId("login-verify-email"));
-      expect(await screen.findByTestId("location")).toHaveTextContent(
-        "/verify-email",
-      );
+      const location = await screen.findByTestId("location");
+      expect(location).toHaveTextContent("/verify-email");
+      expect(location).toHaveAttribute("data-email", "new@example.com");
     },
   );
 
@@ -330,6 +456,8 @@ describe("LoginPage", () => {
     renderPage("/settings/security");
 
     await submitLogin("member@example.com", "correct-password");
+    // Back-restored pages must not be left with a disabled button.
+    expect(screen.getByTestId("login-submit")).toBeEnabled();
 
     expect(await screen.findByTestId("login-page")).toBeInTheDocument();
     expect(screen.queryByTestId("login-auth-error")).toBeNull();

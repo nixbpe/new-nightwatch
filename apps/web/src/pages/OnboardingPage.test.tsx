@@ -48,7 +48,10 @@ const VERIFIED_USER: SessionUser = {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <div data-testid="location">
+    <div
+      data-testid="location"
+      data-notice={(location.state as { notice?: string } | null)?.notice}
+    >
       {location.pathname + location.search + location.hash}
     </div>
   );
@@ -129,6 +132,14 @@ describe("OnboardingPage transitions", () => {
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-verify-email")).toBeInTheDocument();
+    // A reused link may mean the email is already verified, so sign-in is offered first.
+    expect(
+      screen
+        .getByTestId("onboarding-login")
+        .compareDocumentPosition(
+          screen.getByTestId("onboarding-verify-email"),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByTestId("search")).toHaveTextContent(/^$/),
     );
@@ -181,8 +192,19 @@ describe("OnboardingPage transitions", () => {
 
     renderAt("/onboarding?emailVerificationToken=tok-2&invitationId=inv-7");
 
-    expect(await screen.findByTestId("location")).toHaveTextContent("/login");
+    const location = await screen.findByTestId("location");
+    expect(location).toHaveTextContent("/login");
+    expect(location).toHaveAttribute("data-notice", "email-verified");
     expect(readInvitation()).toBe("inv-7");
+  });
+
+  it("an anonymous visit with no token reaches login without a verification notice", async () => {
+    renderAt("/onboarding");
+
+    const location = await screen.findByTestId("location");
+    expect(location).toHaveTextContent("/login");
+    expect(location).not.toHaveAttribute("data-notice");
+    expect(verifyEmailMock).not.toHaveBeenCalled();
   });
 
   it("holds the return until token verification and session refresh settle, then consumes it", async () => {

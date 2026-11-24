@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { Link, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 
 import { AuthEyebrow, AuthHeader } from "../components/shell/AuthFrame";
-import { EyeIcon, EyeOffIcon } from "../components/shell/icons";
 import {
   Alert,
   Field,
@@ -12,18 +12,55 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { Label } from "../components/ui/label";
+import { Notice } from "../components/ui/notice";
+import { PasswordInput } from "../components/ui/password-input";
 import { authClient, authErrorMessage } from "../lib/auth-client";
-import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
+import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
+import {
+  normalizeReturnTo,
+  readInvitation,
+  rememberReturnTo,
+} from "../lib/auth/continuation";
+import {
+  readAuthFlowState,
+  type AuthFlowState,
+  type AuthNotice,
+} from "../lib/auth/flow";
+
+const NOTICE_TEXT: Record<AuthNotice, string> = {
+  "email-verified": "ยืนยันอีเมลแล้ว กรุณาเข้าสู่ระบบ",
+  "password-reset": "ตั้งรหัสผ่านใหม่แล้ว เข้าสู่ระบบด้วยรหัสผ่านใหม่",
+};
 
 export function LoginPage() {
   // Loaders bounce here as /login?from=<path+query>; only same-origin paths are honored.
   const [searchParams] = useSearchParams();
   const fromParam = searchParams.get("from");
   const from = normalizeReturnTo(fromParam);
+  const { notice } = readAuthFlowState(useLocation().state);
 
   const [error, setError] = useState<string | null>(null);
-  const [needsVerification, setNeedsVerification] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  // Set once sign-in succeeded: the page changes only after the session refetch and loader re-run.
+  const [redirecting, setRedirecting] = useState(false);
+  // The refused address, so the verification page needs no retyping; null when the sign-in was not refused for it.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+
+  // A remembered invitation means this sign-in is to accept it; say which one and for which address.
+  const pendingInvitationId = readInvitation();
+  const invitationPreview = useQuery({
+    queryKey: invitationQueryKey(pendingInvitationId ?? ""),
+    queryFn: () => fetchInvitation(pendingInvitationId ?? ""),
+    enabled: pendingInvitationId !== null,
+    retry: false,
+  });
+  const invited = invitationPreview.data?.invitation;
+  // A loader sent the user here from a deeper page. The loader cannot tell an expired session from a
+  // first visit, so the notice says where sign-in leads and does not claim expiry. /workspace is the default entry.
+  const showReturnNotice =
+    fromParam !== null &&
+    from !== "/workspace" &&
+    invited === undefined &&
+    notice === undefined;
 
   const form = useForm({
     defaultValues: {
@@ -32,10 +69,10 @@ export function LoginPage() {
     },
     onSubmit: async ({ value }) => {
       setError(null);
-      setNeedsVerification(false);
+      setUnverifiedEmail(null);
       rememberReturnTo(from);
       try {
-        const { error: signInError } = await authClient.signIn.email({
+        const { data, error: signInError } = await authClient.signIn.email({
           email: value.email.trim(),
           password: value.password,
         });
@@ -45,15 +82,27 @@ export function LoginPage() {
             signInError.status === 403 ||
             signInError.code === "EMAIL_NOT_VERIFIED"
           ) {
-            setNeedsVerification(true);
+            setUnverifiedEmail(value.email.trim());
           }
           setError(message);
+          return;
         }
+        // The two-factor plugin navigates the whole window to the challenge; keep the form usable
+        // for when the browser restores this page (Back) from its cache.
+        if ("twoFactorRedirect" in data && data.twoFactorRedirect === true)
+          return;
+        setRedirecting(true);
       } catch {
         setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
       }
     },
   });
+
+  useEffect(() => {
+    if (invited !== undefined && form.state.values.email === "") {
+      form.setFieldValue("email", invited.email);
+    }
+  }, [form, invited]);
 
   return (
     <div data-testid="login-page" className="flex min-h-screen flex-col">
@@ -68,7 +117,7 @@ export function LoginPage() {
                 เข้าสู่ระบบ
               </h1>
               <p className="mt-1 text-sm text-foreground-secondary">
-                ใช้อีเมลและรหัสผ่านที่ได้รับการเชิญเท่านั้น
+                เข้าสู่ระบบด้วยบัญชีที่สร้างจากคำเชิญ
               </p>
             </div>
             <form
@@ -80,16 +129,35 @@ export function LoginPage() {
               className="flex flex-col gap-5"
               noValidate
             >
+              {invited === undefined ? null : (
+                <Alert data-testid="login-invitation" tone="info" role="status">
+                  {`เข้าสู่ระบบเพื่อเข้าร่วมองค์กร ${invited.organizationName} ด้วยอีเมล ${invited.email}`}
+                </Alert>
+              )}
+              {showReturnNotice ? (
+                <Alert data-testid="login-return-notice" tone="info">
+                  เข้าสู่ระบบเพื่อกลับไปยังหน้าที่เปิดไว้
+                </Alert>
+              ) : null}
+              {error !== null || notice === undefined ? null : (
+                <Notice tone="success" data-testid="login-notice">
+                  {NOTICE_TEXT[notice]}
+                </Notice>
+              )}
               {error === null ? null : (
                 <Alert
                   data-testid="login-auth-error"
-                  tone={needsVerification ? "info" : "error"}
+                  tone={unverifiedEmail !== null ? "info" : "error"}
+                  role="alert"
                 >
-                  {needsVerification ? (
+                  {unverifiedEmail !== null ? (
                     <>
                       {error}{" "}
                       <Link
                         to="/verify-email"
+                        state={
+                          { email: unverifiedEmail } satisfies AuthFlowState
+                        }
                         data-testid="login-verify-email"
                         className="font-medium underline"
                       >
@@ -164,46 +232,29 @@ export function LoginPage() {
                       <Link
                         to="/forgot-password"
                         data-testid="login-forgot-password"
-                        className="text-[13px] text-primary underline underline-offset-4"
+                        className="inline-flex min-h-6 items-center text-[13px] text-primary underline underline-offset-4"
                       >
                         ลืมรหัสผ่าน
                       </Link>
                     </div>
-                    <div className="relative flex items-center">
-                      <Input
-                        id="login-password"
-                        data-testid="login-password"
-                        type={showPassword ? "text" : "password"}
-                        name="password"
-                        autoComplete="current-password"
-                        className="pr-11"
-                        value={field.state.value}
-                        onChange={(event) => {
-                          field.handleChange(event.target.value);
-                        }}
-                        onBlur={field.handleBlur}
-                        aria-invalid={field.state.meta.errors.length > 0}
-                        aria-describedby={
-                          field.state.meta.errors.length > 0
-                            ? "login-password-error"
-                            : undefined
-                        }
-                      />
-                      <button
-                        data-testid="login-password-toggle"
-                        type="button"
-                        onClick={() => {
-                          setShowPassword((value) => !value);
-                        }}
-                        className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                      >
-                        {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                        {/* Inner text, not aria-label: an aria-label containing "รหัสผ่าน" collides with the field's label. */}
-                        <span className="sr-only">
-                          {showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-                        </span>
-                      </button>
-                    </div>
+                    <PasswordInput
+                      id="login-password"
+                      data-testid="login-password"
+                      toggleTestId="login-password-toggle"
+                      name="password"
+                      autoComplete="current-password"
+                      value={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value);
+                      }}
+                      onBlur={field.handleBlur}
+                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-describedby={
+                        field.state.meta.errors.length > 0
+                          ? "login-password-error"
+                          : undefined
+                      }
+                    />
                     <FieldValidationError
                       id="login-password-error"
                       data-testid="login-password-error"
@@ -217,7 +268,7 @@ export function LoginPage() {
                 children={(isSubmitting) => (
                   <SubmitButton
                     data-testid="login-submit"
-                    pending={isSubmitting}
+                    pending={isSubmitting || redirecting}
                     pendingLabel="กำลังเข้าสู่ระบบ…"
                   >
                     เข้าสู่ระบบ <span aria-hidden="true">→</span>
@@ -226,7 +277,7 @@ export function LoginPage() {
               />
             </form>
             <p className="text-xs text-foreground-secondary">
-              ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ
+              ยังไม่มีคำเชิญ? ติดต่อเจ้าของหรือผู้ดูแลองค์กร
             </p>
           </div>
         </main>
@@ -256,9 +307,10 @@ function BrandPanel() {
   return (
     <aside className="relative hidden flex-col justify-between gap-12 overflow-hidden border-r border-foreground/10 bg-surface px-16 py-[72px] lg:flex">
       <div className="relative z-10 flex flex-col gap-5 bg-surface">
-        <h2 className="max-w-[560px] text-[40px] leading-[1.4] font-semibold text-heading">
+        {/* A <p>, not a heading: the aside comes before <main> in the DOM, so an h2 here would precede the page h1. */}
+        <p className="max-w-[560px] text-[40px] leading-[1.4] font-semibold text-heading">
           จัดลำดับความเสี่ยงที่ควรแก้ไขก่อน ครอบคลุมทุกโปรเจกต์ของลูกค้า
-        </h2>
+        </p>
         <p className="max-w-[480px] text-base text-foreground-secondary">
           แพลตฟอร์มความปลอดภัยคลาวด์สำหรับผู้ให้บริการที่ดูแล AWS
           ให้ลูกค้าหลายราย

@@ -512,7 +512,7 @@ test.describe("final MFA login bootstrap", () => {
           mirrors_match: true,
         });
         if (mode === "recovery")
-          await page.getByTestId("two-factor-mode-recovery").check();
+          await page.getByTestId("two-factor-mode-recovery").click();
         else await page.getByTestId("two-factor-trust-device").check();
         await page
           .getByTestId("two-factor-code")
