@@ -6,7 +6,15 @@ import {
   type QueryResult,
   type QueryResultRow,
 } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { revokeOrganizationMember } from "./members";
@@ -640,11 +648,18 @@ describe("organization notification settings read revocation linearization", () 
           return async (): Promise<PoolClient> => {
             const client = await target.connect();
             const originalQuery = client.query.bind(client);
-            const backend = await originalQuery<{ pid: number }>(
-              "select pg_backend_pid() as pid",
-            );
-            const pid = backend.rows[0]?.pid;
-            if (!pid) throw new Error("fixture backend PID was not returned");
+            let pid: number;
+            try {
+              const backend = await originalQuery<{ pid: number }>(
+                "select pg_backend_pid() as pid",
+              );
+              if (!backend.rows[0]?.pid)
+                throw new Error("fixture backend PID was not returned");
+              pid = backend.rows[0].pid;
+            } catch (error) {
+              client.release();
+              throw error;
+            }
             const query = async <Row extends QueryResultRow>(
               text: string,
               values?: unknown[],
@@ -666,6 +681,28 @@ describe("organization notification settings read revocation linearization", () 
         },
       }),
     };
+  }
+
+  async function waitForObservation<T>(
+    signal: Promise<T>,
+    operation: Promise<unknown>,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        signal,
+        operation.then(() => {
+          throw new Error("operation completed without observation");
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error("observation did not arrive within 5000ms"));
+          }, 5_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function waitForBlockedQuery(
@@ -764,6 +801,96 @@ describe("organization notification settings read revocation linearization", () 
     ]);
   });
 
+  it.each(["reject", "complete", "pending"] as const)(
+    "unwinds a real read when observation is missing: %s",
+    async (failure) => {
+      const signal = Promise.withResolvers<number>();
+      const release = Promise.withResolvers<undefined>();
+      const fault = new Error("observer failed before expected SQL");
+      let backendPid: number | undefined;
+      const observer = vi.fn(
+        async (text: string, pid: number, completed: boolean) => {
+          backendPid = pid;
+          if (!completed && text.includes("from notification_org_settings")) {
+            if (failure === "reject") throw fault;
+            if (failure === "pending") await release.promise;
+            // Deliberately omit the observation, not the real SQL/result.
+          }
+        },
+      );
+      let operation: Promise<unknown> | undefined;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      try {
+        operation = getOrganizationNotificationSettings(
+          observedDatabase(observer),
+          {
+            organizationId: linearizationOrganizationId,
+            userId: linearizationTargetId,
+          },
+        );
+        const observation = waitForObservation(signal.promise, operation);
+        // Independent test guard also unwinds the fixture if the helper regresses.
+        const guarded = Promise.race([
+          observation,
+          new Promise<never>((_, reject) => {
+            watchdog = setTimeout(() => {
+              reject(new Error("test lifecycle guard expired"));
+            }, 5_000);
+          }),
+        ]);
+        if (failure === "reject") await expect(guarded).rejects.toBe(fault);
+        else
+          await expect(guarded).rejects.toThrow(
+            failure === "complete"
+              ? "operation completed without observation"
+              : "observation did not arrive within 5000ms",
+          );
+      } finally {
+        clearTimeout(watchdog);
+        release.resolve(undefined);
+        await Promise.allSettled(operation ? [operation] : []);
+        observer.mockClear();
+        await database.sql.query("select 1");
+        expect(observer).not.toHaveBeenCalled();
+        expect(database.sql.idleCount).toBe(database.sql.totalCount);
+        const locks = await owner.query<{ count: number }>(
+          `select count(*)::int as count from pg_stat_activity
+           where pid = $1 and state = 'idle in transaction'`,
+          [backendPid],
+        );
+        expect(locks.rows[0]?.count).toBe(0);
+      }
+    },
+  );
+
+  it("releases a checked-out client when fixture PID lookup rejects", async () => {
+    const fault = new Error("fixture PID lookup failed");
+    let acquired: PoolClient | undefined;
+    let restoreQuery: (() => void) | undefined;
+    const acquire = (client: PoolClient): void => {
+      acquired = client;
+      const query = vi.spyOn(client, "query").mockRejectedValueOnce(fault);
+      restoreQuery = () => {
+        query.mockRestore();
+      };
+    };
+    const returned = vi.fn();
+    database.sql.once("acquire", acquire);
+    database.sql.once("release", returned);
+    try {
+      await expect(
+        observedDatabase(() => undefined).sql.connect(),
+      ).rejects.toBe(fault);
+      expect(returned).toHaveBeenCalledExactlyOnceWith(undefined, acquired);
+      expect(database.sql.idleCount).toBe(database.sql.totalCount);
+    } finally {
+      database.sql.off("acquire", acquire);
+      database.sql.off("release", returned);
+      restoreQuery?.();
+      if (!returned.mock.calls.length) acquired?.release();
+    }
+  });
+
   it("denies a settings read after a blocking revoke commits first", async () => {
     const holder = new Client({ connectionString: ownerUrl });
     let holderOpen = false;
@@ -798,7 +925,7 @@ describe("organization notification settings read revocation linearization", () 
       const revokePid = await waitForBlockedQuery(
         "%from member%and id = $2%for update%",
         holderPid,
-        await revokeBackend.promise,
+        await waitForObservation(revokeBackend.promise, revoke),
         "revoke did not wait on the target membership lock",
       );
       // A different request reaches the identical SQL/blocker first. SQL alone is not identity.
@@ -816,7 +943,10 @@ describe("organization notification settings read revocation linearization", () 
           userId: linearizationOwnerId,
         },
       );
-      const otherPid = await otherBackend.promise;
+      const otherPid = await waitForObservation(
+        otherBackend.promise,
+        otherRead,
+      );
       await waitForBlockedQuery(
         "%select id from organization where id = $1 for share%",
         revokePid,
@@ -835,7 +965,7 @@ describe("organization notification settings read revocation linearization", () 
         organizationId: linearizationOrganizationId,
         userId: linearizationTargetId,
       });
-      const readPid = await readBackend.promise;
+      const readPid = await waitForObservation(readBackend.promise, read);
       expect(readPid).not.toBe(otherPid);
       expect(
         await waitForBlockedQuery(
@@ -895,7 +1025,7 @@ describe("organization notification settings read revocation linearization", () 
         organizationId: linearizationOrganizationId,
         userId: linearizationTargetId,
       });
-      const readPid = await settingsRead.promise;
+      const readPid = await waitForObservation(settingsRead.promise, read);
 
       // Same settings SQL, different organization: it must finish before releasing this read.
       await expect(
@@ -912,7 +1042,7 @@ describe("organization notification settings read revocation linearization", () 
       await waitForBlockedQuery(
         "%select id from organization where id = $1 for update%",
         readPid,
-        await revokeBackend.promise,
+        await waitForObservation(revokeBackend.promise, revoke),
         "revoke did not wait behind the settings read organization lock",
       );
 
