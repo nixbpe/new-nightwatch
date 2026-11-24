@@ -52,11 +52,11 @@ export function TriageControl({
     mutationFn: (input: TriageInput) =>
       putTriage(organizationId, projectId, input),
     onSuccess: async () => {
-      setAsking(false);
-      setReason("");
       await queryClient.invalidateQueries({
         queryKey: vulnerabilityKeys.all(organizationId, projectId),
       });
+      setAsking(false);
+      setReason("");
     },
   });
   const testId = `${target.cveId}-${target.mappingId}-${target.version}`;
@@ -165,7 +165,7 @@ export function TriageControl({
             onClick={openMenu}
             className="inline-flex h-8 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-[13px] text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-disabled:opacity-60"
           >
-            {statusText}
+            {save.isPending && !asking ? "กำลังบันทึก" : statusText}
             <ChevronsUpDownIcon size={14} />
           </button>
         ) : (
