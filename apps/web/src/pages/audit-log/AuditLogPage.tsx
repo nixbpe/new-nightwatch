@@ -55,7 +55,7 @@ import { MyExportsSection } from "./MyExportsSection";
 import { RecordingScopeNote } from "./RecordingScopeNote";
 import { useAuditExport } from "./useAuditExport";
 
-const TITLE = "บันทึกกิจกรรมองค์กร";
+const TITLE = "บันทึกกิจกรรม";
 const TITLE_FOCUS_CLASS =
   "outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
@@ -407,6 +407,14 @@ function AuditLogForOrganization({
             ? "ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง"
             : `ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้ (ถึง ${formatAuditDate(new Date(data.retainedFrom), preferences)}) ข้อความนี้ไม่ได้ยืนยันว่าไม่มีกิจกรรมในหมวดที่ไม่ได้บันทึก`}
         </p>
+        {!noData && filters.q !== undefined ? (
+          <p
+            data-testid="audit-no-matches-search-hint"
+            className="text-sm text-foreground-secondary"
+          >
+            ค้นหาจากชื่อและการกระทำ ไม่ค้นในค่าที่เปลี่ยน
+          </p>
+        ) : null}
         {!noData ? (
           <div>
             <Button
@@ -471,7 +479,6 @@ function AuditLogForOrganization({
         title={TITLE}
         titleRef={titleRef}
         titleTabIndex={-1}
-        titleClassName={TITLE_FOCUS_CLASS}
         status={
           <>
             {totalText === null ? null : (

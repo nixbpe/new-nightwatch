@@ -21,6 +21,7 @@ import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { OrganizationAwsPage } from "./OrganizationAwsPage";
+import { TARGET_ROLE_PLACEHOLDER } from "./policies";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -1105,4 +1106,118 @@ describe("F-013 repair round 1", () => {
       ).toBe(kind === "save" ? 1 : 4);
     },
   );
+});
+
+describe("ORG-03 ORG-05 ORG-06 ORG-16 setup steps and guidance", () => {
+  it("ORG-03 lists the steps before the connection card until the account is connected", async () => {
+    fetchMock.mockResolvedValue(notConnected());
+    renderPage();
+    const steps = await screen.findByTestId("aws-setup-steps");
+    const card = screen.getByTestId("aws-connection-card");
+    expect(steps).toHaveAttribute("open");
+    expect(
+      steps.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    // Step 1 owns the External ID before a connection; the card does not repeat it.
+    expect(within(steps).getByTestId("aws-external-id")).toBeInTheDocument();
+    expect(screen.getAllByTestId("aws-external-id")).toHaveLength(1);
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("ORG-03 folds the steps after the card once connected and keeps the External ID in the card", async () => {
+    fetchMock.mockResolvedValue(connected());
+    renderPage();
+    const steps = await screen.findByTestId("aws-setup-steps");
+    const card = screen.getByTestId("aws-connection-card");
+    expect(steps).not.toHaveAttribute("open");
+    expect(
+      card.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(within(card).getByTestId("aws-external-id")).toBeInTheDocument();
+    expect(screen.getAllByTestId("aws-external-id")).toHaveLength(1);
+  });
+
+  it("ORG-06 offers a permission policy that names only the Projects' role ARNs, with no wildcard", async () => {
+    fetchMock.mockResolvedValue(connected());
+    renderPage();
+    const policy = await screen.findByTestId("aws-permission-policy");
+    const parsed = JSON.parse(policy.textContent) as {
+      Statement: { Action: string; Effect: string; Resource: string[] }[];
+    };
+    expect(parsed.Statement).toHaveLength(1);
+    expect(parsed.Statement[0]?.Action).toBe("sts:AssumeRole");
+    expect(parsed.Statement[0]?.Resource).toEqual([
+      "arn:aws:iam::444455556666:role/NightWatchReadOnly",
+      "arn:aws:iam::777788889999:role/NightWatchReadOnly",
+    ]);
+    expect(policy.textContent).not.toContain("*");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("aws-permission-policy-copy"));
+    expect(await navigator.clipboard.readText()).toBe(policy.textContent);
+  });
+
+  it("ORG-06 shows a placeholder Resource, not a wildcard, while no Project uses the account", async () => {
+    fetchMock.mockResolvedValue(notConnected());
+    renderPage();
+    const policy = await screen.findByTestId("aws-permission-policy");
+    expect(policy.textContent).toContain(TARGET_ROLE_PLACEHOLDER);
+    expect(policy.textContent).not.toContain("*");
+  });
+
+  it("ORG-05 lists the three checks with copy buttons after an access-denied test, and not after a timeout", async () => {
+    fetchMock.mockResolvedValue(notConnected());
+    testMock.mockResolvedValueOnce({
+      result: "failed",
+      code: "AWS_ACCESS_DENIED",
+    });
+    renderPage();
+    const { user } = await typeArn(ARN);
+    await user.click(screen.getByTestId("aws-connection-test"));
+    const checklist = await screen.findByTestId("aws-test-checklist");
+    expect(within(checklist).getAllByRole("listitem")).toHaveLength(3);
+    await user.click(screen.getByTestId("aws-checklist-external-id-copy"));
+    expect(await navigator.clipboard.readText()).toBe(
+      "nw-org-org-a-abcdefghijklmnopqrstuvwxyz",
+    );
+    await user.click(screen.getByTestId("aws-checklist-trust-copy"));
+    expect(await navigator.clipboard.readText()).toBe(
+      screen.getByTestId("aws-trust-policy").textContent,
+    );
+    testMock.mockResolvedValueOnce({ result: "failed", code: "AWS_TIMEOUT" });
+    await user.type(screen.getByTestId("aws-role-arn"), "x");
+    await user.click(screen.getByTestId("aws-connection-test"));
+    await screen.findByTestId("aws-test-reason");
+    expect(screen.queryByTestId("aws-test-checklist")).toBeNull();
+  });
+
+  it("ORG-05 the checklist link opens the folded steps", async () => {
+    fetchMock.mockResolvedValue(connected());
+    testMock.mockResolvedValue({
+      result: "failed",
+      code: "AWS_ACCESS_DENIED",
+    });
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("aws-connection-retest"));
+    const steps = screen.getByTestId("aws-setup-steps");
+    expect(steps).not.toHaveAttribute("open");
+    await user.click(await screen.findByTestId("aws-checklist-steps-link"));
+    expect(steps).toHaveAttribute("open");
+  });
+
+  it("ORG-16 points to the Project list after saving and from the empty Project table", async () => {
+    fetchMock.mockResolvedValue(notConnected());
+    testMock.mockResolvedValue(passed);
+    saveMock.mockResolvedValue(connected({ revision: 1, projects: [] }));
+    renderPage();
+    expect(
+      await screen.findByTestId("aws-projects-empty-link"),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
+    const { user } = await typeArn(ARN);
+    await user.click(screen.getByTestId("aws-connection-test"));
+    await user.click(await screen.findByTestId("aws-connection-save"));
+    expect(
+      await screen.findByTestId("aws-connection-saved-link"),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
+  });
 });

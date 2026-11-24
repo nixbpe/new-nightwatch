@@ -34,7 +34,7 @@ type ListRefresh = Promise<{
  * `useInvitationCancel`. A confirmed resend moves the row to the top of the
  * first page, so success reloads page 1 (`loadFirstPage`) and puts focus on the
  * same row's "ส่งซ้ำ" button. A failed resend refetches the open page. Success
- * is shown only after that reload succeeded; "กลับ" and Escape send nothing.
+ * is shown only after that reload succeeded; the cancel button and Escape send nothing.
  */
 export function useInvitationResend({
   organizationId,
@@ -62,7 +62,7 @@ export function useInvitationResend({
     if (failure instanceof ApiError) {
       switch (failure.code) {
         case "INVITATION_LIMIT_REACHED":
-          return "องค์กรมีคำเชิญที่รอดำเนินการครบ 100 รายการแล้ว";
+          return "องค์กรมีคำเชิญที่รอตอบรับครบ 100 รายการแล้ว";
         case "INVITATION_RESEND_COOLDOWN": {
           const details = failure.details as
             { resendAvailableAt?: unknown } | undefined;

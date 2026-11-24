@@ -121,6 +121,39 @@ it("saves a non-owner change directly, without a dialog, and reports success onl
   await waitFor(() => expect(roleSelect("member-ann")).toHaveFocus());
 });
 
+it("reports success and parks focus on the heading when the saved role leaves a role-filtered list", async () => {
+  vi.mocked(fetchOrganizationMembers).mockImplementation(
+    (id, _limit, _offset, filter) => {
+      listCalls.push(id);
+      const all = directory.list(id);
+      if (filter?.role === undefined) return Promise.resolve(all);
+      const members = all.members.filter(
+        (member) => member.role === filter.role,
+      );
+      return Promise.resolve({
+        ...all,
+        members,
+        page: { ...all.page, total: members.length },
+      });
+    },
+  );
+  const user = await renderAs("owner");
+  await user.selectOptions(screen.getByTestId("members-filter-role"), "viewer");
+  expect(await screen.findByTestId("member-row-member-ann")).toBeVisible();
+  expect(screen.queryByTestId("member-row-member-boss")).toBeNull();
+
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+
+  expect(await screen.findByTestId("member-role-success")).toHaveAttribute(
+    "role",
+    "status",
+  );
+  expect(screen.queryByTestId("member-role-error")).toBeNull();
+  expect(screen.queryByTestId("member-row-member-ann")).toBeNull();
+  expect(screen.getByRole("heading", { level: 1 })).toHaveFocus();
+});
+
 it("asks owners to confirm owner-involved changes, and cancel sends no request", async () => {
   const user = await renderAs("owner");
   await user.selectOptions(roleSelect("member-ann"), "owner");
@@ -180,12 +213,55 @@ it("shows admins no controls for owners and no owner option elsewhere", async ()
     .getAllByTestId(/^member-role-option-/)
     .map((option) => option.getAttribute("value"));
   expect(new Set(options)).toEqual(new Set(["admin", "viewer", "auditor"]));
-  await user.selectOptions(roleSelect("member-ann"), "admin");
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
   await user.click(save("member-ann"));
   expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
   expect(
     screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
   ).toBeNull();
+});
+
+it.each(["owner", "admin"] as const)(
+  "ORG-32 asks an %s to confirm before setting Admin, and cancel sends no request",
+  async (actor) => {
+    const user = await renderAs(actor);
+    await user.selectOptions(roleSelect("member-ann"), "admin");
+    await user.click(save("member-ann"));
+    expect(screen.getByTestId("member-role-dialog")).toBeInTheDocument();
+    expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("member-role-dialog")).toBeNull();
+    expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
+    await user.click(save("member-ann"));
+    await user.click(screen.getByTestId("member-role-confirm"));
+    expect(
+      await screen.findByTestId("member-role-success"),
+    ).toBeInTheDocument();
+    expect(updateOrganizationMemberRole).toHaveBeenCalledWith(
+      A,
+      "member-ann",
+      "admin",
+    );
+  },
+);
+
+it("ORG-17 shows the role once: a select with Save only after a change, a pill where the actor cannot change it", async () => {
+  const user = await renderAs("admin");
+  expect(screen.queryByTestId("member-role-save-member-ann")).toBeNull();
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  expect(save("member-ann")).toBeEnabled();
+  await user.selectOptions(roleSelect("member-ann"), "viewer");
+  expect(screen.queryByTestId("member-role-save-member-ann")).toBeNull();
+  const boss = within(screen.getByTestId("member-row-member-boss"));
+  expect(boss.queryByRole("combobox")).toBeNull();
+  expect(boss.getByTestId("member-current-role")).toHaveAttribute(
+    "data-member-role",
+    "owner",
+  );
+  // Name, email, role and the row actions (change and removal): no separate column for each.
+  expect(
+    within(screen.getByTestId("members-table")).getAllByRole("columnheader"),
+  ).toHaveLength(4);
 });
 
 it("blocks duplicate submits and pagination while a role save is pending", async () => {
@@ -357,7 +433,7 @@ it.each(["success", "LAST_OWNER"] as const)(
     });
     expect(pillFor("member-b")).toHaveAttribute("data-member-role", "viewer");
     expect(roleSelect("member-b")).toBeEnabled();
-    expect(save("member-b")).toBeDisabled();
+    expect(screen.queryByTestId("member-role-save-member-b")).toBeNull();
     await user.selectOptions(roleSelect("member-b"), "auditor");
     expect(save("member-b")).toBeEnabled();
     // Only the harness's own location output may carry status text; the invitation

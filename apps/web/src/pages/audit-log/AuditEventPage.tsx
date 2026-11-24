@@ -2,16 +2,18 @@ import {
   AUDIT_ACTION_LABELS,
   AUDIT_CATEGORY_LABELS,
   type AuditActorOption,
+  type AuditChangeField,
   type AuditEventDetail,
+  type AuditValue,
 } from "@nightwatch/api-contract";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+import { CopyButton } from "../../components/ui/copy-button";
 import { SectionHeader } from "../../components/ui/section-header";
 import {
   auditLogQueryKeys,
@@ -45,6 +47,21 @@ import {
 const NOT_FOUND = "ไม่พบบันทึกนี้ อาจพ้นระยะเก็บบันทึกแล้ว หรือลิงก์ไม่ถูกต้อง";
 const FOCUS_CLASS =
   "outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+// TYP-04: Thai text stays in the sans face; only raw Latin tokens and numbers are mono.
+const TEXT_CHANGE_FIELDS: ReadonlySet<AuditChangeField> = new Set([
+  "role",
+  "name",
+  "description",
+]);
+function rawValueClass(field: AuditChangeField, value: AuditValue | null) {
+  return value?.kind === "value" &&
+    value.value !== null &&
+    typeof value.value !== "boolean" &&
+    !TEXT_CHANGE_FIELDS.has(field)
+    ? " font-mono"
+    : "";
+}
 
 export function AuditEventPage() {
   const { organizationId, eventId } = useParams();
@@ -168,9 +185,12 @@ function AuditEventForOrganization({
       return (
         <Page>
           {header("รายละเอียดบันทึกกิจกรรม")}
-          <Card data-testid="audit-event-not-found" as="section" padding="md">
-            <p className="text-sm">{NOT_FOUND}</p>
-          </Card>
+          <PageState
+            data-testid="audit-event-not-found"
+            kind="denied"
+            tone="info"
+            message={NOT_FOUND}
+          />
         </Page>
       );
     }
@@ -214,7 +234,12 @@ function AuditEventForOrganization({
               {detail.id}
             </span>
           </span>
-          <CopyId value={detail.id} />
+          <CopyButton
+            value={detail.id}
+            label="คัดลอกรหัสเหตุการณ์"
+            copiedLabel="คัดลอกรหัสเหตุการณ์แล้ว"
+            data-testid="audit-event-copy"
+          />
         </>,
       )}
       <Section code="01" title="ผู้ดำเนินการ">
@@ -337,34 +362,6 @@ function Field({
       >
         {children}
       </dd>
-    </>
-  );
-}
-
-function CopyId({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <>
-      <Button
-        data-testid="audit-event-copy"
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          void navigator.clipboard.writeText(value).then(() => {
-            setCopied(true);
-          });
-        }}
-      >
-        คัดลอก
-      </Button>
-      <span
-        data-testid="audit-event-copy-status"
-        role="status"
-        className="sr-only"
-      >
-        {copied ? "คัดลอกรหัสเหตุการณ์แล้ว" : ""}
-      </span>
     </>
   );
 }
@@ -522,7 +519,7 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
                         ? String(change.before.value)
                         : undefined
                     }
-                    className="px-4 py-2.5 align-top font-mono text-[13px] break-all"
+                    className={`px-4 py-2.5 align-top text-[13px] break-all${rawValueClass(change.field, change.before)}`}
                   >
                     {auditValueText(change.field, change.before)}
                   </td>
@@ -540,7 +537,7 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
                         ? String(change.after.value)
                         : undefined
                     }
-                    className="px-4 py-2.5 align-top font-mono text-[13px] break-all"
+                    className={`px-4 py-2.5 align-top text-[13px] break-all${rawValueClass(change.field, change.after)}`}
                   >
                     {auditValueText(change.field, change.after)}
                   </td>

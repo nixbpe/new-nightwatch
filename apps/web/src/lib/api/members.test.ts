@@ -31,6 +31,34 @@ describe("organization members API", () => {
     ]);
   });
 
+  it("adds q and role to the key and request only when set", async () => {
+    expect(
+      memberListQueryKey(organizationId, 50, 0, { q: "ann", role: "viewer" }),
+    ).toEqual([
+      "tenant",
+      "members",
+      organizationId,
+      { limit: 50, offset: 0, q: "ann", role: "viewer" },
+    ]);
+    expect(memberListQueryKey(organizationId, 50, 0, {})).toEqual(
+      memberListQueryKey(organizationId, 50, 0),
+    );
+    vi.mocked(request).mockResolvedValueOnce(response);
+
+    await fetchOrganizationMembers(organizationId, 50, 50, {
+      q: "ann",
+      role: "viewer",
+    });
+    expect(request).toHaveBeenLastCalledWith(
+      "/api/organizations/{organizationId}/members",
+      expect.anything(),
+      {
+        params: { organizationId },
+        query: { limit: 50, offset: 50, q: "ann", role: "viewer" },
+      },
+    );
+  });
+
   it("requests and validates the paginated organization member directory", async () => {
     vi.mocked(request).mockResolvedValueOnce(response);
 

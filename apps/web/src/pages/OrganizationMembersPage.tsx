@@ -9,9 +9,9 @@ import {
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { Notice } from "../components/ui/notice";
 import { DataTable, DataTablePagination } from "../components/ui/data-table";
-import { StatusPill } from "../components/ui/status-pill";
 import { SectionHeader } from "../components/ui/section-header";
 import { initialsFontClass, initialsOf } from "../components/shell/initials";
 import { ROLE_LABELS } from "../lib/roles";
@@ -21,9 +21,11 @@ import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationMembers,
   memberListQueryKey,
+  type MemberListFilter,
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { MemberFilterBar } from "./organization-members/MemberFilterBar";
 import { PendingInvitationsSection } from "./organization-members/PendingInvitationsSection";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import {
@@ -32,6 +34,7 @@ import {
 } from "./organization-members/MemberRevokeAction";
 import {
   MemberRoleActions,
+  RolePill,
   useMemberRoleChange,
 } from "./organization-members/MemberRoleActions";
 import {
@@ -79,15 +82,31 @@ function OrganizationMembersPageForOrganization({
   const membershipRecoveryOperation = useRef(0);
   const [invitationCreations, setInvitationCreations] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState<MemberListFilter>({});
+  const filterActive = filter.q !== undefined || filter.role !== undefined;
+  const searchRef = useRef<HTMLInputElement>(null);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
+  // The invitation form stays mounted while folded, so a draft and an answer in flight survive a toggle.
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const invitePanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (inviteOpen) {
+      invitePanelRef.current
+        ?.querySelector<HTMLInputElement>('input[name="invite-email"]')
+        ?.focus();
+    }
+  }, [inviteOpen]);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );
   const canRead =
     organization !== undefined && isMemberDirectoryReadable(organization);
   const list = useQuery({
-    queryKey: memberListQueryKey(organizationId, LIMIT, offset),
-    queryFn: () => fetchOrganizationMembers(organizationId, LIMIT, offset),
+    queryKey: memberListQueryKey(organizationId, LIMIT, offset, filter),
+    queryFn: () =>
+      filterActive
+        ? fetchOrganizationMembers(organizationId, LIMIT, offset, filter)
+        : fetchOrganizationMembers(organizationId, LIMIT, offset),
     enabled: canRead,
   });
   const { refetch: refetchList } = list;
@@ -208,6 +227,7 @@ function OrganizationMembersPageForOrganization({
     actorRole,
     actorUserId: me?.user.id,
     listSettled: !list.isFetching && list.data !== undefined,
+    filterRole: filter.role,
     headingRef: memberPageHeadingRef,
     refetchList,
     // Shows loading during the refresh and a retryable error if it fails,
@@ -242,18 +262,18 @@ function OrganizationMembersPageForOrganization({
       return;
     }
     queryClient.removeQueries({
-      queryKey: memberListQueryKey(organizationId, LIMIT, 0),
+      queryKey: memberListQueryKey(organizationId, LIMIT, 0, filter),
       exact: true,
     });
     setOffset(0);
-  }, [invalidPage, organizationId, queryClient]);
+  }, [invalidPage, organizationId, queryClient, filter]);
   if (
     membershipRefreshState === "refreshing" ||
     (isAuthorizationDenied(list.error) && membershipRefreshState === "idle")
   ) {
     return (
       <Page>
-        <PageHeader title="สมาชิกองค์กร" />
+        <PageHeader title="สมาชิก" />
         <PageState
           kind="loading"
           data-testid="members-admission-loading"
@@ -268,14 +288,13 @@ function OrganizationMembersPageForOrganization({
   if (membershipRefreshState === "failed") {
     return (
       <Page>
-        <PageHeader title="สมาชิกองค์กร" />
+        <PageHeader title="สมาชิก" />
         <PageState
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
           data-testid="members-admission-error"
           alertTestId="members-admission-alert"
           retryTestId="members-admission-retry"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshAfterAuthorizationDenied()}
         />
       </Page>
@@ -284,7 +303,7 @@ function OrganizationMembersPageForOrganization({
   if (mePending) {
     return (
       <Page>
-        <PageHeader title="สมาชิกองค์กร" />
+        <PageHeader title="สมาชิก" />
         <PageState
           data-testid="members-context-loading"
           statusTestId="members-context-status"
@@ -298,14 +317,13 @@ function OrganizationMembersPageForOrganization({
   if (meError !== null) {
     return (
       <Page>
-        <PageHeader title="สมาชิกองค์กร" />
+        <PageHeader title="สมาชิก" />
         <PageState
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
           data-testid="members-context-error"
           alertTestId="members-context-alert"
           retryTestId="members-context-retry"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -314,7 +332,7 @@ function OrganizationMembersPageForOrganization({
   if (organization === undefined) {
     return (
       <Page>
-        <PageHeader title="สมาชิกองค์กร" />
+        <PageHeader title="สมาชิก" />
         <PageState
           alertTestId="members-denied-alert"
           data-testid="members-denied"
@@ -373,6 +391,15 @@ function OrganizationMembersPageForOrganization({
       </Page>
     );
   }
+  // A new filter starts at the first page; the old page may not exist in the new result.
+  const applyFilter = (next: MemberListFilter) => {
+    setFilter(next);
+    setOffset(0);
+  };
+  const clearFilter = () => {
+    applyFilter({});
+    searchRef.current?.focus();
+  };
   let directory: ReactNode;
   if (list.isFetching || invalidPage) {
     directory = (
@@ -393,7 +420,6 @@ function OrganizationMembersPageForOrganization({
         alertTestId="members-list-alert"
         retryTestId="members-list-retry"
         message="โหลดสมาชิกไม่สำเร็จ"
-        retryLabel="ลองอีกครั้ง"
         onRetry={() => void retryAfterListFailure()}
         actions={
           offset > 0 ? (
@@ -418,133 +444,142 @@ function OrganizationMembersPageForOrganization({
       return null;
     const hasPrevious = offset > 0;
     const hasNext = offset + data.members.length < data.page.total;
-    directory = (
-      <>
-        <DataTable
-          data-testid="members-table"
-          rowTestId={(m) => `member-row-${m.id}`}
-          ariaLabel="ตารางสมาชิก"
-          columns={[
-            {
-              key: "name",
-              header: "ชื่อ",
-              width: "30%",
-              cell: (m) => {
-                const initials = initialsOf(m.name);
-                return (
-                  <span className="flex items-center gap-3">
-                    <span
-                      aria-hidden="true"
-                      className={`grid size-8 flex-none place-items-center rounded-full border border-foreground/20 surface-hover text-[11px] font-semibold text-foreground ${initialsFontClass(initials)}`}
-                    >
-                      {initials}
-                    </span>
-                    <span className="flex min-w-0 flex-col">
+    directory =
+      filterActive && data.page.total === 0 ? (
+        <Card padding="md" data-testid="members-no-matches">
+          <p className="text-sm">
+            ไม่พบสมาชิกที่ตรงกับตัวกรองนี้ ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง
+          </p>
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="members-no-matches-clear"
+              onClick={clearFilter}
+            >
+              ล้างตัวกรอง
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <>
+          <DataTable
+            data-testid="members-table"
+            rowTestId={(m) => `member-row-${m.id}`}
+            ariaLabel="ตารางสมาชิก"
+            columns={[
+              {
+                key: "name",
+                header: "ชื่อ",
+                width: "30%",
+                cell: (m) => {
+                  const initials = initialsOf(m.name);
+                  return (
+                    <span className="flex items-center gap-3">
                       <span
-                        data-testid="member-name"
-                        className="font-medium text-heading"
+                        aria-hidden="true"
+                        className={`grid size-8 flex-none place-items-center rounded-full border border-foreground/20 surface-hover text-[11px] font-semibold text-foreground ${initialsFontClass(initials)}`}
                       >
-                        {m.name}
+                        {initials}
                       </span>
-                      {m.userId === me?.user.id ? (
+                      <span className="flex min-w-0 flex-col">
                         <span
-                          data-testid="member-current-actor"
-                          className="text-xs text-foreground-secondary"
+                          data-testid="member-name"
+                          className="font-medium text-heading"
                         >
-                          คุณ
+                          {m.name}
                         </span>
-                      ) : null}
+                        {m.userId === me?.user.id ? (
+                          <span
+                            data-testid="member-current-actor"
+                            className="text-xs text-foreground-secondary"
+                          >
+                            คุณ
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
-                  </span>
-                );
+                  );
+                },
               },
-            },
-            {
-              key: "email",
-              header: "อีเมล",
-              mono: true,
-              cell: (m) => (
-                <span
-                  data-testid="member-email"
-                  className="text-foreground-secondary"
-                >
-                  {m.email}
-                </span>
-              ),
-            },
-            {
-              key: "role",
-              header: "บทบาท",
-              width: "160px",
-              cell: (m) => (
-                <StatusPill
-                  data-testid="member-current-role"
-                  data-member-role={m.role}
-                  tone={m.role === "owner" ? "primary" : "neutral"}
-                >
-                  {ROLE_LABELS[m.role] ?? m.role}
-                </StatusPill>
-              ),
-            },
-            {
-              key: "change-role",
-              header: "เปลี่ยนบทบาท",
-              align: "end",
-              cell: (m) =>
-                roleChange.scopeCurrent ? (
-                  <MemberRoleActions
-                    key={`${m.id}:${m.role}:${actorRole}`}
-                    member={m}
-                    actorRole={actorRole}
-                    pending={memberMutationPending}
-                    onSave={roleChange.request}
-                  />
-                ) : null,
-            },
-            {
-              key: "revoke",
-              header: "ถอนสมาชิก",
-              align: "end",
-              cell: (m) =>
-                roleChange.scopeCurrent && revoke.scopeCurrent ? (
-                  <MemberRevokeButton
-                    member={m}
-                    actorRole={actorRole}
-                    actorUserId={me?.user.id}
-                    pending={memberMutationPending}
-                    onRevoke={revoke.request}
-                  />
-                ) : null,
-            },
-          ]}
-          rows={data.members}
-          rowKey={(m) => m.id}
-          empty={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
-        />
-        <DataTablePagination
-          summaryTestId="members-pagination-summary"
-          previousTestId="members-previous"
-          nextTestId="members-next"
-          ariaLabel="หน้าสมาชิก"
-          summary={
-            <>
-              แสดง {data.members.length === 0 ? 0 : offset + 1}–
-              {offset + data.members.length} จาก {data.page.total}
-            </>
-          }
-          previousLabel="ก่อนหน้า"
-          nextLabel="ถัดไป"
-          hasPrevious={hasPrevious && !memberMutationPending}
-          hasNext={hasNext && !memberMutationPending}
-          onPrevious={() => {
-            setOffset((value) => Math.max(0, value - LIMIT));
-          }}
-          onNext={() => {
-            setOffset((value) => value + LIMIT);
-          }}
-        />
-      </>
-    );
+              {
+                key: "email",
+                header: "อีเมล",
+                mono: true,
+                cell: (m) => (
+                  <span
+                    data-testid="member-email"
+                    className="text-foreground-secondary"
+                  >
+                    {m.email}
+                  </span>
+                ),
+              },
+              {
+                key: "role",
+                header: "บทบาท",
+                width: "280px",
+                cell: (m) => (
+                  // The marker keeps the saved role readable while the select shows a draft.
+                  <div
+                    data-testid="member-current-role"
+                    data-member-role={m.role}
+                  >
+                    {roleChange.scopeCurrent ? (
+                      <MemberRoleActions
+                        key={`${m.id}:${m.role}:${actorRole}`}
+                        member={m}
+                        actorRole={actorRole}
+                        pending={memberMutationPending}
+                        onSave={roleChange.request}
+                      />
+                    ) : (
+                      <RolePill role={m.role} />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            rowActions={(m) =>
+              roleChange.scopeCurrent && revoke.scopeCurrent ? (
+                <MemberRevokeButton
+                  member={m}
+                  actorRole={actorRole}
+                  actorUserId={me?.user.id}
+                  pending={memberMutationPending}
+                  onRevoke={revoke.request}
+                />
+              ) : null
+            }
+            rows={data.members}
+            rowKey={(m) => m.id}
+            empty={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
+          />
+          <DataTablePagination
+            summaryTestId="members-pagination-summary"
+            previousTestId="members-previous"
+            nextTestId="members-next"
+            ariaLabel="หน้าสมาชิก"
+            summary={
+              <>
+                แสดง {data.members.length === 0 ? 0 : offset + 1}–
+                {offset + data.members.length} จาก {data.page.total}
+              </>
+            }
+            previousLabel="ก่อนหน้า"
+            nextLabel="ถัดไป"
+            hasPrevious={hasPrevious && !memberMutationPending}
+            hasNext={hasNext && !memberMutationPending}
+            onPrevious={() => {
+              setOffset((value) => Math.max(0, value - LIMIT));
+            }}
+            onNext={() => {
+              setOffset((value) => value + LIMIT);
+            }}
+          />
+        </>
+      );
   }
   return (
     <Page>
@@ -556,7 +591,22 @@ function OrganizationMembersPageForOrganization({
           tag: ROLE_LABELS[organization.role] ?? organization.role,
         }}
         title="สมาชิก"
-        actions={selfLeaveAction}
+        actions={
+          <>
+            <Button
+              data-testid="members-invite-toggle"
+              type="button"
+              aria-expanded={inviteOpen}
+              aria-controls="members-invite-panel"
+              onClick={() => {
+                setInviteOpen((open) => !open);
+              }}
+            >
+              เชิญสมาชิก
+            </Button>
+            {selfLeaveAction}
+          </>
+        }
         status={
           <>
             <span>
@@ -568,7 +618,11 @@ function OrganizationMembersPageForOrganization({
                 {organization.slug}
               </span>
             </span>
-            {!list.isFetching && !list.isError && !invalidPage && list.data ? (
+            {!filterActive &&
+            !list.isFetching &&
+            !list.isError &&
+            !invalidPage &&
+            list.data ? (
               <span data-testid="members-total-count">
                 สมาชิกทั้งหมด{" "}
                 <span data-testid="members-total" className="font-mono">
@@ -588,21 +642,17 @@ function OrganizationMembersPageForOrganization({
         titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       {selfLeaveSection}
-      <InvitationPanel
-        key={organization.role}
-        organizationId={organizationId}
-        organizationName={organization.name}
-        actorRole={organization.role === "owner" ? "owner" : "admin"}
-        onCreated={() => {
-          setInvitationCreations((count) => count + 1);
-        }}
-      />
-      <PendingInvitationsSection
-        organizationId={organizationId}
-        organizationName={organization.name}
-        refreshMembershipContext={refreshAfterAuthorizationDenied}
-        createdSignal={invitationCreations}
-      />
+      <div id="members-invite-panel" ref={invitePanelRef} hidden={!inviteOpen}>
+        <InvitationPanel
+          key={organization.role}
+          organizationId={organizationId}
+          organizationName={organization.name}
+          actorRole={organization.role === "owner" ? "owner" : "admin"}
+          onCreated={() => {
+            setInvitationCreations((count) => count + 1);
+          }}
+        />
+      </div>
       {revoke.scopeCurrent && revoke.confirmation !== null ? (
         <ConfirmDialog
           data-testid="member-revoke-dialog"
@@ -631,9 +681,7 @@ function OrganizationMembersPageForOrganization({
           onConfirm={revoke.confirm}
         />
       ) : null}
-      {roleChange.scopeCurrent &&
-      actorRole === "owner" &&
-      roleChange.confirmation !== null ? (
+      {roleChange.scopeCurrent && roleChange.confirmation !== null ? (
         <ConfirmDialog
           data-testid="member-role-dialog"
           confirmTestId="member-role-confirm"
@@ -648,7 +696,10 @@ function OrganizationMembersPageForOrganization({
                 {ROLE_LABELS[roleChange.confirmation.role]}
               </p>
               <p className="mt-2">
-                การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร
+                {roleChange.confirmation.member.role === "owner" ||
+                roleChange.confirmation.role === "owner"
+                  ? "การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร"
+                  : "การตั้งเป็นผู้ดูแลองค์กรเพิ่มสิทธิ์จัดการองค์กรให้สมาชิกคนนี้"}
                 {roleChange.confirmation.member.userId === me?.user.id
                   ? " คุณกำลังเปลี่ยนบทบาทของตัวเอง"
                   : ""}
@@ -671,12 +722,19 @@ function OrganizationMembersPageForOrganization({
         <SectionHeader
           id="members-directory-title"
           headingTestId="members-directory-heading"
-          code="02"
+          code="01"
           title="รายชื่อสมาชิก"
           meta={
             !list.isFetching && !list.isError && !invalidPage && list.data ? (
               <span>
-                <span className="font-mono">{list.data.page.total}</span> คน
+                {filterActive ? "ตรงตัวกรอง " : ""}
+                <span
+                  data-testid="members-directory-count"
+                  className="font-mono"
+                >
+                  {list.data.page.total}
+                </span>{" "}
+                คน
               </span>
             ) : undefined
           }
@@ -713,8 +771,21 @@ function OrganizationMembersPageForOrganization({
             </Alert>
           )
         ) : null}
+        <MemberFilterBar
+          filter={filter}
+          busy={memberMutationPending}
+          searchRef={searchRef}
+          onChange={applyFilter}
+          onClear={clearFilter}
+        />
         {directory}
       </section>
+      <PendingInvitationsSection
+        organizationId={organizationId}
+        organizationName={organization.name}
+        refreshMembershipContext={refreshAfterAuthorizationDenied}
+        createdSignal={invitationCreations}
+      />
     </Page>
   );
 }

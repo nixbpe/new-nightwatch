@@ -1628,6 +1628,35 @@ describe("OrganizationMembersPage pending invitations", () => {
     expect(cancelInvitation).toHaveBeenCalledOnce();
   });
 
+  it("ORG-01 puts the member list first and opens the invitation form from a header button", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    vi.mocked(fetchPendingInvitations).mockResolvedValue(
+      pending(["wait@example.test"]),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    const toggle = await screen.findByTestId("members-invite-toggle");
+    const directory = await screen.findByTestId("members-directory-heading");
+    const waiting = await screen.findByTestId("pending-invitations-heading");
+    expect(
+      directory.compareDocumentPosition(waiting) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    // The form is folded away until asked for, and the toggle says so.
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("members-invitation-email")).not.toBeVisible();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("members-invitation-email")).toBeVisible();
+    expect(screen.getByTestId("members-invitation-email")).toHaveFocus();
+    expect(toggle).toHaveAttribute("aria-controls", "members-invite-panel");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("members-invitation-email")).not.toBeVisible();
+  });
   it.each(["owner", "admin"] as const)(
     "exposes invite, pending and member capabilities for %s",
     async (role) => {
@@ -1804,5 +1833,105 @@ describe("OrganizationMembersPage pending invitations", () => {
     expect(
       screen.queryByTestId("pending-invitations-table"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("OrganizationMembersPage filters", () => {
+  const emptyResult: OrganizationMemberListResponse = {
+    ...response,
+    members: [],
+    page: { limit: 50, offset: 0, total: 0 },
+  };
+
+  it("sends q and role, returns to the first page and keeps the controls mounted while loading", async () => {
+    const filtered = Promise.withResolvers<OrganizationMemberListResponse>();
+    vi.mocked(fetchOrganizationMembers).mockImplementation(
+      (_organizationId, _limit, offset, filter) =>
+        filter === undefined
+          ? Promise.resolve({
+              ...response,
+              page: { limit: 50, offset, total: 120 },
+            })
+          : filtered.promise,
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId("member-row-member-1");
+    await user.click(screen.getByTestId("members-next"));
+    await waitFor(() => {
+      expect(fetchOrganizationMembers).toHaveBeenLastCalledWith(
+        organizationId,
+        50,
+        50,
+      );
+    });
+    await screen.findByTestId("member-row-member-1");
+
+    const search = screen.getByTestId("members-filter-search");
+    await user.type(search, "  ada  {Enter}");
+    expect(fetchOrganizationMembers).toHaveBeenLastCalledWith(
+      organizationId,
+      50,
+      0,
+      { q: "ada" },
+    );
+    expect(await screen.findByTestId("members-list-loading")).toBeVisible();
+    expect(screen.getByTestId("members-filter-search")).toBe(search);
+
+    await user.selectOptions(
+      screen.getByTestId("members-filter-role"),
+      "auditor",
+    );
+    expect(fetchOrganizationMembers).toHaveBeenLastCalledWith(
+      organizationId,
+      50,
+      0,
+      { q: "ada", role: "auditor" },
+    );
+    filtered.resolve({
+      ...response,
+      page: { limit: 50, offset: 0, total: 1 },
+    });
+    await screen.findByTestId("member-row-member-1");
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+  });
+
+  it("shows a no-match state apart from the table and clears back to the full list", async () => {
+    vi.mocked(fetchOrganizationMembers).mockImplementation(
+      (_organizationId, _limit, _offset, filter) =>
+        Promise.resolve(filter === undefined ? response : emptyResult),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId("member-row-member-1");
+    expect(screen.getByTestId("members-total-count")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-filter-clear"),
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByTestId("members-filter-role"),
+      "owner",
+    );
+    expect(await screen.findByTestId("members-no-matches")).toBeVisible();
+    expect(screen.queryByTestId("members-table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-filter-role")).toHaveValue("owner");
+
+    await user.click(screen.getByTestId("members-no-matches-clear"));
+    expect(await screen.findByTestId("member-row-member-1")).toBeVisible();
+    expect(screen.queryByTestId("members-no-matches")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-filter-role")).toHaveValue("");
+    expect(screen.getByTestId("members-filter-search")).toHaveFocus();
+    expect(screen.getByTestId("members-total-count")).toBeInTheDocument();
+  });
+
+  it("limits the search text to the contract bound", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    renderPage();
+    await screen.findByTestId("member-row-member-1");
+    expect(screen.getByTestId("members-filter-search")).toHaveAttribute(
+      "maxlength",
+      "100",
+    );
   });
 });

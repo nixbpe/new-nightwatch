@@ -23,6 +23,7 @@ import {
   InvitationResendButton,
   useInvitationResend,
 } from "./InvitationResendAction";
+import { INVITATION_LIFETIME } from "../../lib/auth/flow";
 import { useOrganizationScope } from "./useOrganizationScope";
 
 const LIMIT = 50;
@@ -201,7 +202,7 @@ export function PendingInvitationsSection({
               void list.refetch();
             }}
           >
-            ลองอีกครั้ง
+            ลองใหม่
           </Button>
           {offset > 0 ? (
             <Button
@@ -380,7 +381,7 @@ export function PendingInvitationsSection({
       <SectionHeader
         headingTestId="pending-invitations-heading"
         id="pending-invitations-title"
-        code="01"
+        code="02"
         headingRef={headingRef}
         headingTabIndex={-1}
         headingClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -480,7 +481,7 @@ export function PendingInvitationsSection({
             </>
           }
           confirmLabel="ยืนยันการยกเลิกคำเชิญ"
-          cancelLabel="กลับ"
+          cancelLabel="เก็บไว้"
           confirmVariant="destructive"
           pendingLabel="กำลังยกเลิกคำเชิญ…"
           pending={cancel.pending}
@@ -508,12 +509,11 @@ export function PendingInvitationsSection({
                 {organizationName}
               </p>
               <p className="mt-2">
-                ลิงก์เชิญเดิมจะใช้ไม่ได้ ระบบส่งลิงก์ใหม่ที่มีอายุ 48 ชั่วโมง
+                {`ลิงก์เชิญเดิมจะใช้ไม่ได้ ระบบส่งลิงก์ใหม่ที่มีอายุ ${INVITATION_LIFETIME}`}
               </p>
             </>
           }
           confirmLabel="ยืนยันการส่งคำเชิญซ้ำ"
-          cancelLabel="กลับ"
           pendingLabel="กำลังส่ง…"
           pending={resend.pending}
           opener={resend.confirmation.opener}

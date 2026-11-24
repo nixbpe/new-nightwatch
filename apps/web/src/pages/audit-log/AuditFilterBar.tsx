@@ -9,6 +9,8 @@ import { useState, type SyntheticEvent } from "react";
 
 import { Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/select";
+import { SegmentedControl } from "../../components/ui/segmented-control";
 import type { AuditFilters, CustomRangeError } from "../../lib/api/audit-log";
 import { cn } from "../../lib/utils";
 import { hasActiveFilters, RANGE_OPTIONS } from "./filters";
@@ -22,6 +24,12 @@ const CUSTOM_ERROR_TEXT: Record<
   "before-retention": (retained) =>
     `วันเริ่มเก่ากว่าวันที่เก็บย้อนหลังถึง (${retained ?? ""})`,
 };
+
+const CATEGORY_LABEL_ID = "audit-filter-category-label";
+
+/** What the API matches (packages/db/src/audit-events.ts): never the changed values. */
+export const SEARCH_PLACEHOLDER =
+  "ชื่อผู้ดำเนินการ เป้าหมาย การกระทำ หรือรหัสเหตุการณ์";
 
 function Chip({
   pressed,
@@ -110,11 +118,12 @@ export function AuditFilterBar({
             data-testid="audit-filter-search"
             type="search"
             value={draft}
+            placeholder={SEARCH_PLACEHOLDER}
             maxLength={AUDIT_SEARCH_MAX_LENGTH}
             onChange={(event) => {
               setDraft(event.target.value);
             }}
-            className="w-72 max-w-full text-sm"
+            className="w-96 max-w-full text-sm"
           />
         </label>
         <Button
@@ -126,44 +135,47 @@ export function AuditFilterBar({
           ค้นหา
         </Button>
       </form>
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="ช่วงเวลา" className="flex gap-2">
-          {RANGE_OPTIONS.map((option) => (
-            <Chip
-              testId={`audit-filter-range-${option.value}`}
-              key={option.value}
-              pressed={filters.range === option.value}
-              busy={busy}
-              onPress={() => {
-                onChange({
-                  range: option.value,
-                  from: undefined,
-                  to: undefined,
-                });
-              }}
-            >
-              {option.label}
-            </Chip>
-          ))}
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">ช่วงเวลา</span>
+          <SegmentedControl
+            label="ช่วงเวลา"
+            value={filters.range}
+            options={RANGE_OPTIONS}
+            disabled={busy}
+            optionTestId={(value) => `audit-filter-range-${value}`}
+            onChange={(range) => {
+              onChange({ range, from: undefined, to: undefined });
+            }}
+          />
         </div>
-        <div role="group" aria-label="หมวด" className="flex flex-wrap gap-2">
-          {AUDIT_CATEGORIES.map((category) => (
-            <Chip
-              testId={`audit-filter-category-${category}`}
-              key={category}
-              pressed={filters.categories.includes(category)}
-              busy={busy}
-              onPress={() => {
-                toggleCategory(category);
-              }}
-            >
-              {AUDIT_CATEGORY_LABELS[category]}
-            </Chip>
-          ))}
+        <div
+          role="group"
+          aria-labelledby={CATEGORY_LABEL_ID}
+          className="flex flex-col gap-1.5"
+        >
+          <span id={CATEGORY_LABEL_ID} className="text-sm font-medium">
+            หมวด (เลือกได้หลายอัน)
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {AUDIT_CATEGORIES.map((category) => (
+              <Chip
+                testId={`audit-filter-category-${category}`}
+                key={category}
+                pressed={filters.categories.includes(category)}
+                busy={busy}
+                onPress={() => {
+                  toggleCategory(category);
+                }}
+              >
+                {AUDIT_CATEGORY_LABELS[category]}
+              </Chip>
+            ))}
+          </div>
         </div>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           ผู้ดำเนินการ
-          <select
+          <Select
             data-testid="audit-filter-actor"
             value={filters.actor ?? ""}
             aria-disabled={busy ? true : undefined}
@@ -171,7 +183,7 @@ export function AuditFilterBar({
               if (busy) return;
               onChange({ actor: event.target.value || undefined });
             }}
-            className="h-10 max-w-56 rounded-md border border-control-border bg-surface px-2 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="w-auto max-w-56"
           >
             <option data-testid="audit-actor-all" value="">
               ทั้งหมด
@@ -191,12 +203,12 @@ export function AuditFilterBar({
                 {personName(actor)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       {filters.range === "custom" ? (
         <div className="flex flex-wrap items-start gap-3">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             วันเริ่ม
             <Input
               type="date"
@@ -210,7 +222,7 @@ export function AuditFilterBar({
               className="w-40 text-sm"
             />
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             วันสิ้นสุด
             <Input
               type="date"

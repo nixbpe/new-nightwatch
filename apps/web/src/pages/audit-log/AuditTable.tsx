@@ -54,7 +54,7 @@ export function AuditTable({
         <caption className="sr-only">
           บันทึกกิจกรรมขององค์กร เรียงจากใหม่สุดก่อน
         </caption>
-        <thead className="sticky top-0 z-10 bg-surface text-xs font-medium text-foreground-secondary">
+        <thead className="bg-surface text-xs font-medium text-foreground-secondary">
           <tr>
             <th
               data-testid="audit-events-time-heading"

@@ -8,6 +8,7 @@ import { useLocation } from "react-router";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Button } from "../../components/ui/button";
 import { SectionHeader } from "../../components/ui/section-header";
+import { StatusPill } from "../../components/ui/status-pill";
 import { formatAuditTimestamp, type Preferences } from "../../lib/preferences";
 import { failureText, FORMAT_LABEL, MY_EXPORTS_ID, scopeText } from "./exports";
 
@@ -331,11 +332,17 @@ function StatusCell({
 }) {
   switch (record.status) {
     case "generating":
-      return <>กำลังสร้าง</>;
+      return (
+        <StatusPill tone="muted" dot>
+          กำลังสร้าง
+        </StatusPill>
+      );
     case "ready":
       return (
         <>
-          พร้อมดาวน์โหลด
+          <StatusPill tone="primary" dot>
+            พร้อมดาวน์โหลด
+          </StatusPill>
           {record.expiresAt === null ? null : (
             <>
               {" "}
@@ -352,8 +359,22 @@ function StatusCell({
         </>
       );
     case "failed":
-      return <>ล้มเหลว · {failureText(record.failureCode)}</>;
+      return (
+        <>
+          <StatusPill tone="danger" dot>
+            ล้มเหลว
+          </StatusPill>{" "}
+          · {failureText(record.failureCode)}
+        </>
+      );
     case "expired":
-      return <>หมดอายุ · ไฟล์หมดอายุแล้ว</>;
+      return (
+        <>
+          <StatusPill tone="caution" dot>
+            หมดอายุ
+          </StatusPill>{" "}
+          · ไฟล์หมดอายุแล้ว
+        </>
+      );
   }
 }
