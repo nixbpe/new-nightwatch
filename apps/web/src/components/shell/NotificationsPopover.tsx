@@ -106,7 +106,11 @@ export function NotificationsPopover() {
         ref={popover.triggerRef}
         data-testid="shell-notifications-open"
         type="button"
-        aria-label="การแจ้งเตือน"
+        aria-label={
+          unreadCount
+            ? `การแจ้งเตือน ${String(unreadCount)} รายการยังไม่อ่าน`
+            : "การแจ้งเตือน"
+        }
         aria-haspopup="dialog"
         aria-expanded={popover.open}
         disabled={me === undefined}
@@ -123,7 +127,7 @@ export function NotificationsPopover() {
         {unreadCount ? (
           <span
             data-testid="shell-notifications-unread-count"
-            aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
+            aria-hidden="true"
             // A Text-filled counter: the count is a fact, not a status colour.
             className="absolute -top-[7px] -right-[7px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground px-[5px] font-mono text-[11px] leading-none font-semibold text-background"
           >
@@ -220,9 +224,22 @@ export function NotificationsPopover() {
                 ))}
               </div>
             ) : list.isError ? (
-              <p role="alert" className="p-4 text-sm text-danger">
-                โหลดการแจ้งเตือนไม่สำเร็จ
-              </p>
+              <div className="p-4 text-sm">
+                <p role="alert" className="text-danger">
+                  โหลดการแจ้งเตือนไม่สำเร็จ
+                </p>
+                <button
+                  data-testid="shell-notifications-list-retry"
+                  type="button"
+                  data-popover-item=""
+                  onClick={() => {
+                    void list.refetch();
+                  }}
+                  className="mt-2 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  ลองใหม่
+                </button>
+              </div>
             ) : list.data.items.length === 0 ? (
               <p
                 data-testid="shell-notifications-empty"
@@ -262,7 +279,7 @@ export function NotificationsPopover() {
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-foreground/10 px-4 py-2.5 text-xs">
             {me === undefined ? (
-              <span className="text-foreground-tertiary">
+              <span className="text-foreground-secondary">
                 ดูการแจ้งเตือนทั้งหมด
               </span>
             ) : (

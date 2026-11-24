@@ -219,6 +219,16 @@ const row = (userId: string) =>
 const select = (userId: string) =>
   within(row(userId)).getByTestId("project-member-role-select");
 
+// Selects a role and confirms it in the dialog the select opens.
+async function changeRoleTo(
+  user: ReturnType<typeof userEvent.setup>,
+  userId: string,
+  role: ProjectRole,
+) {
+  await user.selectOptions(select(userId), role);
+  await user.click(await screen.findByTestId("project-member-role-confirm"));
+}
+
 async function loaded() {
   await screen.findByTestId("project-members-table");
 }
@@ -253,6 +263,21 @@ describe("members list", () => {
     );
   });
 
+  it("shows the Project description under the title only when there is one", async () => {
+    renderPage();
+    await loaded();
+    expect(screen.queryByTestId("project-description")).toBeNull();
+    cleanup();
+    detailMock.mockImplementation(() =>
+      Promise.resolve({ ...snapshot(), description: "Billing and payouts" }),
+    );
+    renderPage();
+    await loaded();
+    expect(screen.getByTestId("project-description")).toHaveTextContent(
+      "Billing and payouts",
+    );
+  });
+
   it("filters by name or email in the browser", async () => {
     const user = userEvent.setup();
     roster = roster.map((item) =>
@@ -274,7 +299,7 @@ describe("members list", () => {
         /^3$/,
       );
       expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
-        /1–1.*3/,
+        /^\D*1\D+3$/,
       );
     }
     await user.clear(search);
@@ -385,7 +410,7 @@ describe("states", () => {
     patchMock.mockRejectedValue(gone);
     detailMock.mockRejectedValue(gone);
     membersMock.mockRejectedValue(gone);
-    await user.selectOptions(select("thanakorn"), "admin");
+    await changeRoleTo(user, "thanakorn", "admin");
     expect(
       await screen.findByTestId("projects-notice-role-changed"),
     ).toBeVisible();
@@ -550,6 +575,9 @@ describe("role change (AC-05)", () => {
     renderPage();
     await loaded();
     await user.selectOptions(select("thanakorn"), "admin");
+    expect(patchMock).not.toHaveBeenCalled();
+    expect(select("thanakorn")).toHaveValue("member");
+    await user.click(screen.getByTestId("project-member-role-confirm"));
     await waitFor(() => {
       expect(patchMock).toHaveBeenCalledWith(A, P, "thanakorn", "admin");
     });
@@ -560,6 +588,35 @@ describe("role change (AC-05)", () => {
     expect(screen.queryByTestId("project-members-problem")).toBeNull();
   });
 
+  it("sends nothing when the dialog is cancelled and returns focus to the select", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await loaded();
+    await user.selectOptions(select("thanakorn"), "admin");
+    expect(screen.getByTestId("project-member-role-dialog")).toBeVisible();
+    await user.click(screen.getByTestId("confirmation-cancel"));
+    expect(screen.queryByTestId("project-member-role-dialog")).toBeNull();
+    expect(patchMock).not.toHaveBeenCalled();
+    expect(select("thanakorn")).toHaveValue("member");
+    expect(select("thanakorn")).toHaveFocus();
+  });
+
+  it("disables the select and remove button of the last admin and points them at the rule", async () => {
+    roster = [member("siriporn", "admin"), member("thanakorn", "member")];
+    renderPage();
+    await loaded();
+    const rule = screen.getByTestId("project-rule-last-admin");
+    expect(select("siriporn")).toBeDisabled();
+    expect(select("siriporn")).toHaveAttribute("aria-describedby", rule.id);
+    const remove = within(row("siriporn")).getByTestId("project-member-remove");
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("aria-describedby", rule.id);
+    expect(select("thanakorn")).toBeEnabled();
+    expect(
+      within(row("thanakorn")).getByTestId("project-member-remove"),
+    ).toBeEnabled();
+  });
+
   it("reverts the select and says why on 409 LAST_PROJECT_ADMIN", async () => {
     const user = userEvent.setup();
     roster = [member("siriporn", "admin"), member("thanakorn", "member")];
@@ -567,18 +624,42 @@ describe("role change (AC-05)", () => {
     patchMock.mockRejectedValue(
       new ApiError("LAST_PROJECT_ADMIN", "last", 409),
     );
+    // A stale count still lets the control through; the API stays the authority.
+    detailMock.mockImplementationOnce(() =>
+      Promise.resolve({ ...snapshot(), adminCount: 2 }),
+    );
     renderPage();
     await loaded();
-    await user.selectOptions(select("siriporn"), "member");
+    await changeRoleTo(user, "siriporn", "member");
     const problem = await screen.findByTestId("project-members-problem");
     expect(problem).toHaveRole("alert");
     expect(select("siriporn")).toHaveValue("admin");
-    expect(select("siriporn")).toHaveAccessibleDescription(problem.textContent);
+    expect(select("siriporn")).toHaveAccessibleDescription(
+      expect.stringContaining(problem.textContent),
+    );
     expect(screen.getByTestId("project-admin-count")).toHaveTextContent("1");
   });
 });
 
 describe("self changes", () => {
+  it("warns before a Project member who is not an Organization admin removes themself", async () => {
+    const user = userEvent.setup();
+    meMock.mockResolvedValue(context("viewer"));
+    renderPage();
+    await loaded();
+    await user.click(within(row(ME)).getByTestId("project-member-remove"));
+    expect(screen.getByTestId("project-member-remove-self")).toBeVisible();
+  });
+
+  it("gives no access-loss warning when an Organization admin removes themself", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await loaded();
+    await user.click(within(row(ME)).getByTestId("project-member-remove"));
+    expect(screen.getByTestId("project-member-remove-dialog")).toBeVisible();
+    expect(screen.queryByTestId("project-member-remove-self")).toBeNull();
+  });
+
   it("keeps focus on the page heading when demoting yourself removes the select", async () => {
     const user = userEvent.setup();
     meMock.mockResolvedValue(context("viewer"));
@@ -592,6 +673,10 @@ describe("self changes", () => {
     renderPage();
     await loaded();
     await user.selectOptions(select(ME), "member");
+    expect(screen.getByTestId("project-member-role-self")).toHaveTextContent(
+      "จัดการสมาชิกโปรเจกต์นี้ไม่ได้อีก",
+    );
+    await user.click(screen.getByTestId("project-member-role-confirm"));
     await waitFor(() => {
       expect(screen.queryByTestId("project-member-role-select")).toBeNull();
     });
@@ -694,6 +779,9 @@ describe("remove (AC-05)", () => {
     roster = [member("siriporn", "admin"), member("thanakorn", "member")];
     removeMock.mockRejectedValue(
       new ApiError("LAST_PROJECT_ADMIN", "last", 409),
+    );
+    detailMock.mockImplementationOnce(() =>
+      Promise.resolve({ ...snapshot(), adminCount: 2 }),
     );
     renderPage();
     await loaded();
@@ -1015,6 +1103,33 @@ describe("add member dialog", () => {
     await user.clear(within(dialog).getByTestId("add-member-search"));
     const back = await within(dialog).findByTestId("add-member-row-kitti");
     expect(within(back).getByTestId("add-member-checkbox")).toBeChecked();
+  });
+
+  it("offers an Organization admin a link to invite people who are not in the organization", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByTestId("add-member-search"), "nobody");
+    await within(dialog).findByTestId("add-member-no-match");
+    expect(
+      within(dialog).getByTestId("add-member-invite-link"),
+    ).toHaveAttribute("href", `/organizations/${A}/members`);
+    expect(
+      within(dialog).queryByTestId("add-member-invite-contact"),
+    ).toBeNull();
+  });
+
+  it("tells a Project admin who is not an Organization admin whom to ask", async () => {
+    const user = userEvent.setup();
+    meMock.mockResolvedValue(context("viewer"));
+    renderPage();
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByTestId("add-member-search"), "nobody");
+    await within(dialog).findByTestId("add-member-no-match");
+    expect(within(dialog).queryByTestId("add-member-invite-link")).toBeNull();
+    expect(
+      within(dialog).getByTestId("add-member-invite-contact"),
+    ).toBeVisible();
   });
 
   it("picks the admin role with the arrow keys and sends it", async () => {

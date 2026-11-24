@@ -15,7 +15,7 @@ import {
   formatTime,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../../monitors/format";
 import { HttpStatus } from "../../monitors/HttpStatus";
 import { sslText } from "../../monitors/SslLabel";
@@ -24,7 +24,19 @@ function EventText({ event }: { event: MonitorRecentEvent }) {
   if (event.kind === "incident_opened")
     return (
       <>
-        ล่ม · <span className="font-mono">{event.reason}</span>
+        ล่ม
+        {event.reason === null ? null : (
+          <>
+            {" "}
+            ·{" "}
+            <span
+              data-testid="project-overview-event-reason"
+              data-reason={event.reason}
+            >
+              {incidentReasonLabel(event.reason)}
+            </span>
+          </>
+        )}
         <HttpStatus status={event.httpStatus} />
       </>
     );
@@ -85,7 +97,7 @@ export function EventsSection({
       />
       <p className="pt-2 text-xs text-foreground-secondary">
         ล่าสุด <span className="font-mono">{MONITOR_RECENT_EVENTS_LIMIT}</span>{" "}
-        รายการ · เวลาตามเขตเวลา <span className="font-mono">{TIME_ZONE}</span>
+        รายการ · เวลาตามเขตเวลา <span className="font-mono">{timeZone()}</span>
       </p>
       {events.data !== undefined ? (
         events.data.events.length === 0 ? (
@@ -141,7 +153,9 @@ export function EventsSection({
         <Skeleton className="my-4 h-16 w-full" />
       )}
       {events.data !== undefined && events.isError ? (
-        <Alert tone="warning">อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ</Alert>
+        <Alert tone="warning" role="alert">
+          อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ
+        </Alert>
       ) : null}
     </section>
   );

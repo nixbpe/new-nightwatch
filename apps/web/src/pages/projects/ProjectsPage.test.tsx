@@ -1,8 +1,9 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
-import type {
-  MeContextResponse,
-  ProjectSummary,
+import {
+  PROJECT_LIMIT_PER_ORGANIZATION,
+  type MeContextResponse,
+  type ProjectSummary,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -272,6 +273,7 @@ describe("list (AC-05)", () => {
     const payments = project({
       name: "Payments Platform",
       slug: "payments-platform",
+      description: "Billing and payouts",
       memberCount: 5,
       myRole: "admin",
       updatedAt: "2026-10-10T07:32:00.000Z",
@@ -293,6 +295,12 @@ describe("list (AC-05)", () => {
     expect(within(first).getByTestId("project-slug")).toHaveTextContent(
       /^payments-platform$/,
     );
+    expect(within(first).getByTestId("project-description")).toHaveTextContent(
+      "Billing and payouts",
+    );
+    expect(
+      within(row(portal.id)).queryByTestId("project-description"),
+    ).toBeNull();
     expect(within(first).getByTestId("project-member-count")).toHaveTextContent(
       /^5$/,
     );
@@ -314,11 +322,33 @@ describe("list (AC-05)", () => {
     expect(screen.getByTestId("projects-total")).toHaveTextContent(/^3$/);
     expect(screen.getByTestId("projects-joined")).toHaveTextContent(/^2$/);
   });
+
+  it.each([
+    { role: "owner", shown: true },
+    { role: "admin", shown: true },
+    { role: "viewer", shown: false },
+    { role: "auditor", shown: false },
+  ] as const)(
+    "shows the Project limit beside the count only to a role that sees every Project ($role)",
+    async ({ role, shown }) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      fetchListMock.mockResolvedValue({ projects: [project()] });
+      renderPage();
+      await screen.findByTestId("projects-table");
+      if (shown) {
+        expect(screen.getByTestId("projects-limit")).toHaveTextContent(
+          String(PROJECT_LIMIT_PER_ORGANIZATION),
+        );
+      } else {
+        expect(screen.queryByTestId("projects-limit")).toBeNull();
+      }
+    },
+  );
 });
 
-describe("members entry point", () => {
+describe("project entry points", () => {
   it.each(["owner", "viewer"] as const)(
-    "links every row to its members page for %s",
+    "links the name to the overview and the member count to the members page for %s",
     async (role) => {
       fetchMeContextMock.mockResolvedValue(context(role));
       const joined = project({ myRole: "member" });
@@ -327,6 +357,12 @@ describe("members entry point", () => {
       renderPage();
       await screen.findByTestId("projects-table");
       for (const item of [joined, other]) {
+        expect(
+          within(row(item.id)).getByTestId("project-overview-link"),
+        ).toHaveAttribute(
+          "href",
+          `/organizations/${A}/projects/${item.id}/overview`,
+        );
         expect(
           within(row(item.id)).getByTestId("project-members-link"),
         ).toHaveAttribute(

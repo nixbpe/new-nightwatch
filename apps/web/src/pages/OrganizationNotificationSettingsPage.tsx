@@ -7,6 +7,7 @@ import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Notice } from "../components/ui/notice";
 import { ApiError } from "../lib/api/client";
 import {
@@ -89,7 +90,7 @@ function OrganizationNotificationSettingsForOrganization({
           </span>
         )
       }
-      description="ใช้กับสมาชิกทุกคนขององค์กรนี้"
+      description="ตั้งค่าการแจ้งเตือนระดับองค์กร ผู้รับของแต่ละชนิดระบุไว้ใต้ตัวเลือก"
     />
   );
   if (settings.isPending)
@@ -131,7 +132,15 @@ function OrganizationNotificationSettingsForOrganization({
         )}
       </Page>
     );
+  // "บันทึกแล้ว" describes the form as saved; a new edit makes it stale (CMP-01).
+  const editDraft = (update: Partial<typeof draft>) => {
+    if (save.isSuccess) save.reset();
+    setDraft({ ...draft, ...update });
+  };
   const settingsData = settings.data;
+  const versionConflict =
+    save.error instanceof ApiError &&
+    save.error.code === "SETTINGS_VERSION_CONFLICT";
   const settingsChanged =
     draft.settingsChangedEnabled ?? settingsData.settingsChangedEnabled;
   const monitorAlerts =
@@ -157,50 +166,58 @@ function OrganizationNotificationSettingsForOrganization({
           <div className="flex flex-col gap-3">
             <Alert
               data-testid={
-                save.error instanceof ApiError &&
-                save.error.code === "SETTINGS_VERSION_CONFLICT"
+                versionConflict
                   ? "organization-notifications-version-conflict"
                   : "organization-notifications-save-error"
               }
               tone="error"
             >
-              {save.error instanceof ApiError &&
-              save.error.code === "SETTINGS_VERSION_CONFLICT"
-                ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
+              {versionConflict
+                ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น โหลดค่าล่าสุดจะทิ้งการเลือกที่ยังไม่บันทึก"
                 : "บันทึกการตั้งค่าไม่สำเร็จ"}
             </Alert>
             <div>
-              <Button
-                data-testid="organization-notifications-save-retry"
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  save.reset();
-                  setDraft({
-                    settingsChangedEnabled: null,
-                    monitorAlertsEnabled: null,
-                  });
-                  void settings.refetch();
-                }}
-              >
-                ลองใหม่
-              </Button>
+              {versionConflict ? (
+                <Button
+                  data-testid="organization-notifications-reload"
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    save.reset();
+                    setDraft({
+                      settingsChangedEnabled: null,
+                      monitorAlertsEnabled: null,
+                    });
+                    void settings.refetch();
+                  }}
+                >
+                  โหลดค่าล่าสุด
+                </Button>
+              ) : (
+                <Button
+                  data-testid="organization-notifications-save-retry"
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    save.mutate(save.variables);
+                  }}
+                >
+                  ลองใหม่
+                </Button>
+              )}
             </div>
           </div>
         ) : null}
         <label className="flex items-start gap-3">
-          <input
+          <Checkbox
             data-testid="organization-notifications-settings-changed"
-            type="checkbox"
             checked={settingsChanged}
             onChange={(event) => {
-              setDraft({
-                ...draft,
-                settingsChangedEnabled: event.target.checked,
-              });
+              editDraft({ settingsChangedEnabled: event.target.checked });
             }}
-            className="mt-1 h-4 w-4 accent-primary"
+            className="mt-1"
           />
           <span>
             <span className="block font-medium">
@@ -212,27 +229,34 @@ function OrganizationNotificationSettingsForOrganization({
           </span>
         </label>
         <label className="flex items-start gap-3">
-          <input
+          <Checkbox
             data-testid="organization-notifications-monitor-alerts"
-            type="checkbox"
             checked={monitorAlerts}
             onChange={(event) => {
-              setDraft({
-                ...draft,
-                monitorAlertsEnabled: event.target.checked,
-              });
+              editDraft({ monitorAlertsEnabled: event.target.checked });
             }}
-            className="mt-1 h-4 w-4 accent-primary"
+            className="mt-1"
           />
           <span>
             <span className="block font-medium">แจ้งเตือนมอนิเตอร์</span>
             <span className="text-sm text-foreground-secondary">
-              เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
+              เจ้าของและผู้ดูแลขององค์กร รวมถึงสมาชิกของโปรเจกต์นั้น
+              จะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
               กลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว และเมื่อใบรับรอง SSL
-              ใกล้หมดอายุหรือหมดอายุ
+              ใกล้หมดอายุหรือหมดอายุ (เฉพาะมอนิเตอร์ที่เปิดแจ้งเตือน SSL)
             </span>
           </span>
         </label>
+        <div
+          data-testid="organization-notifications-cve-info"
+          className="text-sm text-foreground-secondary"
+        >
+          <span className="block font-medium text-foreground">
+            แจ้งเตือน CVE ใหม่
+          </span>
+          ส่งถึงสมาชิกของโปรเจกต์ที่พบ รวมถึงเจ้าของและผู้ดูแลขององค์กร
+          ทั้งในระบบและทางอีเมล ปิดแจ้งเตือนชนิดนี้ไม่ได้
+        </div>
         <CardFooter variant="split">
           <Notice
             data-testid="organization-notifications-success"

@@ -178,6 +178,9 @@ describe("OrganizationNotificationSettingsPage", () => {
     expect(
       screen.getByTestId("organization-notifications-slug"),
     ).toBeInTheDocument();
+    // CVE alerts are not user-switchable (E-005 r8): shown as a fact, never as a control.
+    const cveInfo = screen.getByTestId("organization-notifications-cve-info");
+    expect(cveInfo.querySelector("input")).toBeNull();
     expect(
       screen.getByTestId("organization-notifications-slug"),
     ).toHaveTextContent("org-a");
@@ -227,6 +230,40 @@ describe("OrganizationNotificationSettingsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("drops the saved message when the form is edited again", async () => {
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
+      version: 2,
+    };
+    fetchSettingsMock
+      .mockResolvedValueOnce({
+        ...saved,
+        settingsChangedEnabled: true,
+        version: 1,
+      })
+      .mockResolvedValue(saved);
+    updateSettingsMock.mockResolvedValue(saved);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(
+      await screen.findByTestId("organization-notifications-success"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    );
+    expect(
+      screen.queryByTestId("organization-notifications-success"),
+    ).toBeNull();
+  });
+
   it("shows a distinct permission denial and optimistic-concurrency conflict", async () => {
     fetchSettingsMock.mockRejectedValueOnce(
       new ApiError("PERMISSION_DENIED", "denied", 403),
@@ -266,9 +303,10 @@ describe("OrganizationNotificationSettingsPage", () => {
       settingsChangedEnabled: false,
       expectedVersion: 4,
     });
-    await user.click(
-      screen.getByTestId("organization-notifications-save-retry"),
-    );
+    expect(
+      screen.queryByTestId("organization-notifications-save-retry"),
+    ).toBeNull();
+    await user.click(screen.getByTestId("organization-notifications-reload"));
     await vi.waitFor(() =>
       expect(
         screen.getByTestId("organization-notifications-settings-changed"),
@@ -281,6 +319,45 @@ describe("OrganizationNotificationSettingsPage", () => {
       screen.queryByTestId("organization-notifications-version-conflict"),
     ).toBeNull();
     expect(updateSettingsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed save with the same draft and version instead of reloading", async () => {
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    });
+    updateSettingsMock
+      .mockRejectedValueOnce(new ApiError("INTERNAL", "boom", 500))
+      .mockResolvedValue({
+        organizationId: ORG_A,
+        settingsChangedEnabled: false,
+        monitorAlertsEnabled: true,
+        version: 5,
+      });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    const retry = await screen.findByTestId(
+      "organization-notifications-save-retry",
+    );
+    // The failed draft stays on screen and is not refetched away.
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(fetchSettingsMock).toHaveBeenCalledTimes(1);
+    await user.click(retry);
+    await vi.waitFor(() => {
+      expect(updateSettingsMock).toHaveBeenCalledTimes(2);
+    });
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(2, ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
   });
 
   it("drops an unsaved draft when navigating to another organization", async () => {

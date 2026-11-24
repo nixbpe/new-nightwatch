@@ -306,9 +306,11 @@ async function expectUnreadBadge(page: Page, unreadCount: number) {
     await expect(
       page.getByTestId("shell-notifications-unread-count"),
     ).toHaveText(String(unreadCount));
-    await expect(
-      page.getByTestId("shell-notifications-unread-count"),
-    ).toHaveAttribute("aria-label", new RegExp(`\\b${String(unreadCount)}\\b`));
+    // The count lives in the bell button's accessible name; the badge itself is aria-hidden.
+    await expect(page.getByTestId("shell-notifications-open")).toHaveAttribute(
+      "aria-label",
+      new RegExp(`\\b${String(unreadCount)}\\b`),
+    );
   } catch {
     const inbox = await database.sql.query<{
       id: string;

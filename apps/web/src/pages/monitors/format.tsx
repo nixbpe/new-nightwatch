@@ -220,6 +220,3 @@ export function incidentReasonLabel(reason: string): string {
     )?.[1] ?? "ตรวจไม่ผ่าน"
   );
 }
-
-/** Kept until the pages that read it move to timeZone(); removed in the last PR of the stack. */
-export const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
