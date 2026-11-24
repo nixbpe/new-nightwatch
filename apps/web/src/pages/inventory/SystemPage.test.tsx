@@ -319,6 +319,13 @@ describe("SystemPage", () => {
     const router = renderPage();
 
     const opener = await screen.findByTestId("inventory-system-delete");
+    // The destructive button sits below the rename form, apart from the header actions.
+    expect(opener.closest("header")).toBeNull();
+    expect(
+      screen
+        .getByTestId("inventory-system-rename")
+        .compareDocumentPosition(opener) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await user.click(opener);
 
     const dialog = await screen.findByRole("dialog");
@@ -523,6 +530,16 @@ describe("SystemPage", () => {
       await screen.findByTestId("inventory-system-missing"),
     ).toHaveTextContent("ไม่พบ System นี้");
     expect(screen.queryByTestId("inventory-system-delete")).toBeNull();
+  });
+
+  it("shows the denied state with no retry when the read is refused", async () => {
+    fetchMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    renderPage();
+
+    expect(
+      await screen.findByTestId("inventory-system-denied"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ลองใหม่" })).toBeNull();
   });
 
   it("shows a retryable error under the header when the inventory cannot be read", async () => {

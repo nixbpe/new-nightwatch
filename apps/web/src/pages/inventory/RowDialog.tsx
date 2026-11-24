@@ -11,22 +11,17 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type SyntheticEvent,
-  type KeyboardEvent,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 
-import { Alert, Field, textInputClass } from "../../components/ui";
+import { Alert, Field } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import {
-  trapDialogTab,
-  useDialogFocusReturn,
-} from "../../components/ui/useDialogFocusReturn";
+import { Select } from "../../components/ui/select";
 import { ApiError } from "../../lib/api/client";
 import {
   createRow,
@@ -38,15 +33,6 @@ import {
 import { usePreferences } from "../../lib/preferences";
 import { NO_SYSTEM_NAME } from "./format";
 import { sourceLabel, sourceWho } from "./rowSource";
-
-const FOCUSABLE = [
-  "a[href]",
-  "button:not(:disabled)",
-  "input:not(:disabled)",
-  "select:not(:disabled)",
-  "textarea:not(:disabled)",
-  '[tabindex]:not([tabindex="-1"]):not(:disabled)',
-].join(",");
 
 type Scope = { organizationId: string; projectId: string };
 type FieldKey = keyof InventoryRowInput;
@@ -121,7 +107,6 @@ export function RowDialog({
   onStale: () => void;
 }) {
   const { preferences } = usePreferences();
-  const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const firstField = useRef<HTMLInputElement>(null);
   const editing = mode.kind === "edit" ? mode.row : null;
@@ -157,8 +142,6 @@ export function RowDialog({
   const [duplicate, setDuplicate] = useState<string | null>(null);
   const [general, setGeneral] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
-
-  useDialogFocusReturn(dialog, firstField, opener, fallbackFocus);
 
   const save = useMutation({
     mutationFn: (): Promise<unknown> =>
@@ -257,14 +240,6 @@ export function RowDialog({
     event.preventDefault();
     if (!save.isPending && !stale) save.mutate();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      if (!save.isPending) onCancel();
-      return;
-    }
-    trapDialogTab(event, dialog.current, FOCUSABLE);
-  };
   const change = (key: FieldKey, value: string) => {
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -275,223 +250,206 @@ export function RowDialog({
   const keyInvalid = duplicate !== null;
   const system = mode.kind === "edit" ? mode.row.systemName : null;
 
-  return createPortal(
-    <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
-      <div
-        ref={dialog}
-        data-testid="inventory-row-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={
-          mode.kind === "system" ? `${titleId}-description` : undefined
-        }
-        aria-busy={save.isPending ? true : undefined}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        className="overlay-enter flex max-h-[calc(100dvh-2rem)] w-full max-w-[640px] flex-col rounded-md border border-foreground/10 bg-surface text-foreground shadow-modal focus:outline-none"
+  return (
+    <Dialog
+      data-testid="inventory-row-dialog"
+      size="xl"
+      title={
+        mode.kind === "system"
+          ? "เพิ่มระบบใน Inventory"
+          : editing === null
+            ? "เพิ่มรายการซอฟต์แวร์"
+            : "แก้แถว"
+      }
+      description={
+        mode.kind === "system"
+          ? "ระบุชื่อระบบและซอฟต์แวร์รายการแรก ไม่ได้สร้างหรือเชื่อมต่อระบบจริง ทุกช่องจำเป็น"
+          : "ทุกช่องจำเป็น"
+      }
+      descriptionTestId="inventory-system-description"
+      busy={save.isPending}
+      opener={opener}
+      fallbackFocus={fallbackFocus}
+      initialFocus={firstField}
+      dialogRef={dialog}
+      onClose={() => {
+        if (!save.isPending) onCancel();
+      }}
+    >
+      <form
+        noValidate
+        onSubmit={submit}
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <form
-          noValidate
-          onSubmit={submit}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="px-4 pt-4 sm:px-6 sm:pt-6">
-            <h2 id={titleId} className="text-lg font-semibold text-heading">
-              {mode.kind === "system"
-                ? "เพิ่มระบบใน Inventory"
-                : editing === null
-                  ? "เพิ่มรายการซอฟต์แวร์"
-                  : "แก้แถว"}
-            </h2>
-            {mode.kind === "system" ? (
-              <p
-                id={`${titleId}-description`}
-                className="mt-2 text-sm text-foreground-secondary"
-                data-testid="inventory-system-description"
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
+          {general === null ? null : (
+            <Alert tone="error" data-testid="inventory-row-error">
+              {general}
+            </Alert>
+          )}
+          {mode.kind === "system" ? (
+            <Field
+              label="ชื่อ System"
+              error={nameError}
+              errorId="inventory-row-name-error"
+              errorTestId="inventory-row-name-error"
+            >
+              <Input
+                ref={firstField}
+                data-testid="inventory-row-name"
+                value={name}
+                aria-invalid={nameError === null ? undefined : true}
+                aria-describedby={
+                  nameError === null ? undefined : "inventory-row-name-error"
+                }
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError(null);
+                }}
+              />
+            </Field>
+          ) : mode.kind === "add" ? (
+            <Field label="System">
+              <Select
+                data-testid="inventory-row-system"
+                value={systemId}
+                onChange={(event) => {
+                  setSystemId(event.target.value);
+                }}
               >
-                ระบุชื่อระบบและซอฟต์แวร์รายการแรก
-                ไม่ได้สร้างหรือเชื่อมต่อระบบจริง
-              </p>
-            ) : null}
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
-            {general === null ? null : (
-              <Alert tone="error" data-testid="inventory-row-error">
-                {general}
-              </Alert>
-            )}
-            {mode.kind === "system" ? (
-              <Field
-                label="ชื่อ System"
-                error={nameError}
-                errorId="inventory-row-name-error"
-                errorTestId="inventory-row-name-error"
+                {mode.systems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name === "" ? NO_SYSTEM_NAME : item.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <p className="text-[13px] text-foreground-secondary">
+              System{" "}
+              <span
+                data-testid="inventory-row-system-name"
+                className="font-medium text-foreground"
               >
-                <Input
-                  ref={firstField}
-                  data-testid="inventory-row-name"
-                  value={name}
-                  aria-invalid={nameError === null ? undefined : true}
-                  aria-describedby={
-                    nameError === null ? undefined : "inventory-row-name-error"
-                  }
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setNameError(null);
-                  }}
-                />
-              </Field>
-            ) : mode.kind === "add" ? (
-              <Field label="System">
-                <select
-                  data-testid="inventory-row-system"
-                  className={textInputClass}
-                  value={systemId}
-                  onChange={(event) => {
-                    setSystemId(event.target.value);
-                  }}
-                >
-                  {mode.systems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name === "" ? NO_SYSTEM_NAME : item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ) : (
-              <p className="text-[13px] text-foreground-secondary">
-                System{" "}
-                <span
-                  data-testid="inventory-row-system-name"
-                  className="font-medium text-foreground"
-                >
-                  {system === "" || system === null ? NO_SYSTEM_NAME : system}
-                </span>
-              </p>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {TEXT_FIELDS.map(({ key, label, mono }, index) => {
-                const error =
-                  errors[key] ?? (key === "version" ? duplicate : null);
-                const invalid =
-                  errors[key] !== undefined ||
-                  (keyInvalid &&
-                    (key === "vendor" ||
-                      key === "product" ||
-                      key === "version"));
-                return (
-                  <Field
-                    key={key}
-                    label={label}
-                    error={error}
-                    errorId={`inventory-row-${key}-error`}
-                    errorTestId={`inventory-row-${key}-error`}
-                    className={
-                      key === "version" && duplicate !== null
-                        ? "sm:col-span-2"
-                        : undefined
-                    }
-                  >
-                    <Input
-                      ref={
-                        index === 0 && mode.kind !== "system"
-                          ? firstField
-                          : undefined
-                      }
-                      data-testid={`inventory-row-${key}`}
-                      value={values[key]}
-                      aria-invalid={invalid ? true : undefined}
-                      aria-describedby={
-                        error === null
-                          ? undefined
-                          : `inventory-row-${key}-error`
-                      }
-                      className={
-                        mono === true ? "font-mono text-[14px]" : undefined
-                      }
-                      onChange={(event) => {
-                        change(key, event.target.value);
-                      }}
-                    />
-                  </Field>
-                );
-              })}
-              {LIST_FIELDS.map(({ key, label }) => (
+                {system === "" || system === null ? NO_SYSTEM_NAME : system}
+              </span>
+            </p>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {TEXT_FIELDS.map(({ key, label, mono }, index) => {
+              const error =
+                errors[key] ?? (key === "version" ? duplicate : null);
+              const invalid =
+                errors[key] !== undefined ||
+                (keyInvalid &&
+                  (key === "vendor" || key === "product" || key === "version"));
+              return (
                 <Field
                   key={key}
                   label={label}
-                  error={errors[key] ?? null}
+                  error={error}
                   errorId={`inventory-row-${key}-error`}
                   errorTestId={`inventory-row-${key}-error`}
+                  className={
+                    key === "version" && duplicate !== null
+                      ? "sm:col-span-2"
+                      : undefined
+                  }
                 >
-                  <select
+                  <Input
+                    ref={
+                      index === 0 && mode.kind !== "system"
+                        ? firstField
+                        : undefined
+                    }
                     data-testid={`inventory-row-${key}`}
-                    className={textInputClass}
                     value={values[key]}
-                    aria-invalid={errors[key] === undefined ? undefined : true}
+                    aria-invalid={invalid ? true : undefined}
                     aria-describedby={
-                      errors[key] === undefined
-                        ? undefined
-                        : `inventory-row-${key}-error`
+                      error === null ? undefined : `inventory-row-${key}-error`
+                    }
+                    className={
+                      mono === true ? "font-mono text-[14px]" : undefined
                     }
                     onChange={(event) => {
                       change(key, event.target.value);
                     }}
-                  >
-                    <option value="">เลือก</option>
-                    {/* A value an upload kept outside the list stays selected, with its reason. */}
-                    {values[key] !== "" &&
-                    LISTS[key]?.includes(values[key]) === false ? (
-                      <option value={values[key]}>{values[key]}</option>
-                    ) : null}
-                    {LISTS[key]?.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </Field>
-              ))}
-            </div>
+              );
+            })}
+            {LIST_FIELDS.map(({ key, label }) => (
+              <Field
+                key={key}
+                label={label}
+                error={errors[key] ?? null}
+                errorId={`inventory-row-${key}-error`}
+                errorTestId={`inventory-row-${key}-error`}
+              >
+                <Select
+                  data-testid={`inventory-row-${key}`}
+                  value={values[key]}
+                  aria-invalid={errors[key] === undefined ? undefined : true}
+                  aria-describedby={
+                    errors[key] === undefined
+                      ? undefined
+                      : `inventory-row-${key}-error`
+                  }
+                  onChange={(event) => {
+                    change(key, event.target.value);
+                  }}
+                >
+                  <option value="">เลือก</option>
+                  {/* A value an upload kept outside the list stays selected, with its reason. */}
+                  {values[key] !== "" &&
+                  LISTS[key]?.includes(values[key]) === false ? (
+                    <option value={values[key]}>{values[key]}</option>
+                  ) : null}
+                  {LISTS[key]?.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ))}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
-            <p
-              data-testid="inventory-row-source"
-              className="min-w-0 text-xs break-words text-foreground-secondary"
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
+          <p
+            data-testid="inventory-row-source"
+            className="min-w-0 text-xs break-words text-foreground-secondary"
+          >
+            {editing === null ? null : (
+              <>
+                {sourceLabel(editing.source)}
+                <br />
+                <span className="font-mono">
+                  {sourceWho(editing.source, preferences)}
+                </span>
+              </>
+            )}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="inventory-row-cancel"
+              disabled={save.isPending}
+              onClick={onCancel}
             >
-              {editing === null ? null : (
-                <>
-                  {sourceLabel(editing.source)}
-                  <br />
-                  <span className="font-mono">
-                    {sourceWho(editing.source, preferences)}
-                  </span>
-                </>
-              )}
-            </p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                data-testid="inventory-row-cancel"
-                disabled={save.isPending}
-                onClick={onCancel}
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                type="submit"
-                data-testid="inventory-row-save"
-                disabled={save.isPending || stale}
-              >
-                {save.isPending ? "กำลังบันทึก…" : "บันทึก"}
-              </Button>
-            </div>
+              ยกเลิก
+            </Button>
+            <Button
+              type="submit"
+              data-testid="inventory-row-save"
+              disabled={save.isPending || stale}
+            >
+              {save.isPending ? "กำลังบันทึก…" : "บันทึก"}
+            </Button>
           </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+        </div>
+      </form>
+    </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { EmptyState } from "../../components/shell/EmptyState";
 import { PageState } from "../../components/shell/PageState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -84,12 +85,10 @@ export function ImportHistory({
         ) : null
       ) : data.total === 0 ? (
         history.isError ? null : (
-          <p
+          <EmptyState
             data-testid="inventory-import-history-empty"
-            className="text-sm text-foreground-secondary"
-          >
-            ยังไม่มีประวัติ import
-          </p>
+            title="ยังไม่มีประวัติ import"
+          />
         )
       ) : (
         <>

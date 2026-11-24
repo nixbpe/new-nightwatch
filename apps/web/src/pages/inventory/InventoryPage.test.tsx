@@ -265,6 +265,14 @@ describe("InventoryPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the denied state with no retry when the read is refused", async () => {
+    fetchMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    renderPage();
+
+    expect(await screen.findByTestId("inventory-denied")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ลองใหม่" })).toBeNull();
+  });
+
   describe("managing Systems", () => {
     const first = {
       owner: "ทีม Cache",

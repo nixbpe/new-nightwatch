@@ -1,7 +1,9 @@
-import type {
-  InventoryImportPreview,
-  InventoryImportResult,
-  InventorySummary,
+import {
+  INVENTORY_MAX_FILE_BYTES,
+  INVENTORY_MAX_ROWS,
+  type InventoryImportPreview,
+  type InventoryImportResult,
+  type InventorySummary,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -206,6 +208,17 @@ describe("ImportPage choose step", () => {
     expect(screen.getByTestId("page-title")).toHaveFocus();
   });
 
+  it("states the size and row limits of the contract in the format hint", async () => {
+    renderPage();
+
+    const hint = await screen.findByTestId("inventory-format-hint");
+    const label = hint.getAttribute("aria-label") ?? "";
+    expect(label).toContain(
+      `${String(INVENTORY_MAX_FILE_BYTES / 1024 / 1024)} MB`,
+    );
+    expect(label).toContain(String(INVENTORY_MAX_ROWS));
+  });
+
   it("shows the reason a file was rejected, with no preview", async () => {
     createMock.mockRejectedValue(
       new ApiError(
@@ -259,6 +272,12 @@ describe("ImportPage restricted state", () => {
     expect(screen.queryByLabelText("ไฟล์ inventory")).toBeNull();
     expect(screen.queryByTestId("inventory-choose-button")).toBeNull();
     expect(screen.getByTestId("inventory-template-link")).toBeVisible();
+    // Same denied state as the other pages of the module, with the template as its action.
+    expect(
+      within(screen.getByTestId("inventory-import-restricted")).getByTestId(
+        "inventory-template-link",
+      ),
+    ).toBeVisible();
     expect(pendingMock).not.toHaveBeenCalled();
   });
 
@@ -275,9 +294,46 @@ describe("ImportPage restricted state", () => {
     await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
     expect(await screen.findByLabelText("ไฟล์ inventory")).toBeInTheDocument();
   });
+
+  it("shows the denied state with no retry when the read is refused", async () => {
+    summaryMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    renderPage();
+
+    expect(
+      await screen.findByTestId("inventory-import-denied"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ลองใหม่" })).toBeNull();
+  });
 });
 
 describe("ImportPage preview step", () => {
+  it("pages the skipped and failed rows instead of growing with the file", async () => {
+    const many = Array.from({ length: 120 }, (_, index) => ({
+      line: index + 2,
+      system: "Billing API",
+      vendor: "Canonical",
+      product: "Ubuntu",
+      version: "22.04",
+      outcome: "skipped" as const,
+      reason: { code: "duplicate_in_file" as const, line: 1 },
+    }));
+    pendingMock.mockResolvedValue({ preview: { ...preview(), rows: many } });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByTestId("inventory-import-row-2")).toBeVisible();
+    expect(screen.getAllByTestId(/^inventory-import-row-/)).toHaveLength(50);
+    expect(screen.queryByTestId("inventory-import-row-52")).toBeNull();
+
+    await user.click(
+      within(screen.getByTestId("inventory-import-rows-pagination")).getByRole(
+        "button",
+        { name: "ถัดไป" },
+      ),
+    );
+    expect(screen.getByTestId("inventory-import-row-52")).toBeVisible();
+    expect(screen.queryByTestId("inventory-import-row-2")).toBeNull();
+  });
   it("shows the pending preview with counts per System, the warning, and the skipped and failed rows with reasons", async () => {
     pendingMock.mockResolvedValue({ preview: preview() });
     renderPage();
@@ -368,6 +424,10 @@ describe("ImportPage preview step", () => {
     expect(
       screen.queryByTestId(`inventory-import-system-link-${BATCH}`),
     ).toBeNull();
+    expect(screen.getByTestId("inventory-import-fix-failed")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG}/projects/${PROJECT}/inventory?status=rejected`,
+    );
     expect(screen.queryByTestId("inventory-import-preview")).toBeNull();
     // The rows and the summary behind the overview are what the import changed.
     expect(invalidate).toHaveBeenCalledWith({
@@ -410,6 +470,46 @@ describe("ImportPage preview step", () => {
       await screen.findByTestId("inventory-import-failure"),
     ).toHaveTextContent("inventory ของ System ในไฟล์นี้เปลี่ยนไป");
     expect(screen.getByTestId("inventory-import-preview")).toBeVisible();
+    expect(screen.getByTestId("inventory-import-confirm")).toBeDisabled();
+    expect(screen.getByTestId("inventory-import-stale")).toBeVisible();
+    expect(screen.getByTestId("inventory-import-replace")).toBeEnabled();
+  });
+
+  it("allows confirming again after a failure that is not a stale preview", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockRejectedValue(new ApiError("INTERNAL", "ล้มเหลว", 500));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("inventory-import-confirm"));
+
+    await screen.findByTestId("inventory-import-failure");
+    expect(screen.getByTestId("inventory-import-confirm")).toBeEnabled();
+    expect(screen.queryByTestId("inventory-import-stale")).toBeNull();
+  });
+
+  it("lets a new file replace a stale preview and confirm it", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockRejectedValueOnce(
+      new ApiError("INVENTORY_PREVIEW_STALE", "inventory เปลี่ยนไป", 409),
+    );
+    createMock.mockResolvedValue({
+      ...preview(),
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      fileName: "second.csv",
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByTestId("inventory-import-confirm"));
+    await screen.findByTestId("inventory-import-stale");
+
+    await user.upload(
+      screen.getByLabelText("เลือกไฟล์ใหม่แทน preview"),
+      new File(["x"], "second.csv"),
+    );
+
+    expect(await screen.findByText("Preview ของ second.csv")).toBeVisible();
+    expect(screen.queryByTestId("inventory-import-stale")).toBeNull();
     expect(screen.getByTestId("inventory-import-confirm")).toBeEnabled();
   });
 
@@ -512,6 +612,21 @@ describe("ImportPage history", () => {
     expect(within(section).getByText("ไม่ทราบผู้ทำรายการ")).toBeVisible();
     expect(screen.getByTestId("inventory-import-restricted")).toBeVisible();
     expect(screen.queryByLabelText("ไฟล์ inventory")).toBeNull();
+  });
+
+  it("offers no link to rejected rows when none failed", async () => {
+    pendingMock.mockResolvedValue({ preview: preview() });
+    confirmMock.mockResolvedValue({
+      ...result(),
+      totals: { ...counts, failed: 0 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("inventory-import-confirm"));
+
+    await screen.findByTestId("inventory-import-result");
+    expect(screen.queryByTestId("inventory-import-fix-failed")).toBeNull();
   });
 
   it("keeps the history below a pending preview and reads it again after a confirmation", async () => {

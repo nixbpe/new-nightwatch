@@ -17,7 +17,9 @@ import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import {
   fetchInventory,
+  INVENTORY_DENIED_MESSAGE,
   inventoryErrorMessage,
+  isInventoryAccessDenied,
   inventoryKeys,
 } from "../../lib/api/inventory";
 import { usePreferences } from "../../lib/preferences";
@@ -100,7 +102,7 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
     },
     {
       key: "usable",
-      header: "ข้อมูลครบ",
+      header: "ใช้งานได้",
       align: "end",
       mono: true,
       cell: (system) =>
@@ -128,8 +130,8 @@ function qualityColumns(scope: Scope): DataTableColumn<InventorySystem>[] {
           {system.totalRows === 0
             ? "ไม่มีแถว"
             : system.lowQuality
-              ? "ข้อมูลไม่ผ่านเกณฑ์"
-              : "ข้อมูลผ่านเกณฑ์"}
+              ? `คุณภาพต่ำ (ต่ำกว่า ${String(QUALITY_THRESHOLD)}%)`
+              : `ผ่านเกณฑ์ ${String(QUALITY_THRESHOLD)}%`}
         </StatusPill>
       ),
     },
@@ -254,6 +256,12 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
           layout="table"
           visibleLabel
         />
+      ) : isInventoryAccessDenied(query.error) ? (
+        <PageState
+          kind="denied"
+          data-testid="inventory-denied"
+          message={INVENTORY_DENIED_MESSAGE}
+        />
       ) : query.isError ? (
         <PageState
           kind="error"
@@ -282,7 +290,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             />
             <Tile
               testId="inventory-tile-usable"
-              label="ข้อมูลครบและรูปแบบผ่าน"
+              label="ใช้งานได้"
               value={String(query.data.usableRows)}
               note={`ไม่ผ่าน ${String(query.data.totalRows - query.data.usableRows)} แถว`}
             />
@@ -319,7 +327,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
             <SectionHeader
               id="inventory-quality-heading"
               title="คุณภาพข้อมูลราย System"
-              meta={`ข้อมูลครบและรูปแบบผ่าน ≥ ${String(QUALITY_THRESHOLD)}% ของแถวปัจจุบัน ไม่ใช่ผลตรวจความปลอดภัย`}
+              meta={`แถวที่ใช้งานได้ ≥ ${String(QUALITY_THRESHOLD)}% ของแถวปัจจุบัน ไม่ใช่ผลตรวจความปลอดภัย`}
             />
             <DataTable
               ariaLabel="คุณภาพข้อมูลราย System"
