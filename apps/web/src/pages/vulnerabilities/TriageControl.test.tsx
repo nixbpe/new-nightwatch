@@ -424,7 +424,9 @@ describe("TriageControl", () => {
       expect(screen.getByTestId(`triage-save-${KEY}`)).toBeEnabled();
       putMock.mockResolvedValueOnce(triage());
       await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
-      await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+      await waitFor(() => {
+        expect(invalidate).toHaveBeenCalledTimes(1);
+      });
       expect(putMock).toHaveBeenCalledTimes(2);
       expect(putMock).toHaveBeenLastCalledWith(ORG, PROJECT, {
         ...target,
