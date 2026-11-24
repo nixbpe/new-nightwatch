@@ -27,6 +27,7 @@ function OtpCodeInput({
       inputMode="numeric"
       autoComplete="one-time-code"
       placeholder="000000"
+      // The page or step exists for this one field.
       autoFocus
       onChange={(event) => {
         onValueChange(

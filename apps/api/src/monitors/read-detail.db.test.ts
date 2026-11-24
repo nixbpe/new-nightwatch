@@ -814,6 +814,7 @@ describe("Check history filters", () => {
   beforeAll(async () => {
     id = await seedMonitor(ctx, filters.id, { name: "Filtered history" });
     foreignId = await seedMonitor(ctx, other.id, { name: "Foreign history" });
+    // Newest first: pass 100, fail 200, check_error 300, fail 400, pass 500, pass 10 d.
     await seedResults(ctx, filters.id, id, [100, 500, 10 * DAY]);
     await seedResults(ctx, filters.id, id, [200, 400], { outcome: "fail" });
     await seedResults(ctx, filters.id, id, [300], { outcome: "check_error" });
