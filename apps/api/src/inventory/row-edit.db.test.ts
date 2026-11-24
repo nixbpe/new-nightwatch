@@ -289,7 +289,9 @@ describe("inventory row list", () => {
        insert into inventory_rows
          (tenant_id, project_id, system_id, line_no, owner, vendor, product, version,
           layer, environment, exposure, usable, source_kind, source_file_name, changed_by)
-       select $1, $2, s.id, n + 1, 'o', 'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
+       select $1, $2, s.id, n + 1,
+              case when n <= 26 then 'Team 100%_ops' else 'Team other' end,
+              'v', 'p' || n, '1.0.' || n, 'OS', 'Production', 'Internal',
               true, 'import', 'big.csv', 'u'
        from s, generate_series(1, 30) n`,
       [org.id, project],
@@ -302,6 +304,16 @@ describe("inventory row list", () => {
     const beyond = await listRows("page=9", project);
     expect(beyond.page).toBe(2);
     expect(beyond.rows).toHaveLength(5);
+    const filtered = await listRows("owner=TEAM%20100%25_&page=2", project);
+    expect(filtered).toMatchObject({ total: 26, page: 2, pageSize: 25 });
+    expect(filtered.rows.map((row) => row.product)).toEqual(["p26"]);
+    expect(filtered.rows[0]?.owner).toBe("Team 100%_ops");
+    const filteredBeyond = await listRows(
+      "owner=TEAM%20100%25_&page=9",
+      project,
+    );
+    expect(filteredBeyond).toMatchObject({ total: 26, page: 2 });
+    expect(filteredBeyond.rows.map((row) => row.product)).toEqual(["p26"]);
   });
 });
 

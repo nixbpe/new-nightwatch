@@ -15,7 +15,7 @@ import {
   formatTime,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../../monitors/format";
 import { HttpStatus } from "../../monitors/HttpStatus";
 import { sslText } from "../../monitors/SslLabel";
@@ -85,7 +85,7 @@ export function EventsSection({
       />
       <p className="pt-2 text-xs text-foreground-secondary">
         ล่าสุด <span className="font-mono">{MONITOR_RECENT_EVENTS_LIMIT}</span>{" "}
-        รายการ · เวลาตามเขตเวลา <span className="font-mono">{TIME_ZONE}</span>
+        รายการ · เวลาตามเขตเวลา <span className="font-mono">{timeZone()}</span>
       </p>
       {events.data !== undefined ? (
         events.data.events.length === 0 ? (

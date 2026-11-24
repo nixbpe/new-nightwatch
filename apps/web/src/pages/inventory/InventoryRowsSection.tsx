@@ -44,6 +44,7 @@ import {
   fetchRows,
   inventoryErrorMessage,
   inventoryKeys,
+  isInventoryAccessDenied,
 } from "../../lib/api/inventory";
 import {
   hasFilters,
@@ -90,6 +91,18 @@ function TextFilterForm({
   search?: boolean;
 }) {
   const [text, setText] = useState(initial);
+  const [previous, setPrevious] = useState(initial);
+  const submitted = useRef<string | null>(null);
+  if (initial !== previous) {
+    setPrevious(initial);
+    // Our own URL update must not overwrite typing that continued during navigation.
+    if (initial !== submitted.current) setText(initial);
+    submitted.current = null;
+  }
+  const submit = (value: string) => {
+    submitted.current = value;
+    onSearch(value);
+  };
   return (
     <form
       role={search === true ? "search" : undefined}
@@ -97,7 +110,8 @@ function TextFilterForm({
       className="flex items-center gap-1"
       onSubmit={(event) => {
         event.preventDefault();
-        onSearch(text.trim());
+        setText(text.trim());
+        submit(text.trim());
       }}
     >
       <Input
@@ -111,7 +125,7 @@ function TextFilterForm({
         onChange={(event) => {
           setText(event.target.value);
           // The clear button of a search box fires no submit; a filter that is on must go with it.
-          if (event.target.value === "" && initial !== "") onSearch("");
+          if (event.target.value === "" && initial !== "") submit("");
         }}
       />
       <IconButton
@@ -129,9 +143,11 @@ function TextFilterForm({
 export function InventoryRowsSection({
   summary,
   scope,
+  onAccessDenied,
 }: {
   summary: InventorySummary;
   scope: Scope;
+  onAccessDenied?: (denied: boolean) => void;
 }) {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
@@ -151,6 +167,12 @@ export function InventoryRowsSection({
     placeholderData: keepPreviousData,
     retry: false,
   });
+
+  const denied = isInventoryAccessDenied(rows.error);
+  useEffect(() => {
+    if (denied || rows.isSuccess) onAccessDenied?.(denied);
+  }, [denied, rows.isSuccess, onAccessDenied]);
+  if ((denied || !summary.canUpload) && dialog !== null) setDialog(null);
 
   // A link from another part of the page (the quality table) asks for the table to take focus.
   const asked = (location.state as { focusRows?: boolean } | null)?.focusRows;
@@ -195,7 +217,7 @@ export function InventoryRowsSection({
     },
   });
 
-  const canEdit = summary.canUpload;
+  const canEdit = summary.canUpload && !denied;
   // A System with no name takes no new row until it is renamed; its rows stay listed.
   const addable = summary.systems.filter((system) => system.name !== "");
   const systemName = (name: string) => (name === "" ? NO_SYSTEM_NAME : name);
@@ -432,7 +454,6 @@ export function InventoryRowsSection({
           label="key ของแถวคือ System + Vendor + Product + Version ไม่สนตัวพิมพ์เล็กใหญ่และช่องว่างหัวท้าย แถวที่ key ซ้ำมาจากไฟล์ก่อนระบบห้ามซ้ำ ยังคงอยู่ครบ แก้หรือลบได้"
         />
         <TextFilterForm
-          key={`owner:${filters.owner}`}
           initial={filters.owner}
           label="Owner"
           placeholder="Owner ขึ้นต้นด้วย"
@@ -443,7 +464,6 @@ export function InventoryRowsSection({
           }}
         />
         <TextFilterForm
-          key={`q:${filters.q}`}
           search
           initial={filters.q}
           label="ค้นหา Vendor หรือ Product"

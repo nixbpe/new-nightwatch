@@ -15,6 +15,7 @@ import {
   seedIncident,
   seedMonitor,
   seedResults,
+  seedResponseSamples,
   type SeedMonitor,
 } from "./read-test-support";
 import {
@@ -884,9 +885,91 @@ describe("Check history filters", () => {
     expect((await filtered(`?since=${isoAgo(-DAY)}`)).checks).toEqual([]);
   });
 
-  it("reads the retention window when since predates it", async () => {
-    const body = await filtered("?since=2000-01-01T00:00:00.000Z");
-    expect(body.page.total).toBe(6);
+  it("clamps an old since to retention for checks, counts and URL changes", async () => {
+    const monitor = await seedMonitor(ctx, filters.id);
+    await seedResults(ctx, filters.id, monitor, [29 * DAY, 31 * DAY]);
+    await seedEvent(
+      ctx,
+      filters.id,
+      monitor,
+      "config_changed",
+      29 * DAY,
+      "https://retained.example",
+    );
+    await seedEvent(
+      ctx,
+      filters.id,
+      monitor,
+      "config_changed",
+      31 * DAY,
+      "https://expired.example",
+    );
+    const page = async (query: string) => {
+      const response = await read(filters, `/${monitor}/checks${query}`);
+      expect(response.status).toBe(200);
+      return monitorChecksResponseSchema.parse(response.json);
+    };
+    // Physical rows still exist; the filter, not partition cleanup, must hide them.
+    expect((await page("")).page.total).toBe(2);
+    const retained = await page(
+      "?since=2000-01-01T00:00:00.000Z&outcome=pass&limit=1",
+    );
+    expect(retained.checks).toHaveLength(1);
+    expect(retained.page).toEqual({ limit: 1, offset: 0, total: 1 });
+    expect(retained.urlChanges.map((change) => change.url)).toEqual([
+      "https://retained.example",
+    ]);
+    const beyond = await page(
+      "?since=2000-01-01T00:00:00.000Z&outcome=pass&limit=1&offset=1",
+    );
+    expect(beyond.checks).toEqual([]);
+    expect(beyond.page.total).toBe(1);
+    expect(beyond.urlChanges).toEqual([]);
+  });
+
+  it("includes the exact since instant for checks and URL changes but excludes the preceding millisecond", async () => {
+    const monitor = await seedMonitor(ctx, filters.id);
+    const clock = await ctx.owner.sql.query<{ cutoff: Date }>(
+      "select date_trunc('milliseconds', now() - interval '2 days') as cutoff",
+    );
+    const cutoff = clock.rows[0]?.cutoff;
+    if (!cutoff) throw new Error("database returned no cutoff");
+    const before = new Date(cutoff.getTime() - 1).toISOString();
+    const at = cutoff.toISOString();
+    const after = new Date(cutoff.getTime() + 1).toISOString();
+    await seedResponseSamples(
+      ctx,
+      filters.id,
+      monitor,
+      [before, at, after].map((scheduledFor) => ({
+        scheduledFor,
+        outcome: "fail",
+        responseTimeMs: 50,
+      })),
+    );
+    await seedResults(ctx, filters.id, monitor, [100], { outcome: "pass" });
+    await ctx.owner.sql.query(
+      `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at, url_masked)
+       values ($1, $2, 'config_changed', $3, 'https://before.example'),
+              ($1, $2, 'config_changed', $4, 'https://at.example'),
+              ($1, $2, 'config_changed', $5, 'https://after.example'),
+              ($1, $2, 'config_changed', $5, null)`,
+      [monitor, filters.id, before, at, after],
+    );
+    const response = await read(
+      filters,
+      `/${monitor}/checks?outcome=fail&since=${at}`,
+    );
+    expect(response.status).toBe(200);
+    const body = monitorChecksResponseSchema.parse(response.json);
+    expect(body.checks.map((check) => check.scheduledFor)).toEqual([after, at]);
+    expect(body.page).toEqual({ limit: 20, offset: 0, total: 2 });
+    expect(
+      body.urlChanges.map((change) => ({ at: change.at, url: change.url })),
+    ).toEqual([
+      { at: after, url: "https://after.example" },
+      { at, url: "https://at.example" },
+    ]);
   });
 
   it("combines both filters", async () => {

@@ -35,7 +35,7 @@ import {
   assertionRowFromResult,
 } from "./detail/AssertionTable";
 import { assertionSummary, failureText, OUTCOME_LABELS } from "./detail/labels";
-import { formatDateTime, formatNumber, Time, TIME_ZONE } from "./format";
+import { formatDateTime, formatNumber, Time, timeZone } from "./format";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { isDenied } from "./useMonitorAccess";
 
@@ -133,10 +133,10 @@ function refreshesAutomatically(
   return data?.pages.length === 1;
 }
 
-const columns: DataTableColumn<Row>[] = [
+const columns = (): DataTableColumn<Row>[] => [
   {
     key: "time",
-    header: `เวลา (${TIME_ZONE})`,
+    header: `เวลา (${timeZone()})`,
     cell: ({ check, urlChanged }) => (
       <span
         data-testid="monitor-check-time-cell"
@@ -587,7 +587,7 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                       iso={change.at}
                       format={formatDateTime}
                     />{" "}
-                    ({TIME_ZONE}) เป็น{" "}
+                    ({timeZone()}) เป็น{" "}
                     <span
                       data-testid="monitor-check-url-change-url"
                       className="font-mono break-all"
@@ -608,7 +608,7 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
               }
               ariaLabel="ตารางประวัติการตรวจ"
               className="max-h-none"
-              columns={columns}
+              columns={columns()}
               rows={rows}
               rowKey={({ check }) => check.scheduledFor}
             />
