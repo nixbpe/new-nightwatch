@@ -1,4 +1,3 @@
-import { Notice } from "../components/ui/notice";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { Link } from "react-router";

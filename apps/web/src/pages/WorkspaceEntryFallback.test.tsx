@@ -85,7 +85,7 @@ describe("WorkspaceEntryFallback", () => {
     const organizationId = vi.mocked(useTenant)().activeOrg?.id;
     const { router } = renderEntry();
     await screen.findByTestId("workspace-entry-error");
-    expect(screen.queryByText("// overview")).toBeNull();
+    expect(screen.queryByTestId("project-overview-summary")).toBeNull();
     const link = screen.getByTestId("workspace-entry-projects");
     expect(link.getAttribute("href")).toBe(
       `/organizations/${organizationId ?? ""}/projects`,
