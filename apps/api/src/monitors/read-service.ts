@@ -983,7 +983,6 @@ type CheckRow = Omit<CheckResultView, "scheduledFor" | "checkedAt"> & {
   checkedAt: Date;
 };
 
-/** Later of `since` and the retention cutoff; no `since` stays unbounded. */
 export function checksSinceFloor(
   since: string | undefined,
   now: Date,
