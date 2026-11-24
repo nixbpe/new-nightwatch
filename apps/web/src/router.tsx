@@ -51,6 +51,7 @@ import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import {
   inventoryImportLoader,
   inventoryLoader,
+  inventoryShouldRevalidate,
   inventoryMappingsLoader,
   inventorySystemLoader,
 } from "./lib/auth/loaders/inventory";
@@ -221,6 +222,7 @@ export const routes: RouteObject[] = [
               {
                 path: "/organizations/:organizationId/projects/:projectId/inventory",
                 loader: inventoryLoader,
+                shouldRevalidate: inventoryShouldRevalidate,
                 element: <InventoryPage />,
               },
               {

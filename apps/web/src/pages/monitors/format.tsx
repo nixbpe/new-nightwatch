@@ -5,9 +5,9 @@ import type {
 
 import { currentPreferences } from "../../lib/preferences";
 
-/** Zone named in column headers and notes; follows Settings > Display. */
 export const NO_DATA = "ไม่มีข้อมูล";
 
+/** Zone named in column headers and notes; follows Settings > Display. */
 export function timeZone(): string {
   return currentPreferences().timeZone;
 }
@@ -220,6 +220,3 @@ export function incidentReasonLabel(reason: string): string {
     )?.[1] ?? "ตรวจไม่ผ่าน"
   );
 }
-
-/** Kept until the pages that read it move to timeZone(); removed in the last PR of the stack. */
-export const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;

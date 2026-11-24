@@ -85,7 +85,7 @@ describe("WorkspaceEntryFallback", () => {
     const organizationId = vi.mocked(useTenant)().activeOrg?.id;
     const { router } = renderEntry();
     await screen.findByTestId("workspace-entry-error");
-    expect(screen.queryByText("// overview")).toBeNull();
+    expect(screen.queryByTestId("project-overview-summary")).toBeNull();
     const link = screen.getByTestId("workspace-entry-projects");
     expect(link.getAttribute("href")).toBe(
       `/organizations/${organizationId ?? ""}/projects`,
@@ -131,12 +131,10 @@ describe("WorkspaceEntryFallback", () => {
     const options = await screen.findAllByTestId("workspace-org-option");
     expect(options).toHaveLength(2);
     expect(screen.queryByTestId("workspace-access-retry")).toBeNull();
-    const second = options[1];
-    if (second === undefined) throw new Error("missing Organization option");
-    await userEvent.click(second);
+    await userEvent.click(screen.getByRole("button", { name: /^Beta \(/ }));
 
     expect(switchOrg).toHaveBeenCalledWith(
-      second.getAttribute("data-organization-id"),
+      "22222222-2222-4222-8222-222222222222",
     );
     await waitFor(() => {
       expect(loader).toHaveBeenCalledTimes(2);

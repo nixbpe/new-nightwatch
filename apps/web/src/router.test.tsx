@@ -239,3 +239,29 @@ describe("An unknown address", () => {
     router.dispose();
   });
 });
+
+describe("Inventory route revalidation", () => {
+  it("keeps filter navigation mounted, but explicit revalidation still reaches the session gate", async () => {
+    const path = `/organizations/${ORG}/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/inventory`;
+    const route = allRoutes(routes).find(
+      (candidate) =>
+        candidate.path ===
+        "/organizations/:organizationId/projects/:projectId/inventory",
+    );
+    if (route === undefined) throw new Error("inventory route not found");
+    const loader = vi.fn(() => null);
+    const router = createMemoryRouter([{ ...route, loader, element: null }], {
+      initialEntries: [path + "?q=x"],
+    });
+    await settled(router);
+    await act(() => router.navigate(path + "?q=Redis&page=2"));
+    expect(loader).toHaveBeenCalledTimes(1);
+    await act(() => router.navigate(-1));
+    expect(loader).toHaveBeenCalledTimes(1);
+    await act(() => router.revalidate());
+    expect(loader).toHaveBeenCalledTimes(2);
+    await act(() => router.navigate(path + "?arbitrary=1"));
+    expect(loader).toHaveBeenCalledTimes(3);
+    router.dispose();
+  });
+});

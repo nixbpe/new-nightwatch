@@ -817,6 +817,7 @@ function ChecksHistorySection({
                 `monitor-check-heading-${column.key}`
               }
               ariaLabel="ตารางประวัติการตรวจ"
+              className="max-h-none"
               columns={buildColumns()}
               rows={rows}
               rowKey={({ check }) => check.scheduledFor}

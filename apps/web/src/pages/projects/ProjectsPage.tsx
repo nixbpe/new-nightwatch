@@ -693,7 +693,7 @@ function ProjectsForOrganization({
     <Page>
       {header(actions, status)}
       {list.isError ? (
-        <Alert data-testid="projects-stale-warning" tone="warning">
+        <Alert role="alert" data-testid="projects-stale-warning" tone="warning">
           อัปเดตรายการไม่สำเร็จ กำลังแสดงรายการที่โหลดไว้ก่อนหน้า
         </Alert>
       ) : null}

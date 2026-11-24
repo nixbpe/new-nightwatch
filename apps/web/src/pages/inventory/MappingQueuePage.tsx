@@ -94,6 +94,11 @@ function MappingQueue({ organizationId, projectId }: Scope) {
     enabled: !switched,
     retry: false,
   });
+  const visiblePending = (item: InventoryMapping) =>
+    item.status === "pending" &&
+    matches(item, search) &&
+    (proposal === "all" ||
+      (proposal === "proposed") === (item.cpe !== null || item.purl !== null));
   const changed = (saved: InventoryMapping, text: string) => {
     // The button that was pressed leaves with its row: focus follows to the row that
     // took its place, or to the pending heading when none is left.
@@ -101,12 +106,11 @@ function MappingQueue({ organizationId, projectId }: Scope) {
       inventoryKeys.mappings(organizationId, projectId),
     )?.items;
     const was = before?.find((item) => item.id === saved.id);
-    const waiting = before?.filter((item) => item.status === "pending") ?? [];
+    const waiting = before?.filter(visiblePending) ?? [];
     const at = waiting.findIndex((item) => item.id === saved.id);
     setFocusRow({
       id:
-        was !== undefined &&
-        (was.status === "pending") === (saved.status === "pending")
+        was !== undefined && visiblePending(was) === visiblePending(saved)
           ? saved.id
           : (waiting[at + 1]?.id ?? waiting[at - 1]?.id ?? null),
     });
@@ -195,15 +199,7 @@ function MappingQueue({ organizationId, projectId }: Scope) {
   }, [focusRow, busy]);
   if (switched) return null;
   const data = query.data;
-  const pending =
-    data?.items.filter(
-      (item) =>
-        item.status === "pending" &&
-        matches(item, search) &&
-        (proposal === "all" ||
-          (proposal === "proposed") ===
-            (item.cpe !== null || item.purl !== null)),
-    ) ?? [];
+  const pending = data?.items.filter(visiblePending) ?? [];
   const decided =
     data?.items.filter(
       (item) => item.status !== "pending" && matches(item, search),

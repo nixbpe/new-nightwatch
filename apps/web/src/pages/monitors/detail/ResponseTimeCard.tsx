@@ -435,9 +435,9 @@ export function ResponseTimeCard({
         {data !== undefined && query.isError ? (
           <>
             <Alert
+              role="alert"
               data-testid="monitor-response-retained-warning"
               tone="warning"
-              role="alert"
             >
               อัปเดตกราฟไม่สำเร็จ ข้อมูล ณ{" "}
               <Time

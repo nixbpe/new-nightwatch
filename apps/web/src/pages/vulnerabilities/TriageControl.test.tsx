@@ -1,11 +1,15 @@
 import type { Triage } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import { putTriage } from "../../lib/api/vulnerabilities";
+import { putTriage, vulnerabilityKeys } from "../../lib/api/vulnerabilities";
 import { TriageControl } from "./TriageControl";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -378,6 +382,170 @@ describe("TriageControl", () => {
     );
     expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("เหตุผล");
   });
+
+  it.each(["cancel", "Escape"] as const)(
+    "keeps one request pending after %s and retries the retained justification after rejection",
+    async (dismiss) => {
+      let reject!: (error: Error) => void;
+      putMock.mockReturnValueOnce(
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+      );
+      const invalidate = renderControl({ canManage: true, triage: null });
+      await choose("not-affected");
+      const input = screen.getByTestId(`triage-reason-${KEY}`);
+      await userEvent.type(input, "  module disabled  ");
+      await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
+      if (dismiss === "cancel") {
+        await userEvent.click(screen.getByTestId(`triage-cancel-${KEY}`));
+      } else {
+        await userEvent.click(input);
+        await userEvent.keyboard("{Escape}");
+      }
+      await userEvent.click(trigger());
+      const alternative = screen.queryByTestId(`triage-affected-${KEY}`);
+      if (alternative) await userEvent.click(alternative);
+      expect(putMock).toHaveBeenCalledTimes(1);
+      expect(putMock).toHaveBeenLastCalledWith(ORG, PROJECT, {
+        ...target,
+        status: "not_affected",
+        reason: "module disabled",
+      });
+      expect(trigger()).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByTestId(`triage-cancel-${KEY}`)).toBeDisabled();
+      expect(screen.getByTestId(`triage-save-${KEY}`)).toBeDisabled();
+      expect(input.closest("form")).toHaveAttribute("aria-busy", "true");
+      expect(input).toHaveValue("  module disabled  ");
+      // Enter is another submit path, not just a click on the disabled Save.
+      await userEvent.click(input);
+      await userEvent.keyboard("{Enter}");
+      await userEvent.click(document.body);
+      expect(putMock).toHaveBeenCalledTimes(1);
+      reject(new ApiError("X", "x", 500));
+      await screen.findByTestId(`triage-error-${KEY}`);
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(input.closest("form")).toHaveAttribute("aria-busy", "false");
+      expect(input).toHaveValue("  module disabled  ");
+      expect(screen.getByTestId(`triage-save-${KEY}`)).toBeEnabled();
+      putMock.mockResolvedValueOnce(triage());
+      await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
+      await waitFor(() => {
+        expect(invalidate).toHaveBeenCalledTimes(1);
+      });
+      expect(putMock).toHaveBeenCalledTimes(2);
+      expect(putMock).toHaveBeenLastCalledWith(ORG, PROJECT, {
+        ...target,
+        status: "not_affected",
+        reason: "module disabled",
+      });
+      expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
+      await choose("not-affected");
+      expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("");
+    },
+  );
+
+  it.each(["not-affected", "affected"] as const)(
+    "keeps %s visibly busy through PUT and an active query refresh",
+    async (choice) => {
+      let finishPut!: (value: Triage) => void;
+      let finishRefresh!: (value: string) => void;
+      putMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishPut = resolve;
+        }),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const fetcher = vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            finishRefresh = resolve;
+          }),
+      );
+      const observer = new QueryObserver(client, {
+        queryKey: [...vulnerabilityKeys.all(ORG, PROJECT), "triage-refresh"],
+        queryFn: fetcher,
+        initialData: "before",
+        staleTime: Infinity,
+      });
+      const unsubscribe = observer.subscribe(() => undefined);
+      render(
+        <QueryClientProvider client={client}>
+          <TriageControl
+            organizationId={ORG}
+            projectId={PROJECT}
+            target={target}
+            triage={null}
+            canManage
+          />
+        </QueryClientProvider>,
+      );
+      try {
+        await choose(choice);
+        if (choice === "not-affected") {
+          await userEvent.type(
+            screen.getByTestId(`triage-reason-${KEY}`),
+            "  module disabled  ",
+          );
+          await userEvent.click(screen.getByTestId(`triage-save-${KEY}`));
+        }
+        const assertPending = async () => {
+          expect(trigger()).toHaveAttribute("aria-disabled", "true");
+          expect(screen.getByRole("status")).toHaveTextContent(
+            "กำลังบันทึกสถานะ VEX",
+          );
+          expect(screen.queryByText("บันทึกสถานะ VEX แล้ว")).toBeNull();
+          if (choice === "not-affected") {
+            const input = screen.getByTestId(`triage-reason-${KEY}`);
+            expect(input).toBeVisible();
+            expect(input).toHaveValue("  module disabled  ");
+            expect(input.closest("form")).toHaveAttribute("aria-busy", "true");
+            expect(screen.getByTestId(`triage-save-${KEY}`)).toBeDisabled();
+            expect(screen.getByTestId(`triage-save-${KEY}`)).toHaveTextContent(
+              "กำลังบันทึก",
+            );
+            expect(screen.getByTestId(`triage-cancel-${KEY}`)).toBeDisabled();
+            await userEvent.click(screen.getByTestId(`triage-cancel-${KEY}`));
+            await userEvent.click(input);
+            await userEvent.keyboard("{Escape}{Enter}");
+            expect(input).toBeVisible();
+          } else {
+            expect(trigger()).toHaveTextContent("กำลังบันทึก");
+          }
+          await userEvent.click(trigger());
+          await userEvent.keyboard("{Enter}");
+          expect(screen.queryByRole("menu")).toBeNull();
+          expect(putMock).toHaveBeenCalledTimes(1);
+        };
+        await assertPending();
+        expect(fetcher).not.toHaveBeenCalled();
+        finishPut(triage());
+        await waitFor(() => {
+          expect(fetcher).toHaveBeenCalledTimes(1);
+        });
+        expect(observer.getCurrentResult().isFetching).toBe(true);
+        await assertPending();
+        finishRefresh("after");
+        await waitFor(() => {
+          expect(screen.getByRole("status")).toHaveTextContent(
+            "บันทึกสถานะ VEX แล้ว",
+          );
+        });
+        expect(observer.getCurrentResult().data).toBe("after");
+        expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
+        expect(trigger()).not.toHaveAttribute("aria-disabled", "true");
+        expect(putMock).toHaveBeenCalledTimes(1);
+        await choose("not-affected");
+        expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("");
+        expect(screen.getByTestId(`triage-cancel-${KEY}`)).toBeEnabled();
+      } finally {
+        unsubscribe();
+        client.clear();
+      }
+    },
+  );
 
   it("announces the save as it runs and when it is done", async () => {
     let finish: (value: Triage) => void = () => undefined;
