@@ -65,6 +65,7 @@ async function fixture(generatedSecrets = secrets) {
     ".git",
     "scripts",
     "packages/db/src",
+    "packages/db/tests/support",
     "apps/api/src/operator",
     "apps/api/src/rate-limit",
   ])
@@ -93,6 +94,12 @@ const record = (...args) => appendFileSync(process.env.MOCK_LOG, JSON.stringify(
     `${sentinel}
 export function createDatabase(url) { record("createDatabase", url); throw new Error("DB_SENTINEL"); }
 export function listMigrations() { record("listMigrations"); throw new Error("MIGRATIONS_SENTINEL"); }
+`,
+  );
+  await writeFile(
+    join(root, "packages/db/tests/support/snapshot.ts"),
+    `${sentinel}
+export async function prepareTestDatabase() { record("prepareTestDatabase"); throw new Error("SNAPSHOT_SENTINEL"); }
 `,
   );
   await writeFile(
