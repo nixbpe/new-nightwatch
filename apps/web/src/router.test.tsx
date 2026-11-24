@@ -265,3 +265,73 @@ describe("Inventory route revalidation", () => {
     router.dispose();
   });
 });
+
+describe("Checks History route revalidation", () => {
+  const path = `/organizations/${ORG}/projects/project-1/monitors/monitor-1/checks`;
+  function historyRouter(entry = path) {
+    const route = allRoutes(routes).find((candidate) =>
+      candidate.path?.endsWith(":monitorId/checks"),
+    );
+    if (route === undefined) throw new Error("checks route not found");
+    const loader = vi.fn(() => null);
+    return {
+      loader,
+      router: createMemoryRouter([{ ...route, loader, element: null }], {
+        initialEntries: [entry],
+      }),
+    };
+  }
+  it("leaves only filter navigation with its mounted query observer; explicit revalidation still admits", async () => {
+    const { router, loader } = historyRouter();
+    await settled(router);
+    await router.navigate(path + "?outcome=fail");
+    await settled(router);
+    await router.navigate(path + "?outcome=fail&range=24h");
+    await settled(router);
+    expect(loader).toHaveBeenCalledTimes(1);
+    await router.revalidate();
+    await settled(router);
+    expect(loader).toHaveBeenCalledTimes(2);
+    router.dispose();
+  });
+  it.each(["?other=1", "?range=7d&other=1", "?outcome=fail&other=1"])(
+    "keeps admission for changed non-filter search %s",
+    async (search) => {
+      const { router, loader } = historyRouter();
+      await settled(router);
+      await router.navigate(path + search);
+      await settled(router);
+      expect(loader).toHaveBeenCalledTimes(2);
+      router.dispose();
+    },
+  );
+  it("keeps admission after a form action even when only filters change", async () => {
+    const route = allRoutes(routes).find((candidate) =>
+      candidate.path?.endsWith(":monitorId/checks"),
+    );
+    if (route === undefined) throw new Error("checks route not found");
+    const loader = vi.fn(() => null);
+    const router = createMemoryRouter(
+      [{ ...route, loader, action: () => null, element: null }],
+      { initialEntries: [path] },
+    );
+    await settled(router);
+    await router.navigate(path + "?outcome=fail", {
+      formMethod: "post",
+      formData: new FormData(),
+    });
+    await settled(router);
+    expect(loader).toHaveBeenCalledTimes(2);
+    router.dispose();
+  });
+  it("keeps admission for a new monitor scope", async () => {
+    const { router, loader } = historyRouter();
+    await settled(router);
+    await router.navigate(
+      path.replace("monitor-1", "monitor-2") + "?outcome=fail",
+    );
+    await settled(router);
+    expect(loader).toHaveBeenCalledTimes(2);
+    router.dispose();
+  });
+});
