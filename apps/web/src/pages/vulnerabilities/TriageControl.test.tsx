@@ -342,7 +342,6 @@ describe("TriageControl", () => {
     expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
     expect(putMock).not.toHaveBeenCalled();
     expect(trigger()).toHaveFocus();
-    // The next time the row opens it starts empty.
     await choose("not-affected");
     expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("");
   });

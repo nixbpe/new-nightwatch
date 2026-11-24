@@ -258,7 +258,6 @@ it("ORG-17 shows the role once: a select with Save only after a change, a pill w
     "data-member-role",
     "owner",
   );
-  // Name, email, role and the row actions (change and removal): no separate column for each.
   expect(
     within(screen.getByTestId("members-table")).getAllByRole("columnheader"),
   ).toHaveLength(4);

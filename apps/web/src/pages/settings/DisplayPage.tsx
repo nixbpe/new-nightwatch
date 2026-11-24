@@ -254,7 +254,6 @@ export function DisplayPage() {
                 className="mt-1"
                 onClick={() => {
                   update("timeZone", browserZone);
-                  // The button unmounts once the draft matches the browser zone.
                   zoneRef.current?.focus();
                 }}
               >

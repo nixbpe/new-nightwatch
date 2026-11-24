@@ -25,11 +25,6 @@ export function trustPolicy(principalArn: string, externalId: string): string {
 export const TARGET_ROLE_PLACEHOLDER =
   "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/<TARGET_ROLE_NAME>";
 
-/**
- * Lets the hub role assume exactly the roles the Projects already use (the
- * Role ARNs the API validated with `awsRoleArnSchema`). Without a Project the
- * Resource is the placeholder.
- */
 export function permissionPolicy(projectRoleArns: readonly string[]): string {
   const arns = [...new Set(projectRoleArns)].filter(
     (arn) => awsRoleArnSchema.safeParse(arn).success,

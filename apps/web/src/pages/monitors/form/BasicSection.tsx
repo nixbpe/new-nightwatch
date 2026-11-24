@@ -15,7 +15,6 @@ const INTERVAL_OPTIONS = MONITOR_INTERVAL_SECONDS.map((seconds) => ({
   label: `${String(seconds / 60)} นาที`,
 }));
 
-// A read-only line that names where its value is edited, and goes there.
 function EditLink({
   testId,
   onClick,
@@ -49,7 +48,6 @@ export function BasicSection({
   onShowAdvanced,
 }: SectionProps & {
   advanced: boolean;
-  /** Opens advanced mode, where the status code and the timeout are edited. */
   onShowAdvanced: () => void;
   /** Beside the URL: why Save and Test are off (a kept secret and a new origin). */
   urlNote: string | null;

@@ -120,7 +120,6 @@ describe("the Needs-fix view (default)", () => {
     const status = screen.getByTestId("vuln-status");
     expect(status).toHaveTextContent("ตรวจล่าสุด");
     expect(status).toHaveTextContent("แหล่งข้อมูลครบ");
-    // The time names its zone, as the Inventory header does.
     expect(screen.getByTestId("vuln-checked-at")).toHaveTextContent(
       Intl.DateTimeFormat().resolvedOptions().timeZone,
     );

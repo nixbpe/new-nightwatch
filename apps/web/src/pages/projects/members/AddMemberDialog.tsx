@@ -63,7 +63,6 @@ export function AddMemberDialog({
 }: {
   organizationId: string;
   organizationName: string;
-  /** Owners and admins of the Organization can invite; everyone else is told whom to ask. */
   canManageOrganization: boolean;
   projectId: string;
   projectName: string;

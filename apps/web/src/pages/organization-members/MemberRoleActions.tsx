@@ -32,7 +32,6 @@ export type RoleConfirmation = {
 
 const MEMBER_SELECT_ATTRIBUTE = "data-member-role-select";
 
-/** Setting Owner or Admin, or leaving Owner, is confirmed first (it adds or removes management power). */
 export function roleChangeNeedsConfirmation(
   member: OrganizationMember,
   role: OrganizationRole,
@@ -60,7 +59,6 @@ export function useMemberRoleChange({
   actorRole: ActorRole;
   actorUserId: string | undefined;
   listSettled: boolean;
-  /** The list's role filter: a member saved to another role leaves the refreshed list. */
   filterRole?: OrganizationRole;
   /** The dialog parks focus here when its opener unmounts with the table. */
   headingRef: RefObject<HTMLElement | null>;
@@ -269,7 +267,6 @@ export function MemberRoleActions({
   ) => void;
 }) {
   const [role, setRole] = useState<OrganizationRole>(member.role);
-  // The role column shows the role once: a pill when this actor cannot change it, a select when they can.
   if (actorRole === "admin" && member.role === "owner") {
     return <RolePill role={member.role} />;
   }
