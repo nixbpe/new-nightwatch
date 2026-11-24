@@ -345,7 +345,6 @@ describe("OrganizationNotificationSettingsPage", () => {
     const retry = await screen.findByTestId(
       "organization-notifications-save-retry",
     );
-    // The failed draft stays on screen and is not refetched away.
     expect(
       screen.getByTestId("organization-notifications-settings-changed"),
     ).not.toBeChecked();

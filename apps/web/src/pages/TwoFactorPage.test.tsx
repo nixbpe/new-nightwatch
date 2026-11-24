@@ -101,8 +101,6 @@ describe("TwoFactorPage challenge", () => {
   });
 
   it("offers a way back to sign-in when the challenge cannot be completed", async () => {
-    // The challenge cookie expires on its own; without this link the error that says
-    // "sign in again" leaves the user on a page with no way to do it.
     const user = userEvent.setup();
     renderPage();
 

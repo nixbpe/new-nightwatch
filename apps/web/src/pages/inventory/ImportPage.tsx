@@ -461,7 +461,6 @@ function ProjectImport({ organizationId, projectId }: Scope) {
   const heading = useRef<HTMLHeadingElement>(null);
   const [result, setResult] = useState<InventoryImportResult | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  // A stale preview can never be confirmed; only a new file replaces it.
   const [stalePreviewId, setStalePreviewId] = useState<string | null>(null);
   const base = `/organizations/${organizationId}/projects/${projectId}/inventory`;
   const previewKey = inventoryKeys.importPreview(organizationId, projectId);

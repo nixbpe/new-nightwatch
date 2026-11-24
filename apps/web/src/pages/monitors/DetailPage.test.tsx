@@ -2364,7 +2364,6 @@ describe("Detail redesign behaviours", () => {
     renderDetail();
     await readyDetail();
     const frame = screen.getByTestId("monitor-uptime-sample");
-    // The sample sits after the incidents, so it never separates the real uptime from them.
     expect(screen.getByTestId("monitor-status")).not.toContainElement(frame);
     expect(
       screen.getByTestId("monitor-incidents").compareDocumentPosition(frame) &
@@ -2804,7 +2803,6 @@ function expectCaption(
   expect(c.getByTestId("monitor-response-caption-source")).toHaveTextContent(
     /\S/,
   );
-  // The counting rules sit behind an info icon, not in the visible line.
   const population = c.getByTestId("monitor-response-caption-population");
   expect(population).toHaveRole("button");
   expect(population).toHaveAccessibleName(/\S/);

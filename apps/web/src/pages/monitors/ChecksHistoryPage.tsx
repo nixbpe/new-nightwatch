@@ -72,7 +72,6 @@ const RANGE_LABELS: Record<MonitorChecksRange, string> = {
 };
 const RANGES = Object.keys(RANGE_LABELS) as MonitorChecksRange[];
 
-/** The filter lives in the URL (`outcome`, `range`); a value that is not an option counts as unset. */
 function parseFilter(params: URLSearchParams): MonitorChecksFilter {
   const outcome = CHECK_OUTCOMES.find(
     (value) => value === params.get("outcome"),
@@ -556,7 +555,6 @@ function ChecksHistorySection({
   const hasNext = checks.hasNextPage;
   const filtered = filter.outcome !== undefined || filter.range !== undefined;
   const outcomeSelect = useRef<HTMLSelectElement>(null);
-  // Nothing to filter in a monitor that has no checks yet; a filter that matches nothing keeps its controls.
   const showFilter = filtered || accumulated === null || shown > 0;
 
   const [announcement, setAnnouncement] = useState("");
@@ -572,7 +570,6 @@ function ChecksHistorySection({
     summary.current?.focus();
   }, [focusSummary, hasNext]);
 
-  // The result of a filter change is announced once, when the chunk for the new filter arrives.
   const announceFilter = useRef(false);
   useEffect(() => {
     if (!announceFilter.current || accumulated === null) return;

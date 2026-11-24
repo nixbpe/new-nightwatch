@@ -42,10 +42,8 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   // Set once sign-in succeeded: the page changes only after the session refetch and loader re-run.
   const [redirecting, setRedirecting] = useState(false);
-  // The refused address, so the verification page needs no retyping; null when the sign-in was not refused for it.
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
-  // A remembered invitation means this sign-in is to accept it; say which one and for which address.
   const pendingInvitationId = readInvitation();
   const invitationPreview = useQuery({
     queryKey: invitationQueryKey(pendingInvitationId ?? ""),

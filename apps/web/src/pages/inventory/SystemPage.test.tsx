@@ -319,7 +319,6 @@ describe("SystemPage", () => {
     const router = renderPage();
 
     const opener = await screen.findByTestId("inventory-system-delete");
-    // The destructive button sits below the rename form, apart from the header actions.
     expect(opener.closest("header")).toBeNull();
     expect(
       screen

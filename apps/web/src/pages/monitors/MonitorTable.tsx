@@ -27,7 +27,6 @@ import { SslLabel, sslText } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
 
-// The line under the pill says why a state holds; "ล้มเหลวติดกัน N ครั้ง" is a warning beside a health that has not changed.
 export function StatusDetail({ row }: { row: Row }) {
   const lines: ReactNode[] = [];
   if (row.health === "down" && row.openIncident !== null) {
@@ -114,7 +113,6 @@ export function NoData() {
   );
 }
 
-// Cards show SSL as plain text; the table has no spare line, so a level that needs action becomes a pill.
 function SslCell({ ssl }: { ssl: Row["ssl"] }) {
   if (ssl.level === "no_data") return <NoData />;
   if (

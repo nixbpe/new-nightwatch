@@ -400,7 +400,6 @@ export function RowDialog({
                   }}
                 >
                   <option value="">เลือก</option>
-                  {/* A value an upload kept outside the list stays selected, with its reason. */}
                   {values[key] !== "" &&
                   LISTS[key]?.includes(values[key]) === false ? (
                     <option value={values[key]}>{values[key]}</option>

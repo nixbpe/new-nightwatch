@@ -36,7 +36,6 @@ export function ConfigCard({
   footer,
 }: {
   monitor: Monitor;
-  /** Actions on the monitor itself, kept away from the daily ones in the page header. */
   footer?: ReactNode;
 }) {
   const stored = new Set(monitor.secretSlots.map((item) => item.slot));
