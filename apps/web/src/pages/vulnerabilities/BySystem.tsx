@@ -43,22 +43,32 @@ function ExportButton({
     <span className="flex items-center gap-2">
       {download.isError ? (
         <span
+          role="alert"
           className="text-xs text-danger"
           data-testid={`vuln-export-error-${systemId}`}
         >
           {vulnerabilityErrorMessage(download.error)}
         </span>
       ) : null}
+      {/* Always rendered, so the wait is announced when its text appears. */}
+      <span
+        role="status"
+        className="sr-only"
+        data-testid={`vuln-export-status-${systemId}`}
+      >
+        {download.isPending ? `กำลังสร้างไฟล์ Excel ของ ${systemName}` : ""}
+      </span>
       <Button
         type="button"
         variant="outline"
         data-testid={`vuln-export-${systemId}`}
         disabled={download.isPending}
+        aria-busy={download.isPending}
         onClick={() => {
           download.mutate();
         }}
       >
-        ส่งออก Excel
+        Export Excel
         <span className="sr-only"> ของ {systemName}</span>
       </Button>
     </span>
@@ -69,6 +79,13 @@ const active = (component: VulnerabilityComponent) =>
   component.findings.filter((finding) => !finding.backport);
 const filtered = (component: VulnerabilityComponent) =>
   component.findings.filter((finding) => finding.backport);
+/** Findings the count above includes but a Project admin marked not affected (VEX). */
+const notAffectedCount = (findings: VulnerabilityFinding[]) =>
+  findings.filter((finding) => finding.triage?.status === "not_affected")
+    .length;
+
+/** When each match feed last answered, formatted; a source the run never asked is absent. */
+type FeedTimes = Partial<Record<keyof typeof SOURCE_LABELS, string>>;
 
 function vexText(finding: VulnerabilityFinding) {
   if (finding.triage === null) return "ยังไม่ triage";
@@ -83,23 +100,21 @@ const ROW =
 /** The state of a component, as two grid cells: one badge, then the detail text. */
 function StateCells({
   component,
-  feedTime,
+  feedTimes,
   inventoryPath,
 }: {
   component: VulnerabilityComponent;
-  feedTime: string | null;
+  feedTimes: FeedTimes;
   inventoryPath: string;
 }) {
-  const checked = component.checkedSources
-    .map((source) => SOURCE_LABELS[source])
-    .join(", ");
   const failed = component.failedSources
     .map((source) => SOURCE_LABELS[source])
     .join(", ");
   const detail =
     "text-[13px] text-foreground-secondary max-lg:col-start-2 max-lg:col-span-2";
   switch (component.state) {
-    case "findings":
+    case "findings": {
+      const unaffected = notAffectedCount(active(component));
       return (
         <span className="contents" data-testid="vuln-found">
           <span>
@@ -108,14 +123,21 @@ function StateCells({
             </StatusPill>
           </span>
           <span className={detail}>
+            {unaffected === 0 ? null : (
+              <span data-testid="vuln-not-affected-count">
+                ไม่ได้รับผลกระทบ {unaffected} รายการ
+              </span>
+            )}
             {failed === "" ? null : (
               <span className="text-caution">
+                {unaffected === 0 ? "" : " · "}
                 {failed} ใช้ไม่ได้ ผลอาจไม่ครบ
               </span>
             )}
           </span>
         </span>
       );
+    }
     case "backport_only":
       return (
         <>
@@ -129,11 +151,22 @@ function StateCells({
       return (
         <span className="contents" data-testid="vuln-none-found">
           <span>
-            <StatusPill tone="primary">ไม่พบ CVE</StatusPill>
+            <StatusPill tone="muted">ไม่พบ CVE</StatusPill>
           </span>
           <span className={detail}>
-            ณ feed เวลา <span className="font-mono">{feedTime}</span> (ตรวจ{" "}
-            {checked})
+            ตรวจ{" "}
+            {component.checkedSources.map((source, index) => (
+              <span key={source}>
+                {index === 0 ? "" : " · "}
+                {SOURCE_LABELS[source]}{" "}
+                <span
+                  className="font-mono"
+                  data-testid={`vuln-feed-time-${source}`}
+                >
+                  {feedTimes[source] ?? "ไม่ทราบ"}
+                </span>
+              </span>
+            ))}
           </span>
         </span>
       );
@@ -182,11 +215,11 @@ const NESTED = "ml-7 mr-4 mb-3 border-l border-foreground/10 pl-4";
 
 function ComponentBlock({
   component,
-  feedTime,
+  feedTimes,
   inventoryPath,
 }: {
   component: VulnerabilityComponent;
-  feedTime: string | null;
+  feedTimes: FeedTimes;
   inventoryPath: string;
 }) {
   const found = active(component);
@@ -213,7 +246,7 @@ function ComponentBlock({
   const cells = (
     <StateCells
       component={component}
-      feedTime={feedTime}
+      feedTimes={feedTimes}
       inventoryPath={inventoryPath}
     />
   );
@@ -375,26 +408,27 @@ function SystemGroup({
   systemId,
   name,
   components,
-  feedTime,
+  feedTimes,
   inventoryPath,
 }: {
   scope: Scope;
   systemId: string;
   name: string;
   components: VulnerabilityComponent[];
-  feedTime: string | null;
+  feedTimes: FeedTimes;
   inventoryPath: string;
 }) {
   const [open, setOpen] = useState(true);
   const bodyId = useId();
   const cves = components.flatMap(active);
+  const unaffected = notAffectedCount(cves);
   return (
     <section
       data-testid={`vuln-system-${systemId}`}
       className="overflow-hidden rounded-md border border-foreground/10 bg-surface"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2">
-        <h3 className="min-w-0">
+        <h2 className="min-w-0">
           <button
             type="button"
             aria-expanded={open}
@@ -424,9 +458,16 @@ function SystemGroup({
                 {cves.filter((finding) => finding.kev === true).length}
               </span>{" "}
               รายการ
+              {unaffected === 0 ? null : (
+                <span data-testid={`vuln-system-not-affected-${systemId}`}>
+                  {" "}
+                  · ไม่ได้รับผลกระทบ{" "}
+                  <span className="font-mono">{unaffected}</span> รายการ
+                </span>
+              )}
             </span>
           </button>
-        </h3>
+        </h2>
         <ExportButton {...scope} systemId={systemId} systemName={name} />
       </div>
       <div id={bodyId} hidden={!open} className="border-t border-foreground/10">
@@ -434,7 +475,7 @@ function SystemGroup({
           <ComponentBlock
             key={`${component.vendor}|${component.product}|${component.version}`}
             component={component}
-            feedTime={feedTime}
+            feedTimes={feedTimes}
             inventoryPath={inventoryPath}
           />
         ))}
@@ -467,9 +508,11 @@ export function BySystem({
     entry.components.push(component);
     systems.set(component.systemId, entry);
   }
-  const feedTime = list.results?.finishedAt
-    ? formatUploadedAt(list.results.finishedAt, preferences)
-    : null;
+  const feedTimes: FeedTimes = {};
+  for (const source of Object.keys(SOURCE_LABELS) as (keyof FeedTimes)[]) {
+    const at = list.results?.feeds[source]?.at;
+    if (at !== undefined) feedTimes[source] = formatUploadedAt(at, preferences);
+  }
   if (systems.size === 0) {
     return (
       <p className="text-sm" data-testid="vuln-no-inventory">
@@ -494,7 +537,7 @@ export function BySystem({
           systemId={systemId}
           name={system.name}
           components={system.components}
-          feedTime={feedTime}
+          feedTimes={feedTimes}
           inventoryPath={inventoryPath}
         />
       ))}

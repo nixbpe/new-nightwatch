@@ -52,11 +52,11 @@ export function TriageControl({
     mutationFn: (input: TriageInput) =>
       putTriage(organizationId, projectId, input),
     onSuccess: async () => {
-      setAsking(false);
-      setReason("");
       await queryClient.invalidateQueries({
         queryKey: vulnerabilityKeys.all(organizationId, projectId),
       });
+      setAsking(false);
+      setReason("");
     },
   });
   const testId = `${target.cveId}-${target.mappingId}-${target.version}`;
@@ -109,6 +109,14 @@ export function TriageControl({
   useEffect(() => {
     if (asking) reasonInput.current?.focus();
   }, [asking]);
+  // Reset only before submission or after settlement; reset does not abort a request.
+  const cancelAsking = () => {
+    if (save.isPending) return;
+    setAsking(false);
+    setReason("");
+    save.reset();
+    menu.triggerRef.current?.focus();
+  };
   const openMenu = () => {
     if (save.isPending) return;
     placeAtTrigger();
@@ -157,7 +165,7 @@ export function TriageControl({
             onClick={openMenu}
             className="inline-flex h-8 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-[13px] text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-disabled:opacity-60"
           >
-            {statusText}
+            {save.isPending && !asking ? "กำลังบันทึก" : statusText}
             <ChevronsUpDownIcon size={14} />
           </button>
         ) : (
@@ -212,6 +220,7 @@ export function TriageControl({
                   aria-checked={choice.checked}
                   data-testid={`triage-${choice.status}-${testId}`}
                   onClick={() => {
+                    if (save.isPending) return;
                     menu.close();
                     choice.choose();
                   }}
@@ -230,8 +239,16 @@ export function TriageControl({
       {canManage && asking ? (
         <form
           className="flex w-full max-w-64 flex-col items-start gap-2"
+          aria-busy={save.isPending}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            cancelAsking();
+          }}
           onSubmit={(event) => {
             event.preventDefault();
+            if (save.isPending) return;
             save.mutate({
               ...target,
               status: "not_affected",
@@ -239,8 +256,11 @@ export function TriageControl({
             });
           }}
         >
-          <label className="sr-only" htmlFor={reasonId}>
-            เหตุผลที่ไม่ได้รับผลกระทบ
+          <label
+            className="text-xs text-foreground-secondary"
+            htmlFor={reasonId}
+          >
+            เหตุผลที่ไม่ได้รับผลกระทบ (จำเป็น)
           </label>
           <Input
             ref={reasonInput}
@@ -248,19 +268,29 @@ export function TriageControl({
             data-testid={`triage-reason-${testId}`}
             className="w-full text-sm"
             maxLength={500}
-            placeholder="เหตุผล (จำเป็น)"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
             }}
           />
-          <Button
-            type="submit"
-            data-testid={`triage-save-${testId}`}
-            disabled={save.isPending || reason.trim() === ""}
-          >
-            บันทึก
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              data-testid={`triage-save-${testId}`}
+              disabled={save.isPending || reason.trim() === ""}
+            >
+              {save.isPending ? "กำลังบันทึก" : "บันทึก"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid={`triage-cancel-${testId}`}
+              disabled={save.isPending}
+              onClick={cancelAsking}
+            >
+              ยกเลิก
+            </Button>
+          </div>
         </form>
       ) : null}
       <span role="status" className="sr-only">
