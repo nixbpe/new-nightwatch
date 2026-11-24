@@ -1,3 +1,4 @@
+import type { MonitorListResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
@@ -24,6 +25,8 @@ import { useTenant } from "../../../lib/tenant/TenantProvider";
 import {
   formatTime,
   formatTimeWithSeconds,
+  HEALTH_REASON_LABELS,
+  incidentReasonLabel,
   Time,
   timeZone,
 } from "../../monitors/format";
@@ -35,6 +38,32 @@ import {
 } from "../../monitors/useMonitorAccess";
 import { PROJECT_GONE_NOTICE } from "../members/ProjectMembersPage";
 import { EventsSection } from "./EventsSection";
+
+/** The open incident's check failure, else why a down monitor has no incident; the raw code stays in `data-reason`. */
+function DownReason({
+  monitor,
+}: {
+  monitor: MonitorListResponse["monitors"][number];
+}) {
+  if (monitor.openIncident !== null)
+    return (
+      <span
+        data-testid="project-overview-down-reason"
+        data-reason={monitor.openIncident.reason}
+      >
+        {incidentReasonLabel(monitor.openIncident.reason)}
+      </span>
+    );
+  if (monitor.healthReason === null) return null;
+  return (
+    <span
+      data-testid="project-overview-down-reason"
+      data-reason={monitor.healthReason}
+    >
+      {HEALTH_REASON_LABELS[monitor.healthReason]}
+    </span>
+  );
+}
 
 export function ProjectOverviewPage() {
   const { organizationId, projectId } = useParams();
@@ -119,6 +148,12 @@ function OverviewForProject({
             }
       }
       scopeTestId="project-overview-scope"
+      description={
+        denied || gone || !enabled
+          ? undefined
+          : (access.project?.description ?? undefined)
+      }
+      descriptionTestId="project-description"
       status={
         data === undefined ? undefined : (
           <span>
@@ -219,7 +254,7 @@ function OverviewForProject({
     <Page>
       {header}
       {list.isError ? (
-        <Alert data-testid="project-overview-stale" tone="warning">
+        <Alert data-testid="project-overview-stale" tone="warning" role="alert">
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
           <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
         </Alert>
@@ -278,10 +313,7 @@ function OverviewForProject({
                           >
                             {monitor.name}
                           </Link>
-                          <span className="font-mono">
-                            {monitor.openIncident?.reason ??
-                              monitor.healthReason}
-                          </span>
+                          <DownReason monitor={monitor} />
                           {monitor.openIncident === null ? null : (
                             <span>
                               ตั้งแต่{" "}

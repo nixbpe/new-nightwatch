@@ -38,7 +38,11 @@ import {
   projectDetail,
   must,
 } from "../../monitors/detail-test-support";
-import { formatDuration, incidentReasonLabel } from "../../monitors/format";
+import {
+  formatDuration,
+  HEALTH_REASON_LABELS,
+  incidentReasonLabel,
+} from "../../monitors/format";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
 guardUnassignedNetwork();
@@ -190,7 +194,9 @@ describe("Project overview", () => {
       "href",
       `/organizations/${A}/projects/${P}/monitors/${down.id}`,
     );
-    expect(within(banner).getByText("http_status")).toBeInTheDocument();
+    const reason = within(banner).getByTestId("project-overview-down-reason");
+    expect(reason).toHaveAttribute("data-reason", "http_status");
+    expect(reason).toHaveTextContent(incidentReasonLabel("http_status"));
     expect(banner.querySelector("time")).toHaveAttribute(
       "datetime",
       DATA_AS_OF,
@@ -201,13 +207,29 @@ describe("Project overview", () => {
       expect(screen.queryByTestId("project-overview-down-banner")).toBeNull();
     });
   });
+  it("shows the Project description under the title only when there is one", async () => {
+    renderPage();
+    await ready();
+    expect(screen.queryByTestId("project-description")).toBeNull();
+    cleanup();
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ description: "Billing and payouts" }),
+    );
+    renderPage();
+    await ready();
+    expect(await screen.findByTestId("project-description")).toHaveTextContent(
+      "Billing and payouts",
+    );
+  });
   it("a down monitor without an open incident shows its health reason and no time", async () => {
     vi.mocked(fetchMonitorList).mockResolvedValue(
       list([item({ health: "down", healthReason: "check_error" })]),
     );
     renderPage();
     const banner = await screen.findByTestId("project-overview-down-banner");
-    expect(within(banner).getByText("check_error")).toBeInTheDocument();
+    const reason = within(banner).getByTestId("project-overview-down-reason");
+    expect(reason).toHaveAttribute("data-reason", "check_error");
+    expect(reason).toHaveTextContent(HEALTH_REASON_LABELS.check_error);
     expect(banner.querySelector("time")).toBeNull();
   });
   it("lists every down monitor of a Project at its cap of 20", async () => {
@@ -312,6 +334,11 @@ describe("Project overview", () => {
       "datetime",
       DATA_AS_OF,
     );
+    const eventReason = within(must(rows[0])).getByTestId(
+      "project-overview-event-reason",
+    );
+    expect(eventReason).toHaveAttribute("data-reason", "http_status");
+    expect(eventReason).toHaveTextContent(incidentReasonLabel("http_status"));
     expect(rows[0]).toHaveTextContent("503");
     expect(rows[1]).toHaveTextContent("2");
     expect(rows[2]).toHaveTextContent("2");

@@ -1199,11 +1199,21 @@ describe("ProjectSwitcher", () => {
     expect(rememberLastProjectMock).not.toHaveBeenCalled();
   });
 
-  it("AC-06: with no Project the switcher links to the projects page and the Project leaves stay out", async () => {
+  it("AC-06: with no Project the switcher links an Owner straight to the create dialog and the Project leaves stay out", async () => {
     renderShell({ projects: [], last: null });
     const empty = await screen.findByTestId("shell-project-empty");
+    expect(empty).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects?create=1`,
+    );
+    expect(screen.queryByTestId("shell-project-switch")).toBeNull();
+    expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
+  });
+
+  it("AC-06: with no Project the switcher links a role below Admin to the projects page only", async () => {
+    renderShell({ projects: [], last: null, role: "viewer" });
+    const empty = await screen.findByTestId("shell-project-empty");
     expect(empty).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
-    expect(empty).toHaveTextContent("ยังไม่มีโปรเจกต์");
     expect(screen.queryByTestId("shell-project-switch")).toBeNull();
     expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
   });
@@ -1417,7 +1427,10 @@ describe("ProjectSwitcher", () => {
       path: `/organizations/${ORG_C}/projects/${P_ALPHA}/members`,
     });
     const empty = await screen.findByTestId("shell-project-empty");
-    expect(empty).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
+    expect(empty).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects?create=1`,
+    );
     expect(screen.queryByTestId("shell-project-switch")).toBeNull();
     expect(screen.queryByTestId("shell-project-name")).toBeNull();
     expect(screen.queryByTestId("shell-project-navigation")).toBeNull();

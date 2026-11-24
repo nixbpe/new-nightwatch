@@ -117,10 +117,14 @@ const auditNotifications: NotificationItem[] = [
 
 let userId = "user-a";
 let serverActiveOrgId: string | null = ORG_A;
+let organizationRole = "owner";
 
 vi.mock("../lib/tenant/TenantProvider", () => ({
   useTenant: () => ({
-    me: { user: { id: userId }, organizations: [{ id: ORG_A, name: "Acme" }] },
+    me: {
+      user: { id: userId },
+      organizations: [{ id: ORG_A, name: "Acme", role: organizationRole }],
+    },
     serverActiveOrgId,
   }),
 }));
@@ -167,6 +171,7 @@ function renderPage(retry = false) {
 afterEach(() => {
   userId = "user-a";
   serverActiveOrgId = ORG_A;
+  organizationRole = "owner";
   fetchNotificationsMock.mockReset();
   markAllNotificationsReadMock.mockReset();
   openNotificationMock.mockReset();
@@ -232,6 +237,8 @@ describe("NotificationsPage", () => {
       screen.getByTestId("notifications-filter-category-monitor"),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("notifications-mark-all")).toBeEnabled();
+    // Mark-all ignores the filter, so the button says it covers every category.
+    expect(screen.getByTestId("notifications-mark-all-scope")).toBeVisible();
     expect(screen.getByTestId("notifications-count-recent")).toHaveTextContent(
       "5 รายการใน 7 วัน",
     );
@@ -240,6 +247,7 @@ describe("NotificationsPage", () => {
     expect(
       await screen.findByTestId(`notification-row-${notification.id}`),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("notifications-mark-all-scope")).toBeNull();
     expect(fetchNotificationsMock).toHaveBeenLastCalledWith(ORG_A, {
       status: "all",
       category: null,
@@ -1058,6 +1066,105 @@ describe("NotificationsPage", () => {
       await screen.findByTestId("notifications-mark-all-error"),
     ).toBeInTheDocument();
   });
+
+  it("names the active organization in the inbox scope and says other organizations are not shown", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [notification],
+      nextCursor: null,
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
+      unreadCount: 1,
+    });
+    renderPage();
+    await screen.findByTestId(`notification-row-${notification.id}`);
+    expect(screen.getByTestId("page-scope")).toHaveTextContent("Acme");
+    expect(screen.getByTestId("notifications-scope-description")).toBeVisible();
+  });
+
+  it("links an account security item to the sessions page, and its detail also to the password page", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [notification],
+      nextCursor: null,
+      counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
+      unreadCount: 1,
+    });
+    openNotificationMock.mockResolvedValue({
+      ...notification,
+      readAt: "2026-09-25T03:01:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderPage();
+    const row = await screen.findByTestId(
+      `notification-row-${notification.id}`,
+    );
+    expect(
+      within(row).getByTestId("notification-account-sessions-link"),
+    ).toHaveAttribute("href", "/settings/sessions");
+
+    await user.click(
+      within(row).getByTestId(`notification-open-${notification.id}`),
+    );
+    const detail = await screen.findByTestId(
+      `notification-detail-${notification.id}`,
+    );
+    expect(
+      within(detail).getByTestId("notification-account-sessions-link"),
+    ).toHaveAttribute("href", "/settings/sessions");
+    expect(
+      within(detail).getByTestId("notification-account-security-link"),
+    ).toHaveAttribute("href", "/settings/security");
+  });
+
+  it.each([
+    ["owner", true],
+    ["admin", true],
+    ["viewer", false],
+  ])(
+    "links a settings-changed item to the settings page only for owners and admins (%s)",
+    async (role, linked) => {
+      organizationRole = role;
+      const item: NotificationItem = {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        scope: "organization",
+        organizationId: ORG_A,
+        eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED",
+        occurredAt: "2026-09-25T03:00:00.000Z",
+        readAt: null,
+        actor: { displayName: "Somchai" },
+        category: "notification-settings",
+      };
+      fetchNotificationsMock.mockResolvedValue({
+        organizationId: ORG_A,
+        items: [item],
+        nextCursor: null,
+        counts: makeNotificationCounts({ total: 1, unread: 1, recent: 0 }),
+        unreadCount: 1,
+      });
+      openNotificationMock.mockResolvedValue({
+        ...item,
+        readAt: "2026-09-25T03:01:00.000Z",
+      });
+      const user = userEvent.setup();
+      renderPage();
+      const row = await screen.findByTestId(`notification-row-${item.id}`);
+      const link = (scope: HTMLElement) =>
+        within(scope).queryByTestId("notification-settings-link");
+      if (linked) {
+        expect(link(row)).toHaveAttribute(
+          "href",
+          `/organizations/${ORG_A}/notification-settings`,
+        );
+      } else {
+        expect(link(row)).toBeNull();
+      }
+      await user.click(within(row).getByTestId(`notification-open-${item.id}`));
+      const detail = await screen.findByTestId(
+        `notification-detail-${item.id}`,
+      );
+      expect(link(detail) !== null).toBe(linked);
+    },
+  );
 
   it("keeps an empty inbox distinct from a failed inbox request", async () => {
     fetchNotificationsMock.mockResolvedValueOnce({

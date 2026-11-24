@@ -152,6 +152,19 @@ function newCvesPath(item: VulnerabilityNotificationItem) {
 function auditExportPath(organizationId: string) {
   return `/organizations/${organizationId}/audit-log#my-exports`;
 }
+function notificationSettingsPath(organizationId: string) {
+  return `/organizations/${organizationId}/notification-settings`;
+}
+/** The settings page is in the menu of owners and admins only. */
+function isSettingsChanged(item: NotificationItem) {
+  return (
+    item.scope === "organization" &&
+    item.eventType === "ORG-NOTIFICATION-SETTINGS-CHANGED"
+  );
+}
+function canManageSettings(role: string | undefined) {
+  return role === "owner" || role === "admin";
+}
 function MonitorFacts({
   item,
   preferences,
@@ -399,6 +412,33 @@ function NotificationList({
                 className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 เปิดบันทึกกิจกรรม
+              </Link>
+            ) : null}
+            {item.scope !== "organization" ? (
+              <Link
+                data-testid="notification-account-sessions-link"
+                to="/settings/sessions"
+                onClick={onNavigate}
+                data-popover-item={popoverItems ? "" : undefined}
+                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                ไม่ใช่คุณ? ตรวจสอบเซสชัน
+              </Link>
+            ) : null}
+            {item.scope === "organization" &&
+            isSettingsChanged(item) &&
+            canManageSettings(
+              me?.organizations.find((org) => org.id === item.organizationId)
+                ?.role,
+            ) ? (
+              <Link
+                data-testid="notification-settings-link"
+                to={notificationSettingsPath(item.organizationId)}
+                onClick={onNavigate}
+                data-popover-item={popoverItems ? "" : undefined}
+                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                ดูการตั้งค่า
               </Link>
             ) : null}
           </li>
@@ -796,16 +836,66 @@ function NotificationsPageForOrganization({
                 </dd>
               </>
             ) : null}
+            {detail.scope !== "organization" ? (
+              <>
+                <dt className="text-foreground-secondary">ไม่ใช่คุณ?</dt>
+                <dd className="flex flex-wrap gap-x-4 gap-y-1">
+                  <Link
+                    data-testid="notification-account-sessions-link"
+                    to="/settings/sessions"
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    ตรวจสอบเซสชัน
+                  </Link>
+                  <Link
+                    data-testid="notification-account-security-link"
+                    to="/settings/security"
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    เปลี่ยนรหัสผ่าน
+                  </Link>
+                </dd>
+              </>
+            ) : null}
+            {detail.scope === "organization" &&
+            isSettingsChanged(detail) &&
+            canManageSettings(
+              me?.organizations.find((org) => org.id === detail.organizationId)
+                ?.role,
+            ) ? (
+              <>
+                <dt className="text-foreground-secondary">การตั้งค่า</dt>
+                <dd>
+                  <Link
+                    data-testid="notification-settings-link"
+                    to={notificationSettingsPath(detail.organizationId)}
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    ดูการตั้งค่า
+                  </Link>
+                </dd>
+              </>
+            ) : null}
           </dl>
         </Card>
       </Page>
     );
   }
+  const activeOrganizationName = me?.organizations.find(
+    (org) => org.id === serverActiveOrgId,
+  )?.name;
   const scope = {
-    label: "บัญชีของคุณ",
+    label:
+      activeOrganizationName === undefined
+        ? "บัญชีของคุณ"
+        : `บัญชีของคุณ + ${activeOrganizationName}`,
     tag:
       serverActiveOrgId === null ? "ไม่มีองค์กรที่ใช้งาน" : "องค์กรที่ใช้งาน",
   };
+  const scopeDescription =
+    serverActiveOrgId === null
+      ? "แสดงเฉพาะการแจ้งเตือนของบัญชี"
+      : "แสดงการแจ้งเตือนของบัญชีและองค์กรที่ใช้งาน ไม่แสดงรายการขององค์กรอื่น";
   if (list.isPending)
     return (
       <Page>
@@ -838,6 +928,8 @@ function NotificationsPageForOrganization({
         eyebrow="// inbox"
         scope={scope}
         title="การแจ้งเตือน"
+        description={scopeDescription}
+        descriptionTestId="notifications-scope-description"
         status={
           <span>
             {unreadCount === 0 ? (
@@ -862,6 +954,11 @@ function NotificationsPageForOrganization({
           >
             <CheckIcon size={16} />
             ทำเครื่องหมายว่าอ่านทั้งหมด
+            {filters.category === null ? null : (
+              <span data-testid="notifications-mark-all-scope">
+                {" ในทุกหมวด"}
+              </span>
+            )}
           </Button>
         }
       />
@@ -941,7 +1038,7 @@ function NotificationsPageForOrganization({
             <Button
               key={category}
               variant="secondary"
-              className="aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+              className="aria-pressed:border-primary aria-pressed:bg-primary-tint aria-pressed:text-primary"
               data-testid={`notifications-filter-category-${category}`}
               aria-pressed={(filters.category ?? "all") === category}
               ref={
@@ -1001,7 +1098,7 @@ function NotificationsPageForOrganization({
             data-testid="notifications-empty"
             icon={<BellIcon size={20} />}
             title="ยังไม่มีการแจ้งเตือน"
-            description="เหตุการณ์ด้านความปลอดภัยของบัญชี การเปลี่ยนแปลงขององค์กรและสถานะมอนิเตอร์จะแสดงที่นี่"
+            description="เหตุการณ์ด้านความปลอดภัยของบัญชี การเปลี่ยนแปลงขององค์กร สถานะมอนิเตอร์ และ CVE ใหม่ที่วิกฤตหรืออยู่ใน KEV จะแสดงที่นี่ ไม่มีแจ้งเตือนไม่ได้แปลว่าไม่มีช่องโหว่ ดูผลที่หน้าช่องโหว่ของโปรเจกต์"
           />
         ) : (
           <Card className="overflow-hidden">

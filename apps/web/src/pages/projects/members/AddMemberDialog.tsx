@@ -7,26 +7,17 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { Link } from "react-router";
 
 import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
 import { Alert, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
+import { Checkbox } from "../../../components/ui/checkbox";
+import { Dialog } from "../../../components/ui/dialog";
 import { Label } from "../../../components/ui/label";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
-import {
-  trapDialogTab,
-  useDialogFocusReturn,
-} from "../../../components/ui/useDialogFocusReturn";
 import { ApiError } from "../../../lib/api/client";
 import {
   addProjectMembers,
@@ -38,15 +29,6 @@ import { PROJECT_ROLE_HINTS, PROJECT_ROLE_LABELS } from "./roles";
 
 const SEARCH_DEBOUNCE_MS = 300;
 // Tab order skips the roving-tabindex radios that are not selected.
-const FOCUSABLE = [
-  "a[href]",
-  'button:not(:disabled):not([tabindex="-1"])',
-  "input:not(:disabled)",
-  "select:not(:disabled)",
-  "textarea:not(:disabled)",
-  '[tabindex]:not([tabindex="-1"]):not(:disabled)',
-].join(",");
-
 const ROLE_OPTIONS = [
   { value: "member", label: PROJECT_ROLE_LABELS.member },
   { value: "admin", label: PROJECT_ROLE_LABELS.admin },
@@ -70,6 +52,7 @@ export type AddStaleReason = "denied" | "not-found";
 export function AddMemberDialog({
   organizationId,
   organizationName,
+  canManageOrganization,
   projectId,
   projectName,
   opener,
@@ -80,6 +63,8 @@ export function AddMemberDialog({
 }: {
   organizationId: string;
   organizationName: string;
+  /** Owners and admins of the Organization can invite; everyone else is told whom to ask. */
+  canManageOrganization: boolean;
   projectId: string;
   projectName: string;
   opener: HTMLElement | null;
@@ -88,11 +73,8 @@ export function AddMemberDialog({
   onCancel: () => void;
   onStale: (reason: AddStaleReason) => void;
 }) {
-  const titleId = useId();
-  const descriptionId = useId();
   const searchId = useId();
   const hintId = useId();
-  const dialog = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
   const queryClient = useQueryClient();
@@ -109,8 +91,6 @@ export function AddMemberDialog({
     queryFn: () => fetchProjectMemberCandidates(organizationId, projectId, q),
     placeholderData: keepPreviousData,
   });
-
-  useDialogFocusReturn(dialog, searchInput, opener, fallbackFocus);
 
   useEffect(() => {
     if (searchText.trim() === q) return;
@@ -182,241 +162,228 @@ export function AddMemberDialog({
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancel();
-      return;
-    }
-    trapDialogTab(event, dialog.current, FOCUSABLE);
-  };
-
   const rows = candidates.data?.candidates;
 
-  return createPortal(
-    <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
-      <div
-        ref={dialog}
-        data-testid="add-member-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        aria-busy={submitting ? true : undefined}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        className="overlay-enter flex max-h-[calc(100dvh-2rem)] w-full max-w-[560px] flex-col rounded-md border border-foreground/10 bg-surface text-foreground shadow-modal focus:outline-none"
-      >
-        <div className="px-4 pt-4 sm:px-6 sm:pt-6">
-          <h2 id={titleId} className="text-lg font-semibold text-heading">
-            เพิ่มสมาชิกเข้าโปรเจกต์
-          </h2>
-          <p
-            id={descriptionId}
-            className="mt-1 text-sm break-words text-foreground-secondary"
-          >
-            เลือกจากสมาชิกขององค์กร {organizationName} เพื่อเข้าร่วม{" "}
-            {projectName}
-          </p>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
-          {formError === null ? null : (
-            <Alert data-testid="add-member-error" tone="error">
-              {formError}
-            </Alert>
-          )}
-          <div>
-            <Label htmlFor={searchId} className="mb-2 block font-medium">
-              ค้นหาสมาชิกองค์กร
-            </Label>
-            <div className="relative">
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-foreground-secondary"
-              >
-                <SearchIcon size={18} />
-              </span>
-              <Input
-                id={searchId}
-                data-testid="add-member-search"
-                type="search"
-                ref={searchInput}
-                value={searchText}
-                maxLength={100}
-                className="pl-10"
-                placeholder="ชื่อหรืออีเมล"
-                onChange={(event) => {
-                  setSearchText(event.target.value);
-                }}
-              />
-            </div>
+  return (
+    <Dialog
+      data-testid="add-member-dialog"
+      size="lg"
+      title="เพิ่มสมาชิกเข้าโปรเจกต์"
+      description={
+        <>
+          เลือกจากสมาชิกขององค์กร {organizationName} เพื่อเข้าร่วม {projectName}
+        </>
+      }
+      busy={submitting}
+      opener={opener}
+      fallbackFocus={fallbackFocus}
+      initialFocus={searchInput}
+      onClose={cancel}
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
+        {formError === null ? null : (
+          <Alert data-testid="add-member-error" tone="error">
+            {formError}
+          </Alert>
+        )}
+        <div>
+          <Label htmlFor={searchId} className="mb-2 block font-medium">
+            ค้นหาสมาชิกองค์กร
+          </Label>
+          <div className="relative">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-foreground-secondary"
+            >
+              <SearchIcon size={18} />
+            </span>
+            <Input
+              id={searchId}
+              data-testid="add-member-search"
+              type="search"
+              ref={searchInput}
+              value={searchText}
+              maxLength={100}
+              className="pl-10"
+              placeholder="ชื่อหรืออีเมล"
+              onChange={(event) => {
+                setSearchText(event.target.value);
+              }}
+            />
           </div>
-          <p
-            data-testid="add-member-result-status"
-            role="status"
-            className="sr-only"
-          >
-            {rows === undefined || candidates.isFetching
-              ? ""
-              : rows.length === 0
-                ? "ไม่พบสมาชิกองค์กร"
-                : `พบ ${String(rows.length)} คน`}
-          </p>
-          <div
-            role="group"
-            aria-label="สมาชิกองค์กร"
-            aria-busy={candidates.isFetching ? true : undefined}
-            className="max-h-64 min-h-16 overflow-y-auto rounded-md border border-foreground/10"
-          >
-            {rows === undefined ? (
-              candidates.isError ? (
-                <div className="flex flex-col items-start gap-2 p-3">
-                  <Alert data-testid="add-member-candidates-error" tone="error">
-                    โหลดรายชื่อสมาชิกองค์กรไม่สำเร็จ
-                  </Alert>
-                  <Button
-                    data-testid="add-member-candidates-retry"
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void candidates.refetch()}
-                  >
-                    ลองอีกครั้ง
-                  </Button>
-                </div>
-              ) : (
-                <p
-                  data-testid="add-member-loading"
-                  role="status"
-                  className="p-3 text-foreground-secondary"
+        </div>
+        <p
+          data-testid="add-member-result-status"
+          role="status"
+          className="sr-only"
+        >
+          {rows === undefined || candidates.isFetching
+            ? ""
+            : rows.length === 0
+              ? "ไม่พบสมาชิกองค์กร"
+              : `พบ ${String(rows.length)} คน`}
+        </p>
+        <div
+          role="group"
+          aria-label="สมาชิกองค์กร"
+          aria-busy={candidates.isFetching ? true : undefined}
+          className="max-h-64 min-h-16 overflow-y-auto rounded-md border border-foreground/10"
+        >
+          {rows === undefined ? (
+            candidates.isError ? (
+              <div className="flex flex-col items-start gap-2 p-3">
+                <Alert data-testid="add-member-candidates-error" tone="error">
+                  โหลดรายชื่อสมาชิกองค์กรไม่สำเร็จ
+                </Alert>
+                <Button
+                  data-testid="add-member-candidates-retry"
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void candidates.refetch()}
                 >
-                  กำลังโหลดรายชื่อ…
-                </p>
-              )
-            ) : rows.length === 0 ? (
+                  ลองใหม่
+                </Button>
+              </div>
+            ) : (
               <p
-                data-testid="add-member-no-match"
+                data-testid="add-member-loading"
+                role="status"
                 className="p-3 text-foreground-secondary"
               >
-                {q === ""
-                  ? "ไม่พบสมาชิกองค์กร"
-                  : `ไม่พบสมาชิกองค์กรที่ตรงกับ “${q}” `}
-                คนที่ยังไม่อยู่ในองค์กรต้องได้รับคำเชิญเข้าองค์กรก่อน
+                กำลังโหลดรายชื่อ…
               </p>
-            ) : (
-              rows.map((candidate) => {
-                const noteId = `${hintId}-note-${candidate.userId}`;
-                const capped = full && !selected.includes(candidate.userId);
-                return (
-                  <label
-                    key={candidate.userId}
-                    data-testid={`add-member-row-${candidate.userId}`}
-                    className="flex items-center gap-3 border-b border-foreground/10 px-3 py-2 last:border-b-0 has-[:enabled]:cursor-pointer has-[:enabled]:hover:surface-hover"
-                  >
-                    <input
-                      data-testid="add-member-checkbox"
-                      type="checkbox"
-                      className="h-4 w-4 shrink-0 accent-primary"
-                      checked={selected.includes(candidate.userId)}
-                      disabled={capped}
-                      aria-describedby={
-                        capped ? `${noteId} ${hintId}-limit` : noteId
-                      }
-                      onChange={() => {
-                        toggle(candidate.userId);
-                      }}
-                    />
-                    <span
-                      aria-hidden="true"
-                      className="surface-hover inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-foreground/20 text-xs font-semibold"
-                    >
-                      {initialsOf(candidate.name)}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span
-                        data-testid="add-member-name"
-                        className="font-medium break-words"
-                      >
-                        {candidate.name}
-                      </span>
-                      <span className="text-[13px] break-all text-foreground-secondary">
-                        {candidate.email}
-                      </span>
-                    </span>
-                    <span
-                      id={noteId}
-                      data-testid="add-member-note"
-                      className="shrink-0 text-xs text-foreground-secondary"
-                    >
-                      {`องค์กร · ${ROLE_LABELS[candidate.organizationRole] ?? candidate.organizationRole}`}
-                    </span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-          <div>
-            <SegmentedControl
-              testId="add-member-role"
-              optionTestId={(value) => `add-member-role-${value}`}
-              label="บทบาทในโปรเจกต์"
-              value={role}
-              options={ROLE_OPTIONS}
-              onChange={setRole}
-              disabled={submitting}
-            />
+            )
+          ) : rows.length === 0 ? (
             <p
-              data-testid="add-member-role-hint"
-              className="mt-2 text-xs text-foreground-secondary"
+              data-testid="add-member-no-match"
+              className="p-3 text-foreground-secondary"
             >
-              {PROJECT_ROLE_HINTS[role]}
+              {q === ""
+                ? "ไม่พบสมาชิกองค์กร"
+                : `ไม่พบสมาชิกองค์กรที่ตรงกับ “${q}” `}
+              คนที่ยังไม่อยู่ในองค์กรต้องได้รับคำเชิญเข้าองค์กรก่อน{" "}
+              {canManageOrganization ? (
+                <Link
+                  data-testid="add-member-invite-link"
+                  className="text-primary underline-offset-4 hover:underline"
+                  to={`/organizations/${organizationId}/members`}
+                >
+                  เชิญเข้าองค์กร
+                </Link>
+              ) : (
+                <span data-testid="add-member-invite-contact">
+                  ติดต่อเจ้าของหรือผู้ดูแลองค์กร
+                </span>
+              )}
             </p>
-          </div>
+          ) : (
+            rows.map((candidate) => {
+              const noteId = `${hintId}-note-${candidate.userId}`;
+              const capped = full && !selected.includes(candidate.userId);
+              return (
+                <label
+                  key={candidate.userId}
+                  data-testid={`add-member-row-${candidate.userId}`}
+                  className="flex items-center gap-3 border-b border-foreground/10 px-3 py-2 last:border-b-0 has-[:enabled]:cursor-pointer has-[:enabled]:hover:surface-hover"
+                >
+                  <Checkbox
+                    data-testid="add-member-checkbox"
+                    checked={selected.includes(candidate.userId)}
+                    disabled={capped}
+                    aria-describedby={
+                      capped ? `${noteId} ${hintId}-limit` : noteId
+                    }
+                    onChange={() => {
+                      toggle(candidate.userId);
+                    }}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="surface-hover inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-foreground/20 text-xs font-semibold"
+                  >
+                    {initialsOf(candidate.name)}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span
+                      data-testid="add-member-name"
+                      className="font-medium break-words"
+                    >
+                      {candidate.name}
+                    </span>
+                    <span className="text-[13px] break-all text-foreground-secondary">
+                      {candidate.email}
+                    </span>
+                  </span>
+                  <span
+                    id={noteId}
+                    data-testid="add-member-note"
+                    className="shrink-0 text-xs text-foreground-secondary"
+                  >
+                    {`องค์กร · ${ROLE_LABELS[candidate.organizationRole] ?? candidate.organizationRole}`}
+                  </span>
+                </label>
+              );
+            })
+          )}
         </div>
-        <div className="flex flex-col gap-3 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <span
-            aria-live="polite"
-            className="text-sm text-foreground-secondary"
+        <div>
+          <SegmentedControl
+            testId="add-member-role"
+            optionTestId={(value) => `add-member-role-${value}`}
+            label="บทบาทในโปรเจกต์"
+            value={role}
+            options={ROLE_OPTIONS}
+            onChange={setRole}
+            disabled={submitting}
+          />
+          <p
+            data-testid="add-member-role-hint"
+            className="mt-2 text-xs text-foreground-secondary"
           >
-            เลือกแล้ว{" "}
-            <span data-testid="add-member-count" className="font-mono">
-              {selected.length}
-            </span>{" "}
-            คน
-            {full ? (
-              <span id={`${hintId}-limit`} data-testid="add-member-limit">
-                {" "}
-                · เพิ่มได้ครั้งละไม่เกิน {PROJECT_MEMBER_ADD_MAX} คน
-              </span>
-            ) : null}
-          </span>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button
-              data-testid="add-member-cancel"
-              type="button"
-              variant="secondary"
-              wrap
-              aria-disabled={submitting ? true : undefined}
-              onClick={cancel}
-            >
-              ยกเลิก
-            </Button>
-            <Button
-              data-testid="add-member-submit"
-              type="button"
-              wrap
-              disabled={selected.length === 0}
-              aria-disabled={submitting ? true : undefined}
-              aria-busy={submitting ? true : undefined}
-              onClick={() => void submit()}
-            >
-              {submitting ? "กำลังเพิ่ม…" : "เพิ่มสมาชิก"}
-            </Button>
-          </div>
+            {PROJECT_ROLE_HINTS[role]}
+          </p>
         </div>
       </div>
-    </div>,
-    document.body,
+      <div className="flex flex-col gap-3 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <span aria-live="polite" className="text-sm text-foreground-secondary">
+          เลือกแล้ว{" "}
+          <span data-testid="add-member-count" className="font-mono">
+            {selected.length}
+          </span>{" "}
+          คน
+          {full ? (
+            <span id={`${hintId}-limit`} data-testid="add-member-limit">
+              {" "}
+              · เพิ่มได้ครั้งละไม่เกิน {PROJECT_MEMBER_ADD_MAX} คน
+            </span>
+          ) : null}
+        </span>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            data-testid="add-member-cancel"
+            type="button"
+            variant="secondary"
+            wrap
+            aria-disabled={submitting ? true : undefined}
+            onClick={cancel}
+          >
+            ยกเลิก
+          </Button>
+          <Button
+            data-testid="add-member-submit"
+            type="button"
+            wrap
+            disabled={selected.length === 0}
+            aria-disabled={submitting ? true : undefined}
+            aria-busy={submitting ? true : undefined}
+            onClick={() => void submit()}
+          >
+            {submitting ? "กำลังเพิ่ม…" : "เพิ่มสมาชิก"}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

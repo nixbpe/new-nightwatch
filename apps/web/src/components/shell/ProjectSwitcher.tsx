@@ -87,14 +87,15 @@ export function ProjectSwitcher({
   }
   const projects = current.projects ?? [];
   if (projects.length === 0) {
+    const emptyAction = canManage ? "สร้างโปรเจกต์แรก" : "ไปที่โปรเจกต์ทั้งหมด";
     return frame(
       <Link
         data-testid="shell-project-empty"
-        to={projectsPath}
-        onClick={onNavigate}
-        aria-label={
-          collapsed ? "ยังไม่มีโปรเจกต์ ไปที่โปรเจกต์ทั้งหมด" : undefined
+        to={
+          canManage ? `${projectsPath}?${CREATE_PROJECT_PARAM}=1` : projectsPath
         }
+        onClick={onNavigate}
+        aria-label={collapsed ? `ยังไม่มีโปรเจกต์ ${emptyAction}` : undefined}
         title={collapsed ? "ยังไม่มีโปรเจกต์" : undefined}
         className={`${blockClass} hover:surface-hover`}
       >
@@ -105,7 +106,7 @@ export function ProjectSwitcher({
               ยังไม่มีโปรเจกต์
             </span>
             <span className="block truncate text-xs text-foreground-secondary">
-              ไปที่โปรเจกต์ทั้งหมด
+              {emptyAction}
             </span>
           </span>
         )}

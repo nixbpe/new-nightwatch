@@ -457,7 +457,10 @@ describe("LoginPage", () => {
 
     await submitLogin("member@example.com", "correct-password");
     // Back-restored pages must not be left with a disabled button.
-    expect(screen.getByTestId("login-submit")).toBeEnabled();
+    await waitFor(() => {
+      expect(screen.getByTestId("login-submit")).toBeEnabled();
+    });
+    expect(signInEmailMock).toHaveBeenCalledTimes(1);
 
     expect(await screen.findByTestId("login-page")).toBeInTheDocument();
     expect(screen.queryByTestId("login-auth-error")).toBeNull();

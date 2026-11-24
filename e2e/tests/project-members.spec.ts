@@ -141,35 +141,41 @@ test.describe("owner manages members", () => {
       .getByTestId(`project-member-row-${people.viewer.userId}`)
       .getByTestId("project-member-role-select");
     await select.selectOption("admin");
+    await page.getByTestId("project-member-role-confirm").click();
     await expect(page.getByTestId("project-admin-count")).toHaveText("2");
     expect((await projectRoles())[people.viewer.userId]).toBe("admin");
     await select.selectOption("member");
+    await page.getByTestId("project-member-role-confirm").click();
     await expect(page.getByTestId("project-admin-count")).toHaveText("1");
     expect((await projectRoles())[people.viewer.userId]).toBe("member");
   });
 
-  test("rejects demoting or removing the last admin and says why", async ({
+  test("disables role change and removal for the last admin and says why", async ({
     page,
   }) => {
     await signIn(page, people.owner);
     await page.goto(membersUrl());
     const row = page.getByTestId(`project-member-row-${people.owner.userId}`);
     const select = row.getByTestId("project-member-role-select");
-    await select.selectOption("member");
-    const problem = page.getByTestId("project-members-problem");
-    await expect(problem).toBeVisible();
-    await expect(problem).toHaveAttribute("role", "alert");
+    await expect(select).toBeDisabled();
     await expect(select).toHaveValue("admin");
-    expect((await projectRoles())[people.owner.userId]).toBe("admin");
-
-    await row.getByTestId("project-member-remove").click();
-    const dialog = page.getByTestId("project-member-remove-dialog");
-    await dialog.getByTestId("project-member-remove-confirm").click();
-    await expect(
-      dialog.getByTestId("project-member-remove-error"),
-    ).toBeVisible();
-    await dialog.getByTestId("confirmation-cancel").click();
-    await expect(dialog).toHaveCount(0);
+    await expect(row.getByTestId("project-member-remove")).toBeDisabled();
+    await expect(page.getByTestId("project-rule-last-admin")).toBeVisible();
+    // Disabled controls are not authorization: bypass the UI with an authenticated request.
+    for (const [method, body] of [
+      ["PATCH", { role: "member" }],
+      ["DELETE", undefined],
+    ] as const) {
+      const response = await ownerSession.request(
+        method,
+        `${membersApi()}/${people.owner.userId}`,
+        body,
+      );
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        error: { code: "LAST_PROJECT_ADMIN" },
+      });
+    }
     expect((await projectRoles())[people.owner.userId]).toBe("admin");
   });
 
@@ -227,9 +233,11 @@ test.describe("other viewers", () => {
       .getByTestId(`project-member-row-${people.viewer.userId}`)
       .getByTestId("project-member-role-select");
     await select.selectOption("admin");
+    await page.getByTestId("project-member-role-confirm").click();
     await expect(page.getByTestId("project-admin-count")).toHaveText("2");
     expect((await projectRoles())[people.viewer.userId]).toBe("admin");
     await select.selectOption("member");
+    await page.getByTestId("project-member-role-confirm").click();
     await expect(page.getByTestId("project-admin-count")).toHaveText("1");
     expect((await projectRoles())[people.viewer.userId]).toBe("member");
   });
@@ -274,6 +282,7 @@ test.describe("other viewers", () => {
       .getByTestId(`project-member-row-${people.viewer.userId}`)
       .getByTestId("project-member-role-select")
       .selectOption("member");
+    await page.getByTestId("project-member-role-confirm").click();
 
     await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
     await expect(

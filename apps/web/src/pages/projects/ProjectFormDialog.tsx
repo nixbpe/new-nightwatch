@@ -10,29 +10,15 @@ import {
   useRef,
   useState,
   type SyntheticEvent,
-  type KeyboardEvent,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import {
-  trapDialogTab,
-  useDialogFocusReturn,
-} from "../../components/ui/useDialogFocusReturn";
+import { Dialog } from "../../components/ui/dialog";
 import { ApiError } from "../../lib/api/client";
 import { createProject, updateProject } from "../../lib/api/projects";
 import { cn } from "../../lib/utils";
-
-const FOCUSABLE = [
-  "a[href]",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
 
 export const SLUG_TAKEN_MESSAGE = "slug นี้ถูกใช้แล้วในองค์กร";
 export const LIMIT_REACHED_MESSAGE = `องค์กรมีโปรเจกต์ครบ ${String(PROJECT_LIMIT_PER_ORGANIZATION)} โปรเจกต์แล้ว ลบโปรเจกต์ที่ไม่ใช้ก่อนสร้างใหม่`;
@@ -84,11 +70,9 @@ export function ProjectFormDialog({
   /** The role or the project changed under the user: close and reload the list. */
   onStale: (reason: StaleReason) => void;
 }) {
-  const titleId = useId();
   const nameId = useId();
   const slugId = useId();
   const descriptionId = useId();
-  const dialog = useRef<HTMLFormElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const slugInput = useRef<HTMLInputElement>(null);
   const descriptionInput = useRef<HTMLTextAreaElement>(null);
@@ -101,8 +85,6 @@ export function ProjectFormDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [slugFocusToken, setSlugFocusToken] = useState(0);
-
-  useDialogFocusReturn(dialog, nameInput, opener, fallbackFocus);
 
   useEffect(() => {
     if (slugFocusToken > 0) slugInput.current?.focus();
@@ -172,35 +154,21 @@ export function ProjectFormDialog({
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancel();
-      return;
-    }
-    trapDialogTab(event, dialog.current, FOCUSABLE);
-  };
-
-  return createPortal(
-    <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
+  return (
+    <Dialog
+      data-testid={editing ? "project-edit-dialog" : "project-create-dialog"}
+      title={editing ? `แก้ไขโปรเจกต์ ${project.name}` : "สร้างโปรเจกต์"}
+      busy={submitting}
+      opener={opener}
+      fallbackFocus={fallbackFocus}
+      initialFocus={nameInput}
+      onClose={cancel}
+    >
       <form
-        ref={dialog}
-        data-testid={editing ? "project-edit-dialog" : "project-create-dialog"}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-busy={submitting ? true : undefined}
         noValidate
         onSubmit={(event) => void submit(event)}
-        onKeyDown={onKeyDown}
-        className="overlay-enter flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col rounded-md border border-foreground/10 bg-surface text-foreground shadow-modal focus:outline-none"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <h2
-          id={titleId}
-          className="px-4 pt-4 text-lg font-semibold text-heading sm:px-6 sm:pt-6"
-        >
-          {editing ? `แก้ไขโปรเจกต์ ${project.name}` : "สร้างโปรเจกต์"}
-        </h2>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
           {formError === null ? null : (
             <Alert data-testid="project-form-error" tone="error">
@@ -326,7 +294,6 @@ export function ProjectFormDialog({
           </Button>
         </div>
       </form>
-    </div>,
-    document.body,
+    </Dialog>
   );
 }

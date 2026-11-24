@@ -24,7 +24,19 @@ function EventText({ event }: { event: MonitorRecentEvent }) {
   if (event.kind === "incident_opened")
     return (
       <>
-        ล่ม · <span className="font-mono">{event.reason}</span>
+        ล่ม
+        {event.reason === null ? null : (
+          <>
+            {" "}
+            ·{" "}
+            <span
+              data-testid="project-overview-event-reason"
+              data-reason={event.reason}
+            >
+              {incidentReasonLabel(event.reason)}
+            </span>
+          </>
+        )}
         <HttpStatus status={event.httpStatus} />
       </>
     );
@@ -141,7 +153,9 @@ export function EventsSection({
         <Skeleton className="my-4 h-16 w-full" />
       )}
       {events.data !== undefined && events.isError ? (
-        <Alert tone="warning">อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ</Alert>
+        <Alert tone="warning" role="alert">
+          อัปเดตเหตุการณ์ล่าสุดไม่สำเร็จ
+        </Alert>
       ) : null}
     </section>
   );

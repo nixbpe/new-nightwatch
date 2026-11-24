@@ -12,7 +12,7 @@ import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
 import { Page, PageHeader } from "../../../components/shell/Page";
 import { PageState } from "../../../components/shell/PageState";
-import { Alert, Input, textInputClass } from "../../../components/ui";
+import { Alert, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
@@ -22,6 +22,7 @@ import {
 } from "../../../components/ui/data-table";
 import { Label } from "../../../components/ui/label";
 import { Notice } from "../../../components/ui/notice";
+import { Select } from "../../../components/ui/select";
 import { ApiError } from "../../../lib/api/client";
 import {
   fetchProjectDetail,
@@ -50,7 +51,15 @@ const ROLE_FAILED_MESSAGE = "เปลี่ยนบทบาทไม่สำ
 const REMOVE_FAILED_MESSAGE = "นำสมาชิกออกไม่สำเร็จ ลองอีกครั้ง";
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนไป";
 
+const LAST_ADMIN_RULE_ID = "project-rule-last-admin";
+
 const ROLES: readonly ProjectRole[] = ["admin", "member"];
+
+type RoleChange = {
+  member: ProjectMember;
+  role: ProjectRole;
+  opener: HTMLElement | null;
+};
 
 type Removal = {
   member: ProjectMember;
@@ -99,6 +108,8 @@ function ProjectMembers({
     null,
   );
   const [removal, setRemoval] = useState<Removal | null>(null);
+  // The select only proposes a role; the dialog's confirm sends it (CMP-11).
+  const [roleChange, setRoleChange] = useState<RoleChange | null>(null);
   // One role change at a time; the select shows the requested role until it settles.
   const [pendingRole, setPendingRole] = useState<{
     userId: string;
@@ -270,6 +281,7 @@ function ProjectMembers({
       setProblem(failureMessage(error, "change"));
     } finally {
       refocusUserId.current = member.userId;
+      setRoleChange(null);
       setPendingRole(null);
     }
   };
@@ -330,6 +342,8 @@ function ProjectMembers({
         }
         title={options.title ?? "สมาชิกโปรเจกต์"}
         status={options.status}
+        description={project?.description ?? undefined}
+        descriptionTestId="project-description"
         actions={options.actions}
         titleRef={heading}
         titleTabIndex={-1}
@@ -410,7 +424,6 @@ function ProjectMembers({
           alertTestId="project-members-context-alert"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูโปรเจกต์ได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -446,7 +459,6 @@ function ProjectMembers({
             retryTestId="project-members-retry"
             kind="error"
             message="โหลดสมาชิกโปรเจกต์ไม่สำเร็จ"
-            retryLabel="ลองอีกครั้ง"
             onRetry={() => {
               void detail.refetch();
               void membersQuery.refetch();
@@ -473,6 +485,9 @@ function ProjectMembers({
       member.email.toLowerCase().includes(needle),
   );
   const orgRoleLabel = ROLE_LABELS[orgRole ?? ""] ?? orgRole;
+  // The API still answers 409 if the count is stale.
+  const isLastAdmin = (member: ProjectMember) =>
+    member.projectRole === "admin" && project.adminCount <= 1;
 
   const columns: DataTableColumn<ProjectMember>[] = [
     {
@@ -536,25 +551,34 @@ function ProjectMembers({
             </span>
           );
         }
+        const lastAdmin = isLastAdmin(member);
         const shown =
           pendingRole?.userId === member.userId
             ? pendingRole.role
             : member.projectRole;
         return (
-          <select
+          <Select
+            size="sm"
             data-testid="project-member-role-select"
             data-user-id={member.userId}
             aria-label={`บทบาทในโปรเจกต์ของ ${member.name}`}
             aria-describedby={
-              problem === null ? undefined : "project-members-problem"
+              [
+                lastAdmin ? LAST_ADMIN_RULE_ID : null,
+                problem === null ? null : "project-members-problem",
+              ]
+                .filter((id) => id !== null)
+                .join(" ") || undefined
             }
-            className={`${textInputClass} h-9 text-sm`}
             value={shown}
-            disabled={pendingRole !== null}
+            disabled={pendingRole !== null || lastAdmin}
             aria-busy={pendingRole?.userId === member.userId ? true : undefined}
             onChange={(event) => {
               const role = ROLES.find((item) => item === event.target.value);
-              if (role !== undefined) void changeRole(member, role);
+              if (role === undefined || role === member.projectRole) return;
+              setNotice(null);
+              setProblem(null);
+              setRoleChange({ member, role, opener: event.currentTarget });
             }}
           >
             {ROLES.map((role) => (
@@ -562,7 +586,7 @@ function ProjectMembers({
                 {PROJECT_ROLE_LABELS[role]}
               </option>
             ))}
-          </select>
+          </Select>
         );
       },
     },
@@ -630,7 +654,11 @@ function ProjectMembers({
     <Page>
       {header({ actions, status })}
       {detail.isError || membersQuery.isError ? (
-        <Alert data-testid="project-members-stale-warning" tone="warning">
+        <Alert
+          data-testid="project-members-stale-warning"
+          tone="warning"
+          role="alert"
+        >
           อัปเดตรายการไม่สำเร็จ กำลังแสดงรายการที่โหลดไว้ก่อนหน้า
         </Alert>
       ) : null}
@@ -697,6 +725,10 @@ function ProjectMembers({
                       variant="ghost"
                       size="sm"
                       aria-label={`นำ ${member.name} ออก`}
+                      disabled={isLastAdmin(member)}
+                      aria-describedby={
+                        isLastAdmin(member) ? LAST_ADMIN_RULE_ID : undefined
+                      }
                       onClick={(event) => {
                         setNotice(null);
                         setProblem(null);
@@ -718,11 +750,8 @@ function ProjectMembers({
             data-testid="project-members-shown"
             className="text-xs text-foreground-secondary"
           >
-            แสดง{" "}
-            <span className="font-mono">
-              {visible.length === 0 ? "0" : `1–${String(visible.length)}`}
-            </span>{" "}
-            จาก <span className="font-mono">{members.length}</span>
+            แสดง <span className="font-mono">{visible.length}</span> จาก{" "}
+            <span className="font-mono">{members.length}</span>
           </p>
         </section>
         <Card
@@ -748,7 +777,7 @@ function ProjectMembers({
             ))}
           </dl>
           <div className="flex flex-col gap-2 border-t border-foreground/10 pt-4 text-sm text-foreground-secondary">
-            <p data-testid="project-rule-last-admin">
+            <p data-testid="project-rule-last-admin" id={LAST_ADMIN_RULE_ID}>
               ต้องมีผู้ดูแลอย่างน้อย 1 คน
               ระบบไม่ให้เปลี่ยนบทบาทหรือนำผู้ดูแลคนสุดท้ายออก
             </p>
@@ -771,6 +800,7 @@ function ProjectMembers({
         <AddMemberDialog
           organizationId={organizationId}
           organizationName={organization.name}
+          canManageOrganization={canManageOrganization}
           projectId={projectId}
           projectName={project.name}
           opener={adding.opener}
@@ -796,6 +826,39 @@ function ProjectMembers({
           onStale={handleStale}
         />
       )}
+      {roleChange === null ? null : (
+        <ConfirmDialog
+          data-testid="project-member-role-dialog"
+          confirmTestId="project-member-role-confirm"
+          title={`เปลี่ยนบทบาทของ ${roleChange.member.name} ในโปรเจกต์ ${project.name}`}
+          description={
+            <>
+              <p>
+                จาก {PROJECT_ROLE_LABELS[roleChange.member.projectRole]} เป็น{" "}
+                {PROJECT_ROLE_LABELS[roleChange.role]}:{" "}
+                {PROJECT_ROLE_DESCRIPTIONS[roleChange.role]}
+              </p>
+              {roleChange.member.userId === me?.user.id ? (
+                <p data-testid="project-member-role-self" className="mt-2">
+                  คุณกำลังเปลี่ยนบทบาทของตัวเอง
+                  {roleChange.role === "member" && !canManageOrganization
+                    ? " คุณจะจัดการสมาชิกโปรเจกต์นี้ไม่ได้อีก"
+                    : ""}
+                </p>
+              ) : null}
+            </>
+          }
+          confirmLabel={`เปลี่ยนบทบาทเป็น${PROJECT_ROLE_LABELS[roleChange.role]}`}
+          pendingLabel="กำลังบันทึกบทบาท…"
+          pending={pendingRole !== null}
+          opener={roleChange.opener}
+          fallbackFocus={heading}
+          onCancel={() => {
+            setRoleChange(null);
+          }}
+          onConfirm={() => void changeRole(roleChange.member, roleChange.role)}
+        />
+      )}
       {removal === null ? null : (
         <ConfirmDialog
           data-testid="project-member-remove-dialog"
@@ -807,6 +870,13 @@ function ProjectMembers({
                 สมาชิกจะเข้าโปรเจกต์นี้ไม่ได้อีก
                 แต่ยังอยู่ในองค์กรและเพิ่มกลับได้ภายหลัง
               </p>
+              {removal.member.userId === me?.user.id &&
+              !canManageOrganization ? (
+                <p data-testid="project-member-remove-self" className="mt-2">
+                  คุณกำลังนำตัวเองออก คุณจะเข้าโปรเจกต์นี้ไม่ได้อีก
+                  และจะกลับไปที่รายการโปรเจกต์
+                </p>
+              ) : null}
               {removal.error === null ? null : (
                 <p
                   data-testid="project-member-remove-error"

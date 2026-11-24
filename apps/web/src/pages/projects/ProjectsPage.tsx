@@ -341,7 +341,7 @@ function ProjectsForOrganization({
         }
         title="โปรเจกต์"
         status={status}
-        description="จัดคนในองค์กรเป็นกลุ่มงาน สมาชิกของโปรเจกต์เลือกได้จากสมาชิกขององค์กรเท่านั้น และมีบทบาท ผู้ดูแล หรือ สมาชิก"
+        description="โปรเจกต์รวมสมาชิกและมอนิเตอร์ของงานเดียวกัน เลือกสมาชิกจากองค์กรนี้"
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}
@@ -390,7 +390,6 @@ function ProjectsForOrganization({
           retryTestId="projects-context-retry"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูโปรเจกต์ได้"
-          retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
       </Page>
@@ -426,7 +425,6 @@ function ProjectsForOrganization({
             retryTestId="projects-list-retry"
             kind="error"
             message="โหลดโปรเจกต์ไม่สำเร็จ"
-            retryLabel="ลองอีกครั้ง"
             onRetry={() => void list.refetch()}
           />
         ) : (
@@ -483,7 +481,16 @@ function ProjectsForOrganization({
     <span>
       <span data-testid="projects-total" className="font-mono">
         {projects.length}
-      </span>{" "}
+      </span>
+      {canManage ? (
+        <>
+          {" "}
+          จาก{" "}
+          <span data-testid="projects-limit" className="font-mono">
+            {PROJECT_LIMIT_PER_ORGANIZATION}
+          </span>
+        </>
+      ) : null}{" "}
       โปรเจกต์ · คุณเข้าร่วม{" "}
       <span data-testid="projects-joined" className="font-mono">
         {joined.length}
@@ -500,9 +507,9 @@ function ProjectsForOrganization({
         <span className="flex min-w-40 flex-col">
           <span data-testid="project-name" className="font-medium break-words">
             <Link
-              data-testid="project-members-link"
+              data-testid="project-overview-link"
               className="rounded-[4px] underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              to={`/organizations/${organizationId}/projects/${project.id}/members`}
+              to={`/organizations/${organizationId}/projects/${project.id}/overview`}
             >
               {project.name}
             </Link>
@@ -513,6 +520,14 @@ function ProjectsForOrganization({
           >
             {project.slug}
           </span>
+          {project.description === null ? null : (
+            <span
+              data-testid="project-description"
+              className="line-clamp-1 text-[13px] text-foreground-secondary"
+            >
+              {project.description}
+            </span>
+          )}
         </span>
       ),
     },
@@ -523,7 +538,14 @@ function ProjectsForOrganization({
       align: "end",
       mono: true,
       cell: (project) => (
-        <span data-testid="project-member-count">{project.memberCount}</span>
+        <Link
+          data-testid="project-members-link"
+          aria-label={`สมาชิกของโปรเจกต์ ${project.name}: ${String(project.memberCount)} คน`}
+          className="rounded-[4px] underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          to={`/organizations/${organizationId}/projects/${project.id}/members`}
+        >
+          <span data-testid="project-member-count">{project.memberCount}</span>
+        </Link>
       ),
     },
     {
@@ -693,7 +715,7 @@ function ProjectsForOrganization({
     <Page>
       {header(actions, status)}
       {list.isError ? (
-        <Alert role="alert" data-testid="projects-stale-warning" tone="warning">
+        <Alert data-testid="projects-stale-warning" tone="warning" role="alert">
           อัปเดตรายการไม่สำเร็จ กำลังแสดงรายการที่โหลดไว้ก่อนหน้า
         </Alert>
       ) : null}
