@@ -98,6 +98,7 @@ export function VerifyEmailPage() {
     try {
       await refetch();
     } catch {
+      // A failed check leaves the same notice.
     } finally {
       setChecking(false);
       setNotVerified(true);
