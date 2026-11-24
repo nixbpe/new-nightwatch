@@ -15,6 +15,7 @@ import { HairlineGrid } from "../../components/ui/hairline-grid";
 import { Notice } from "../../components/ui/notice";
 import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
+import { ApiError } from "../../lib/api/client";
 import {
   fetchInventory,
   INVENTORY_DENIED_MESSAGE,
@@ -209,7 +210,11 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
     !query.isFetching;
   if (
     adding !== null &&
-    (rowsDenied || query.isError || query.data?.canUpload === false)
+    (rowsDenied ||
+      isInventoryAccessDenied(query.error) ||
+      (query.error instanceof ApiError &&
+        [401, 403, 404].includes(query.error.status)) ||
+      (query.isSuccess && !query.data.canUpload))
   )
     setAdding(null);
   if (switched) return null;
@@ -400,6 +405,12 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
       {adding === null ? null : (
         <RowDialog
           mode={{ kind: "system" }}
+          writeAllowed={canUpload}
+          permissionRecovery={
+            query.isError
+              ? { pending: query.isFetching, retry: () => void query.refetch() }
+              : undefined
+          }
           scope={{ organizationId, projectId }}
           opener={adding}
           fallbackFocus={heading}
