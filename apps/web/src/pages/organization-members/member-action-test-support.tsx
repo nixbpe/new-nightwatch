@@ -4,7 +4,14 @@ import type {
   OrganizationMemberListResponse,
   OrganizationRole,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect } from "react";
+import { SessionQueryProvider } from "../../lib/auth/SessionQueryProvider";
+import { resetQueryClientRegistry } from "../../lib/queryClient";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -129,6 +136,18 @@ function Harness() {
       >
         confirm B
       </button>
+      <button
+        data-testid="test-member-switch-a"
+        onClick={() => void switchOrg(A)}
+      >
+        confirm A
+      </button>
+      <button
+        data-testid="test-member-navigate-a"
+        onClick={() => void navigate(`/organizations/${A}/members`)}
+      >
+        navigate A
+      </button>
       <output data-testid="location">{useLocation().pathname}</output>
       <Routes>
         <Route
@@ -140,26 +159,55 @@ function Harness() {
   );
 }
 
-export function mountMembersPage() {
+function ClientProbe({
+  onClient,
+}: {
+  onClient: (client: QueryClient) => void;
+}) {
+  const client = useQueryClient();
+  useEffect(() => {
+    onClient(client);
+  }, [client, onClient]);
+  return null;
+}
+
+export function mountMembersPage(session?: {
+  onClient: (client: QueryClient) => void;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, ME);
   const user = userEvent.setup();
-  const view = render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <Harness />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
+  const clients = new Set<QueryClient>([queryClient]);
+  const onClient = (client: QueryClient) => {
+    clients.add(client);
+    session?.onClient(client);
+  };
+  const children = (
+    <TenantProvider>
+      <ClientProbe onClient={onClient} />
+      <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+        <Harness />
+      </MemoryRouter>
+    </TenantProvider>
   );
+  const tree = () =>
+    session ? (
+      <SessionQueryProvider>{children}</SessionQueryProvider>
+    ) : (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  const view = render(tree());
   return {
     user,
+    rerenderSession() {
+      view.rerender(tree());
+    },
     dispose() {
       view.unmount();
-      queryClient.clear();
+      for (const client of clients) client.clear();
+      if (session) resetQueryClientRegistry();
     },
   };
 }

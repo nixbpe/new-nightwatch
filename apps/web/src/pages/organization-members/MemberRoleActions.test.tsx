@@ -1,10 +1,15 @@
+import type { QueryClient } from "@tanstack/react-query";
+import {
+  getQueryClientIdentity,
+  getContextPublicationSnapshot,
+} from "../../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberRoleUpdateResponse,
   OrganizationRole,
 } from "@nightwatch/api-contract";
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
@@ -20,6 +25,14 @@ import {
   MemberDirectory,
   mountMembersPage,
 } from "./member-action-test-support";
+
+const sessionState = vi.hoisted(() => ({
+  data: { user: { id: "user-me" } },
+  isPending: false,
+}));
+vi.mock("../../lib/auth-client", () => ({
+  authClient: { useSession: () => sessionState },
+}));
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -45,6 +58,7 @@ let listCalls: string[];
 let mounted: ReturnType<typeof mountMembersPage> | undefined;
 
 beforeEach(() => {
+  sessionState.data = { user: { id: ME } };
   directory = new MemberDirectory();
   listCalls = [];
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
@@ -749,3 +763,194 @@ it.each([
   await submitSettled("member-ann");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
 });
+
+it.each(["organization", "member"] as const)(
+  "rejects a filtered PATCH with mismatched %s identity despite matching role",
+  async (mismatch) => {
+    let patchReturned = false;
+    vi.mocked(fetchOrganizationMembers).mockImplementation(
+      (id, _limit, _offset, filter) => {
+        const list = directory.list(id);
+        const members = list.members.filter(
+          (member) =>
+            !filter?.role || (!patchReturned && member.role === filter.role),
+        );
+        return Promise.resolve({
+          ...list,
+          members,
+          page: { ...list.page, total: members.length },
+        });
+      },
+    );
+    vi.mocked(updateOrganizationMemberRole).mockImplementation(() => {
+      patchReturned = true;
+      return Promise.resolve({
+        member: {
+          id: mismatch === "member" ? "member-other" : "member-ann",
+          userId: "user-ann",
+          organizationId: mismatch === "organization" ? B : A,
+          role: "auditor",
+        },
+      });
+    });
+    const user = await renderAs("owner");
+    await user.selectOptions(
+      screen.getByTestId("members-filter-role"),
+      "viewer",
+    );
+    await user.selectOptions(roleSelect("member-ann"), "auditor");
+    await user.click(save("member-ann"));
+    expect(await screen.findByTestId("member-role-error")).toBeVisible();
+    expect(screen.queryByTestId("member-role-success")).toBeNull();
+    expect(screen.queryByTestId("member-row-member-ann")).toBeNull();
+    await user.click(screen.getByTestId("members-filter-clear"));
+    await screen.findByTestId("member-row-member-ann");
+    expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "viewer");
+    await submitSettled("member-ann");
+    await user.selectOptions(roleSelect("member-ann"), "auditor");
+    expect(save("member-ann")).toBeEnabled();
+  },
+);
+
+it.each(["success", "error"] as const)(
+  "retires old role %s through confirmed A→B→A without releasing the new guard",
+  async (outcome) => {
+    const old = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+    const current =
+      Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+    vi.mocked(updateOrganizationMemberRole)
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(current.promise);
+    vi.mocked(updateActiveOrganization).mockImplementation(
+      ({ organizationId }) =>
+        Promise.resolve({
+          ...contextFor("owner"),
+          lastActiveTenantId: organizationId,
+        }),
+    );
+    const user = await renderAs("owner");
+    await user.selectOptions(roleSelect("member-ann"), "auditor");
+    await user.click(save("member-ann"));
+    await user.click(screen.getByTestId("test-member-switch"));
+    await waitFor(() => {
+      expect(updateActiveOrganization).toHaveBeenCalledWith({
+        organizationId: B,
+      });
+    });
+    await user.click(screen.getByTestId("test-member-navigate"));
+    await screen.findByTestId("member-row-member-b");
+    await user.click(screen.getByTestId("test-member-switch-a"));
+    await waitFor(() => {
+      expect(updateActiveOrganization).toHaveBeenCalledWith({
+        organizationId: A,
+      });
+    });
+    await user.click(screen.getByTestId("test-member-navigate-a"));
+    await screen.findByTestId("member-row-member-ann");
+    await user.selectOptions(roleSelect("member-ann"), "auditor");
+    await user.click(save("member-ann"));
+    expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(2);
+    const calls = [...listCalls];
+    await act(async () => {
+      if (outcome === "success")
+        old.resolve({
+          member: {
+            id: "member-ann",
+            userId: "user-ann",
+            organizationId: A,
+            role: "owner",
+          },
+        });
+      else old.reject(new ApiError("LAST_OWNER", "late", 400));
+      await old.promise.catch(() => undefined);
+    });
+    expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "viewer");
+    expect(screen.queryByTestId("member-role-success")).toBeNull();
+    expect(screen.queryByTestId("member-role-error")).toBeNull();
+    expect(save("member-ann")).toBeDisabled();
+    expect(roleSelect("member-ann")).toBeDisabled();
+    expect(listCalls).toEqual(calls);
+    await user.click(save("member-ann"));
+    expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      directory.setRole("member-ann", "auditor");
+      current.resolve({
+        member: {
+          id: "member-ann",
+          userId: "user-ann",
+          organizationId: A,
+          role: "auditor",
+        },
+      });
+      await current.promise;
+    });
+    expect(await screen.findByTestId("member-role-success")).toBeVisible();
+    expect(pillFor("member-ann")).toHaveAttribute(
+      "data-member-role",
+      "auditor",
+    );
+    await submitSettled("member-ann");
+  },
+);
+
+it.each(["success", "error"] as const)(
+  "isolates an old actor role %s from the replacement session client and private controls",
+  async (outcome) => {
+    const old = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+    vi.mocked(updateOrganizationMemberRole).mockReturnValueOnce(old.promise);
+    vi.mocked(fetchMeContext).mockResolvedValue(contextFor("owner"));
+    const clients: QueryClient[] = [];
+    mounted = mountMembersPage({ onClient: (client) => clients.push(client) });
+    const sessionMount = mounted;
+    const user = sessionMount.user;
+    await screen.findByTestId("member-row-member-ann");
+    const origin = clients.at(-1);
+    assert(origin);
+    expect(getQueryClientIdentity(origin)).toBe(ME);
+    origin.setQueryData(["private-origin"], "origin only");
+    await user.selectOptions(roleSelect("member-ann"), "auditor");
+    await user.click(save("member-ann"));
+    const nextContext = contextFor("viewer");
+    nextContext.user = { ...nextContext.user, id: "replacement-actor" };
+    vi.mocked(fetchMeContext).mockResolvedValue(nextContext);
+    act(() => {
+      sessionState.data = { user: { id: "replacement-actor" } };
+      sessionMount.rerenderSession();
+    });
+    await screen.findByTestId("members-denied");
+    const destination = clients.at(-1);
+    assert(destination);
+    expect(destination).not.toBe(origin);
+    expect(getQueryClientIdentity(destination)).toBe("replacement-actor");
+    expect(getContextPublicationSnapshot(origin).admission.kind).toBe(
+      "retired",
+    );
+    expect(destination.getQueryData(["private-origin"])).toBeUndefined();
+    destination.setQueryData(["private-destination"], "replacement only");
+    const calls = [...listCalls];
+    await act(async () => {
+      if (outcome === "success")
+        old.resolve({
+          member: {
+            id: "member-ann",
+            userId: "user-ann",
+            organizationId: A,
+            role: "auditor",
+          },
+        });
+      else old.reject(new ApiError("LAST_OWNER", "late", 400));
+      await old.promise.catch(() => undefined);
+    });
+    expect(screen.getByTestId("members-denied")).toBeVisible();
+    expect(screen.queryByTestId("member-row-member-ann")).toBeNull();
+    expect(screen.queryByTestId("member-role-select-member-ann")).toBeNull();
+    expect(screen.queryByTestId("member-role-save-member-ann")).toBeNull();
+    expect(screen.queryByTestId("member-role-success")).toBeNull();
+    expect(screen.queryByTestId("member-role-error")).toBeNull();
+    expect(listCalls).toEqual(calls);
+    expect(destination.getQueryData(["private-destination"])).toBe(
+      "replacement only",
+    );
+    expect(origin.getQueryData(["private-destination"])).toBeUndefined();
+  },
+);
