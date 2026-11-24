@@ -1,3 +1,4 @@
+import { Notice } from "../components/ui/notice";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
@@ -143,10 +144,10 @@ export function VerifyEmailPage() {
               </Alert>
             )}
             {status === "sent" ? (
-              <Alert data-testid="verify-email-sent" tone="success">
+              <Notice data-testid="verify-email-sent" tone="success">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
-              </Alert>
+              </Notice>
             ) : null}
             <form.Field
               name="email"
@@ -209,10 +210,10 @@ export function VerifyEmailPage() {
               </Alert>
             )}
             {status === "sent" ? (
-              <Alert data-testid="verify-email-sent" tone="success">
+              <Notice data-testid="verify-email-sent" tone="success">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
-              </Alert>
+              </Notice>
             ) : null}
             <form.Subscribe
               selector={(state) => state.isSubmitting}

@@ -1,3 +1,4 @@
+import { Notice } from "../../components/ui/notice";
 import { invitationCreateInputSchema } from "@nightwatch/api-contract";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQueryClient } from "@tanstack/react-query";
@@ -171,10 +172,14 @@ export function InvitationPanel({
             <Alert data-testid="members-invitation-error" tone="error">
               {notice.text}
             </Alert>
+          ) : notice.tone === "success" ? (
+            <Notice data-testid="members-invitation-success" tone="success">
+              {notice.text}
+            </Notice>
           ) : (
             <Alert
-              data-testid={`members-invitation-${notice.tone}`}
-              tone={notice.tone === "warning" ? "warning" : "success"}
+              data-testid="members-invitation-warning"
+              tone="warning"
               role="status"
             >
               {notice.text}

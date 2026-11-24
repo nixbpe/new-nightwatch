@@ -186,7 +186,7 @@ describe("SecurityPage enrollment", () => {
     expect(screen.getByTestId("mfa-enabled-notice")).toBeVisible();
     expect(screen.getByTestId("mfa-enabled-notice")).toHaveAttribute(
       "role",
-      "alert",
+      "status",
     );
     expect(screen.queryByTestId("mfa-secret")).toBeNull();
     expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
