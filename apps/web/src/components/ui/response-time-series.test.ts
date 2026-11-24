@@ -1,12 +1,16 @@
 import type { MonitorResponseTimesResponse } from "@nightwatch/api-contract";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { defaultPreferences, writePreferences } from "../../lib/preferences";
 import {
+  axisTicks,
   buildSeries,
   describeEntry,
+  entryTime,
   rangeStats,
   summarize,
   toChartProps,
+  type SeriesEntry,
 } from "./response-time-series";
 
 const common = {
@@ -193,4 +197,49 @@ it("preserves hourly average weighting and avg/max wording at the exact-hour bou
   expect(describeEntry("7d", last)).toContain(
     "เวลาตอบสนองเฉลี่ย 100 ms สูงสุด 100 ms",
   );
+});
+
+describe("times follow the preference zone", () => {
+  // UTC+14 differs from any zone a runner or developer machine uses.
+  const ZONE = "Pacific/Kiritimati";
+  const entry = (at: string, end: string): SeriesEntry => ({
+    key: "k",
+    kind: "bucket" as SeriesEntry["kind"],
+    at: Date.parse(at),
+    end: Date.parse(end),
+    avgMs: null,
+    maxMs: null,
+    checks: 1,
+    responseChecks: null,
+    changes: [],
+  });
+  const useZone = () => {
+    writePreferences({ ...defaultPreferences(), timeZone: ZONE });
+  };
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("axis tick labels are clock times in that zone", () => {
+    useZone();
+    // 00:00Z is 14:00 on the same date in UTC+14.
+    const [tick] = axisTicks(
+      [new Date("2026-11-23T00:00:00Z")],
+      3_600_000,
+      true,
+    );
+    expect(tick?.label).toBe("14:00");
+  });
+
+  it("a span keeps its end date only when the zone's calendar day changes", () => {
+    useZone();
+    // 09:00Z to 11:00Z is 23:00 to 01:00 across midnight in UTC+14 (same UTC day).
+    expect(
+      entryTime("7d", entry("2026-11-23T09:00:00Z", "2026-11-23T11:00:00Z")),
+    ).toMatch(/–.*พ\.ย\./);
+    // 23:00Z to 01:00Z next day is 13:00 to 15:00 on one UTC+14 day (two UTC days).
+    expect(
+      entryTime("7d", entry("2026-11-23T23:00:00Z", "2026-11-24T01:00:00Z")),
+    ).not.toMatch(/–.*พ\.ย\./);
+  });
 });

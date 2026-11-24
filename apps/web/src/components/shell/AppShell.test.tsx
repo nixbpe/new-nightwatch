@@ -1270,6 +1270,10 @@ describe("AppShell", () => {
         return element;
       }),
     ).toHaveTextContent("1");
+    // The button's own name carries the count, since a label replaces its content.
+    expect(screen.getByTestId("shell-notifications-open")).toHaveAccessibleName(
+      expect.stringContaining("1"),
+    );
     expect(markAll).toBeEnabled();
     await user.click(markAll);
     expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
@@ -1428,6 +1432,39 @@ describe("AppShell", () => {
     expect(
       within(breadcrumb).getByTestId("shell-breadcrumb-current"),
     ).toBeInTheDocument();
+  });
+
+  it("retries a failed popover list from inside the popover", async () => {
+    const notification: NotificationItem = { ...accountNotificationItem };
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockRejectedValue(new Error("list down"));
+    const user = userEvent.setup();
+    renderShell();
+
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
+    await user.click(screen.getByTestId("shell-notifications-open"));
+    const retry = await screen.findByTestId("shell-notifications-list-retry");
+
+    fetchNotificationsMock.mockResolvedValue({
+      items: [notification],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    await user.click(retry);
+
+    expect(
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("shell-notifications-list-retry"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a popover open failure while keeping the list for retry", async () => {

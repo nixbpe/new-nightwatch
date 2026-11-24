@@ -3,57 +3,108 @@ import type {
   MonitorHealthReason,
 } from "@nightwatch/api-contract";
 
-export const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+import { currentPreferences } from "../../lib/preferences";
 
-const timeFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-const timeWithSecondsFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-const dateTimeFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-const dateFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+export const NO_DATA = "ไม่มีข้อมูล";
+
+/** Zone named in column headers and notes; follows Settings > Display. */
+export function timeZone(): string {
+  return currentPreferences().timeZone;
+}
+
+type Shape =
+  | "time"
+  | "timeSeconds"
+  | "dateTime"
+  | "dateTimeSeconds"
+  | "date"
+  | "dayMonth"
+  | "day";
+const SHAPES: Record<Shape, Intl.DateTimeFormatOptions> = {
+  time: { hour: "2-digit", minute: "2-digit" },
+  timeSeconds: { hour: "2-digit", minute: "2-digit", second: "2-digit" },
+  dateTime: {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  },
+  dateTimeSeconds: {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  },
+  date: { day: "numeric", month: "short", year: "numeric" },
+  dayMonth: { day: "numeric", month: "short" },
+  // en-CA prints YYYY-MM-DD; used only to compare calendar days in the preference zone.
+  day: { year: "numeric", month: "2-digit", day: "2-digit" },
+};
+const HAS_CLOCK: ReadonlySet<Shape> = new Set([
+  "time",
+  "timeSeconds",
+  "dateTime",
+  "dateTimeSeconds",
+]);
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Cached per zone and hour cycle; read at call time so a Settings change applies at once. */
+export function monitorFormatter(shape: Shape): Intl.DateTimeFormat {
+  const { timeZone: zone, hourCycle } = currentPreferences();
+  const key = `${shape}|${zone}|${hourCycle}`;
+  let cached = formatters.get(key);
+  if (cached === undefined) {
+    cached = new Intl.DateTimeFormat(
+      shape === "day" ? "en-CA" : "th-TH-u-nu-latn",
+      {
+        ...SHAPES[shape],
+        timeZone: zone,
+        ...(HAS_CLOCK.has(shape) ? { hourCycle } : {}),
+      },
+    );
+    formatters.set(key, cached);
+  }
+  return cached;
+}
+const formatter = monitorFormatter;
 const numberFormat = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
 export function formatTime(iso: string): string {
-  return timeFormat.format(new Date(iso));
+  return formatter("time").format(new Date(iso));
 }
 
 export function formatTimeWithSeconds(iso: string): string {
-  return timeWithSecondsFormat.format(new Date(iso));
+  return formatter("timeSeconds").format(new Date(iso));
 }
 
 export function formatDate(iso: string): string {
-  return dateFormat.format(new Date(iso));
+  return formatter("date").format(new Date(iso));
+}
+
+export function formatDateTimeSeconds(iso: string): string {
+  return formatter("dateTimeSeconds").format(new Date(iso));
 }
 
 export function formatDateTime(iso: string): string {
-  return dateTimeFormat.format(new Date(iso));
+  return formatter("dateTime").format(new Date(iso));
+}
+
+/** Same calendar day in the preference zone, so "today" matches the zone the header names. */
+function sameDay(a: Date, b: Date): boolean {
+  const day = formatter("day");
+  return day.format(a) === day.format(b);
 }
 
 /** Time of day for today, date and time otherwise, so yesterday never reads as today. */
 export function formatTimeOrDate(iso: string, now: Date = new Date()): string {
   const at = new Date(iso);
-  return at.toDateString() === now.toDateString()
-    ? timeFormat.format(at)
-    : dateTimeFormat.format(at);
+  return sameDay(at, now)
+    ? formatter("time").format(at)
+    : formatter("dateTime").format(at);
 }
 
 /** Seconds for today; date and time otherwise, so a previous day never reads as today. */
@@ -62,9 +113,9 @@ export function formatTimeWithSecondsOrDate(
   now: Date = new Date(),
 ): string {
   const at = new Date(iso);
-  return at.toDateString() === now.toDateString()
-    ? timeWithSecondsFormat.format(at)
-    : dateTimeFormat.format(at);
+  return sameDay(at, now)
+    ? formatter("timeSeconds").format(at)
+    : formatter("dateTime").format(at);
 }
 
 export function formatNumber(value: number): string {
@@ -143,7 +194,7 @@ const INCIDENT_REASON_LABELS: Record<
   string
 > = {
   http_status: "รหัสสถานะ HTTP ไม่ตรงเงื่อนไข",
-  assertion_failed: "Assertion ไม่ผ่าน",
+  assertion_failed: "เงื่อนไขตรวจสอบไม่ผ่าน",
   timeout: "หมดเวลารอ",
   dns_not_found: "ไม่พบชื่อโดเมน",
   connect_refused: "ปฏิเสธการเชื่อมต่อ",

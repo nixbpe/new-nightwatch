@@ -1,21 +1,63 @@
-import { act } from "@testing-library/react";
-import { createMemoryRouter } from "react-router";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  type RouteObject,
+} from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { routes } from "./router";
+
+// The shell, its providers and the two pages are stand-ins: these tests are about which boundary
+// shows a loader error, not about what those parts render.
+const loaders = vi.hoisted(() => ({
+  workspaceLoader: vi.fn(),
+  requireAnonLoader: vi.fn(),
+}));
+vi.mock("./lib/auth/loaders", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...loaders,
+}));
+vi.mock("./components/shell/AppShell", async () => {
+  const { Outlet: Content } = await import("react-router");
+  return {
+    AppShell: () => (
+      <div>
+        <nav data-testid="shell-nav" />
+        <main>
+          <Content />
+        </main>
+      </div>
+    ),
+  };
+});
+vi.mock("./lib/tenant/TenantProvider", () => ({
+  TenantProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("./lib/auth/SessionQueryProvider", () => ({
+  SessionQueryProvider: ({ children }: { children: React.ReactNode }) =>
+    children,
+}));
+vi.mock("./pages/WorkspaceEntryFallback", () => ({
+  WorkspaceEntryFallback: () => <div data-testid="workspace-page" />,
+}));
+vi.mock("./pages/LoginPage", () => ({
+  LoginPage: () => <div data-testid="login-page" />,
+}));
+
+function allRoutes(list: RouteObject[]): RouteObject[] {
+  return list.flatMap((route) => [route, ...allRoutes(route.children ?? [])]);
+}
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PROJECTS = `/organizations/${ORG}/projects`;
 
 // The real Projects route with its loader counted, so the route's own shouldRevalidate is what runs.
 function projectsRouter(entry: string) {
-  const route = routes
-    .flatMap((root) => root.children ?? [])
-    .flatMap((layout) => layout.children ?? [])
-    .find(
-      (candidate) =>
-        candidate.path === "/organizations/:organizationId/projects",
-    );
+  const route = allRoutes(routes).find(
+    (candidate) => candidate.path === "/organizations/:organizationId/projects",
+  );
   if (route === undefined) throw new Error("projects route not found");
   const loader = vi.fn(() => null);
   const router = createMemoryRouter(
@@ -86,16 +128,13 @@ describe("Vulnerability routes", () => {
 
   // The real routes of the two retired pages, with a bare target in place of the findings page.
   function vulnerabilityRouter(entry: string) {
-    const real = routes
-      .flatMap((root) => root.children ?? [])
-      .flatMap((layout) => layout.children ?? [])
-      .filter((candidate) =>
-        [`${VULNERABILITIES}/new`, `${VULNERABILITIES}/priority`]
-          .map((path) =>
-            path.replace(ORG, ":organizationId").replace(PROJECT, ":projectId"),
-          )
-          .includes(candidate.path ?? ""),
-      );
+    const real = allRoutes(routes).filter((candidate) =>
+      [`${VULNERABILITIES}/new`, `${VULNERABILITIES}/priority`]
+        .map((path) =>
+          path.replace(ORG, ":organizationId").replace(PROJECT, ":projectId"),
+        )
+        .includes(candidate.path ?? ""),
+    );
     expect(real).toHaveLength(2);
     return createMemoryRouter(
       [
@@ -127,6 +166,75 @@ describe("Vulnerability routes", () => {
     await settled(router);
     expect(router.state.location.pathname + router.state.location.search).toBe(
       to,
+    );
+    router.dispose();
+  });
+});
+
+describe("A loader that throws", () => {
+  function open(entry: string) {
+    const router = createMemoryRouter(routes, { initialEntries: [entry] });
+    render(<RouterProvider router={router} />);
+    return router;
+  }
+
+  it("shows the error inside the shell and runs the loader again on retry", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    loaders.workspaceLoader
+      .mockRejectedValueOnce(new Error("loader failed"))
+      .mockResolvedValue(null);
+    const router = open("/workspace");
+
+    // The detail stays in the console; the screen carries fixed Thai text, not the raw message.
+    expect(await screen.findByTestId("render-error")).toBeInTheDocument();
+    expect(screen.queryByText("loader failed")).toBeNull();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Unhandled route error",
+      expect.objectContaining({ message: "loader failed" }),
+    );
+    expect(screen.getByTestId("shell-nav")).toBeInTheDocument();
+    expect(screen.queryByText("Unexpected Application Error!")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("render-error-retry"));
+    expect(await screen.findByTestId("workspace-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("render-error")).toBeNull();
+    expect(loaders.workspaceLoader).toHaveBeenCalledTimes(2);
+    router.dispose();
+  });
+
+  it("shows the error on its own page outside the shell, with a retry", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    loaders.requireAnonLoader
+      .mockRejectedValueOnce(new Error("loader failed"))
+      .mockResolvedValue(null);
+    const router = open("/login");
+
+    expect(await screen.findByTestId("render-error")).toBeInTheDocument();
+    expect(screen.queryByText("loader failed")).toBeNull();
+    expect(screen.queryByTestId("shell-nav")).toBeNull();
+    expect(screen.queryByText("Unexpected Application Error!")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("render-error-retry"));
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+    router.dispose();
+  });
+});
+
+describe("An unknown address", () => {
+  it("shows the not-found page outside the shell with a way back", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/no/such/page"],
+    });
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId("not-found-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("shell-nav")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId("not-found-workspace")).toHaveAttribute(
+      "href",
+      "/workspace",
     );
     router.dispose();
   });

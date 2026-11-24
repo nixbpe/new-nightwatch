@@ -10,7 +10,7 @@ import {
   type PointerEvent,
 } from "react";
 
-import { TIME_ZONE, formatNumber } from "../../pages/monitors/format";
+import { timeZone, formatNumber } from "../../pages/monitors/format";
 import {
   axisTicks,
   buildSeries,
@@ -204,7 +204,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const clockTicks = range === "24h" || to - from < 2 * 24 * 3_600_000;
   const xTicks = axisTicks(x.ticks(width < 480 ? 4 : 6), to - from, clockTicks);
   const yTicks = y.ticks(4);
-  const label = `กราฟเส้นเวลาตอบสนอง หน่วย ms ช่วง ${RANGE_LABELS[range]} แหล่ง ผลการตรวจของ NightWatch เวลาตามเขตเวลา ${TIME_ZONE} ใช้ลูกศรซ้ายขวา Home และ End เพื่อดูค่าแต่ละจุด`;
+  const label = `กราฟเส้นเวลาตอบสนอง หน่วย ms ช่วง ${RANGE_LABELS[range]} แหล่ง ผลการตรวจของ NightWatch เวลาตามเขตเวลา ${timeZone()} ใช้ลูกศรซ้ายขวา Home และ End เพื่อดูค่าแต่ละจุด`;
 
   return (
     <div
@@ -297,7 +297,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
             textAnchor="end"
             className="fill-foreground-secondary text-xs"
           >
-            เวลา ({TIME_ZONE})
+            เวลา ({timeZone()})
           </text>
           {props.pauses.map((pause) => {
             const start = x(new Date(pause.from));

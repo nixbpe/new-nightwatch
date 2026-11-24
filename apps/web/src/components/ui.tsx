@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AlertCircleIcon, AlertTriangleIcon, InfoIcon } from "./shell/icons";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 
@@ -83,6 +84,7 @@ export function SubmitButton({
   pending,
   pendingLabel,
   disabled,
+  variant,
   "data-testid": testId,
   children,
 }: {
@@ -90,12 +92,14 @@ export function SubmitButton({
   pending: boolean;
   pendingLabel: string;
   disabled?: boolean;
+  variant?: "default" | "secondary";
   children: ReactNode;
 }) {
   return (
     <Button
       data-testid={testId}
       type="submit"
+      variant={variant}
       disabled={pending || disabled === true}
       className="w-full"
     >
@@ -104,17 +108,27 @@ export function SubmitButton({
   );
 }
 
+const ALERT_ICONS = {
+  error: AlertCircleIcon,
+  warning: AlertTriangleIcon,
+  info: InfoIcon,
+} as const;
+
 export function Alert({
   id,
   tone,
-  role = "alert",
+  role,
   "data-testid": testId,
   children,
 }: {
   "data-testid"?: string;
   id?: string;
-  tone: "error" | "success" | "warning" | "info";
-  /** `status` for outcomes that inform without interrupting (a sent invitation). */
+  /** No success tone: a success message is a `Notice` (CMP-10). */
+  tone: "error" | "warning" | "info";
+  /**
+   * Defaults to `alert` for an error and `status` for a warning or info, so a persistent
+   * caution is not announced assertively on every load.
+   */
   role?: "alert" | "status";
   children: ReactNode;
 }) {
@@ -122,20 +136,22 @@ export function Alert({
   const className =
     tone === "error"
       ? "border-danger/25 bg-danger/10 text-danger"
-      : tone === "success"
-        ? "border-primary/25 bg-primary/10 text-primary"
-        : tone === "warning"
-          ? "border-caution/25 bg-caution/10 text-caution"
-          : "border-foreground/15 bg-foreground/4 text-foreground";
+      : tone === "warning"
+        ? "border-caution/25 bg-caution/10 text-caution"
+        : "border-foreground/15 bg-foreground/4 text-foreground";
+  const Icon = ALERT_ICONS[tone];
   return (
-    <p
+    <div
       data-testid={testId}
       id={id}
-      role={role}
-      className={`rounded-md border px-3 py-2 text-sm ${className}`}
+      role={role ?? (tone === "error" ? "alert" : "status")}
+      className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${className}`}
     >
-      {children}
-    </p>
+      <span className="flex h-5 shrink-0 items-center">
+        <Icon />
+      </span>
+      <div className="min-w-0">{children}</div>
+    </div>
   );
 }
 

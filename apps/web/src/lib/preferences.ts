@@ -65,16 +65,20 @@ export function readPreferences(): Preferences {
 
 const listeners = new Set<() => void>();
 
-export function writePreferences(next: Preferences): void {
+/** `false` when storage refused the write: the choice applies for this page view only. */
+export function writePreferences(next: Preferences): boolean {
+  let persisted = true;
   try {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
   } catch {
     // Storage unavailable (private mode, quota): the choice still applies for this page view.
     cache = { raw: null, value: next, forced: true };
+    persisted = false;
   }
   for (const listener of listeners) {
     listener();
   }
+  return persisted;
 }
 
 // useSyncExternalStore needs a stable reference while the stored string is unchanged.
@@ -88,6 +92,11 @@ function getSnapshot(): Preferences {
   }
   cache = { raw, value: parse(raw), forced: false };
   return cache.value;
+}
+
+/** Current preferences for formatters that run outside React; stable while storage is unchanged. */
+export function currentPreferences(): Preferences {
+  return getSnapshot();
 }
 
 function subscribe(onChange: () => void): () => void {
@@ -106,7 +115,7 @@ function subscribe(onChange: () => void): () => void {
 
 export function usePreferences(): {
   preferences: Preferences;
-  save: (next: Preferences) => void;
+  save: (next: Preferences) => boolean;
 } {
   const preferences = useSyncExternalStore(
     subscribe,

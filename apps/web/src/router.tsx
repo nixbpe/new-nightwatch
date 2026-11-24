@@ -8,13 +8,12 @@ import {
 } from "react-router";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RouteError } from "./components/RouteError";
 import { AppShell } from "./components/shell/AppShell";
-import { AuthEyebrow } from "./components/shell/AuthFrame";
+import { AuthPageFrame } from "./components/shell/AuthFrame";
 import { AuthLayout } from "./components/shell/AuthLayout";
-import { BrandMark } from "./components/shell/BrandMark";
 import { CREATE_PROJECT_PARAM } from "./components/shell/nav-config";
 import { Button } from "./components/ui/button";
-import { Card } from "./components/ui/card";
 import {
   auditLogEventLoader,
   auditLogLoader,
@@ -100,24 +99,21 @@ export function RootLayout() {
 }
 
 // Standalone, not under AppShell: anonymous visitors reach bad URLs too, and the shell's
-// header would show misleading session state.
+// header would show misleading session state. It shares the auth pages' frame only for the look.
 function NotFoundPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
-      <BrandMark withName />
-      <Card className="w-full max-w-md items-center p-6 text-center sm:p-8">
-        <AuthEyebrow>{"// 404"}</AuthEyebrow>
-        <h1 className="mt-2 text-[28px] leading-9 font-semibold text-heading">
-          ไม่พบหน้านี้
-        </h1>
-        <p className="mt-2 text-sm text-foreground-secondary">
-          ตรวจสอบที่อยู่หรือกลับไปยังพื้นที่ทำงาน
-        </p>
-        <Button asChild className="mt-6">
-          <Link to="/workspace">ไปที่พื้นที่ทำงาน</Link>
-        </Button>
-      </Card>
-    </main>
+    <AuthPageFrame
+      data-testid="not-found-page"
+      eyebrow="// 404"
+      title="ไม่พบหน้านี้"
+      subtitle="ตรวจสอบที่อยู่หรือกลับไปยังพื้นที่ทำงาน"
+    >
+      <Button asChild className="w-full">
+        <Link data-testid="not-found-workspace" to="/workspace">
+          ไปที่พื้นที่ทำงาน
+        </Link>
+      </Button>
+    </AuthPageFrame>
   );
 }
 
@@ -138,8 +134,14 @@ export const projectsShouldRevalidate: ShouldRevalidateFunction = ({
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
+    // Auth and entry routes; the shell has its own boundary below.
+    errorElement: <RouteError />,
     hydrateFallbackElement: (
-      <div data-testid="route-opening-status" role="status">
+      <div
+        data-testid="route-opening-status"
+        role="status"
+        className="flex min-h-screen items-center justify-center p-4 text-foreground-secondary"
+      >
         กำลังเปิดหน้า…
       </div>
     ),
@@ -186,137 +188,144 @@ export const routes: RouteObject[] = [
             <AppShell />
           </TenantProvider>
         ),
+        // Pathless boundary: a loader that throws renders inside the shell's content area, so the
+        // sidebar and header stay usable.
         children: [
           {
-            path: "/workspace",
-            loader: workspaceLoader,
-            element: <WorkspaceEntryFallback />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
-            loader: vulnerabilitiesLoader,
-            element: <VulnerabilitiesPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/sample",
-            loader: vulnerabilitySampleLoader,
-            element: <SamplePage />,
-          },
-          // Links in notifications and Emails already sent point at these two paths.
-          {
-            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/priority",
-            loader: vulnerabilitiesPriorityRedirect,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/new",
-            loader: vulnerabilitiesNewRedirect,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/inventory",
-            loader: inventoryLoader,
-            element: <InventoryPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/inventory/import",
-            loader: inventoryImportLoader,
-            element: <ImportPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/inventory/mappings",
-            loader: inventoryMappingsLoader,
-            element: <MappingQueuePage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",
-            loader: inventorySystemLoader,
-            element: <SystemPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/overview",
-            loader: projectOverviewLoader,
-            element: <ProjectOverviewPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors",
-            loader: monitorsOverviewLoader,
-            element: <OverviewPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
-            loader: monitorCreateLoader,
-            element: <MonitorFormPage mode="create" />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
-            loader: monitorEditLoader,
-            element: <MonitorFormPage mode="edit" />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
-            loader: monitorDetailLoader,
-            element: <DetailPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
-            loader: monitorDetailLoader,
-            element: <ChecksHistoryPage />,
-          },
-          {
-            path: "/notifications",
-            loader: notificationsLoader,
-            element: <NotificationsPage />,
-          },
-          {
-            path: "/organizations/:organizationId/notification-settings",
-            loader: notificationSettingsLoader,
-            element: <OrganizationNotificationSettingsPage />,
-          },
-          {
-            path: "/organizations/:organizationId/members",
-            loader: organizationMembersLoader,
-            element: <OrganizationMembersPage />,
-          },
-          {
-            path: "/organizations/:organizationId/aws",
-            loader: organizationAwsLoader,
-            element: <OrganizationAwsPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects",
-            loader: projectsLoader,
-            shouldRevalidate: projectsShouldRevalidate,
-            element: <ProjectsPage />,
-          },
-          {
-            path: "/organizations/:organizationId/projects/:projectId/members",
-            loader: projectMembersLoader,
-            element: <ProjectMembersPage />,
-          },
-          {
-            path: "/organizations/:organizationId/audit-log",
-            loader: auditLogLoader,
-            element: <AuditLogPage />,
-          },
-          {
-            path: "/organizations/:organizationId/audit-log/:eventId",
-            loader: auditLogEventLoader,
-            element: <AuditEventPage />,
-          },
-          // The layout loader gates the session and prefetches me/context for every tab.
-          {
-            path: "/settings",
-            loader: settingsLoader,
-            element: <SettingsLayout />,
+            errorElement: <RouteError landmark={false} />,
             children: [
-              { index: true, loader: settingsIndexLoader },
-              { path: "profile", element: <ProfilePage /> },
-              { path: "security", element: <SecurityPage /> },
               {
-                path: "sessions",
-                loader: sessionsLoader,
-                element: <SessionsPage />,
+                path: "/workspace",
+                loader: workspaceLoader,
+                element: <WorkspaceEntryFallback />,
               },
-              { path: "display", element: <DisplayPage /> },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/vulnerabilities",
+                loader: vulnerabilitiesLoader,
+                element: <VulnerabilitiesPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/sample",
+                loader: vulnerabilitySampleLoader,
+                element: <SamplePage />,
+              },
+              // Links in notifications and Emails already sent point at these two paths.
+              {
+                path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/priority",
+                loader: vulnerabilitiesPriorityRedirect,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/vulnerabilities/new",
+                loader: vulnerabilitiesNewRedirect,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/inventory",
+                loader: inventoryLoader,
+                element: <InventoryPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/inventory/import",
+                loader: inventoryImportLoader,
+                element: <ImportPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/inventory/mappings",
+                loader: inventoryMappingsLoader,
+                element: <MappingQueuePage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/inventory/systems/:systemId",
+                loader: inventorySystemLoader,
+                element: <SystemPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/overview",
+                loader: projectOverviewLoader,
+                element: <ProjectOverviewPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/monitors",
+                loader: monitorsOverviewLoader,
+                element: <OverviewPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/monitors/new",
+                loader: monitorCreateLoader,
+                element: <MonitorFormPage mode="create" />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
+                loader: monitorEditLoader,
+                element: <MonitorFormPage mode="edit" />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
+                loader: monitorDetailLoader,
+                element: <DetailPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
+                loader: monitorDetailLoader,
+                element: <ChecksHistoryPage />,
+              },
+              {
+                path: "/notifications",
+                loader: notificationsLoader,
+                element: <NotificationsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/notification-settings",
+                loader: notificationSettingsLoader,
+                element: <OrganizationNotificationSettingsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/members",
+                loader: organizationMembersLoader,
+                element: <OrganizationMembersPage />,
+              },
+              {
+                path: "/organizations/:organizationId/aws",
+                loader: organizationAwsLoader,
+                element: <OrganizationAwsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects",
+                loader: projectsLoader,
+                shouldRevalidate: projectsShouldRevalidate,
+                element: <ProjectsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/projects/:projectId/members",
+                loader: projectMembersLoader,
+                element: <ProjectMembersPage />,
+              },
+              {
+                path: "/organizations/:organizationId/audit-log",
+                loader: auditLogLoader,
+                element: <AuditLogPage />,
+              },
+              {
+                path: "/organizations/:organizationId/audit-log/:eventId",
+                loader: auditLogEventLoader,
+                element: <AuditEventPage />,
+              },
+              // The layout loader gates the session and prefetches me/context for every tab.
+              {
+                path: "/settings",
+                loader: settingsLoader,
+                element: <SettingsLayout />,
+                children: [
+                  { index: true, loader: settingsIndexLoader },
+                  { path: "profile", element: <ProfilePage /> },
+                  { path: "security", element: <SecurityPage /> },
+                  {
+                    path: "sessions",
+                    loader: sessionsLoader,
+                    element: <SessionsPage />,
+                  },
+                  { path: "display", element: <DisplayPage /> },
+                ],
+              },
             ],
           },
         ],

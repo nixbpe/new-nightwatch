@@ -31,7 +31,13 @@ import {
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
 import { isDenied } from "../useMonitorAccess";
-import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import {
+  formatDateTimeSeconds,
+  formatNumber,
+  formatTimeOrDate,
+  Time,
+  timeZone,
+} from "../format";
 
 const ResponseTimeChart = lazy(() =>
   import("../../../components/ui/response-time-chart").then((module) => ({
@@ -87,17 +93,6 @@ const msText = (value: number | null) =>
   value === null ? "ไม่มีข้อมูล" : `${formatNumber(value)} ms`;
 
 const SEPARATOR = " · ";
-
-const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-const formatBound = (iso: string) => boundFormat.format(new Date(iso));
 
 // Independent query: a failure stays inside this card.
 export function ResponseTimeCard({
@@ -187,7 +182,7 @@ export function ResponseTimeCard({
   let body;
   if (denied || notFound) {
     body = (
-      <Alert data-testid="monitor-response-denial" tone="info">
+      <Alert role="alert" data-testid="monitor-response-denial" tone="info">
         {denied
           ? "คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
           : "ไม่พบมอนิเตอร์นี้"}
@@ -355,21 +350,21 @@ export function ResponseTimeCard({
             {SEPARATOR}
             <span
               data-testid="monitor-response-caption-window"
-              data-time-zone={TIME_ZONE}
+              data-time-zone={timeZone()}
             >
               ช่วงข้อมูล:{" "}
               <Time
                 testId="monitor-response-window-from"
                 iso={data.window.from}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
               ถึง{" "}
               <Time
                 testId="monitor-response-window-to"
                 iso={data.window.to}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
               {range === "24h"
                 ? null
                 : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}
@@ -437,6 +432,7 @@ export function ResponseTimeCard({
         {data !== undefined && query.isError ? (
           <>
             <Alert
+              role="alert"
               data-testid="monitor-response-retained-warning"
               tone="warning"
             >
@@ -444,9 +440,9 @@ export function ResponseTimeCard({
               <Time
                 testId="monitor-response-retained-time"
                 iso={data.dataAsOf}
-                format={formatBound}
+                format={formatDateTimeSeconds}
               />{" "}
-              ({TIME_ZONE})
+              ({timeZone()})
             </Alert>
             <Button
               type="button"

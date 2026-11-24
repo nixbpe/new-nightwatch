@@ -2273,6 +2273,9 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
   await act(async () => {
     await router.navigate(`/organizations/${B}/projects/${P}/monitors/new/`);
   });
+  await waitFor(() => {
+    expect(router.state.location.pathname).toContain(`/${B}/`);
+  });
   assertPrivatePresentationWithdrawn();
   await act(async () => {
     pending.resolve(context());

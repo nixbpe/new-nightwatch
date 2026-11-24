@@ -116,7 +116,7 @@ export const NAV_ITEMS: NavItem[] = [
           { label: "โปรไฟล์", icon: "user", path: "/settings/profile" },
           { label: "ความปลอดภัย", icon: "shield", path: "/settings/security" },
           {
-            label: "เซสชันและอุปกรณ์",
+            label: "เซสชัน",
             icon: "monitor",
             path: "/settings/sessions",
           },

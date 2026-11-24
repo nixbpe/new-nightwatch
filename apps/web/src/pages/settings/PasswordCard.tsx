@@ -1,3 +1,4 @@
+import { Notice } from "../../components/ui/notice";
 import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 
@@ -74,9 +75,9 @@ export function PasswordCard() {
       </div>
 
       {notice === null ? null : (
-        <Alert data-testid="password-change-success" tone="success">
+        <Notice data-testid="password-change-success" tone="success">
           {notice}
-        </Alert>
+        </Notice>
       )}
       {formError === null ? null : (
         <Alert data-testid="password-change-error" tone="error">

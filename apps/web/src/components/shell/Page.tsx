@@ -137,7 +137,7 @@ export function PageHeader({
         {description === undefined ? null : (
           <p
             data-testid={descriptionTestId}
-            className="mt-2 text-sm text-foreground-secondary"
+            className="mt-2 max-w-[720px] text-sm text-foreground-secondary"
           >
             {description}
           </p>

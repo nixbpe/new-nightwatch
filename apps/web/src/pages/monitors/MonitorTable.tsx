@@ -14,7 +14,7 @@ import {
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "./format";
 
 type Row = MonitorListResponse["monitors"][number];
@@ -192,7 +192,7 @@ export function MonitorTable({
     },
     {
       key: "lastCheck",
-      header: `ตรวจล่าสุด (${TIME_ZONE})`,
+      header: `ตรวจล่าสุด (${timeZone()})`,
       cell: (row) =>
         row.lastCheckAt === null ? (
           <NoData />

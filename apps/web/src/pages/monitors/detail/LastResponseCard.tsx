@@ -12,7 +12,7 @@ import {
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
-import { formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import { formatTimeOrDate, Time, timeZone } from "../format";
 import { failureCauseText } from "./labels";
 
 const READ_ROLE_ONLY_TEXT =
@@ -104,7 +104,7 @@ function ResponseBody({ response }: { response: LastResponse }) {
           iso={response.checkedAt}
           format={formatTimeOrDate}
         />{" "}
-        ({TIME_ZONE})
+        ({timeZone()})
       </p>
       <p
         data-testid="monitor-response-url"
