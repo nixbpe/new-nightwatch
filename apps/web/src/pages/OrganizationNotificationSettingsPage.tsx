@@ -132,9 +132,9 @@ function OrganizationNotificationSettingsForOrganization({
         )}
       </Page>
     );
-  // "บันทึกแล้ว" describes the form as saved; a new edit makes it stale (CMP-01).
+  // A new edit retires both the saved message and the failed submission's retry.
   const editDraft = (update: Partial<typeof draft>) => {
-    if (save.isSuccess) save.reset();
+    if (save.isSuccess || save.isError) save.reset();
     setDraft({ ...draft, ...update });
   };
   const settingsData = settings.data;
@@ -214,6 +214,7 @@ function OrganizationNotificationSettingsForOrganization({
           <Checkbox
             data-testid="organization-notifications-settings-changed"
             checked={settingsChanged}
+            disabled={save.isPending}
             onChange={(event) => {
               editDraft({ settingsChangedEnabled: event.target.checked });
             }}
@@ -232,6 +233,7 @@ function OrganizationNotificationSettingsForOrganization({
           <Checkbox
             data-testid="organization-notifications-monitor-alerts"
             checked={monitorAlerts}
+            disabled={save.isPending}
             onChange={(event) => {
               editDraft({ monitorAlertsEnabled: event.target.checked });
             }}

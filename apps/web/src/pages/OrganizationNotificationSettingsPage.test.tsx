@@ -360,6 +360,107 @@ describe("OrganizationNotificationSettingsPage", () => {
     });
   });
 
+  it("retires the failed submission on edit and saves the visible draft", async () => {
+    const initial = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    };
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: false,
+      version: 5,
+    };
+    const retry = Promise.withResolvers<typeof saved>();
+    fetchSettingsMock.mockResolvedValue(initial);
+    updateSettingsMock
+      .mockRejectedValueOnce(new ApiError("INTERNAL", "boom", 500))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-settings-changed"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(
+      await screen.findByTestId("organization-notifications-save-retry"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    );
+    expect(
+      screen.queryByTestId("organization-notifications-save-retry"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("organization-notifications-save-error"),
+    ).toBeNull();
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(2, ORG_A, {
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: false,
+      expectedVersion: 4,
+    });
+    fetchSettingsMock.mockResolvedValue(saved);
+    retry.resolve(saved);
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTestId("organization-notifications-success"),
+      ).toHaveTextContent("บันทึกแล้ว"),
+    );
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-save"),
+    ).toBeDisabled();
+  });
+
+  it("disables the actual checkboxes while a save is pending", async () => {
+    const saved = {
+      organizationId: ORG_A,
+      settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
+      version: 5,
+    };
+    fetchSettingsMock.mockResolvedValue({
+      ...saved,
+      settingsChangedEnabled: true,
+      version: 4,
+    });
+    const pending = Promise.withResolvers<typeof saved>();
+    updateSettingsMock.mockReturnValue(pending.promise);
+    const user = userEvent.setup();
+    renderPage();
+    const settingsChanged = await screen.findByTestId(
+      "organization-notifications-settings-changed",
+    );
+    const monitorAlerts = screen.getByTestId(
+      "organization-notifications-monitor-alerts",
+    );
+    await user.click(settingsChanged);
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    await vi.waitFor(() => expect(settingsChanged).toBeDisabled());
+    expect(monitorAlerts).toBeDisabled();
+    await user.click(settingsChanged);
+    await user.click(monitorAlerts);
+    expect(settingsChanged).not.toBeChecked();
+    expect(monitorAlerts).toBeChecked();
+    expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith(ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
+    fetchSettingsMock.mockResolvedValue(saved);
+    pending.resolve(saved);
+    await vi.waitFor(() => expect(settingsChanged).toBeEnabled());
+    expect(settingsChanged).not.toBeChecked();
+    expect(monitorAlerts).toBeChecked();
+  });
+
   it("drops an unsaved draft when navigating to another organization", async () => {
     fetchSettingsMock.mockImplementation((organizationId) =>
       Promise.resolve({
