@@ -360,6 +360,37 @@ describe("TwoFactorPage challenge", () => {
     },
   );
 
+  it.each(["totp", "recovery"] as const)(
+    "AUTH-01 %s back navigation ignores late challenge completion",
+    async (mode) => {
+      rememberInvitation("inv-cancel");
+      rememberReturnTo("/settings/security");
+      const pending = Promise.withResolvers<{ error: null }>();
+      const verify =
+        mode === "totp"
+          ? twoFactorMock.verifyTotp
+          : twoFactorMock.verifyBackupCode;
+      verify.mockReturnValueOnce(pending.promise);
+      renderPage();
+      if (mode === "recovery")
+        await userEvent.click(screen.getByTestId("two-factor-mode-recovery"));
+      await userEvent.type(
+        screen.getByTestId("two-factor-code"),
+        mode === "totp" ? "123456" : "backup-code-1",
+      );
+      await userEvent.click(screen.getByTestId("two-factor-submit"));
+      expect(screen.getByTestId("two-factor-submit")).toBeDisabled();
+      await userEvent.click(screen.getByTestId("two-factor-login"));
+      await act(async () => {
+        pending.resolve({ error: null });
+        await pending.promise;
+      });
+      expect(screen.getByTestId("location")).toHaveTextContent("/login");
+      expect(readInvitation()).toBe("inv-cancel");
+      expect(readReturnTo()).toBe("/settings/security");
+    },
+  );
+
   it("an invalid or replayed recovery code stays pending with a visible error", async () => {
     sessionState.data = null;
     const user = userEvent.setup();

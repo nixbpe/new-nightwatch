@@ -112,7 +112,6 @@ const ALERT_ICONS = {
   error: AlertCircleIcon,
   warning: AlertTriangleIcon,
   info: InfoIcon,
-  success: InfoIcon,
 } as const;
 
 export function Alert({
@@ -125,7 +124,7 @@ export function Alert({
   "data-testid"?: string;
   id?: string;
   /** No success tone: a success message is a `Notice` (CMP-10). */
-  tone: "error" | "success" | "warning" | "info";
+  tone: "error" | "warning" | "info";
   /**
    * Defaults to `alert` for an error and `status` for a warning or info, so a persistent
    * caution is not announced assertively on every load.
@@ -137,11 +136,9 @@ export function Alert({
   const className =
     tone === "error"
       ? "border-danger/25 bg-danger/10 text-danger"
-      : tone === "success"
-        ? "border-primary/25 bg-primary/10 text-primary"
-        : tone === "warning"
-          ? "border-caution/25 bg-caution/10 text-caution"
-          : "border-foreground/15 bg-foreground/4 text-foreground";
+      : tone === "warning"
+        ? "border-caution/25 bg-caution/10 text-caution"
+        : "border-foreground/15 bg-foreground/4 text-foreground";
   const Icon = ALERT_ICONS[tone];
   return (
     <div

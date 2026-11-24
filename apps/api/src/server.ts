@@ -5,6 +5,7 @@ import {
   loadEnv,
   loadMonitorEnv,
   type StsVerifier,
+  type OutboundDeps,
 } from "@nightwatch/shared";
 
 import { createApp } from "./app";
@@ -21,10 +22,12 @@ import { API_IDLE_TIMEOUT_SECONDS } from "./server-options";
 export async function startApi({
   awsSts,
   awsPrincipalArn,
+  resolver,
 }: {
   awsSts: StsVerifier;
   /** Overrides NIGHTWATCH_AWS_PRINCIPAL_ARN; the e2e entry names its emulator user. */
   awsPrincipalArn?: string;
+  resolver?: OutboundDeps["resolver"];
 }): Promise<void> {
   const env = loadEnv();
   const authEnv = loadAuthEnv();
@@ -50,7 +53,10 @@ export async function startApi({
     database,
     mailer,
     redis,
-    outbound: { testAllowedHosts: monitorEnv.OUTBOUND_TEST_ALLOWED_HOSTS },
+    outbound: {
+      testAllowedHosts: monitorEnv.OUTBOUND_TEST_ALLOWED_HOSTS,
+      ...(resolver === undefined ? {} : { resolver }),
+    },
     credentialEnv: monitorEnv,
     awsSts,
     awsPrincipalArn:

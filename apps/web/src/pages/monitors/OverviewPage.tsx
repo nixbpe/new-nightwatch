@@ -35,7 +35,7 @@ import {
   useMonitorAccess,
 } from "./useMonitorAccess";
 import { useFlashNotice } from "./flash";
-import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
+import { formatTimeWithSeconds, Time, timeZone } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
 import { MonitorCards } from "./list/MonitorCards";
 import { MonitorTable } from "./MonitorTable";
@@ -640,12 +640,16 @@ function OverviewForProject({
                 format={formatTimeWithSeconds}
               />
             </span>{" "}
-            ({TIME_ZONE})
+            ({timeZone()})
           </span>
         </>,
       )}
       {list.isError ? (
-        <Alert data-testid="monitor-overview-refetch-error" tone="warning">
+        <Alert
+          role="alert"
+          data-testid="monitor-overview-refetch-error"
+          tone="warning"
+        >
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
           <Time
             testId="monitor-overview-refetch-time"
