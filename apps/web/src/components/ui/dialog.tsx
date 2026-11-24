@@ -50,15 +50,12 @@ export function Dialog({
   titleTestId?: string;
   description?: ReactNode;
   descriptionTestId?: string;
-  /** Panel max width: md 520 px, lg 560 px, xl 640 px. */
   size?: keyof typeof SIZE_CLASS;
   busy?: boolean;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
-  /** The control that takes focus on open and when focus escapes the dialog. */
   initialFocus: RefObject<HTMLElement | null>;
   dialogRef?: RefObject<HTMLDivElement | null>;
-  /** Called on Escape; the caller decides whether to ignore it while busy. */
   onClose: () => void;
   children: ReactNode;
 }) {

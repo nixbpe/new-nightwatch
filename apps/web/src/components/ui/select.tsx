@@ -2,7 +2,6 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Heights follow LAY-06: 40 px for forms, 32 px for row actions and filter bars.
 const SIZES = {
   sm: "h-8 px-2 text-sm",
   md: "h-10 px-3 text-base",

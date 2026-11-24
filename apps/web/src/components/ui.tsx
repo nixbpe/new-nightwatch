@@ -123,7 +123,6 @@ export function Alert({
 }: {
   "data-testid"?: string;
   id?: string;
-  /** No success tone: a success message is a `Notice` (CMP-10). */
   tone: "error" | "warning" | "info";
   /** Defaults to `alert` for an error, `status` otherwise, so a persistent caution is not announced assertively. */
   role?: "alert" | "status";

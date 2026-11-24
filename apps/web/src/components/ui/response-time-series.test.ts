@@ -232,11 +232,9 @@ describe("times follow the preference zone", () => {
 
   it("a span keeps its end date only when the zone's calendar day changes", () => {
     useZone();
-    // 09:00Z to 11:00Z is 23:00 to 01:00 across midnight in UTC+14 (same UTC day).
     expect(
       entryTime("7d", entry("2026-11-23T09:00:00Z", "2026-11-23T11:00:00Z")),
     ).toMatch(/–.*พ\.ย\./);
-    // 23:00Z to 01:00Z next day is 13:00 to 15:00 on one UTC+14 day (two UTC days).
     expect(
       entryTime("7d", entry("2026-11-23T23:00:00Z", "2026-11-24T01:00:00Z")),
     ).not.toMatch(/–.*พ\.ย\./);

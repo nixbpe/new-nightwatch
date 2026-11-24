@@ -18,7 +18,6 @@ export function PasswordField({
   serverError = null,
 }: {
   id: string;
-  /** Test id of the input; the toggle and error derive from it. Defaults to `id`. */
   testId?: string;
   label: ReactNode;
   name?: string;

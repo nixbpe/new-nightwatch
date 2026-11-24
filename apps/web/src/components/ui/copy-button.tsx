@@ -16,7 +16,6 @@ export function CopyButton({
   value: string;
   label: string;
   copiedLabel: string;
-  /** A text button with the icon; otherwise an icon-only button whose tooltip is `label`. */
   showLabel?: boolean;
   "data-testid"?: string;
 }) {

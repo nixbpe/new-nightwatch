@@ -286,7 +286,6 @@ describe("LoginPage", () => {
     renderPage();
     await screen.findByTestId("login-submit");
 
-    // A real success carries the session payload; only the two-factor plugin adds twoFactorRedirect.
     signInEmailMock.mockResolvedValue({ data: { token: "t" }, error: null });
     await submitLogin("member@example.com", "correct-password");
     expect(signInEmailMock).toHaveBeenCalledWith({

@@ -49,7 +49,6 @@ const HAS_CLOCK: ReadonlySet<Shape> = new Set([
 ]);
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
-/** Cached per zone and hour cycle; read at call time so a Settings change applies at once. */
 export function monitorFormatter(shape: Shape): Intl.DateTimeFormat {
   const { timeZone: zone, hourCycle } = currentPreferences();
   const key = `${shape}|${zone}|${hourCycle}`;
@@ -92,7 +91,6 @@ export function formatDateTime(iso: string): string {
   return formatter("dateTime").format(new Date(iso));
 }
 
-/** Same calendar day in the preference zone, so "today" matches the zone the header names. */
 function sameDay(a: Date, b: Date): boolean {
   const day = formatter("day");
   return day.format(a) === day.format(b);

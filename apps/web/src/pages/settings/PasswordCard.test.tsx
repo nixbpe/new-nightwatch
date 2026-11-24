@@ -98,7 +98,6 @@ describe("PasswordCard", () => {
       revokeOtherSessions: true,
     });
     expect(await screen.findByTestId("password-change-success")).toBeVisible();
-    // Success is a status message, not an interrupting alert (CMP-10).
     expect(screen.getByTestId("password-change-success")).toHaveAttribute(
       "role",
       "status",

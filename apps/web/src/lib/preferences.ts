@@ -94,7 +94,6 @@ function getSnapshot(): Preferences {
   return cache.value;
 }
 
-/** Current preferences for formatters that run outside React; stable while storage is unchanged. */
 export function currentPreferences(): Preferences {
   return getSnapshot();
 }

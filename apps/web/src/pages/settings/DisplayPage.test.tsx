@@ -24,7 +24,6 @@ const STORED: Preferences = {
   weekStart: "sunday",
 };
 
-// The unsaved-changes guard needs a data router.
 function renderPage() {
   const router = createMemoryRouter(
     [
@@ -126,7 +125,6 @@ describe("DisplayPage", () => {
     await user.click(save);
 
     expect(screen.getByTestId("display-saved")).toBeVisible();
-    // Success is a status message, not an interrupting alert (CMP-10).
     expect(screen.getByTestId("display-saved")).toHaveAttribute(
       "role",
       "status",

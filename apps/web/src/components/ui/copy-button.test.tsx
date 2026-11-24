@@ -36,7 +36,6 @@ describe("CopyButton", () => {
         "copied",
       );
     });
-    // The shared success form (CMP-10), drawn on the page.
     expect(
       screen.getByTestId("copy-status").querySelector('[data-slot="notice"]'),
     ).toHaveTextContent("copied");
