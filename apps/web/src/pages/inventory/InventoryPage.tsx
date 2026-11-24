@@ -1,6 +1,6 @@
 import type { InventorySystem } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
@@ -175,6 +175,43 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
     retry: false,
   });
   const exporter = useInventoryExport(organizationId, projectId);
+  const [rowsDenied, setRowsDenied] = useState(false);
+  const onRowsAccessDenied = useCallback(
+    (denied: boolean) => {
+      if (denied === rowsDenied) return;
+      if (denied) {
+        setRowsDenied(true);
+        setAdding(null);
+      }
+      const queryKey = inventoryKeys.summary(organizationId, projectId);
+      void queryClient.invalidateQueries({ queryKey }).then(() => {
+        if (
+          !denied &&
+          queryClient.getQueryState(queryKey)?.status === "success"
+        )
+          setRowsDenied(false);
+      });
+    },
+    [queryClient, organizationId, projectId, rowsDenied],
+  );
+  const previousSearch = useRef(location.search);
+  useEffect(() => {
+    if (previousSearch.current === location.search) return;
+    previousSearch.current = location.search;
+    void queryClient.invalidateQueries({
+      queryKey: inventoryKeys.summary(organizationId, projectId),
+    });
+  }, [location.search, queryClient, organizationId, projectId]);
+  const canUpload =
+    query.data?.canUpload === true &&
+    !rowsDenied &&
+    !query.isError &&
+    !query.isFetching;
+  if (
+    adding !== null &&
+    (rowsDenied || query.isError || query.data?.canUpload === false)
+  )
+    setAdding(null);
   if (switched) return null;
   const summary = query.data;
   return (
@@ -188,7 +225,7 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         }
         title="Inventory"
         status={
-          summary === undefined ? undefined : (
+          summary === undefined || rowsDenied || query.isError ? undefined : (
             <>
               <span data-testid="inventory-status-systems">
                 <span className="font-mono">{summary.systemCount}</span> System
@@ -212,9 +249,9 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
         titleTabIndex={-1}
         description="รายการ OS, DB, middleware, runtime และ appliance ของแต่ละ System ใน Project นี้ ข้อมูลที่องค์กรระบุและดูแลเอง ไม่ได้มาจากการตรวจทรัพยากรจริง"
         actions={
-          summary === undefined ? undefined : (
+          summary === undefined || rowsDenied || query.isError ? undefined : (
             <>
-              {summary.canUpload ? (
+              {canUpload ? (
                 <>
                   <Button asChild>
                     <Link
@@ -311,7 +348,12 @@ function ProjectInventory({ organizationId, projectId }: Scope) {
           </HairlineGrid>
           {query.data.systemCount === 0 ? null : (
             <InventoryRowsSection
-              summary={query.data}
+              summary={{
+                ...query.data,
+                canUpload:
+                  query.data.canUpload && !rowsDenied && !query.isError,
+              }}
+              onAccessDenied={onRowsAccessDenied}
               scope={{ organizationId, projectId }}
             />
           )}

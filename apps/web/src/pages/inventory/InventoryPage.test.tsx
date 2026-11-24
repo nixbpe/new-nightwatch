@@ -119,6 +119,29 @@ beforeEach(() => {
 });
 
 describe("InventoryPage", () => {
+  it("withdraws cached summary actions when rows are refused and keeps viewer permissions after retry", async () => {
+    fetchMock.mockResolvedValue(summary());
+    rowsMock.mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "refused", 403),
+    );
+    renderPage();
+    await screen.findByRole("button", { name: "ลองใหม่" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+      expect(screen.queryByTestId("inventory-import-link")).toBeNull();
+      expect(screen.queryByTestId("inventory-export")).toBeNull();
+    });
+    expect(screen.queryByTestId("inventory-rows-table")).toBeNull();
+    fetchMock.mockResolvedValue(summary({ canUpload: false }));
+    rowsMock.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 25 });
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await screen.findByTestId("inventory-rows-empty");
+    expect(screen.queryByTestId("inventory-row-add")).toBeNull();
+    expect(screen.queryByTestId("inventory-add-system")).toBeNull();
+  });
+
   it("shows totals and the quality of each System with a link only where rows failed", async () => {
     fetchMock.mockResolvedValue(summary());
     renderPage();
