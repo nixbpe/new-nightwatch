@@ -72,7 +72,7 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 
 ## App shell
 
-The signed-in shell keeps navigation, Organization and Project context, and account controls available around a scrollable page. Public auth and onboarding flows use a bare layout; not-found stands outside both. Sidebar and header use Canvas with hairline edges; Surface is reserved for cards, fields and overlays.
+The signed-in shell keeps navigation, Organization and Project context, and account controls available around a scrollable page. Public auth and onboarding flows use a bare layout; not-found stands outside both routes (no session state, no navigation) and may reuse the auth page frame for its look. Sidebar and header use Canvas with hairline edges; Surface is reserved for cards, fields and overlays.
 
 - Navigation lists only real destinations visible to the user's role and scope. Exactly one destination is current. Sidebar, command palette and settings tabs share destination definitions so they cannot disagree.
 - The Organization named by the route owns its breadcrumb and Project context, even when another Organization is active. Project selection follows the URL; workspace entry uses a server-confirmed readable destination and never guesses from cached client state.
@@ -96,6 +96,9 @@ Implementation details and regression tests are located through the [feature cod
 - CMP-07 A tooltip is a short text on Surface with Text and a hairline edge, without a shadow or a new color. It opens on hover, keyboard focus and touch, stays open while the pointer is on it, and closes on Escape (the dialog around it stays open). The control it describes keeps the same text as its `aria-label`, so the bubble is hidden from assistive technology. It is drawn outside any scrolling container.
 - CMP-08 An icon-only button (`IconButton`) carries its label as both `aria-label` and tooltip; the 32 px size (`icon-sm`) is for row and page actions (LAY-06), 40 px beside form controls. An explanation moved off the page is an info icon (`InfoTip`) whose tooltip and `aria-label` hold the text.
 - CMP-09 A table with many columns may use dense padding (`dense`, 8 px sides instead of 16 px) so its row actions stay inside the content width at 1440 px.
+- CMP-10 A success message uses `Notice` (a status dot and text, `role="status"`); `Alert` carries only failure, caution or information and has no success tone. `ActionNotice` stays the pending form (an export requested is not yet a success). A page shows one form of success feedback.
+- CMP-11 Button wording: retry is "ลองใหม่"; cancel is "ยกเลิก" (when the action itself cancels an item, the dismissal label is "เก็บไว้" or "ไม่ยกเลิก", and the confirmation names the cancellation, such as "ยกเลิกคำเชิญ"); "กลับ" is for navigation only; the button that confirms a destructive action names the verb and the object ("ลบ System และ 42 แถว", "ถอนสมาชิก"). Labels that an Epic acceptance criterion fixes verbatim, and the column headers of the approved import template, stay as written.
+- CMP-12 Role and term words: "ผู้ดูแลองค์กร" is an Organization admin and "ผู้ดูแลโปรเจกต์" a Project admin; use "สมาชิก" for a person and use the role words from `ROLE_LABELS` and `PROJECT_ROLE_LABELS` when naming a role, including the Project `member` role whose label is "สมาชิก"; the system owner of a Project row is "ผู้รับผิดชอบ" in prose, so it never reads as the "เจ้าของ" role. The Latin terms TYP-04 allows (Project, System, Inventory, Import) keep their written form; a term that an Epic acceptance criterion fixes stays as written.
 
 ## Accessibility
 
