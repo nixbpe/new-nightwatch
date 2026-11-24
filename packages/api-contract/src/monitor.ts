@@ -1050,10 +1050,9 @@ export type MonitorHistoryQuery = z.output<typeof monitorHistoryQuerySchema>;
 export const MONITOR_RETENTION_DAYS = 30;
 
 /**
- * Both filters are optional; without them the response is the unfiltered list.
- * `offset` counts rows of the filtered list, so a page position is meaningful
- * only with the filter combination it was read under. `since` is an instant
- * (UTC, `Z`); the server never reads earlier than the retention window.
+ * `offset` counts rows of the filtered list, so a position is valid only with the filter
+ * combination it was read under. `since` is a UTC instant; the server never reads earlier
+ * than the retention window.
  */
 export const monitorChecksQuerySchema = monitorHistoryQuerySchema.extend({
   outcome: z.enum(CHECK_OUTCOMES).optional(),

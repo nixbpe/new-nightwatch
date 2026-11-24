@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 
-// Counts down whole seconds so the button can say how long is left; `secondsLeft` is 0 when a resend is allowed.
 export function useResendCooldown(durationMs = 60_000) {
   const [until, setUntil] = useState(0);
   const [now, setNow] = useState(0);

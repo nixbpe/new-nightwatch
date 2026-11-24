@@ -473,12 +473,10 @@ describe("listOrganizationMembers", () => {
       if (!alice || !bob || !carol || !dave || !elsewhere)
         throw new Error("fixture");
 
-      // Name and email, case-insensitive; the other organization's Alice is absent.
       expect(nameOf(await list(alice.id, { q: "ALICE" }))).toEqual([
         "Alice Rivers",
         "Carol",
       ]);
-      // LIKE wildcards in the search text match literally.
       expect(nameOf(await list(alice.id, { q: "100%_" }))).toEqual([
         "bob 100%_off",
       ]);
@@ -489,7 +487,6 @@ describe("listOrganizationMembers", () => {
         "bob 100%_off",
       ]);
 
-      // Role filter follows the displayed (highest-priority) role of composite values.
       expect(nameOf(await list(alice.id, { role: "admin" }))).toEqual([
         "bob 100%_off",
       ]);
@@ -503,7 +500,6 @@ describe("listOrganizationMembers", () => {
         nameOf(await list(alice.id, { q: "alice", role: "viewer" })),
       ).toEqual(["Carol"]);
 
-      // Total counts the filtered rows and pagination applies to them.
       const paged = await list(alice.id, { q: "alice", limit: 1, offset: 1 });
       expect(nameOf(paged)).toEqual(["Carol"]);
       expect(paged.page).toEqual({ limit: 1, offset: 1, total: 2 });
@@ -511,7 +507,6 @@ describe("listOrganizationMembers", () => {
       expect(none.members).toEqual([]);
       expect(none.page.total).toBe(0);
 
-      // Without filters the order and rows are unchanged.
       expect(nameOf(await list(alice.id))).toEqual([
         "Alice Rivers",
         "bob 100%_off",
@@ -519,7 +514,6 @@ describe("listOrganizationMembers", () => {
         "Dave",
       ]);
 
-      // Filters never lift the authorization checks.
       for (const filter of [{ q: "alice" }, { role: "owner" as const }]) {
         await expect(list(carol.id, filter)).rejects.toMatchObject({
           code: "PERMISSION_DENIED",
@@ -527,7 +521,6 @@ describe("listOrganizationMembers", () => {
         await expect(list(dave.id, filter)).rejects.toMatchObject({
           code: "PERMISSION_DENIED",
         });
-        // An owner of another organization is not a member here.
         await expect(list(elsewhere.id, filter)).rejects.toMatchObject({
           code: "MEMBERSHIP_DENIED",
         });

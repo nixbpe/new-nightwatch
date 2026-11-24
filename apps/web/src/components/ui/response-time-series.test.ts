@@ -222,7 +222,6 @@ describe("times follow the preference zone", () => {
 
   it("axis tick labels are clock times in that zone", () => {
     useZone();
-    // 00:00Z is 14:00 on the same date in UTC+14.
     const [tick] = axisTicks(
       [new Date("2026-11-23T00:00:00Z")],
       3_600_000,

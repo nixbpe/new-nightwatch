@@ -99,7 +99,7 @@ export function RootLayout() {
 }
 
 // Standalone, not under AppShell: anonymous visitors reach bad URLs too, and the shell's
-// header would show misleading session state. It shares the auth pages' frame only for the look.
+// header would show misleading session state.
 function NotFoundPage() {
   return (
     <AuthPageFrame
@@ -134,7 +134,6 @@ export const projectsShouldRevalidate: ShouldRevalidateFunction = ({
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
-    // Auth and entry routes; the shell has its own boundary below.
     errorElement: <RouteError />,
     hydrateFallbackElement: (
       <div
@@ -188,8 +187,7 @@ export const routes: RouteObject[] = [
             <AppShell />
           </TenantProvider>
         ),
-        // Pathless boundary: a loader that throws renders inside the shell's content area, so the
-        // sidebar and header stay usable.
+        // Pathless boundary: a loader error renders inside the shell content; sidebar and header stay usable.
         children: [
           {
             errorElement: <RouteError landmark={false} />,
@@ -309,7 +307,6 @@ export const routes: RouteObject[] = [
                 loader: auditLogEventLoader,
                 element: <AuditEventPage />,
               },
-              // The layout loader gates the session and prefetches me/context for every tab.
               {
                 path: "/settings",
                 loader: settingsLoader,

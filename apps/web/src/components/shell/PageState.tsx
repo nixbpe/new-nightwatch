@@ -66,7 +66,6 @@ export function PageState(
       );
     }
     if (layout === "inline") {
-      // A block inside a card or section that already has its own frame.
       return (
         <div
           data-testid={props["data-testid"]}

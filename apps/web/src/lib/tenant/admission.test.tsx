@@ -2273,7 +2273,6 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
   await act(async () => {
     await router.navigate(`/organizations/${B}/projects/${P}/monitors/new/`);
   });
-  // The draft makes the unsaved-changes guard ask before leaving; the user confirms.
   fireEvent.click(await screen.findByTestId("unsaved-changes-leave"));
   await waitFor(() => {
     expect(router.state.location.pathname).toContain(`/${B}/`);

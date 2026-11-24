@@ -13,7 +13,6 @@ export type AuthNotice = "email-verified" | "password-reset";
 export type AuthFlowState = {
   notice?: AuthNotice;
   email?: string;
-  /** The verification email was just sent (signup), so the page may say so. */
   sent?: boolean;
 };
 

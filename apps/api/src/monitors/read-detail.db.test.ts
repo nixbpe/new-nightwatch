@@ -814,11 +814,9 @@ describe("Check history filters", () => {
   beforeAll(async () => {
     id = await seedMonitor(ctx, filters.id, { name: "Filtered history" });
     foreignId = await seedMonitor(ctx, other.id, { name: "Foreign history" });
-    // Newest first: pass 100, fail 200, check_error 300, fail 400, pass 500, pass 10 d.
     await seedResults(ctx, filters.id, id, [100, 500, 10 * DAY]);
     await seedResults(ctx, filters.id, id, [200, 400], { outcome: "fail" });
     await seedResults(ctx, filters.id, id, [300], { outcome: "check_error" });
-    // The same outcomes on another Organization's monitor must never show up.
     await seedResults(ctx, other.id, foreignId, [150, 250], {
       outcome: "fail",
     });
@@ -900,7 +898,6 @@ describe("Check history filters", () => {
     expect(second.checks).toHaveLength(1);
     expect(second.checks[0]?.outcome).toBe("fail");
     expect(second.page).toEqual({ limit: 1, offset: 1, total: 2 });
-    // The same offset under another filter indexes that filter's list.
     const errors = await filtered("?outcome=check_error&limit=1&offset=1");
     expect(errors.checks).toEqual([]);
     expect(errors.page.total).toBe(1);

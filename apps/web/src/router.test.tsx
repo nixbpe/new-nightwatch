@@ -9,8 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { routes } from "./router";
 
-// The shell, its providers and the two pages are stand-ins: these tests are about which boundary
-// shows a loader error, not about what those parts render.
 const loaders = vi.hoisted(() => ({
   workspaceLoader: vi.fn(),
   requireAnonLoader: vi.fn(),

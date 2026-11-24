@@ -12,7 +12,6 @@ type SelectProps = Omit<ComponentProps<"select">, "size"> & {
   size?: keyof typeof SIZES;
 };
 
-/** Native `<select>` with the `Input` field styling. The caller supplies the label. */
 function Select({ className, size = "md", ...props }: SelectProps) {
   return (
     <select

@@ -176,7 +176,6 @@ export function vulnerabilityErrorMessage(error: unknown): string {
   return "ทำรายการไม่สำเร็จ โปรดลองใหม่";
 }
 
-/** Shown when a read is refused; retrying cannot change the answer. */
 export const VULNERABILITY_DENIED_MESSAGE =
   "คุณไม่มีสิทธิ์ดูช่องโหว่ของโปรเจกต์นี้";
 

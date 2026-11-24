@@ -200,12 +200,10 @@ describe("inventory row list", () => {
 
     expect(await products("")).toEqual(["Nginx", "Redis", "Ubuntu", "Ubuntu"]);
     expect(await products("owner=team%20al")).toEqual(["Nginx", "Ubuntu"]);
-    // Whitespace runs collapse, as they do in the stored Owner.
     expect(await products("owner=team%20%20%20al")).toEqual([
       "Nginx",
       "Ubuntu",
     ]);
-    // A prefix, not a substring, and no LIKE wildcard.
     expect(await products("owner=lpha")).toEqual([]);
     expect(await products("owner=%25")).toEqual([]);
     expect(await products("owner=_")).toEqual([]);

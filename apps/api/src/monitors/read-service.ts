@@ -983,11 +983,7 @@ type CheckRow = Omit<CheckResultView, "scheduledFor" | "checkedAt"> & {
   checkedAt: Date;
 };
 
-/**
- * The earliest result a `since` filter may read: the later of `since` and the
- * retention window, so a filter older than the stored data reads the same rows
- * as the window itself. No `since` stays unbounded (the default list).
- */
+/** Later of `since` and the retention cutoff; no `since` stays unbounded. */
 export function checksSinceFloor(
   since: string | undefined,
   now: Date,

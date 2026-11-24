@@ -2,8 +2,7 @@ import { getAllNavLeaves, isLeafActive } from "./nav-config";
 
 export type BreadcrumbCrumb = { label: string; path?: string };
 
-// Pages below a nav leaf that get their own crumb after the leaf's. The first capture is the
-// parent's path. Pages not listed keep the leaf's crumb alone.
+// Pages below a nav leaf that add a crumb after the leaf's; the first capture is the parent's path.
 const SUB_PAGES: { pattern: RegExp; label: string }[] = [
   {
     pattern:

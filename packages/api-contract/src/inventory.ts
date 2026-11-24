@@ -111,7 +111,6 @@ export const inventoryRowsQuerySchema = z.object({
   layer: z.enum(INVENTORY_LAYERS).optional(),
   environment: z.enum(INVENTORY_ENVIRONMENTS).optional(),
   exposure: z.enum(INVENTORY_EXPOSURES).optional(),
-  // Matches the start of the Owner, ignoring case. An empty value means no filter.
   // Stored Owners have runs of whitespace collapsed to one space (import), so the filter does too.
   owner: z
     .string()
