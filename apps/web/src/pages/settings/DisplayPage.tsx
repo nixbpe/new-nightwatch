@@ -1,6 +1,7 @@
+import { Notice } from "../../components/ui/notice";
 import { useId, useMemo, useState } from "react";
 
-import { Alert, textInputClass } from "../../components/ui";
+import { textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Label } from "../../components/ui/label";
@@ -143,9 +144,9 @@ export function DisplayPage() {
         </div>
 
         {saved ? (
-          <Alert data-testid="display-saved" tone="success">
+          <Notice data-testid="display-saved" tone="success">
             บันทึกแล้ว ใช้กับเบราว์เซอร์นี้
-          </Alert>
+          </Notice>
         ) : null}
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">

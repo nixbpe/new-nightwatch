@@ -23,15 +23,15 @@ import {
   formatDuration,
   incidentReasonLabel,
   Time,
-  TIME_ZONE,
+  timeZone,
 } from "../format";
 
 type Incident = MonitorIncidentsResponse["incidents"][number];
 
-const columns: DataTableColumn<Incident>[] = [
+const columns = (): DataTableColumn<Incident>[] => [
   {
     key: "start",
-    header: `เริ่ม (${TIME_ZONE})`,
+    header: `เริ่ม (${timeZone()})`,
     cell: (row) => (
       <Time
         testId="monitor-incident-start"
@@ -161,7 +161,7 @@ export function IncidentsCard({
               rowTestId={(row) => `monitor-incident-${row.id}`}
               cellTestId={(column) => `monitor-incident-cell-${column.key}`}
               ariaLabel="ตารางเหตุการณ์"
-              columns={columns}
+              columns={columns()}
               rows={data.incidents}
               rowKey={(row) => row.id}
             />

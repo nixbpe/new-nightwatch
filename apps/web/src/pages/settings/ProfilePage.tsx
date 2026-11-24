@@ -1,3 +1,4 @@
+import { Notice } from "../../components/ui/notice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
@@ -155,7 +156,11 @@ function ProfileForm({
         </p>
       </div>
 
-      {notice === null ? null : (
+      {notice === null ? null : notice.tone === "success" ? (
+        <Notice data-testid="profile-save-success" tone="success">
+          {notice.text}
+        </Notice>
+      ) : (
         <Alert data-testid={`profile-save-${notice.tone}`} tone={notice.tone}>
           {notice.text}
         </Alert>

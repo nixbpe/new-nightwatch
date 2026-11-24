@@ -1,3 +1,4 @@
+import { Notice } from "../components/ui/notice";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { Link } from "react-router";
@@ -47,9 +48,9 @@ export function ForgotPasswordPage() {
     >
       {sent ? (
         <div className="flex flex-col gap-4">
-          <Alert data-testid="forgot-password-success" tone="success">
+          <Notice data-testid="forgot-password-success" tone="success">
             หากอีเมลนี้มีบัญชีในระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้โดยเร็ว
-          </Alert>
+          </Notice>
           <Link
             to="/login"
             data-testid="forgot-password-login"
