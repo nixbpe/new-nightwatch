@@ -109,6 +109,13 @@ export function TriageControl({
   useEffect(() => {
     if (asking) reasonInput.current?.focus();
   }, [asking]);
+  // Closes the reason row without saving and hands focus back to the status button.
+  const cancelAsking = () => {
+    setAsking(false);
+    setReason("");
+    save.reset();
+    menu.triggerRef.current?.focus();
+  };
   const openMenu = () => {
     if (save.isPending) return;
     placeAtTrigger();
@@ -230,6 +237,12 @@ export function TriageControl({
       {canManage && asking ? (
         <form
           className="flex w-full max-w-64 flex-col items-start gap-2"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            cancelAsking();
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             save.mutate({
@@ -239,8 +252,11 @@ export function TriageControl({
             });
           }}
         >
-          <label className="sr-only" htmlFor={reasonId}>
-            เหตุผลที่ไม่ได้รับผลกระทบ
+          <label
+            className="text-xs text-foreground-secondary"
+            htmlFor={reasonId}
+          >
+            เหตุผลที่ไม่ได้รับผลกระทบ (จำเป็น)
           </label>
           <Input
             ref={reasonInput}
@@ -248,19 +264,28 @@ export function TriageControl({
             data-testid={`triage-reason-${testId}`}
             className="w-full text-sm"
             maxLength={500}
-            placeholder="เหตุผล (จำเป็น)"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
             }}
           />
-          <Button
-            type="submit"
-            data-testid={`triage-save-${testId}`}
-            disabled={save.isPending || reason.trim() === ""}
-          >
-            บันทึก
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              data-testid={`triage-save-${testId}`}
+              disabled={save.isPending || reason.trim() === ""}
+            >
+              บันทึก
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid={`triage-cancel-${testId}`}
+              onClick={cancelAsking}
+            >
+              ยกเลิก
+            </Button>
+          </div>
         </form>
       ) : null}
       <span role="status" className="sr-only">

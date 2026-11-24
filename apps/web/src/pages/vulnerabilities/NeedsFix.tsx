@@ -10,8 +10,11 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { cn } from "@/lib/utils";
+import { EmptyState } from "../../components/shell/EmptyState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { HairlineGrid } from "../../components/ui/hairline-grid";
+import { Select } from "../../components/ui/select";
 import { StatusPill } from "../../components/ui/status-pill";
 import { formatUploadedAt } from "../inventory/format";
 import type { Preferences } from "../../lib/preferences";
@@ -292,11 +295,20 @@ export function NeedsFix({
     view.gone.length === 0 &&
     view.unknown.length === 0;
   const warned = fresh.warnings.length > 0;
+  // The no-match block below carries its own clear button; the row then leaves it out.
+  const noMatchShown =
+    list.summary.components !== 0 &&
+    list.results !== null &&
+    !(!active && view.empty) &&
+    noMatch;
+  const clearFilters = () => {
+    onFilters(NO_FILTERS);
+  };
 
   return (
     <div className="space-y-4">
-      <div
-        className="grid gap-px overflow-hidden rounded-md border border-foreground/10 bg-foreground/10 *:bg-surface sm:grid-cols-2 lg:grid-cols-4"
+      <HairlineGrid
+        className="sm:grid-cols-2 lg:grid-cols-4"
         data-testid="vuln-tiles"
       >
         <Tile
@@ -336,20 +348,21 @@ export function NeedsFix({
             toggle("isNew");
           }}
         />
-      </div>
+      </HairlineGrid>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-foreground-secondary">ตัวกรอง</span>
         <label className="sr-only" htmlFor="vuln-filter-system">
           System
         </label>
-        <select
+        <Select
+          size="sm"
           id="vuln-filter-system"
           data-testid="vuln-filter-system"
           value={filters.system ?? ""}
           onChange={(event) => {
             onFilters({ ...filters, system: event.target.value || null });
           }}
-          className="h-8 rounded-md border border-control-border bg-surface px-2 text-[13px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="w-auto"
         >
           <option value="">ทุก System</option>
           {systems.map(([id, name]) => (
@@ -357,7 +370,7 @@ export function NeedsFix({
               {name === "" ? "(ไม่ระบุชื่อ System)" : name}
             </option>
           ))}
-        </select>
+        </Select>
         <div role="group" aria-label="ตัวกรอง" className="flex flex-wrap gap-2">
           {(
             [
@@ -380,15 +393,13 @@ export function NeedsFix({
             </button>
           ))}
         </div>
-        {active ? (
+        {active && !noMatchShown ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             data-testid="vuln-filter-clear"
-            onClick={() => {
-              onFilters(NO_FILTERS);
-            }}
+            onClick={clearFilters}
           >
             ล้างตัวกรอง
           </Button>
@@ -413,6 +424,15 @@ export function NeedsFix({
           </p>
         )}
       </div>
+      {active && list.summary.components !== 0 && list.results !== null ? (
+        <p
+          className="text-xs text-foreground-secondary"
+          data-testid="vuln-shown"
+        >
+          แสดง <span className="font-mono">{view.ranked.length}</span> จาก{" "}
+          <span className="font-mono">{view.tiles.fix}</span> รายการที่ต้องแก้
+        </p>
+      ) : null}
       {filters.isNew ? (
         <div className="space-y-2" data-testid="vuln-new-notes">
           {fresh.warnings.map((warning) => (
@@ -438,41 +458,56 @@ export function NeedsFix({
         </div>
       ) : null}
       {list.summary.components === 0 ? (
-        <p className="text-sm" data-testid="vuln-no-inventory">
-          ยังไม่มี component ใน inventory{" "}
-          {list.canManage ? (
-            <Link
-              className="text-primary underline-offset-4 hover:underline"
-              to={`${inventoryPath}/import`}
-            >
-              import inventory
-            </Link>
-          ) : null}
-        </p>
+        <EmptyState
+          data-testid="vuln-no-inventory"
+          title="ยังไม่มี component ใน inventory"
+          action={
+            list.canManage ? (
+              <Link
+                className="text-sm text-primary underline-offset-4 hover:underline"
+                to={`${inventoryPath}/import`}
+              >
+                import inventory
+              </Link>
+            ) : undefined
+          }
+        />
       ) : list.results === null ? (
-        <p
-          className="text-sm text-foreground-secondary"
+        <EmptyState
           data-testid="vuln-none"
-        >
-          รายการที่ต้องแก้จะแสดงที่นี่หลังการตรวจครั้งแรก
-        </p>
+          title="รายการที่ต้องแก้จะแสดงที่นี่หลังการตรวจครั้งแรก"
+        />
       ) : !active && view.empty ? (
-        <p className="text-sm" data-testid="vuln-none">
-          ไม่มี CVE ที่ยังพบ ณ การตรวจล่าสุด ไม่ได้หมายความว่าปลอดภัย
-        </p>
+        <EmptyState
+          data-testid="vuln-none"
+          title="ไม่มี CVE ที่ยังพบ ณ การตรวจล่าสุด ไม่ได้หมายความว่าปลอดภัย"
+        />
       ) : noMatch ? (
-        <div className="space-y-2" data-testid="vuln-no-match">
-          <p className="text-sm">ไม่มีรายการตามตัวกรอง</p>
-          {filters.isNew && !warned ? (
-            <p
-              className="text-sm text-foreground-secondary"
-              data-testid="vuln-new-none"
-            >
-              ไม่พบ CVE ใหม่ใน {fresh.windowDays} วันที่ผ่านมา ณ การตรวจล่าสุด
-              ไม่ได้หมายความว่าปลอดภัย
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          data-testid="vuln-no-match"
+          title="ไม่มีรายการตามตัวกรอง"
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="vuln-filter-clear"
+                onClick={clearFilters}
+              >
+                ล้างตัวกรอง
+              </Button>
+              {filters.isNew && !warned ? (
+                <p
+                  className="text-sm text-foreground-secondary"
+                  data-testid="vuln-new-none"
+                >
+                  ไม่พบ CVE ใหม่ใน {fresh.windowDays} วันที่ผ่านมา ณ
+                  การตรวจล่าสุด ไม่ได้หมายความว่าปลอดภัย
+                </p>
+              ) : null}
+            </div>
+          }
+        />
       ) : null}
       {view.ranked.length === 0 ? null : (
         <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">

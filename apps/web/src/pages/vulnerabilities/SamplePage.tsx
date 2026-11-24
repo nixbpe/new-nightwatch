@@ -8,11 +8,13 @@ import {
   overFalsePositiveLimit,
 } from "@nightwatch/api-contract";
 
+import { EmptyState } from "../../components/shell/EmptyState";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { HairlineGrid } from "../../components/ui/hairline-grid";
 import { SectionHeader } from "../../components/ui/section-header";
 import {
   drawSample,
@@ -225,20 +227,20 @@ function Sample({
             </Alert>
           )}
           {query.isPending ? (
-            <p className="text-sm text-foreground-secondary" role="status">
-              กำลังโหลดผลสุ่มตรวจ
-            </p>
+            <PageState
+              kind="loading"
+              layout="inline"
+              label="กำลังโหลดผลสุ่มตรวจ…"
+            />
           ) : sample === null ? (
-            <p
-              className="text-sm text-foreground-secondary"
+            <EmptyState
               data-testid="vuln-sample-empty"
-            >
-              ยังไม่มีผลสุ่มตรวจ
-            </p>
+              title="ยังไม่มีผลสุ่มตรวจ"
+            />
           ) : (
             <>
-              <div
-                className="grid gap-px overflow-hidden rounded-md border border-foreground/10 bg-foreground/10 *:bg-surface sm:grid-cols-2 lg:grid-cols-4"
+              <HairlineGrid
+                className="sm:grid-cols-2 lg:grid-cols-4"
                 data-testid="vuln-sample-stats"
               >
                 <Stat
@@ -282,7 +284,7 @@ function Sample({
                   }
                   note={`เมื่อตรวจแล้วอย่างน้อย ${String(FALSE_POSITIVE_MIN_REVIEWED)} รายการ`}
                 />
-              </div>
+              </HairlineGrid>
               {sample.falsePositiveRate !== null &&
               overFalsePositiveLimit(sample) ? (
                 <FalsePositiveAlert

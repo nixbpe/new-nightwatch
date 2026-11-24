@@ -120,9 +120,21 @@ describe("the Needs-fix view (default)", () => {
     const status = screen.getByTestId("vuln-status");
     expect(status).toHaveTextContent("ตรวจล่าสุด");
     expect(status).toHaveTextContent("แหล่งข้อมูลครบ");
+    // The time names its zone, as the Inventory header does.
+    expect(screen.getByTestId("vuln-checked-at")).toHaveTextContent(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
     expect(screen.getByTestId("vuln-coverage")).toHaveTextContent(
       "ยังไม่ครอบคลุม 1 component · ตรวจไม่สำเร็จ 1 component",
     );
+  });
+
+  it("leaves the last-checked segment out when the run has no finish time", async () => {
+    listMock.mockResolvedValue(list({ results: run({ finishedAt: null }) }));
+    await fix();
+    const status = screen.getByTestId("vuln-status");
+    expect(status).not.toHaveTextContent("ตรวจล่าสุด");
+    expect(status).toHaveTextContent("แหล่งข้อมูลครบ");
   });
 
   it("names the feed that is down in the status line and keeps each feed's time in the icon", async () => {
@@ -243,6 +255,35 @@ describe("the Needs-fix view (default)", () => {
     expect(screen.getByTestId("vuln-item-1")).toBeInTheDocument();
   });
 
+  it("puts the clear button inside the no-match block", async () => {
+    await fix(`${BASE}?kev=1&untriaged=1&new=1`);
+    expect(
+      within(screen.getByTestId("vuln-no-match")).getByTestId(
+        "vuln-filter-clear",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the clear button in the filter row when filtered rows remain", async () => {
+    await fix(`${BASE}?kev=1`);
+    expect(screen.queryByTestId("vuln-no-match")).toBeNull();
+    expect(screen.getByTestId("vuln-filter-clear")).toBeInTheDocument();
+  });
+
+  it("says how many rows a filter shows out of all, and leaves the tiles counting the whole ranking", async () => {
+    await fix(`${BASE}?kev=1`);
+    const shown = screen.getByTestId("vuln-shown");
+    expect(shown).toHaveTextContent("1");
+    expect(shown).toHaveTextContent("2");
+    expect(screen.getByTestId("vuln-tile-fix")).toHaveTextContent("2");
+    expect(screen.getByTestId("vuln-tile-kev")).toHaveTextContent("1");
+  });
+
+  it("shows no count line while no filter is set", async () => {
+    await fix();
+    expect(screen.queryByTestId("vuln-shown")).toBeNull();
+  });
+
   it("says nothing was found as of the last scan without calling it safe, and keeps the coverage line", async () => {
     priorityMock.mockResolvedValue(priority({ items: [] }));
     await fix();
@@ -298,6 +339,14 @@ describe("the Needs-fix view (default)", () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
     expect(await screen.findByTestId("vuln-item-1")).toBeInTheDocument();
+  });
+
+  it("shows the denied state with no retry when the read is refused", async () => {
+    priorityMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "x", 403));
+    renderAt(BASE);
+
+    expect(await screen.findByTestId("vuln-denied")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ลองใหม่" })).toBeNull();
   });
 
   it("shows the empty state of a Project with no inventory, with the Import link only for an admin", async () => {
@@ -553,9 +602,8 @@ describe("the By-System view", () => {
     expect(system).toHaveTextContent("พบ CVE 2 รายการ · อยู่ใน KEV 1 รายการ");
     const at = within(screen.getByTestId("vuln-none-found"));
     expect(at.getByText("ไม่พบ CVE")).toBeInTheDocument();
-    expect(screen.getByTestId("vuln-none-found")).toHaveTextContent(
-      "(ตรวจ NVD)",
-    );
+    expect(screen.getByTestId("vuln-feed-time-nvd")).toBeInTheDocument();
+    expect(screen.queryByTestId("vuln-feed-time-osv")).toBeNull();
     expect(screen.getByTestId("vuln-check-failed")).toHaveTextContent(
       "ตรวจไม่สำเร็จ",
     );
@@ -580,12 +628,89 @@ describe("the By-System view", () => {
     expect(screen.queryByTestId("vuln-tiles")).toBeNull();
   });
 
+  it("dates a component with no CVE by the time of each feed it checked, not by when the run finished", async () => {
+    listMock.mockResolvedValue(
+      list({
+        results: run({
+          finishedAt: "2026-11-21T10:00:00.000Z",
+          feeds: {
+            nvd: { ok: true, at: "2026-11-20T08:30:00.000Z" },
+            osv: { ok: true, at: "2026-11-19T08:30:00.000Z" },
+          },
+        }),
+        components: [component({ checkedSources: ["nvd", "osv"] })],
+      }),
+    );
+    await fix(`${BASE}?view=systems`);
+    expect(await screen.findByTestId("vuln-feed-time-nvd")).toHaveTextContent(
+      "2026-11-20",
+    );
+    expect(screen.getByTestId("vuln-feed-time-osv")).toHaveTextContent(
+      "2026-11-19",
+    );
+    expect(screen.getByTestId("vuln-none-found")).not.toHaveTextContent(
+      "2026-11-21",
+    );
+  });
+
+  it("says unknown, not a blank time, for a checked source whose feed has no time", async () => {
+    listMock.mockResolvedValue(
+      list({
+        results: run({ feeds: {} }),
+        components: [component({ checkedSources: ["nvd"] })],
+      }),
+    );
+    await fix(`${BASE}?view=systems`);
+    expect(await screen.findByTestId("vuln-feed-time-nvd")).toHaveTextContent(
+      "ไม่ทราบ",
+    );
+  });
+
+  it("shows how many of a System's and a component's CVEs are marked not affected, only when some are", async () => {
+    await fix(`${BASE}?view=systems`);
+    await screen.findByTestId(`vuln-system-${SYSTEM}`);
+    expect(screen.queryByTestId("vuln-not-affected-count")).toBeNull();
+    expect(
+      screen.queryByTestId(`vuln-system-not-affected-${SYSTEM}`),
+    ).toBeNull();
+  });
+
+  it("counts a not-affected CVE in the found total and says so next to it", async () => {
+    listMock.mockResolvedValue(
+      list({
+        components: [
+          component({
+            state: "findings",
+            findings: [
+              finding("CVE-2024-0001"),
+              finding("CVE-2024-0002", {
+                triage: {
+                  status: "not_affected",
+                  reason: "x",
+                  changedBy: "A",
+                  changedAt: AT,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    await fix(`${BASE}?view=systems`);
+    expect(
+      await screen.findByTestId("vuln-not-affected-count"),
+    ).toHaveTextContent("1");
+    expect(
+      screen.getByTestId(`vuln-system-not-affected-${SYSTEM}`),
+    ).toHaveTextContent("1");
+  });
+
   it("folds a System with its header button, open at first, and keeps its Excel button outside the fold", async () => {
     await fix(`${BASE}?view=systems`);
     const toggle = await screen.findByTestId(`vuln-system-toggle-${SYSTEM}`);
     // The System name is a level-3 heading whose button folds the group.
     expect(
-      screen.getByRole("heading", { level: 3, name: /Billing API/ }),
+      screen.getByRole("heading", { level: 2, name: /Billing API/ }),
     ).toContainElement(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(toggle).toHaveTextContent("Billing API");
@@ -684,10 +809,41 @@ describe("the By-System view", () => {
     exportMock.mockRejectedValue(new ApiError("X", "x", 500));
     await fix(`${BASE}?view=systems`);
     await userEvent.click(await screen.findByTestId(`vuln-export-${SYSTEM}`));
-    expect(
-      await screen.findByTestId(`vuln-export-error-${SYSTEM}`),
-    ).toBeVisible();
+    const error = await screen.findByTestId(`vuln-export-error-${SYSTEM}`);
+    expect(error).toBeVisible();
+    expect(error).toHaveAttribute("role", "alert");
     expect(screen.getByTestId(`vuln-system-${SYSTEM}`)).toBeVisible();
+  });
+
+  it("announces the wait while the Excel file is built", async () => {
+    let finish: (value: { blob: Blob; filename: string }) => void = () =>
+      undefined;
+    exportMock.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => "blob:x"),
+      revokeObjectURL: vi.fn(),
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    await fix(`${BASE}?view=systems`);
+    const button = await screen.findByTestId(`vuln-export-${SYSTEM}`);
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByTestId(`vuln-export-status-${SYSTEM}`),
+    ).not.toBeEmptyDOMElement();
+    finish({ blob: new Blob(["x"]), filename: "v.xlsx" });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`vuln-export-status-${SYSTEM}`),
+      ).toBeEmptyDOMElement();
+    });
+    click.mockRestore();
   });
 
   it("keeps the trust statement on screen in this view too", async () => {
@@ -844,10 +1000,7 @@ describe("VEX in the list", () => {
     await userEvent.click(
       screen.getByRole("menuitemradio", { name: "ไม่ได้รับผลกระทบ" }),
     );
-    await userEvent.type(
-      screen.getByPlaceholderText("เหตุผล (จำเป็น)"),
-      "เหตุผลของข้อสอง",
-    );
+    await userEvent.type(screen.getByRole("textbox"), "เหตุผลของข้อสอง");
     // Marking the first finding affected saves, the page reads again, and the first one
     // (now not affected elsewhere) leaves the ranking: the second becomes rank 1.
     triageMock.mockResolvedValue({
@@ -885,13 +1038,9 @@ describe("VEX in the list", () => {
         "CVE-2024-0002",
       );
     });
-    expect(screen.getByPlaceholderText("เหตุผล (จำเป็น)")).toHaveValue(
-      "เหตุผลของข้อสอง",
-    );
+    expect(screen.getByRole("textbox")).toHaveValue("เหตุผลของข้อสอง");
     expect(
-      within(screen.getByTestId("vuln-item-1")).getByPlaceholderText(
-        "เหตุผล (จำเป็น)",
-      ),
+      within(screen.getByTestId("vuln-item-1")).getByRole("textbox"),
     ).toBeInTheDocument();
   });
 
@@ -978,6 +1127,34 @@ describe("running a check", () => {
       expect(priorityMock.mock.calls.length).toBeGreaterThan(1);
     });
     expect(freshMock.mock.calls.length).toBeGreaterThan(1);
+    expect(await screen.findByTestId("vuln-finished")).toHaveAttribute(
+      "role",
+      "status",
+    );
+  });
+
+  it("gives the progress a progressbar with the done and total units", async () => {
+    listMock.mockResolvedValue(
+      list({
+        run: run({
+          status: "running",
+          finishedAt: null,
+          doneUnits: 1,
+          totalUnits: 4,
+        }),
+      }),
+    );
+    advanceMock.mockImplementation(() => new Promise(() => undefined));
+    renderAt(BASE);
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "1");
+    expect(bar).toHaveAttribute("aria-valuemax", "4");
+    expect(screen.queryByTestId("vuln-finished")).toBeNull();
+  });
+
+  it("does not announce a finished run that this page never saw running", async () => {
+    await fix();
+    expect(screen.queryByTestId("vuln-finished")).toBeNull();
   });
 
   it("stops and says why when a step fails, then steps again from the retry control", async () => {
@@ -1007,6 +1184,11 @@ describe("running a check", () => {
     renderAt(BASE);
     expect(await screen.findByTestId("vuln-run-failed")).toHaveTextContent(
       "ผลที่แสดงเป็นของรอบก่อนหน้า",
+    );
+    // A standing caution is not announced assertively on every load (VULN-18).
+    expect(screen.getByTestId("vuln-run-failed")).toHaveAttribute(
+      "role",
+      "status",
     );
     expect(advanceMock).not.toHaveBeenCalled();
   });

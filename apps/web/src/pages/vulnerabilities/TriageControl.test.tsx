@@ -110,7 +110,6 @@ describe("TriageControl", () => {
       "สถานะ VEX ของ CVE-2026-1000: ยังไม่ triage",
     );
     expect(trigger()).toHaveTextContent("ยังไม่ triage");
-    expect(trigger()).toHaveClass("h-8");
     expect(trigger()).toHaveAttribute("aria-haspopup", "menu");
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("menu")).toBeNull();
@@ -323,9 +322,39 @@ describe("TriageControl", () => {
     await choose("not-affected");
     const input = screen.getByTestId(`triage-reason-${KEY}`);
     expect(input).toHaveFocus();
-    expect(input).toHaveClass("h-10");
-    expect(screen.getByTestId(`triage-save-${KEY}`)).toHaveClass("h-10");
-    expect(trigger()).toHaveClass("h-8");
+  });
+
+  it("names the reason field with a visible label, not only a placeholder", async () => {
+    renderControl({ canManage: true, triage: null });
+    await choose("not-affected");
+    const input = screen.getByTestId(`triage-reason-${KEY}`);
+    const label = document.querySelector(`label[for="${input.id}"]`);
+    expect(label).not.toBeNull();
+    expect(label).not.toHaveClass("sr-only");
+    expect(input).not.toHaveAttribute("placeholder");
+  });
+
+  it("closes the reason row without saving from the cancel button, and returns focus to the status button", async () => {
+    renderControl({ canManage: true, triage: null });
+    await choose("not-affected");
+    await userEvent.type(screen.getByTestId(`triage-reason-${KEY}`), "เหตุผล");
+    await userEvent.click(screen.getByTestId(`triage-cancel-${KEY}`));
+    expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
+    expect(putMock).not.toHaveBeenCalled();
+    expect(trigger()).toHaveFocus();
+    // The next time the row opens it starts empty.
+    await choose("not-affected");
+    expect(screen.getByTestId(`triage-reason-${KEY}`)).toHaveValue("");
+  });
+
+  it("closes the reason row on Escape without saving", async () => {
+    renderControl({ canManage: true, triage: null });
+    await choose("not-affected");
+    await userEvent.type(screen.getByTestId(`triage-reason-${KEY}`), "เหตุผล");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId(`triage-reason-${KEY}`)).toBeNull();
+    expect(putMock).not.toHaveBeenCalled();
+    expect(trigger()).toHaveFocus();
   });
 
   it("keeps a whitespace-only reason from being saved", async () => {

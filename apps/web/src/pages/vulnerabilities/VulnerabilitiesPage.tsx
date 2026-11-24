@@ -17,6 +17,8 @@ import {
   fetchPriority,
   fetchVulnerabilities,
   startVulnerabilityRun,
+  isVulnerabilityAccessDenied,
+  VULNERABILITY_DENIED_MESSAGE,
   vulnerabilityErrorMessage,
   vulnerabilityKeys,
 } from "../../lib/api/vulnerabilities";
@@ -109,8 +111,12 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
   // new-CVE list are older than the list now, so every list of the Project is read again.
   const wasRunning = useRef(false);
   const running = data?.run?.status === "running";
+  // Set when a run ends while this page watches it, for the one "finished" message.
+  const [finished, setFinished] = useState(false);
   useEffect(() => {
+    if (running) setFinished(false);
     if (wasRunning.current && !running) {
+      setFinished(true);
       void queryClient.invalidateQueries({
         queryKey: vulnerabilityKeys.all(organizationId, projectId),
       });
@@ -293,13 +299,25 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
                 ) : (
                   <>
                     <span>
-                      ตรวจล่าสุด{" "}
-                      <span className="font-mono">
-                        {results.finishedAt === null
-                          ? ""
-                          : formatUploadedAt(results.finishedAt, preferences)}
-                      </span>{" "}
-                      ·{" "}
+                      {results.finishedAt === null ? null : (
+                        <>
+                          <span data-testid="vuln-checked-at">
+                            ตรวจล่าสุด{" "}
+                            <span className="font-mono">
+                              {formatUploadedAt(
+                                results.finishedAt,
+                                preferences,
+                              )}
+                            </span>{" "}
+                            (
+                            <span className="font-mono">
+                              {preferences.timeZone}
+                            </span>
+                            )
+                          </span>{" "}
+                          ·{" "}
+                        </>
+                      )}
                       {feedDown.length === 0 ? (
                         "แหล่งข้อมูลครบ"
                       ) : (
@@ -335,10 +353,33 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
         </div>
         <div className="space-y-2">
           {run?.status === "running" ? (
-            <Notice tone="pending" data-testid="vuln-progress">
-              กำลังตรวจ {run.doneUnits} จาก {run.totalUnits} product
-              {wait === null ? "" : ` · รอโควตา NVD ${String(wait)} วินาที`}
-              {canManage ? " · เปิดหน้านี้ไว้จนกว่าจะเสร็จ" : ""}
+            <>
+              <Notice tone="pending" data-testid="vuln-progress">
+                กำลังตรวจ {run.doneUnits} จาก {run.totalUnits} product
+                {wait === null ? "" : ` · รอโควตา NVD ${String(wait)} วินาที`}
+                {canManage ? " · เปิดหน้านี้ไว้จนกว่าจะเสร็จ" : ""}
+              </Notice>
+              <div
+                role="progressbar"
+                aria-label="ความคืบหน้าการตรวจ CVE"
+                aria-valuemin={0}
+                aria-valuemax={run.totalUnits}
+                aria-valuenow={run.doneUnits}
+                data-testid="vuln-progressbar"
+                className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-foreground/10"
+              >
+                <div
+                  className="h-full bg-foreground-secondary transition-[width]"
+                  style={{
+                    width: `${String(run.totalUnits === 0 ? 0 : Math.min(100, (run.doneUnits / run.totalUnits) * 100))}%`,
+                  }}
+                />
+              </div>
+            </>
+          ) : null}
+          {finished && run?.status === "done" ? (
+            <Notice tone="success" data-testid="vuln-finished">
+              ตรวจเสร็จ {run.totalUnits} product
             </Notice>
           ) : null}
           {stepError === null ? null : (
@@ -412,6 +453,12 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
           label="กำลังโหลดช่องโหว่"
           layout="table"
           visibleLabel
+        />
+      ) : failed !== undefined && isVulnerabilityAccessDenied(failed.error) ? (
+        <PageState
+          kind="denied"
+          data-testid="vuln-denied"
+          message={VULNERABILITY_DENIED_MESSAGE}
         />
       ) : failed !== undefined ? (
         <PageState
