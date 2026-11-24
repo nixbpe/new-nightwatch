@@ -1,10 +1,10 @@
-import { useForm } from "@tanstack/react-form";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { useState } from "react";
 
-import { EyeIcon, EyeOffIcon } from "../../components/shell/icons";
-import { Alert, FieldValidationError, Input } from "../../components/ui";
+import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { Label } from "../../components/ui/label";
+import { Notice } from "../../components/ui/notice";
+import { PasswordField } from "../../components/ui/password-field";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { CardFooter, CardSection } from "../../components/ui/card";
 import { SectionHeader } from "../../components/ui/section-header";
@@ -17,11 +17,8 @@ export function PasswordCard() {
     string | null
   >(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [reveal, setReveal] = useState({
-    current: false,
-    next: false,
-    confirm: false,
-  });
+  // Remounts the fields after a success so a revealed field is hidden again.
+  const [fieldsKey, setFieldsKey] = useState(0);
 
   const form = useForm({
     defaultValues: {
@@ -41,7 +38,9 @@ export function PasswordCard() {
         });
         if (error != null) {
           const message = authErrorMessage(error, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
-          if (error.status === 400 || error.code === "INVALID_PASSWORD") {
+          // Only a wrong current password belongs on that field; a too short or too long new
+          // password is also a 400 and is shown at the top of the form.
+          if (error.code === "INVALID_PASSWORD") {
             setCurrentPasswordError(message);
           } else {
             setFormError(message);
@@ -49,17 +48,20 @@ export function PasswordCard() {
           return;
         }
         form.reset();
-        setReveal({ current: false, next: false, confirm: false });
-        setNotice("เปลี่ยนรหัสผ่านแล้ว อุปกรณ์อื่นทุกเครื่องถูกออกจากระบบ");
+        setFieldsKey((key) => key + 1);
+        setNotice("เปลี่ยนรหัสผ่านแล้ว เซสชันอื่นทั้งหมดถูกออกจากระบบ");
       } catch {
         setFormError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
       }
     },
   });
 
-  const toggle = (key: keyof typeof reveal) => {
-    setReveal((value) => ({ ...value, [key]: !value[key] }));
-  };
+  // A field's errors wait for its first blur or a submit attempt; a change sets `isTouched`, so it is no gate.
+  const submitAttempts = useSelector(form.store, (s) => s.submissionAttempts);
+  const visibleErrors = (meta: {
+    isBlurred: boolean;
+    errors: readonly unknown[];
+  }) => (meta.isBlurred || submitAttempts > 0 ? meta.errors : []);
 
   return (
     <CardSection
@@ -74,9 +76,9 @@ export function PasswordCard() {
       </div>
 
       {notice === null ? null : (
-        <Alert data-testid="password-change-success" tone="success">
+        <Notice data-testid="password-change-success" tone="success">
           {notice}
-        </Alert>
+        </Notice>
       )}
       {formError === null ? null : (
         <Alert data-testid="password-change-error" tone="error">
@@ -93,7 +95,7 @@ export function PasswordCard() {
         noValidate
         className="flex flex-col gap-6"
       >
-        <div className="flex max-w-md flex-col gap-4">
+        <div key={fieldsKey} className="flex max-w-md flex-col gap-4">
           <form.Field
             name="currentPassword"
             validators={{
@@ -109,16 +111,12 @@ export function PasswordCard() {
                 label="รหัสผ่านปัจจุบัน"
                 autoComplete="current-password"
                 value={field.state.value}
-                revealed={reveal.current}
-                onToggle={() => {
-                  toggle("current");
-                }}
                 onChange={(next) => {
                   setCurrentPasswordError(null);
                   field.handleChange(next);
                 }}
                 onBlur={field.handleBlur}
-                errors={field.state.meta.errors}
+                errors={visibleErrors(field.state.meta)}
                 serverError={currentPasswordError}
               />
             )}
@@ -145,13 +143,9 @@ export function PasswordCard() {
                 label="รหัสผ่านใหม่"
                 autoComplete="new-password"
                 value={field.state.value}
-                revealed={reveal.next}
-                onToggle={() => {
-                  toggle("next");
-                }}
                 onChange={field.handleChange}
                 onBlur={field.handleBlur}
-                errors={field.state.meta.errors}
+                errors={visibleErrors(field.state.meta)}
               />
             )}
           </form.Field>
@@ -177,20 +171,16 @@ export function PasswordCard() {
                 label="ยืนยันรหัสผ่านใหม่"
                 autoComplete="new-password"
                 value={field.state.value}
-                revealed={reveal.confirm}
-                onToggle={() => {
-                  toggle("confirm");
-                }}
                 onChange={field.handleChange}
                 onBlur={field.handleBlur}
-                errors={field.state.meta.errors}
+                errors={visibleErrors(field.state.meta)}
               />
             )}
           </form.Field>
         </div>
         <CardFooter variant="split">
           <p className="text-xs text-foreground-secondary">
-            เปลี่ยนรหัสผ่านแล้ว อุปกรณ์อื่นทุกเครื่องจะถูกออกจากระบบ
+            เปลี่ยนรหัสผ่านแล้ว เซสชันอื่นทั้งหมดจะถูกออกจากระบบ
           </p>
           <form.Subscribe
             selector={(state) => state.isSubmitting}
@@ -230,81 +220,4 @@ function validateConfirm(
   return value === newPassword
     ? undefined
     : "รหัสผ่านยืนยันไม่ตรงกับรหัสผ่านใหม่";
-}
-
-function PasswordField({
-  id,
-  label,
-  autoComplete,
-  value,
-  revealed,
-  onToggle,
-  onChange,
-  onBlur,
-  errors,
-  serverError = null,
-}: {
-  id: string;
-  label: string;
-  autoComplete: "current-password" | "new-password";
-  value: string;
-  revealed: boolean;
-  onToggle: () => void;
-  onChange: (value: string) => void;
-  onBlur: () => void;
-  errors: readonly unknown[];
-  serverError?: string | null;
-}) {
-  const invalid = errors.length > 0 || serverError !== null;
-  const errorId = `${id}-error`;
-  return (
-    <div>
-      <Label htmlFor={id} className="mb-2 block">
-        {label}
-      </Label>
-      <div className="relative">
-        <Input
-          data-testid={id}
-          id={id}
-          type={revealed ? "text" : "password"}
-          autoComplete={autoComplete}
-          value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-          }}
-          onBlur={onBlur}
-          aria-invalid={invalid}
-          aria-describedby={invalid ? errorId : undefined}
-          className="pr-11"
-        />
-        <button
-          type="button"
-          data-testid={`${id}-toggle`}
-          onClick={onToggle}
-          className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-md text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-        >
-          {revealed ? <EyeOffIcon /> : <EyeIcon />}
-          <span className="sr-only">
-            {revealed ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-          </span>
-        </button>
-      </div>
-      {serverError === null ? (
-        <FieldValidationError
-          data-testid={errorId}
-          id={errorId}
-          errors={errors}
-        />
-      ) : (
-        <span
-          data-testid={errorId}
-          id={errorId}
-          role="alert"
-          className="mt-1 block text-sm text-danger"
-        >
-          {serverError}
-        </span>
-      )}
-    </div>
-  );
 }

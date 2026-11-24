@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { Skeleton } from "../../components/shell/Skeleton";
+import { PageState } from "../../components/shell/PageState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { contextQueryOptions } from "../../lib/tenant/bootstrap";
 import { MfaCard } from "./MfaCard";
 import { PasswordCard } from "./PasswordCard";
-import { Card } from "../../components/ui/card";
+import { Card, CardSection } from "../../components/ui/card";
 import { MockupFrame } from "../../components/ui/mockup-frame";
 
 export function SecurityPage() {
@@ -18,39 +18,12 @@ export function SecurityPage() {
 
   if (meQuery.isPending) {
     return (
-      <Card
+      <PageState
+        kind="loading"
+        layout="lines"
         data-testid="security-loading"
-        role="status"
-        aria-label="กำลังโหลดข้อมูลความปลอดภัย"
-        padding="md"
-      >
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-3 w-full max-w-lg" />
-        <Skeleton className="h-16 w-full" />
-      </Card>
-    );
-  }
-
-  if (meQuery.isError) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Alert data-testid="security-load-error" tone="error">
-          ไม่สามารถตรวจสอบสถานะยืนยันสองขั้นตอนได้ กรุณาลองใหม่อีกครั้ง
-        </Alert>
-        <div>
-          <Button
-            type="button"
-            variant="secondary"
-            data-testid="security-load-retry"
-            disabled={meQuery.isRefetching}
-            onClick={() => {
-              void meQuery.refetch();
-            }}
-          >
-            {meQuery.isRefetching ? "กำลังโหลด…" : "ลองใหม่"}
-          </Button>
-        </div>
-      </div>
+        label="กำลังโหลดข้อมูลความปลอดภัย…"
+      />
     );
   }
 
@@ -59,15 +32,36 @@ export function SecurityPage() {
     return refreshed.data?.user.twoFactorEnabled;
   };
 
+  // Only the MFA card needs `me`; the password card works without it, so it stays usable.
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <MfaCard
-          enabled={meQuery.data.user.twoFactorEnabled}
-          refreshStatus={refreshStatus}
-        />
-      </Card>
-      <Card>
+      <Card className="divide-y divide-foreground/10">
+        {meQuery.isError ? (
+          <CardSection as="div">
+            <Alert data-testid="security-load-error" tone="error">
+              ไม่สามารถตรวจสอบสถานะยืนยันสองขั้นตอนได้ กรุณาลองใหม่อีกครั้ง
+            </Alert>
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="security-load-retry"
+                disabled={meQuery.isRefetching}
+                onClick={() => {
+                  void meQuery.refetch();
+                }}
+              >
+                {meQuery.isRefetching ? "กำลังโหลด…" : "ลองใหม่"}
+              </Button>
+            </div>
+          </CardSection>
+        ) : (
+          <MfaCard
+            enabled={meQuery.data.user.twoFactorEnabled}
+            refreshStatus={refreshStatus}
+            accountEmail={meQuery.data.user.email}
+          />
+        )}
         <PasswordCard />
       </Card>
       <AccountSecurityMockup />
@@ -78,7 +72,11 @@ export function SecurityPage() {
 // Placeholder values only: none of these fields exist in the API yet (issue 64).
 function AccountSecurityMockup() {
   return (
-    <MockupFrame label="ข้อมูลความปลอดภัยของบัญชี" issue={64}>
+    <MockupFrame
+      testId="security-mockup"
+      label="ข้อมูลความปลอดภัยของบัญชี"
+      issue={64}
+    >
       <dl className="mt-4 flex flex-col gap-3 text-sm">
         <div className="flex flex-wrap justify-between gap-2">
           <dt className="text-foreground-secondary">เปลี่ยนล่าสุด</dt>
@@ -106,25 +104,15 @@ function AccountSecurityMockup() {
               <span className="font-mono">--</span>
             </span>
           </dt>
-          <dd>
-            <Button type="button" variant="secondary" size="sm" disabled>
-              ตั้งค่าใหม่
-            </Button>
-          </dd>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <dt className="text-foreground-secondary">
             รหัสกู้คืน เหลือ <span className="font-mono">N / 10</span> ชุด
           </dt>
-          <dd>
-            <Button type="button" variant="secondary" size="sm" disabled>
-              สร้างรหัสใหม่
-            </Button>
-          </dd>
         </div>
         <div className="flex flex-wrap justify-between gap-2">
           <dt className="text-foreground-secondary">
-            อุปกรณ์ที่เข้าสู่ระบบอยู่
+            เซสชันที่เข้าสู่ระบบอยู่
           </dt>
           <dd className="text-xs">
             <span className="font-mono">N</span> · ล่าสุด{" "}

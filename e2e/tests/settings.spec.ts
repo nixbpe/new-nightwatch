@@ -147,8 +147,8 @@ test.describe("signed-in settings", () => {
       const tab = page.getByTestId(`settings-tab-${path}`);
       await tab.click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(tab).toHaveAttribute("aria-selected", "true");
-      await expect(tab).toHaveRole("tab");
+      await expect(tab).toHaveAttribute("aria-current", "page");
+      await expect(tab).toHaveRole("link");
       if (path === "/settings/sessions") sessionsLabel = await tab.innerText();
     }
     await expect(page.getByTestId("shell-breadcrumb-current")).toHaveAttribute(
@@ -191,14 +191,14 @@ test.describe("signed-in settings", () => {
             const activeTab = tablist.getByTestId(
               `settings-tab-/settings/${route}`,
             );
-            await expectReflow(page, tablist.getByRole("tab"));
+            await expectReflow(page, tablist.getByRole("link"));
             expect(
               await tablist.evaluate((element) => element.scrollWidth),
             ).toBe(await tablist.evaluate((element) => element.clientWidth));
             expect(
               await tablist.evaluate((element) => element.scrollHeight),
             ).toBe(await tablist.evaluate((element) => element.clientHeight));
-            for (const tab of await tablist.getByRole("tab").all()) {
+            for (const tab of await tablist.getByRole("link").all()) {
               await tab.scrollIntoViewIfNeeded();
               await expect(tab).toBeInViewport({ ratio: 1 });
               expect(
@@ -223,14 +223,9 @@ test.describe("signed-in settings", () => {
               ).toBe(true);
             }
             await expect(activeTab).toBeVisible();
-            await expect(activeTab).toHaveRole("tab");
-            await expect(activeTab).toHaveAttribute("aria-selected", "true");
+            await expect(activeTab).toHaveRole("link");
+            await expect(activeTab).toHaveAttribute("aria-current", "page");
             await expect(activeTab).toHaveAccessibleName(/\S/);
-            await expect(activeTab).toHaveAttribute("id", /\S/);
-            await expect(page.getByTestId("settings-panel")).toHaveAttribute(
-              "aria-labelledby",
-              (await activeTab.getAttribute("id")) ?? "",
-            );
             if (
               route === "profile" ||
               (route === "display" && textScale === 200)

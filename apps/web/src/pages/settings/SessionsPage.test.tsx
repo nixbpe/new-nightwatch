@@ -78,6 +78,15 @@ function expectVisibleAbsoluteTime(item: HTMLElement, row: SessionRow): void {
   expect(time).toBeVisible();
   expect(time.textContent).toBe(value);
   expect(time).not.toHaveAttribute("aria-hidden", "true");
+  // Sign-in and expiry times let a user judge whether a session is theirs.
+  for (const [testId, date] of [
+    ["session-created-at", row.createdAt],
+    ["session-expires-at", row.expiresAt],
+  ] as const) {
+    const extra = within(item).getByTestId(testId);
+    expect(extra).toHaveAttribute("datetime", date.toISOString());
+    expect(extra.textContent).toBe(formatDateTime(date, STORED_PREFERENCES));
+  }
 }
 
 function renderPage() {
@@ -157,6 +166,7 @@ describe("SessionsPage", () => {
 
     expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
     expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(screen.queryByTestId("sessions-current-unknown")).toBeNull();
     expect(
       screen.queryAllByTestId(
         /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
@@ -176,6 +186,7 @@ describe("SessionsPage", () => {
 
     expect(screen.getByTestId("session-current")).toBeInTheDocument();
     expect(screen.getByTestId("sessions-others-open")).toBeInTheDocument();
+    expect(screen.queryByTestId("sessions-current-unknown")).toBeNull();
   });
 
   it("shows rows without current-device claims or revoke controls when no listed session matches", async () => {
@@ -191,6 +202,7 @@ describe("SessionsPage", () => {
 
     expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
     expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(screen.getByTestId("sessions-current-unknown")).toBeInTheDocument();
     expect(
       screen.queryAllByTestId(
         /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
@@ -210,6 +222,7 @@ describe("SessionsPage", () => {
 
     expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
     expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(screen.getByTestId("sessions-current-unknown")).toBeInTheDocument();
     expect(
       screen.queryAllByTestId(
         /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
@@ -244,6 +257,50 @@ describe("SessionsPage", () => {
     });
     expect(screen.getByTestId("sessions-no-others")).toBeInTheDocument();
     expect(authMock.listSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves focus to the section heading after a revoke removes the focused button", async () => {
+    authMock.listSessions
+      .mockResolvedValueOnce({ data: [CURRENT, PHONE], error: null })
+      .mockResolvedValueOnce({ data: [CURRENT], error: null });
+    authMock.revokeSession.mockResolvedValue({
+      data: { status: true },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const phoneRow = await screen.findByTestId(`session-row-${PHONE.id}`);
+    await user.click(within(phoneRow).getByTestId("session-revoke-open"));
+    await user.click(within(phoneRow).getByTestId("session-revoke-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
+    });
+    expect(screen.getByRole("heading", { level: 2, name: /\S/ })).toHaveFocus();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("names each revoke button after its device so a list of buttons is unambiguous", async () => {
+    authMock.listSessions.mockResolvedValue({
+      data: [CURRENT, PHONE, session({ id: "s-other", token: "tok-other" })],
+      error: null,
+    });
+    renderPage();
+
+    await screen.findAllByTestId("session-revoke-open");
+    const rows = screen.getAllByTestId(/^session-row-/);
+    let named = 0;
+    for (const row of rows) {
+      const button = within(row).queryByTestId("session-revoke-open");
+      if (button === null) continue;
+      named += 1;
+      // The accessible name carries the device the row describes.
+      expect(button.getAttribute("aria-label")).toContain(
+        within(row).getByTestId("session-device").textContent,
+      );
+    }
+    expect(named).toBe(2);
   });
 
   it("cancelling a confirm returns focus to the row's button", async () => {

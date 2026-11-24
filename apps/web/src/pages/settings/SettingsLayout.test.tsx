@@ -142,29 +142,43 @@ describe("SettingsLayout", () => {
     expect(tabs.map((tab) => tab.getAttribute("href"))).toEqual(
       SETTINGS_TABS.map((tab) => tab.path),
     );
-    expect(tablist).toHaveAttribute("role", "tablist");
-    for (const tab of tabs) expect(tab).toHaveAttribute("role", "tab");
-    expect(screen.getByTestId("settings-panel")).toHaveAttribute(
-      "role",
-      "tabpanel",
-    );
-    expect(screen.getByTestId("settings-panel")).toHaveAttribute(
-      "aria-labelledby",
-      screen.getByTestId("settings-tab-/settings/profile").id,
-    );
+    // The strip is page navigation: it keeps the navigation landmark, and no tab roles
+    // promise arrow-key behavior the links do not have.
+    expect(tablist.tagName).toBe("NAV");
+    expect(tablist).toHaveAttribute("aria-label");
+    expect(tablist).not.toHaveAttribute("role");
+    for (const tab of tabs) {
+      expect(tab).not.toHaveAttribute("role");
+      expect(tab).not.toHaveAttribute("aria-selected");
+    }
+    expect(screen.getByTestId("settings-panel")).not.toHaveAttribute("role");
   });
 
-  it("marks the tab for the current URL as selected and swaps the routed content on click", async () => {
+  it("says the Display tab applies to this browser while the other tabs apply to the account", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ORG_A]));
+    const user = userEvent.setup();
+    renderSettings("/settings/profile");
+
+    const accountScope = screen.getByTestId("settings-description").textContent;
+    await user.click(screen.getByTestId("settings-tab-/settings/display"));
+    await screen.findByTestId("settings-route-display");
+
+    const displayScope = screen.getByTestId("settings-description").textContent;
+    expect(displayScope).not.toBe(accountScope);
+    expect(displayScope).toContain("Org A");
+  });
+
+  it("marks the tab for the current URL as the current page and swaps the routed content on click", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ORG_A]));
     const user = userEvent.setup();
     renderSettings("/settings/sessions");
 
     expect(
       screen.getByTestId("settings-tab-/settings/sessions"),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByTestId("settings-tab-/settings/profile"),
-    ).toHaveAttribute("aria-selected", "false");
+    ).not.toHaveAttribute("aria-current");
     expect(screen.getByTestId("settings-route-sessions")).toBeInTheDocument();
 
     await user.click(screen.getByTestId("settings-tab-/settings/display"));
@@ -174,7 +188,7 @@ describe("SettingsLayout", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("settings-tab-/settings/display"),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("/settings lands on the first tab", async () => {
@@ -194,7 +208,7 @@ describe("SettingsLayout", () => {
     expect(await screen.findByTestId("mfa-card")).toBeInTheDocument();
     expect(
       screen.getByTestId("settings-tab-/settings/security"),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("omits the organization note when the user has no membership", async () => {

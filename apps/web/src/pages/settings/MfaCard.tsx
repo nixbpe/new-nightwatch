@@ -19,13 +19,18 @@ import {
   SmartphoneIcon,
 } from "../../components/shell/icons";
 import { Skeleton } from "../../components/shell/Skeleton";
-import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
+import { Alert, Field, FieldValidationError } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { formatAuditDate, usePreferences } from "../../lib/preferences";
 import { CardSection } from "../../components/ui/card";
+import { OtpCodeInput } from "../../components/ui/otp-code-input";
+import { PasswordField } from "../../components/ui/password-field";
 import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import { IconTile } from "../../components/ui/icon-tile";
+import { Notice } from "../../components/ui/notice";
 
 type EnrollmentDraft = { totpURI: string; backupCodes: string[] };
 
@@ -45,13 +50,21 @@ function groupedSecret(secret: string): string {
   return secret.replace(/(.{4})/g, "$1 ").trim();
 }
 
-function downloadCodes(codes: string[]): void {
-  const blob = new Blob(
-    [
-      `รหัสกู้คืน NightWatch\nแต่ละรหัสใช้ได้ครั้งเดียว\n\n${codes.join("\n")}\n`,
-    ],
-    { type: "text/plain;charset=utf-8" },
-  );
+// The account and date tell apart files from several accounts or sets.
+function downloadCodes(
+  codes: string[],
+  accountEmail: string | undefined,
+  downloadedOn: string,
+): void {
+  const header = [
+    "รหัสกู้คืน NightWatch",
+    ...(accountEmail === undefined ? [] : [`บัญชี: ${accountEmail}`]),
+    `ดาวน์โหลดเมื่อ: ${downloadedOn}`,
+    "แต่ละรหัสใช้ได้ครั้งเดียว",
+  ];
+  const blob = new Blob([`${header.join("\n")}\n\n${codes.join("\n")}\n`], {
+    type: "text/plain;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -65,10 +78,20 @@ function downloadCodes(codes: string[]): void {
 export function MfaCard({
   enabled,
   refreshStatus,
+  accountEmail,
 }: {
   enabled: boolean;
   refreshStatus: () => Promise<boolean | undefined>;
+  accountEmail?: string;
 }) {
+  const { preferences } = usePreferences();
+  const download = (codes: string[]) => {
+    downloadCodes(
+      codes,
+      accountEmail,
+      formatAuditDate(new Date(), preferences),
+    );
+  };
   const [stage, setStage] = useState<Stage>("idle");
   const [draft, setDraft] = useState<EnrollmentDraft | null>(null);
   const [qr, setQr] = useState<
@@ -83,12 +106,15 @@ export function MfaCard({
   const [enableError, setEnableError] = useState<string | null>(null);
   const [regen, setRegen] = useState<null | "form" | { codes: string[] }>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [regenAcknowledged, setRegenAcknowledged] = useState(false);
   const [copied, setCopied] = useState<null | "secret" | "codes">(null);
+  const [copyFailed, setCopyFailed] = useState<null | "secret" | "codes">(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [disableOpen, setDisableOpen] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
   const enableTriggerRef = useRef<HTMLButtonElement>(null);
   const regenTriggerRef = useRef<HTMLButtonElement>(null);
+  const regenCodesTitleRef = useRef<HTMLParagraphElement>(null);
   const disableTriggerRef = useRef<HTMLButtonElement>(null);
   // Focus returns to the opener after the next render, since that button remounts.
   const pendingFocus = useRef<RefObject<HTMLButtonElement | null> | null>(null);
@@ -100,6 +126,14 @@ export function MfaCard({
       pendingFocus.current = null;
     }
   });
+
+  // The password form unmounts when the new codes appear, so focus would fall to the page; send it to their heading.
+  const regenCodes = regen !== null && regen !== "form" ? regen : null;
+  useEffect(() => {
+    if (regenCodes !== null) {
+      regenCodesTitleRef.current?.focus();
+    }
+  }, [regenCodes]);
 
   useEffect(() => {
     if (enabled) {
@@ -142,15 +176,24 @@ export function MfaCard({
   );
 
   const copy = (text: string, which: "secret" | "codes") => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(which);
-      if (copiedTimer.current !== null) {
-        clearTimeout(copiedTimer.current);
-      }
-      copiedTimer.current = setTimeout(() => {
+    setCopyFailed(null);
+    // The executor also turns a missing `navigator.clipboard` (plain http) into a rejection.
+    void new Promise<void>((resolve) => {
+      resolve(navigator.clipboard.writeText(text));
+    })
+      .then(() => {
+        setCopied(which);
+        if (copiedTimer.current !== null) {
+          clearTimeout(copiedTimer.current);
+        }
+        copiedTimer.current = setTimeout(() => {
+          setCopied(null);
+        }, 1500);
+      })
+      .catch(() => {
         setCopied(null);
-      }, 1500);
-    });
+        setCopyFailed(which);
+      });
   };
 
   const resetEnrollment = () => {
@@ -242,6 +285,7 @@ export function MfaCard({
           );
           return;
         }
+        setRegenAcknowledged(false);
         setRegen({ codes: data.backupCodes });
         regenerateForm.resetField("password");
       } catch {
@@ -335,10 +379,10 @@ export function MfaCard({
       {enabled ? (
         <>
           {justEnabled ? (
-            <Alert data-testid="mfa-enabled-notice" tone="success">
+            <Notice data-testid="mfa-enabled-notice" tone="success">
               เปิดใช้งานยืนยันสองขั้นตอนแล้ว
               ครั้งถัดไปที่เข้าสู่ระบบจะต้องกรอกรหัสจากแอปด้วย
-            </Alert>
+            </Notice>
           ) : null}
           <div className="flex flex-col rounded border border-foreground/10">
             <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">
@@ -360,7 +404,6 @@ export function MfaCard({
                   type="button"
                   variant="secondary"
                   size="sm"
-                  className="text-danger"
                   onClick={() => {
                     setRegen(null);
                     setRegenError(null);
@@ -398,46 +441,19 @@ export function MfaCard({
                     }}
                   >
                     {(field) => (
-                      <Field label="ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน">
-                        <Input
-                          type="password"
-                          data-testid="mfa-disable-password"
-                          name="disable-password"
-                          autoComplete="current-password"
-                          autoFocus
-                          value={field.state.value}
-                          onChange={(event) => {
-                            field.handleChange(event.target.value);
-                          }}
-                          onBlur={field.handleBlur}
-                          aria-invalid={
-                            field.state.meta.errors.length > 0 ||
-                            disableError !== null
-                          }
-                          aria-describedby={
-                            field.state.meta.errors.length > 0 ||
-                            disableError !== null
-                              ? "disable-password-error"
-                              : undefined
-                          }
-                        />
-                        {disableError === null ? (
-                          <FieldValidationError
-                            data-testid="mfa-disable-password-error"
-                            id="disable-password-error"
-                            errors={field.state.meta.errors}
-                          />
-                        ) : (
-                          <span
-                            data-testid="mfa-disable-password-error"
-                            id="disable-password-error"
-                            role="alert"
-                            className="mt-1 block text-sm text-danger"
-                          >
-                            {disableError}
-                          </span>
-                        )}
-                      </Field>
+                      <PasswordField
+                        id="disable-password"
+                        testId="mfa-disable-password"
+                        label="ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน"
+                        name="disable-password"
+                        autoComplete="current-password"
+                        autoFocus
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        onBlur={field.handleBlur}
+                        errors={field.state.meta.errors}
+                        serverError={disableError}
+                      />
                     )}
                   </disableForm.Field>
                 </div>
@@ -526,46 +542,19 @@ export function MfaCard({
                     }}
                   >
                     {(field) => (
-                      <Field label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)">
-                        <Input
-                          type="password"
-                          data-testid="mfa-regenerate-password"
-                          name="regenerate-password"
-                          autoComplete="current-password"
-                          autoFocus
-                          value={field.state.value}
-                          onChange={(event) => {
-                            field.handleChange(event.target.value);
-                          }}
-                          onBlur={field.handleBlur}
-                          aria-invalid={
-                            field.state.meta.errors.length > 0 ||
-                            regenError !== null
-                          }
-                          aria-describedby={
-                            field.state.meta.errors.length > 0 ||
-                            regenError !== null
-                              ? "regenerate-password-error"
-                              : undefined
-                          }
-                        />
-                        {regenError === null ? (
-                          <FieldValidationError
-                            data-testid="mfa-regenerate-password-error"
-                            id="regenerate-password-error"
-                            errors={field.state.meta.errors}
-                          />
-                        ) : (
-                          <span
-                            data-testid="mfa-regenerate-password-error"
-                            id="regenerate-password-error"
-                            role="alert"
-                            className="mt-1 block text-sm text-danger"
-                          >
-                            {regenError}
-                          </span>
-                        )}
-                      </Field>
+                      <PasswordField
+                        id="regenerate-password"
+                        testId="mfa-regenerate-password"
+                        label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)"
+                        name="regenerate-password"
+                        autoComplete="current-password"
+                        autoFocus
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        onBlur={field.handleBlur}
+                        errors={field.state.meta.errors}
+                        serverError={regenError}
+                      />
                     )}
                   </regenerateForm.Field>
                 </div>
@@ -601,20 +590,38 @@ export function MfaCard({
             {regen !== null && regen !== "form" ? (
               <div className="flex flex-col gap-3 border-t border-foreground/10 p-4">
                 <CodesHeader
+                  titleRef={regenCodesTitleRef}
                   title="รหัสกู้คืนชุดใหม่"
                   description="แสดงเพียงครั้งนี้ แต่ละรหัสใช้ได้ครั้งเดียว และชุดเดิมใช้ไม่ได้แล้ว"
                   codes={regen.codes}
                   copied={copied === "codes"}
+                  copyFailed={copyFailed === "codes"}
                   onCopy={() => {
                     copy(regen.codes.join("\n"), "codes");
                   }}
+                  onDownload={download}
                 />
                 <BackupCodes codes={regen.codes} />
+                <label className="flex items-start gap-2.5 text-sm">
+                  <Checkbox
+                    data-testid="mfa-regenerate-acknowledge"
+                    checked={regenAcknowledged}
+                    onChange={(event) => {
+                      setRegenAcknowledged(event.target.checked);
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    ฉันบันทึกรหัสกู้คืนชุดใหม่ไว้ในที่ปลอดภัยแล้ว
+                    และเข้าใจว่าชุดเดิมใช้ไม่ได้ทันที
+                  </span>
+                </label>
                 <div>
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
+                    disabled={!regenAcknowledged}
                     onClick={() => {
                       setRegen(null);
                       pendingFocus.current = regenTriggerRef;
@@ -682,46 +689,19 @@ export function MfaCard({
                 }}
               >
                 {(field) => (
-                  <Field label="รหัสผ่านปัจจุบัน">
-                    <Input
-                      type="password"
-                      data-testid="mfa-enable-password"
-                      name="password"
-                      autoComplete="current-password"
-                      autoFocus
-                      value={field.state.value}
-                      onChange={(event) => {
-                        field.handleChange(event.target.value);
-                      }}
-                      onBlur={field.handleBlur}
-                      aria-invalid={
-                        field.state.meta.errors.length > 0 ||
-                        enableError !== null
-                      }
-                      aria-describedby={
-                        field.state.meta.errors.length > 0 ||
-                        enableError !== null
-                          ? "enable-password-error"
-                          : undefined
-                      }
-                    />
-                    {enableError === null ? (
-                      <FieldValidationError
-                        data-testid="mfa-enable-password-error"
-                        id="enable-password-error"
-                        errors={field.state.meta.errors}
-                      />
-                    ) : (
-                      <span
-                        data-testid="mfa-enable-password-error"
-                        id="enable-password-error"
-                        role="alert"
-                        className="mt-1 block text-sm text-danger"
-                      >
-                        {enableError}
-                      </span>
-                    )}
-                  </Field>
+                  <PasswordField
+                    id="enable-password"
+                    testId="mfa-enable-password"
+                    label="รหัสผ่านปัจจุบัน"
+                    name="password"
+                    autoComplete="current-password"
+                    autoFocus
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                    serverError={enableError}
+                  />
                 )}
               </enableForm.Field>
             </div>
@@ -783,7 +763,7 @@ export function MfaCard({
             </div>
             <div className="flex min-w-0 flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium">1. สแกนด้วยแอปยืนยันตัวตน</p>
+                <p className="text-sm font-medium">สแกนด้วยแอปยืนยันตัวตน</p>
                 <p className="text-sm text-foreground-secondary">
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
@@ -812,28 +792,38 @@ export function MfaCard({
                     {copied === "secret" ? "คัดลอกแล้ว" : "คัดลอก"}
                   </Button>
                 </div>
+                <CopyStatus
+                  testId="mfa-secret-copy-status"
+                  copied={copied === "secret"}
+                  failedText={
+                    copyFailed === "secret"
+                      ? "คัดลอกไม่สำเร็จ เลือกคีย์แล้วคัดลอกเอง"
+                      : null
+                  }
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <CodesHeader
-                  title="2. เก็บรหัสกู้คืนไว้ในที่ปลอดภัย"
+                  title="เก็บรหัสกู้คืนไว้ในที่ปลอดภัย"
                   description="ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ แต่ละรหัสใช้ได้ครั้งเดียว และแสดงเพียงครั้งนี้"
                   codes={draft.backupCodes}
                   copied={copied === "codes"}
+                  copyFailed={copyFailed === "codes"}
                   onCopy={() => {
                     copy(draft.backupCodes.join("\n"), "codes");
                   }}
+                  onDownload={download}
                 />
                 <BackupCodes codes={draft.backupCodes} />
               </div>
               <label className="flex items-start gap-2.5 text-sm">
-                <input
+                <Checkbox
                   data-testid="mfa-recovery-acknowledge"
-                  type="checkbox"
                   checked={acknowledged}
                   onChange={(event) => {
                     setAcknowledged(event.target.checked);
                   }}
-                  className="mt-0.5 h-4 w-4 accent-primary"
+                  className="mt-0.5"
                 />
                 <span>
                   ฉันบันทึกรหัสกู้คืนไว้ในที่ปลอดภัยแล้ว
@@ -920,21 +910,11 @@ export function MfaCard({
               >
                 {(field) => (
                   <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
-                    <Input
-                      type="text"
+                    <OtpCodeInput
                       data-testid="mfa-verify-code"
                       name="first-totp"
-                      inputMode="numeric"
-                      autoFocus
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      placeholder="000000"
                       value={field.state.value}
-                      onChange={(event) => {
-                        field.handleChange(
-                          event.target.value.replace(/[^0-9]/g, "").slice(0, 6),
-                        );
-                      }}
+                      onValueChange={field.handleChange}
                       onBlur={field.handleBlur}
                       aria-invalid={
                         field.state.meta.errors.length > 0 || codeInvalid
@@ -948,7 +928,6 @@ export function MfaCard({
                             ? VERIFY_TOTP_SERVER_ERROR_ID
                             : undefined
                       }
-                      className="max-w-56 text-center font-mono text-xl tracking-normal sm:text-2xl sm:tracking-[0.35em]"
                     />
                     <FieldValidationError
                       data-testid="mfa-verify-client-error"
@@ -1070,22 +1049,45 @@ function StepFooter({ left, right }: { left: ReactNode; right: ReactNode }) {
 
 function CodesHeader({
   title,
+  titleRef,
   description,
   codes,
   copied,
+  copyFailed,
   onCopy,
+  onDownload,
 }: {
   title: string;
+  /** Makes the title focusable so a view that replaces a form can move focus onto it. */
+  titleRef?: RefObject<HTMLParagraphElement | null>;
   description: string;
   codes: string[];
   copied: boolean;
+  copyFailed: boolean;
   onCopy: () => void;
+  onDownload: (codes: string[]) => void;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="min-w-0">
-        <p className="text-sm font-medium">{title}</p>
+        <p
+          data-testid="mfa-codes-title"
+          ref={titleRef}
+          tabIndex={titleRef === undefined ? undefined : -1}
+          className="text-sm font-medium outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {title}
+        </p>
         <p className="text-xs text-foreground-secondary">{description}</p>
+        <CopyStatus
+          testId="mfa-codes-copy-status"
+          copied={copied}
+          failedText={
+            copyFailed
+              ? "คัดลอกไม่สำเร็จ เลือกรหัสแล้วคัดลอกเอง หรือดาวน์โหลด .txt"
+              : null
+          }
+        />
       </div>
       <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
@@ -1105,7 +1107,7 @@ function CodesHeader({
           variant="ghost"
           size="sm"
           onClick={() => {
-            downloadCodes(codes);
+            onDownload(codes);
           }}
           data-testid="mfa-codes-download"
         >
@@ -1114,6 +1116,24 @@ function CodesHeader({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Always mounted so a screen reader announces the text when it appears; the button label alone is not announced.
+function CopyStatus({
+  copied,
+  failedText,
+  testId,
+}: {
+  copied: boolean;
+  failedText: string | null;
+  testId: string;
+}) {
+  return (
+    <p role="status" data-testid={testId} className="text-xs text-danger">
+      {failedText ??
+        (copied ? <span className="sr-only">คัดลอกแล้ว</span> : null)}
+    </p>
   );
 }
 

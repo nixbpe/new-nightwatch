@@ -4,8 +4,9 @@ import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, Link, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProfilePage } from "./ProfilePage";
@@ -47,18 +48,36 @@ function meContext(): MeContextResponse {
   };
 }
 
+// The unsaved-changes guard needs a data router.
+function pageRouter(queryClient: QueryClient) {
+  return createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <QueryClientProvider client={queryClient}>
+            <ProfilePage />
+            <Link to="/other" data-testid="go-other">
+              other
+            </Link>
+          </QueryClientProvider>
+        ),
+      },
+      { path: "/other", element: <p data-testid="other-page">other</p> },
+    ],
+    { initialEntries: ["/"] },
+  );
+}
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-  render(
-    <QueryClientProvider client={queryClient}>
-      <ProfilePage />
-    </QueryClientProvider>,
-  );
-  return { invalidate };
+  const router = pageRouter(queryClient);
+  render(<RouterProvider router={router} />);
+  return { invalidate, router };
 }
 
 guardUnassignedNetwork();
@@ -83,9 +102,7 @@ describe("ProfilePage", () => {
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     const view = render(
       <StrictMode>
-        <QueryClientProvider client={queryClient}>
-          <ProfilePage />
-        </QueryClientProvider>
+        <RouterProvider router={pageRouter(queryClient)} />
       </StrictMode>,
     );
     await screen.findByTestId("profile-load-error");
@@ -150,6 +167,15 @@ describe("ProfilePage", () => {
     expect(updateUserMock).toHaveBeenCalledTimes(1);
     expect(updateUserMock).toHaveBeenCalledWith({ name: "ปวีณา ยอดเยี่ยม" });
     expect(await screen.findByTestId("profile-save-success")).toBeVisible();
+    // Success is a status message, not an interrupting alert (CMP-10).
+    expect(screen.getByTestId("profile-save-success")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    // Both buttons disable themselves; focus returns to the name field instead of the body.
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-name")).toHaveFocus();
+    });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["me", "context"] });
     expect(await screen.findByTestId("profile-name")).toHaveValue(
       "ปวีณา ยอดเยี่ยม",
@@ -192,6 +218,38 @@ describe("ProfilePage", () => {
     expect(name).toHaveValue("นภัส วงศ์สกุล");
     expect(screen.getByTestId("profile-save")).toBeDisabled();
     expect(screen.getByTestId("profile-cancel")).toBeDisabled();
+    expect(name).toHaveFocus();
     expect(updateUserMock).not.toHaveBeenCalled();
+  });
+
+  it("asks before leaving with an unsaved name and keeps the draft on cancel", async () => {
+    const user = userEvent.setup();
+    const { router } = renderPage();
+    const name = await screen.findByTestId("profile-name");
+
+    await user.type(name, " เพิ่ม");
+    await user.click(screen.getByTestId("go-other"));
+    expect(router.state.location.pathname).toBe("/");
+    const dialog = await screen.findByTestId("unsaved-changes-dialog");
+
+    await user.click(within(dialog).getByTestId("confirmation-cancel"));
+    expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
+    expect(screen.getByTestId("profile-name")).toHaveValue(
+      "นภัส วงศ์สกุล เพิ่ม",
+    );
+
+    await user.click(screen.getByTestId("go-other"));
+    await user.click(await screen.findByTestId("unsaved-changes-leave"));
+    expect(router.state.location.pathname).toBe("/other");
+  });
+
+  it("leaves without asking when the name is unchanged", async () => {
+    const user = userEvent.setup();
+    const { router } = renderPage();
+    await screen.findByTestId("profile-name");
+
+    await user.click(screen.getByTestId("go-other"));
+    expect(router.state.location.pathname).toBe("/other");
+    expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
   });
 });
