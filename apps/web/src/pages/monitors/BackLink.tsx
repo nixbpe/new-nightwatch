@@ -3,7 +3,6 @@ import { Link } from "react-router";
 
 import { ArrowLeftIcon } from "../../components/shell/icons";
 
-// The one back link of the monitor pages: "รายการมอนิเตอร์" is the list, "มอนิเตอร์" is the monitor's own page.
 export function BackLink({
   to,
   testId,

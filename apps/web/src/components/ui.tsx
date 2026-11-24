@@ -125,10 +125,7 @@ export function Alert({
   id?: string;
   /** No success tone: a success message is a `Notice` (CMP-10). */
   tone: "error" | "warning" | "info";
-  /**
-   * Defaults to `alert` for an error and `status` for a warning or info, so a persistent
-   * caution is not announced assertively on every load.
-   */
+  /** Defaults to `alert` for an error, `status` otherwise, so a persistent caution is not announced assertively. */
   role?: "alert" | "status";
   children: ReactNode;
 }) {

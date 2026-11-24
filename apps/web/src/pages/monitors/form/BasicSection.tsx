@@ -15,7 +15,6 @@ const INTERVAL_OPTIONS = MONITOR_INTERVAL_SECONDS.map((seconds) => ({
   label: `${String(seconds / 60)} นาที`,
 }));
 
-// A read-only line that names where its value is edited, and goes there.
 function EditLink({
   testId,
   onClick,

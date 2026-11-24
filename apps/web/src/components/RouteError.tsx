@@ -3,8 +3,7 @@ import { useRevalidator, useRouteError } from "react-router";
 
 import { ErrorView } from "./ErrorBoundary";
 
-// A loader that throws never reaches ErrorBoundary: react-router renders the nearest errorElement,
-// or its own default screen, in place of the route. Retry runs the loaders again.
+// A throwing loader skips ErrorBoundary: react-router renders the nearest errorElement instead.
 export function RouteError({ landmark }: { landmark?: boolean }) {
   const error = useRouteError();
   const revalidator = useRevalidator();

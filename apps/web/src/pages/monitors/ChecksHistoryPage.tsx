@@ -568,7 +568,6 @@ function ChecksHistorySection({
   const hasNext = checks.hasNextPage;
   const filtered = filter.outcome !== undefined || filter.range !== undefined;
   const outcomeSelect = useRef<HTMLSelectElement>(null);
-  // Nothing to filter in a monitor that has no checks yet; a filter that matches nothing keeps its controls.
   const showFilter = filtered || accumulated === null || shown > 0;
 
   const [announcement, setAnnouncement] = useState("");

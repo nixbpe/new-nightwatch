@@ -272,7 +272,6 @@ describe("ImportPage restricted state", () => {
     expect(screen.queryByLabelText("ไฟล์ inventory")).toBeNull();
     expect(screen.queryByTestId("inventory-choose-button")).toBeNull();
     expect(screen.getByTestId("inventory-template-link")).toBeVisible();
-    // Same denied state as the other pages of the module, with the template as its action.
     expect(
       within(screen.getByTestId("inventory-import-restricted")).getByTestId(
         "inventory-template-link",

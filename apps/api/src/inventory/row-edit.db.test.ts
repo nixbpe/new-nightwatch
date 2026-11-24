@@ -520,7 +520,6 @@ describe("inventory row writes", () => {
       ...input({ owner: "ทีม B" }),
     });
     expect(other.status).toBe(201);
-    // Editing a row into another row's key is refused too.
     const edit = await ctx.call(org.users.owner, "POST", rowsPath(project), {
       systemId: billing?.id,
       ...input({ version: "24.04.1" }),
@@ -752,7 +751,6 @@ describe("inventory row writes", () => {
       totalRows: 0,
       usableRows: 0,
     });
-    // The System stays, empty.
     expect((await summary(project)).systemCount).toBe(1);
   });
 
@@ -778,7 +776,6 @@ describe("inventory row writes", () => {
     expect((await listRows("status=duplicate", project)).total).toBe(2);
     const [dupA, dupB] = list.rows;
     if (!dupA || !dupB) throw new Error("rows missing");
-    // A change that leaves the key as it is does not create a new clash.
     const owner = await ctx.call(
       org.users.owner,
       "PUT",
@@ -789,7 +786,6 @@ describe("inventory row writes", () => {
       },
     );
     expect(owner.status).toBe(200);
-    // Moving it onto the third row's key is a new clash.
     const clash = await ctx.call(
       org.users.owner,
       "PUT",
@@ -801,7 +797,6 @@ describe("inventory row writes", () => {
     );
     expect(clash.status).toBe(409);
     expect(errorOf(clash).code).toBe("INVENTORY_ROW_DUPLICATE");
-    // Deleting one of the pair clears the label from the other.
     const removed = await ctx.call(
       org.users.owner,
       "DELETE",
@@ -928,7 +923,6 @@ describe("inventory row permissions", () => {
     expect(foreign.map((response) => response.status)).toEqual([
       403, 403, 403, 403,
     ]);
-    // Nothing above changed the data.
     expect(await listRows("", project)).toMatchObject({ total: 1 });
     expect((await rowOf(() => true, project)).owner).toBe("ทีม A");
     // Project maintainers and Organization owners and admins write.

@@ -4,7 +4,6 @@ import { FieldValidationError } from "../ui";
 import { Label } from "./label";
 import { PasswordInput } from "./password-input";
 
-/** A password input with a show/hide toggle and an error slot that the input points at. */
 export function PasswordField({
   id,
   testId = id,

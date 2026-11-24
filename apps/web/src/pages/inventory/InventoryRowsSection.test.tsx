@@ -321,7 +321,6 @@ describe("InventoryRowsSection table", () => {
       page: 1,
     });
 
-    // With no search active, typing and deleting must not reset the page.
     await user.click(screen.getByTestId("inventory-rows-next"));
     await waitFor(() => {
       expect(router.state.location.search).toBe("?page=2");

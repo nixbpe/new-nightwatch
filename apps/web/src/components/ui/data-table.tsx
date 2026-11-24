@@ -22,17 +22,13 @@ export type DataTableColumn<Row> = {
   align?: "start" | "end";
   /** Identifiers, addresses and counts: JetBrains Mono at 13 px. */
   mono?: boolean;
-  /**
-   * Directions this column sorts in; the first applies when the column becomes
-   * active. Setting it turns the header into a button (needs the table's `sort`).
-   */
+  /** The first direction applies when the column becomes active. Setting it makes the header a button (needs `sort`). */
   sortDirections?: readonly SortDirection[];
   cell: (row: Row) => ReactNode;
 };
 
-// Presentational table: sans header on Surface (TYP-04), 44 px rows, hairline
-// dividers and a hover tint. Callers own sorting, filtering and selection; a
-// sortable header only reports the requested order through `sort.onSortChange`.
+// Presentational table: sans header on Surface (TYP-04), 44 px rows. Callers own sorting,
+// filtering and selection; a sortable header only reports the order through `sort.onSortChange`.
 export function DataTable<Row>({
   ariaLabel,
   columns,
@@ -232,7 +228,6 @@ function SortButton<Row>({
   directions: readonly SortDirection[];
 }) {
   const active = sort.key === column.key;
-  // An active column flips to the other direction it offers, else restarts.
   const next =
     (active
       ? directions.find((direction) => direction !== sort.direction)

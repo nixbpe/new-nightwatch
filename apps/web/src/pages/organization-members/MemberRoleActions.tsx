@@ -269,7 +269,6 @@ export function MemberRoleActions({
   ) => void;
 }) {
   const [role, setRole] = useState<OrganizationRole>(member.role);
-  // The role column shows the role once: a pill when this actor cannot change it, a select when they can.
   if (actorRole === "admin" && member.role === "owner") {
     return <RolePill role={member.role} />;
   }

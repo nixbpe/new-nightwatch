@@ -2805,7 +2805,6 @@ function expectCaption(
   expect(c.getByTestId("monitor-response-caption-source")).toHaveTextContent(
     /\S/,
   );
-  // The counting rules sit behind an info icon, not in the visible line.
   const population = c.getByTestId("monitor-response-caption-population");
   expect(population).toHaveRole("button");
   expect(population).toHaveAccessibleName(/\S/);

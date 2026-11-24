@@ -84,7 +84,6 @@ describe("ForgotPasswordPage", () => {
     expect(
       await screen.findByTestId("forgot-password-success"),
     ).toHaveTextContent("member@example.com");
-    // The request that produced the confirmation starts the cooldown.
     const resend = screen.getByTestId("forgot-password-resend");
     expect(resend).toBeDisabled();
     expect(resend).toHaveTextContent("60");

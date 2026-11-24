@@ -394,7 +394,6 @@ describe("AuditLogPage paging and filters", () => {
       "false",
     );
 
-    // The category group says on the page that several can be picked.
     const categories = screen
       .getByTestId("audit-filter-category-member")
       .closest('[role="group"]') as HTMLElement;

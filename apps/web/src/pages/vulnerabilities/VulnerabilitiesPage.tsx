@@ -111,7 +111,6 @@ function Vulnerabilities({ organizationId, projectId }: Scope) {
   // new-CVE list are older than the list now, so every list of the Project is read again.
   const wasRunning = useRef(false);
   const running = data?.run?.status === "running";
-  // Set when a run ends while this page watches it, for the one "finished" message.
   const [finished, setFinished] = useState(false);
   useEffect(() => {
     if (running) setFinished(false);

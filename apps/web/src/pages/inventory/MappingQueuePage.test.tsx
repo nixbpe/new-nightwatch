@@ -493,7 +493,6 @@ describe("MappingDialog", () => {
     const options = await screen.findAllByTestId("mapping-candidate");
     expect(options).toHaveLength(2);
     expect(options[0]).toBeChecked();
-    // Only the candidate that carries a title shows one; a null title renders no empty line.
     const titles = screen.getAllByTestId("mapping-candidate-title");
     expect(titles).toHaveLength(1);
     expect(titles[0]).toHaveTextContent("F5 BIG-IP LTM");

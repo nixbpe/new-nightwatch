@@ -203,7 +203,6 @@ describe("DisplayPage", () => {
     const dialog = await screen.findByTestId("unsaved-changes-dialog");
     expect(dialog).toHaveAttribute("role", "dialog");
 
-    // Cancel keeps the draft and the page.
     await user.click(within(dialog).getByTestId("confirmation-cancel"));
     expect(screen.queryByTestId("unsaved-changes-dialog")).toBeNull();
     expect(screen.getByTestId("display-hour-cycle")).toHaveValue("h12");

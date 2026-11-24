@@ -503,7 +503,6 @@ describe("listOrganizationMembers", () => {
         nameOf(await list(alice.id, { q: "alice", role: "viewer" })),
       ).toEqual(["Carol"]);
 
-      // Total counts the filtered rows and pagination applies to them.
       const paged = await list(alice.id, { q: "alice", limit: 1, offset: 1 });
       expect(nameOf(paged)).toEqual(["Carol"]);
       expect(paged.page).toEqual({ limit: 1, offset: 1, total: 2 });
@@ -511,7 +510,6 @@ describe("listOrganizationMembers", () => {
       expect(none.members).toEqual([]);
       expect(none.page.total).toBe(0);
 
-      // Without filters the order and rows are unchanged.
       expect(nameOf(await list(alice.id))).toEqual([
         "Alice Rivers",
         "bob 100%_off",

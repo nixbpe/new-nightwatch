@@ -113,9 +113,8 @@ export function chartWindow(props: ResponseTimeChartProps): Span | undefined {
 /**
  * X-axis ticks with distinct labels. A young monitor gives a window of seconds, where
  * `HH:mm` would repeat on every tick, so such a span reads in seconds; any label that
- * still repeats is dropped. Labels use the preference zone; the tick positions come from the
- * chart's time scale, which snaps to browser-local hours and days, so in a half-hour zone the
- * labels can read :30.
+ * still repeats is dropped. Tick positions snap to browser-local hours and days, so in a
+ * half-hour preference zone the labels can read :30.
  */
 export function axisTicks(
   ticks: readonly Date[],

@@ -295,7 +295,6 @@ export function NeedsFix({
     view.gone.length === 0 &&
     view.unknown.length === 0;
   const warned = fresh.warnings.length > 0;
-  // The no-match block below carries its own clear button; the row then leaves it out.
   const noMatchShown =
     list.summary.components !== 0 &&
     list.results !== null &&

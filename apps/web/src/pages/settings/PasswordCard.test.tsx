@@ -74,7 +74,6 @@ describe("PasswordCard", () => {
     expect(screen.queryByTestId("change-new-password-error")).toBeNull();
 
     await user.type(screen.getByTestId("change-confirm-password"), "x");
-    // Moving on blurred the new-password field; the confirm field is still being typed in.
     expect(screen.getByTestId("change-new-password-error")).toBeVisible();
     expect(next).toHaveAttribute("aria-invalid", "true");
     expect(screen.queryByTestId("change-confirm-password-error")).toBeNull();
@@ -107,7 +106,6 @@ describe("PasswordCard", () => {
     expect(screen.getByTestId("change-current-password")).toHaveValue("");
     expect(screen.getByTestId("change-new-password")).toHaveValue("");
     expect(screen.getByTestId("change-confirm-password")).toHaveValue("");
-    // A field revealed before the change is hidden again.
     expect(screen.getByTestId("change-new-password")).toHaveAttribute(
       "type",
       "password",

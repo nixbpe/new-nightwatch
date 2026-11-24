@@ -139,7 +139,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByTestId("inventory-import-row-5")).toContainText(
         "ไม่ถึง patch level",
       );
-      // Nothing is merged before the confirmation.
       expect(
         (
           await pool.query(
@@ -212,7 +211,6 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Shift+Tab");
       await expect(rejectedLink).toBeFocused();
       await page.keyboard.press("Enter");
-      // The link opens the table of rows already filtered by that System and the failed status.
       await expect(page).toHaveURL(
         /inventory\?system=[0-9a-f-]+&status=rejected$/,
       );
@@ -225,7 +223,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(table).toContainText("import จาก inventory-q4.csv");
       await shot(page, `inventory-rows-filtered-${theme}`);
 
-      // The System name opens the System page, where the Owner download stays.
       await table.getByRole("link", { name: "HR Portal" }).first().click();
       await expect(page.getByTestId("page-title")).toHaveText("HR Portal");
       await expect(page.getByTestId("inventory-system-owners")).toContainText(
@@ -278,7 +275,6 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByTestId("inventory-import-cancel").click();
       await page.goto(systemUrl);
 
-      // The rows list with its reasons is the overview table filtered by this System.
       await page.getByTestId("inventory-system-rows-link").click();
       await expect(page).toHaveURL(/inventory\?system=[0-9a-f-]+$/);
       await expect(
@@ -324,7 +320,6 @@ for (const theme of ["light", "dark"] as const) {
       await page.mouse.move(5, 5);
       await expect(page.getByTestId("tooltip")).toHaveCount(0);
 
-      // Add: a failing Version shows its reason under the field and keeps what was typed.
       await page.getByTestId("inventory-row-add").click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByTestId("inventory-row-owner")).toBeFocused();
@@ -367,7 +362,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(added).toContainText("แก้ในระบบ");
       await expect(added.locator('[data-usable="true"]')).toHaveCount(1);
 
-      // The same key again is refused and names the row it repeats.
       await page.getByTestId("inventory-row-add").click();
       await dialog
         .getByTestId("inventory-row-system")
@@ -431,7 +425,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(added).toContainText("ทีมของคนอื่น");
       await expect(edit).toBeFocused();
 
-      // Delete: the dialog names the Product and Version and the effect on CVE results.
       await page.getByRole("button", { name: "ลบแถว Redis 7.2.4" }).click();
       await expect(dialog).toContainText("Redis 7.2.4");
       await expect(dialog).toContainText(
@@ -452,7 +445,6 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(inventoryUrl());
       await expect(page.getByTestId("inventory-tile-total")).toContainText("6");
 
-      // Add: a name another System has is refused under the name field, typed values stay.
       await page.getByTestId("inventory-add-system").click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByTestId("inventory-row-name")).toBeFocused();
@@ -490,7 +482,6 @@ for (const theme of ["light", "dark"] as const) {
       });
       await expect(cache).toHaveCount(1);
 
-      // Rename in the form of the page: the name another System has is refused.
       await page
         .getByTestId("inventory-quality-details")
         .locator("summary")
@@ -513,7 +504,6 @@ for (const theme of ["light", "dark"] as const) {
         "ผ่าน",
       );
 
-      // Delete: the dialog names the System and its rows, and the overview confirms.
       const remove = page.getByTestId("inventory-system-delete");
       await remove.click();
       await expect(dialog).toContainText("Cache DB");

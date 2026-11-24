@@ -4,10 +4,9 @@ import { useBlocker } from "react-router";
 import { ConfirmDialog } from "./confirm-dialog";
 
 /**
- * The one rule for a form that keeps a draft until the user saves: while `dirty`, leaving the
- * page (another route, or closing the tab) asks first. Render the returned node anywhere in the
- * form; it is the confirm dialog and is `null` unless navigation is blocked. Needs a data router
- * (`useBlocker`); search-param changes on the same path do not block.
+ * While `dirty`, leaving the page (another route, or closing the tab) asks first. Render the
+ * returned confirm dialog anywhere in the form. Needs a data router (`useBlocker`);
+ * search-param changes on the same path do not block.
  */
 export function useUnsavedChangesGuard(dirty: boolean): ReactNode {
   const opener = useRef<HTMLElement | null>(null);

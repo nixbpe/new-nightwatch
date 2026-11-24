@@ -718,7 +718,6 @@ describe("Overview method, interval and sparkline", () => {
     const text = card.getByTestId("monitor-list-spark-description");
     expect(text).toHaveTextContent(/1,500/);
     expect(text.textContent.match(/\d[\d,]*/g)).toEqual(["24", "1,500", "21"]);
-    // The visible scale carries the window and the maximum the bars are scaled to.
     expect(
       card
         .getByTestId("monitor-list-spark-scale")
@@ -1287,7 +1286,6 @@ describe("Overview success", () => {
       expect(label).toHaveAttribute("data-ssl-level", monitor.ssl.level);
       expect(label).toHaveTextContent(/\S/);
     }
-    // A problem level is a pill, a healthy one stays plain text.
     const isPill = (monitor: Item) =>
       within(rowOf(monitor.id))
         .getByTestId("monitor-list-ssl")
