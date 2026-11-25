@@ -7,10 +7,9 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import { Alert, Input } from "../../components/ui";
+import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
-import { Label } from "../../components/ui/label";
 import {
   decideMapping,
   inventoryErrorMessage,
@@ -146,30 +145,29 @@ export function MappingDialog({
             if (query.trim().length >= 2 && !busy) search.mutate();
           }}
         >
-          <Label htmlFor="mapping-query" className="font-medium">
-            ค้นใน NVD CPE dictionary
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              id="mapping-query"
-              data-testid="mapping-query"
-              type="search"
-              ref={searchInput}
-              value={query}
-              maxLength={100}
-              onChange={(event) => {
-                setQuery(event.target.value);
-              }}
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              data-testid="mapping-search"
-              disabled={busy || query.trim().length < 2}
-            >
-              {search.isPending ? "กำลังค้น…" : "ค้น"}
-            </Button>
-          </div>
+          <Field htmlFor="mapping-query" label="ค้นใน NVD CPE dictionary">
+            <div className="flex gap-2">
+              <Input
+                id="mapping-query"
+                data-testid="mapping-query"
+                type="search"
+                ref={searchInput}
+                value={query}
+                maxLength={100}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                }}
+              />
+              <Button
+                type="submit"
+                variant="outline"
+                data-testid="mapping-search"
+                disabled={busy || query.trim().length < 2}
+              >
+                {search.isPending ? "กำลังค้น…" : "ค้น"}
+              </Button>
+            </div>
+          </Field>
         </form>
         {candidates === null ? null : (
           <fieldset
@@ -224,10 +222,13 @@ export function MappingDialog({
             )}
           </fieldset>
         )}
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="mapping-cpe" className="font-medium">
-            หรือกรอก CPE 2.3 เอง
-          </Label>
+        <Field
+          htmlFor="mapping-cpe"
+          label="หรือกรอก CPE 2.3 เอง"
+          error={errors.cpe}
+          errorId="mapping-cpe-error"
+          errorTestId="mapping-cpe-error"
+        >
           <Input
             id="mapping-cpe"
             ref={cpeInput}
@@ -244,24 +245,21 @@ export function MappingDialog({
               setTypedCpe(event.target.value);
             }}
           />
-          {errors.cpe === undefined ? null : (
-            <span
-              id="mapping-cpe-error"
-              role="alert"
-              data-testid="mapping-cpe-error"
-              className="text-sm text-danger"
-            >
-              {errors.cpe}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="mapping-purl" className="font-medium">
-            หรือกรอก purl เอง{" "}
-            <span className="font-normal text-foreground-secondary">
-              (package ของ distro)
-            </span>
-          </Label>
+        </Field>
+        <Field
+          htmlFor="mapping-purl"
+          label={
+            <>
+              หรือกรอก purl เอง{" "}
+              <span className="font-normal text-foreground-secondary">
+                (package ของ distro)
+              </span>
+            </>
+          }
+          error={errors.purl}
+          errorId="mapping-purl-error"
+          errorTestId="mapping-purl-error"
+        >
           <Input
             id="mapping-purl"
             ref={purlInput}
@@ -278,21 +276,11 @@ export function MappingDialog({
               setTypedPurl(event.target.value);
             }}
           />
-          {errors.purl === undefined ? null : (
-            <span
-              id="mapping-purl-error"
-              role="alert"
-              data-testid="mapping-purl-error"
-              className="text-sm text-danger"
-            >
-              {errors.purl}
-            </span>
-          )}
           <span className="text-[13px] text-foreground-secondary">
             ถ้ากรอก CPE หรือ purl ระบบใช้ค่าที่กรอกแทนผลการค้น
             และตรวจรูปแบบก่อนบันทึก
           </span>
-        </div>
+        </Field>
       </div>
       <div className="flex flex-wrap justify-end gap-2 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
         <Button

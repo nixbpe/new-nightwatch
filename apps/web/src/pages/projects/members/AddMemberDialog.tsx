@@ -12,11 +12,10 @@ import { Link } from "react-router";
 
 import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
-import { Alert, Input } from "../../../components/ui";
+import { Alert, Field, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Dialog } from "../../../components/ui/dialog";
-import { Label } from "../../../components/ui/label";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
 import { ApiError } from "../../../lib/api/client";
 import {
@@ -186,10 +185,7 @@ export function AddMemberDialog({
             {formError}
           </Alert>
         )}
-        <div>
-          <Label htmlFor={searchId} className="mb-2 block font-medium">
-            ค้นหาสมาชิกองค์กร
-          </Label>
+        <Field htmlFor={searchId} label="ค้นหาสมาชิกองค์กร">
           <div className="relative">
             <span
               aria-hidden="true"
@@ -211,7 +207,7 @@ export function AddMemberDialog({
               }}
             />
           </div>
-        </div>
+        </Field>
         <p
           data-testid="add-member-result-status"
           role="status"

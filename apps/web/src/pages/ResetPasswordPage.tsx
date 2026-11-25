@@ -2,11 +2,10 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
-import { Alert, FieldValidationError, SubmitButton } from "../components/ui";
+import { Alert, SubmitButton } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
-import { Label } from "../components/ui/label";
-import { PasswordInput } from "../components/ui/password-input";
+import { PasswordField } from "../components/ui/password-field";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { RESET_LINK_LIFETIME, type AuthFlowState } from "../lib/auth/flow";
 
@@ -135,34 +134,16 @@ export function ResetPasswordPage() {
           }}
         >
           {(field) => (
-            <div>
-              <Label htmlFor="reset-password-password" className="mb-2 block">
-                รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)
-              </Label>
-              <PasswordInput
-                id="reset-password-password"
-                data-testid="reset-password-password"
-                toggleTestId="reset-password-password-toggle"
-                name="new-password"
-                autoComplete="new-password"
-                value={field.state.value}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                }}
-                onBlur={field.handleBlur}
-                aria-invalid={field.state.meta.errors.length > 0}
-                aria-describedby={
-                  field.state.meta.errors.length > 0
-                    ? "reset-password-password-error"
-                    : undefined
-                }
-              />
-              <FieldValidationError
-                id="reset-password-password-error"
-                data-testid="reset-password-password-error"
-                errors={field.state.meta.errors}
-              />
-            </div>
+            <PasswordField
+              id="reset-password-password"
+              label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)"
+              name="new-password"
+              autoComplete="new-password"
+              value={field.state.value}
+              onChange={field.handleChange}
+              onBlur={field.handleBlur}
+              errors={field.state.meta.errors}
+            />
           )}
         </form.Field>
         <form.Field
@@ -187,34 +168,16 @@ export function ResetPasswordPage() {
           }}
         >
           {(field) => (
-            <div>
-              <Label htmlFor="reset-password-confirm" className="mb-2 block">
-                ยืนยันรหัสผ่านใหม่
-              </Label>
-              <PasswordInput
-                id="reset-password-confirm"
-                data-testid="reset-password-confirm"
-                toggleTestId="reset-password-confirm-toggle"
-                name="confirm-password"
-                autoComplete="new-password"
-                value={field.state.value}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                }}
-                onBlur={field.handleBlur}
-                aria-invalid={field.state.meta.errors.length > 0}
-                aria-describedby={
-                  field.state.meta.errors.length > 0
-                    ? "reset-password-confirm-error"
-                    : undefined
-                }
-              />
-              <FieldValidationError
-                id="reset-password-confirm-error"
-                data-testid="reset-password-confirm-error"
-                errors={field.state.meta.errors}
-              />
-            </div>
+            <PasswordField
+              id="reset-password-confirm"
+              label="ยืนยันรหัสผ่านใหม่"
+              name="confirm-password"
+              autoComplete="new-password"
+              value={field.state.value}
+              onChange={field.handleChange}
+              onBlur={field.handleBlur}
+              errors={field.state.meta.errors}
+            />
           )}
         </form.Field>
         <form.Subscribe
