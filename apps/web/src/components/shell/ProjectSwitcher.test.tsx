@@ -367,6 +367,21 @@ describe("ProjectSwitcher", () => {
     ).toBe(true);
   });
 
+  it("AC-03: ⌘K from the open menu does not close it, so Escape ends on the button instead of the page body", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await openMenu(user);
+    const trigger = screen.getByTestId("shell-project-switch");
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByTestId("shell-command-dialog")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("shell-command-dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
   it("AC-03: arrows move through the items, Enter opens one, Escape closes and refocuses the button", async () => {
     const user = userEvent.setup();
     renderShell({ path: membersPath(P_ALPHA) });

@@ -226,7 +226,7 @@ export function ProjectFormDialog({
                 aria-describedby={
                   errors.slug === undefined
                     ? `${slugId}-hint`
-                    : `${slugId}-hint ${slugId}`
+                    : `${slugId} ${slugId}-hint`
                 }
                 onChange={(event) => {
                   setSlug(event.target.value);
@@ -252,7 +252,7 @@ export function ProjectFormDialog({
               aria-describedby={
                 errors.description === undefined
                   ? `${descriptionId}-hint`
-                  : `${descriptionId}-hint ${descriptionId}`
+                  : `${descriptionId} ${descriptionId}-hint`
               }
               onChange={(event) => {
                 setDescription(event.target.value);

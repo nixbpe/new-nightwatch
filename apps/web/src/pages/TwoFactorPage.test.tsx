@@ -272,6 +272,28 @@ describe("TwoFactorPage challenge", () => {
     expect(screen.getByTestId("two-factor-code")).toHaveFocus();
   });
 
+  it("a lockout shows its message without marking the code wrong or taking focus", async () => {
+    sessionState.data = null;
+    const user = userEvent.setup();
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: null,
+      error: { code: "ACCOUNT_TEMPORARILY_LOCKED", status: 429 },
+    });
+    renderPage();
+
+    await user.type(screen.getByTestId("two-factor-code"), "000000");
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+    expect(screen.getByTestId("two-factor-code")).not.toBeInvalid();
+    expect(
+      screen.getByTestId("two-factor-code"),
+    ).not.toHaveAccessibleDescription(
+      screen.getByTestId("two-factor-error").textContent,
+    );
+    expect(screen.getByTestId("two-factor-code")).not.toHaveFocus();
+  });
+
   it("an invalid TOTP stays on the challenge with a visible error", async () => {
     sessionState.data = null;
     const user = userEvent.setup();

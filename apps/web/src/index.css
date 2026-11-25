@@ -407,10 +407,10 @@ body {
 
 @layer base {
   /* Focus ring for everything that is not a text field (A11Y-01): links,
-     buttons, tabs, menu items, summaries, checkboxes and radios. Zero
-     specificity and the base layer, so any `focus-visible:outline-*` utility
-     wins. The colour is set at rest so a `transition-colors` control never
-     fades the ring in from its text colour. */
+     buttons, tabs, menu items, summaries, checkboxes and radios. The selector
+     list sits in `:where()` and the rule in the base layer, so any
+     `focus-visible:outline-*` utility wins. The colour is set at rest so a
+     `transition-colors` control never fades the ring in from its text colour. */
   :where(
     a,
     button,
@@ -446,5 +446,12 @@ body {
   }
   input[type="search"]::-webkit-search-cancel-button:hover {
     background-color: var(--color-foreground);
+  }
+  /* Forced colors repaint a mask's background-color as the page colour, which hides the x. */
+  @media (forced-colors: active) {
+    input[type="search"]::-webkit-search-cancel-button {
+      forced-color-adjust: none;
+      background-color: CanvasText;
+    }
   }
 }

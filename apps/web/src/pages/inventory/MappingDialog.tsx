@@ -267,7 +267,7 @@ export function MappingDialog({
             aria-describedby={
               errors.purl === undefined
                 ? "mapping-purl-help"
-                : "mapping-purl-help mapping-purl-error"
+                : "mapping-purl-error mapping-purl-help"
             }
             className="font-mono text-[14px]"
             placeholder="pkg:deb/ubuntu/openssl@3.0.2-0ubuntu1.10?distro=ubuntu-22.04"

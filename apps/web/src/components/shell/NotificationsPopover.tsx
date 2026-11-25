@@ -172,7 +172,7 @@ export function NotificationsPopover() {
                 latestAll.current = command;
                 all.mutate(command);
               }}
-              className="py-1 text-xs text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="py-1 text-xs text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               ทำเครื่องหมายว่าอ่านทั้งหมด
             </button>
@@ -205,7 +205,7 @@ export function NotificationsPopover() {
                   onClick={() => {
                     void retryMe();
                   }}
-                  className="mt-2 py-0.5 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  className="mt-2 py-0.5 text-primary"
                 >
                   ลองใหม่
                 </button>
@@ -235,7 +235,7 @@ export function NotificationsPopover() {
                   onClick={() => {
                     void list.refetch();
                   }}
-                  className="mt-2 py-0.5 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  className="mt-2 py-0.5 text-primary"
                 >
                   ลองใหม่
                 </button>
@@ -288,7 +288,7 @@ export function NotificationsPopover() {
                 data-popover-item=""
                 data-testid="shell-notifications-all"
                 to="/notifications"
-                className="py-1 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className="py-1 text-primary"
               >
                 ดูการแจ้งเตือนทั้งหมด
               </Link>
@@ -298,7 +298,7 @@ export function NotificationsPopover() {
                 onClick={popover.close}
                 data-popover-item=""
                 to={`/organizations/${activeOrg.id}/notification-settings`}
-                className="inline-flex items-center gap-1.5 py-1 text-foreground-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className="inline-flex items-center gap-1.5 py-1 text-foreground-secondary"
               >
                 <SlidersIcon size={14} />
                 ตั้งค่า

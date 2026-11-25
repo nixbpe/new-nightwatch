@@ -24,8 +24,9 @@ export function Field({
 }: {
   label: ReactNode;
   /**
-   * Pairs the label with a control that cannot sit inside a <label> (a Combobox with its popup).
-   * The label gets the id `${htmlFor}-label`; the caller wires `aria-invalid` and `errorId` itself.
+   * Pairs the label with the control by id instead of wrapping it: for a control that cannot sit
+   * inside a <label> (a Combobox with its popup), and to keep the error out of the accessible name.
+   * The label gets the id `${htmlFor}-label`; the caller wires `aria-invalid`, `aria-describedby` and `errorId` itself.
    */
   htmlFor?: string;
   /** Explains the field; sits outside the label so the accessible name stays the label text. */

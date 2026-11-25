@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const ITEM_SELECTOR =
   '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"]), [data-popover-item]:not([disabled])';
 
-// Escape, an outside click and `close()` return focus to the trigger; focus moving elsewhere closes the panel and stays there.
+// Escape, an outside click and `close()` return focus to the trigger; focus moving elsewhere closes the panel and stays there,
+// except into a modal dialog opened from it (the command palette), whose opener must still be in the page when it closes.
 export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<TTrigger>(null);
@@ -41,9 +42,10 @@ export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target;
       if (
-        target instanceof Node &&
+        target instanceof Element &&
         !panel.contains(target) &&
-        triggerRef.current?.contains(target) !== true
+        triggerRef.current?.contains(target) !== true &&
+        target.closest('[aria-modal="true"]') === null
       ) {
         setOpen(false);
       }

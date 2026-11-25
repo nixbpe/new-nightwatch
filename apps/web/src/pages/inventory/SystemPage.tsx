@@ -111,40 +111,39 @@ function RenameForm({
         id="inventory-system-rename-heading"
         title="เปลี่ยนชื่อ System"
       />
-      <form
-        noValidate
-        onSubmit={submit}
-        className="flex max-w-[640px] flex-wrap items-start gap-2"
-      >
+      <form noValidate onSubmit={submit} className="max-w-[640px]">
         <Field
+          htmlFor="inventory-system-name"
           label="ชื่อ System"
           error={error}
           errorId="inventory-system-name-error"
           errorTestId="inventory-system-name-error"
-          className="min-w-[240px] flex-1"
         >
-          <Input
-            data-testid="inventory-system-name"
-            value={name}
-            aria-invalid={error === null ? undefined : true}
-            aria-describedby={
-              error === null ? undefined : "inventory-system-name-error"
-            }
-            onChange={(event) => {
-              setName(event.target.value);
-              setError(null);
-            }}
-          />
+          <div className="flex flex-wrap items-start gap-2">
+            <Input
+              id="inventory-system-name"
+              data-testid="inventory-system-name"
+              className="min-w-[240px] flex-1"
+              value={name}
+              aria-invalid={error === null ? undefined : true}
+              aria-describedby={
+                error === null ? undefined : "inventory-system-name-error"
+              }
+              onChange={(event) => {
+                setName(event.target.value);
+                setError(null);
+              }}
+            />
+            <Button
+              type="submit"
+              variant="secondary"
+              data-testid="inventory-system-rename"
+              disabled={rename.isPending}
+            >
+              {rename.isPending ? "กำลังบันทึก…" : "บันทึกชื่อ"}
+            </Button>
+          </div>
         </Field>
-        <Button
-          type="submit"
-          variant="secondary"
-          className="mt-[22px]"
-          data-testid="inventory-system-rename"
-          disabled={rename.isPending}
-        >
-          {rename.isPending ? "กำลังบันทึก…" : "บันทึกชื่อ"}
-        </Button>
       </form>
     </section>
   );

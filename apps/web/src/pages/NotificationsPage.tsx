@@ -282,10 +282,9 @@ function dayLabel(value: string, preferences: Preferences) {
 }
 
 const rowLinkClass =
-  "mb-2 ml-9 inline-block py-1 text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "mb-2 ml-9 inline-block py-1 text-xs text-primary underline";
 
-const detailLinkClass =
-  "-my-1 inline-block py-1 text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const detailLinkClass = "-my-1 inline-block py-1 text-primary underline";
 
 function NotificationList({
   items,

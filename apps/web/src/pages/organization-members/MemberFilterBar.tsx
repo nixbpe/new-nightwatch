@@ -2,7 +2,12 @@ import {
   ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH,
   organizationRoleSchema,
 } from "@nightwatch/api-contract";
-import { useState, type RefObject, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type RefObject,
+  type SyntheticEvent,
+} from "react";
 
 import { Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -33,6 +38,14 @@ export function MemberFilterBar({
   }
   const active = filter.q !== undefined || filter.role !== undefined;
 
+  // The clear button of a search box fires no submit; a filter that is on must go with it,
+  // also when the box was emptied while a member change was still saving.
+  useEffect(() => {
+    if (draft === "" && filter.q !== undefined && !busy) {
+      onChange({ ...filter, q: undefined });
+    }
+  }, [busy, draft, filter, onChange]);
+
   const submitSearch = (event: SyntheticEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -60,10 +73,6 @@ export function MemberFilterBar({
           maxLength={ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH}
           onChange={(event) => {
             setDraft(event.target.value);
-            // The clear button of a search box fires no submit; a filter that is on must go with it.
-            if (event.target.value === "" && filter.q !== undefined && !busy) {
-              onChange({ ...filter, q: undefined });
-            }
           }}
           className="w-80 max-w-full"
         />

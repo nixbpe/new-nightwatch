@@ -636,7 +636,7 @@ describe("create dialog", () => {
     expect(slug).toHaveFocus();
     const hint = within(dialog).getByText(/^3 ถึง 40 ตัว/);
     expect(slug.getAttribute("aria-describedby")).toBe(
-      `${hint.id} ${error.id}`,
+      `${error.id} ${hint.id}`,
     );
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -665,7 +665,7 @@ describe("create dialog", () => {
     expect(description).toBeInvalid();
     expect(description).toHaveFocus();
     expect(description.getAttribute("aria-describedby")).toBe(
-      `${hint.id} ${error.id}`,
+      `${error.id} ${hint.id}`,
     );
     expect(createMock).not.toHaveBeenCalled();
   });

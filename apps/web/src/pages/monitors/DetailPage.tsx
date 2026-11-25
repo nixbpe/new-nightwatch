@@ -451,7 +451,6 @@ function DetailForMonitor({
         type="button"
         variant="secondary"
         aria-disabled={busy}
-        className={busy ? "opacity-60" : undefined}
         onClick={() => {
           if (!busy) toggle.mutate(paused ? "resume" : "pause");
         }}

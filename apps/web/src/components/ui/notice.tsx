@@ -27,7 +27,7 @@ function Notice({
         className,
       )}
     >
-      {/* Centred on the first line, so the dot keeps its shape when the text wraps. */}
+      {/* shrink-0 keeps the dot round when the text wraps; the margin centres it on the first line. */}
       <span
         aria-hidden="true"
         className={cn(

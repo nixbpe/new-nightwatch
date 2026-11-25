@@ -26,6 +26,8 @@ type ChallengeMode = "totp" | "recovery";
 export function TwoFactorPage() {
   const { data, isPending } = authClient.useSession();
   const [error, setError] = useState<string | null>(null);
+  // The server judged the code itself wrong, as opposed to a lockout, an expired challenge or a failed request.
+  const [codeRefused, setCodeRefused] = useState(false);
   // Set once verification succeeded: the page changes only after the session refetch.
   const [redirecting, setRedirecting] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
@@ -38,6 +40,7 @@ export function TwoFactorPage() {
     },
     onSubmit: async ({ value }) => {
       setError(null);
+      setCodeRefused(false);
       try {
         const args = {
           code: value.code.trim(),
@@ -48,6 +51,10 @@ export function TwoFactorPage() {
             ? await authClient.twoFactor.verifyBackupCode(args)
             : await authClient.twoFactor.verifyTotp(args);
         if (verifyError != null) {
+          const refused =
+            verifyError.code === "INVALID_CODE" ||
+            verifyError.code === "INVALID_BACKUP_CODE";
+          setCodeRefused(refused);
           setError(
             authErrorMessage(
               verifyError,
@@ -56,9 +63,11 @@ export function TwoFactorPage() {
                 : "รหัสยืนยันไม่ถูกต้อง",
             ),
           );
-          // The submit button took focus; put the user back in the field with the wrong code selected.
-          codeRef.current?.focus();
-          codeRef.current?.select();
+          if (refused) {
+            // The submit button took focus; put the user back in the field with the wrong code selected.
+            codeRef.current?.focus();
+            codeRef.current?.select();
+          }
           return;
         }
         setRedirecting(true);
@@ -139,14 +148,14 @@ export function TwoFactorPage() {
                       }}
                       onBlur={field.handleBlur}
                       aria-invalid={
-                        field.state.meta.errors.length > 0 || error !== null
+                        field.state.meta.errors.length > 0 || codeRefused
                       }
                       aria-describedby={
                         field.state.meta.errors.length > 0
                           ? "two-factor-recovery-error"
-                          : error === null
-                            ? undefined
-                            : "two-factor-error-message"
+                          : codeRefused
+                            ? "two-factor-error-message"
+                            : undefined
                       }
                     />
                   ) : (
@@ -159,14 +168,14 @@ export function TwoFactorPage() {
                       onValueChange={field.handleChange}
                       onBlur={field.handleBlur}
                       aria-invalid={
-                        field.state.meta.errors.length > 0 || error !== null
+                        field.state.meta.errors.length > 0 || codeRefused
                       }
                       aria-describedby={
                         field.state.meta.errors.length > 0
                           ? "two-factor-totp-error"
-                          : error === null
-                            ? undefined
-                            : "two-factor-error-message"
+                          : codeRefused
+                            ? "two-factor-error-message"
+                            : undefined
                       }
                     />
                   )}
@@ -202,6 +211,7 @@ export function TwoFactorPage() {
                 );
                 form.resetField("code");
                 setError(null);
+                setCodeRefused(false);
               }}
             >
               {modeField.state.value === "totp"

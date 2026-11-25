@@ -61,10 +61,13 @@ function OrganizationNotificationSettingsForOrganization({
   });
   const firstSetting = useRef<HTMLInputElement>(null);
   const retry = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
   // Save disables the focused button and the checkboxes while it runs, which
   // drops keyboard focus; it returns to the field after a save or to the retry
-  // action after a failure.
+  // action after a failure, unless the user has moved it elsewhere meanwhile.
   useEffect(() => {
+    const active = document.activeElement;
+    if (active !== document.body && active !== saveButton.current) return;
     if (save.isSuccess) firstSetting.current?.focus();
     if (save.isError) retry.current?.focus();
   }, [save.isSuccess, save.isError]);
@@ -280,6 +283,7 @@ function OrganizationNotificationSettingsForOrganization({
             {save.isSuccess ? "บันทึกแล้ว" : null}
           </Notice>
           <Button
+            ref={saveButton}
             data-testid="organization-notifications-save"
             type="button"
             wrap

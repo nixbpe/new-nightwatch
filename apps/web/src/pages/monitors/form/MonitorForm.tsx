@@ -700,9 +700,6 @@ export function MonitorForm({
               type="submit"
               aria-disabled={saving || testing || roleLost}
               disabled={originBlocked && !roleLost}
-              className={
-                saving || testing || roleLost ? "opacity-60" : undefined
-              }
             >
               {saving
                 ? "กำลังบันทึก…"

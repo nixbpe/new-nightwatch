@@ -613,7 +613,6 @@ function OverviewForProject({
             type="button"
             variant="secondary"
             aria-disabled={refreshing}
-            className={refreshing ? "opacity-60" : undefined}
             onClick={() => {
               if (!refreshing) void refresh();
             }}

@@ -245,7 +245,6 @@ export function TestPanel({
                 ? undefined
                 : "monitor-form-test-blocked"
           }
-          className={held ? "opacity-60" : undefined}
           onClick={() => {
             void run();
           }}

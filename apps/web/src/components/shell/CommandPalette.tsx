@@ -176,8 +176,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       id={`command-option-${String(index)}`}
                       role="option"
                       aria-selected={isSelected}
-                      onMouseEnter={() => {
-                        setSelected(index);
+                      onMouseMove={() => {
+                        if (selectedIndex !== index) setSelected(index);
                       }}
                       onClick={() => {
                         choose(index);
