@@ -60,6 +60,10 @@ export function MemberFilterBar({
           maxLength={ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH}
           onChange={(event) => {
             setDraft(event.target.value);
+            // The clear button of a search box fires no submit; a filter that is on must go with it.
+            if (event.target.value === "" && filter.q !== undefined && !busy) {
+              onChange({ ...filter, q: undefined });
+            }
           }}
           className="w-80 max-w-full"
         />

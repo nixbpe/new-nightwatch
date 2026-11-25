@@ -1962,6 +1962,33 @@ describe("OrganizationMembersPage filters", () => {
     expect(screen.getByTestId("members-total-count")).toBeInTheDocument();
   });
 
+  it("drops the text filter when the search box is emptied, since its clear button fires no submit", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId("member-row-member-1");
+    const search = screen.getByTestId("members-filter-search");
+    await user.type(search, "ada{Enter}");
+    await waitFor(() => {
+      expect(fetchOrganizationMembers).toHaveBeenLastCalledWith(
+        organizationId,
+        50,
+        0,
+        { q: "ada" },
+      );
+    });
+    await screen.findByTestId("member-row-member-1");
+    expect(screen.getByTestId("members-filter-clear")).toBeInTheDocument();
+
+    await user.clear(screen.getByTestId("members-filter-search"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("members-filter-clear"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("members-filter-search")).toHaveValue("");
+  });
+
   it("limits the search text to the contract bound", async () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
     renderPage();

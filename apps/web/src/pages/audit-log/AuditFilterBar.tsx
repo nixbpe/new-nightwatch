@@ -122,6 +122,14 @@ export function AuditFilterBar({
             maxLength={AUDIT_SEARCH_MAX_LENGTH}
             onChange={(event) => {
               setDraft(event.target.value);
+              // The clear button of a search box fires no submit; a filter that is on must go with it.
+              if (
+                event.target.value === "" &&
+                filters.q !== undefined &&
+                !busy
+              ) {
+                onChange({ q: undefined });
+              }
             }}
             className="w-96 max-w-full text-sm"
           />

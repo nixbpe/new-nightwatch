@@ -338,6 +338,29 @@ describe("AuditLogPage paging and filters", () => {
     );
   });
 
+  it("drops the search from the URL and the request when the box is emptied, since its clear button fires no submit", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    open("?range=30d");
+    await screen.findByTestId("audit-events-table");
+    await user.type(
+      screen.getByTestId("audit-filter-search"),
+      "api-prod{Enter}",
+    );
+    await waitFor(() => {
+      expect(location()).toContain("q=api-prod");
+    });
+
+    await user.clear(screen.getByTestId("audit-filter-search"));
+    await waitFor(() => {
+      expect(location()).not.toContain("q=");
+    });
+    await waitFor(() => {
+      expect(listMock.mock.calls.at(-1)?.[1].q).toBeUndefined();
+    });
+    expect(location()).toContain("range=30d");
+  });
+
   it("opens a shared link with the same filters and ignores invalid URL values", async () => {
     listMock.mockResolvedValue(makeList([makeEvent(0)]));
     open("?range=24h&categories=member,invitation&actor=user-1&q=ada");
