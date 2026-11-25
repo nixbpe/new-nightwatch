@@ -206,29 +206,31 @@ export function DisplayPage() {
               ตอนนี้มีภาษาไทยภาษาเดียว ภาษาอังกฤษจะเพิ่มในภายหลัง
             </p>
           </div>
-          <Field
-            htmlFor={ids.timeZone}
-            label="โซนเวลา"
-            help="เวลาทั้งหมดในรายงานและกิจกรรมจะแสดงในโซนนี้"
-            helpId={`${ids.timeZone}-help`}
-          >
-            <Combobox
-              ref={zoneRef}
-              data-testid="display-time-zone"
-              id={ids.timeZone}
-              options={zones.map((zone) => ({
-                value: zone.id,
-                label: zone.label,
-              }))}
-              value={draft.timeZone}
-              onValueChange={(timeZone) => {
-                update("timeZone", timeZone);
-              }}
-              optionTestId={(id) => `display-zone-${id}`}
-              emptyText={(query) => `ไม่พบโซนเวลา "${query}"`}
-              aria-labelledby={`${ids.timeZone}-label`}
-              aria-describedby={`${ids.timeZone}-help`}
-            />
+          <div>
+            <Field
+              htmlFor={ids.timeZone}
+              label="โซนเวลา"
+              help="เวลาทั้งหมดในรายงานและกิจกรรมจะแสดงในโซนนี้"
+              helpId={`${ids.timeZone}-help`}
+            >
+              <Combobox
+                ref={zoneRef}
+                data-testid="display-time-zone"
+                id={ids.timeZone}
+                options={zones.map((zone) => ({
+                  value: zone.id,
+                  label: zone.label,
+                }))}
+                value={draft.timeZone}
+                onValueChange={(timeZone) => {
+                  update("timeZone", timeZone);
+                }}
+                optionTestId={(id) => `display-zone-${id}`}
+                emptyText={(query) => `ไม่พบโซนเวลา "${query}"`}
+                aria-labelledby={`${ids.timeZone}-label`}
+                aria-describedby={`${ids.timeZone}-help`}
+              />
+            </Field>
             {draft.timeZone === browserZone ? null : (
               <Button
                 type="button"
@@ -245,7 +247,7 @@ export function DisplayPage() {
                 ใช้โซนของเบราว์เซอร์ ({browserZone})
               </Button>
             )}
-          </Field>
+          </div>
           <Field htmlFor={ids.hourCycle} label="รูปแบบเวลา">
             <Select
               data-testid="display-hour-cycle"

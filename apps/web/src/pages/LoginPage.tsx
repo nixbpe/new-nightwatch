@@ -131,7 +131,9 @@ export function LoginPage() {
             >
               {invited === undefined ? null : (
                 <Alert data-testid="login-invitation" tone="info" role="status">
-                  {`เข้าสู่ระบบเพื่อเข้าร่วมองค์กร ${invited.organizationName} ด้วยอีเมล ${invited.email}`}
+                  <span className="wrap-anywhere">
+                    {`เข้าสู่ระบบเพื่อเข้าร่วมองค์กร ${invited.organizationName} ด้วยอีเมล ${invited.email}`}
+                  </span>
                 </Alert>
               )}
               {showReturnNotice ? (
@@ -183,8 +185,9 @@ export function LoginPage() {
                 }}
               >
                 {(field) => (
-                  <Field label="อีเมล">
+                  <Field label="อีเมล" htmlFor="login-email">
                     <Input
+                      id="login-email"
                       data-testid="login-email"
                       type="email"
                       name="email"
@@ -226,13 +229,13 @@ export function LoginPage() {
               >
                 {(field) => (
                   // Not <Field>: a wrapping <label> would also label the show/hide button.
-                  <div className="flex flex-col gap-1">
+                  <div>
                     <div className="mb-2 flex items-baseline justify-between gap-3">
                       <Label htmlFor="login-password">รหัสผ่าน</Label>
                       <Link
                         to="/forgot-password"
                         data-testid="login-forgot-password"
-                        className="inline-flex min-h-6 items-center text-[13px] text-primary underline underline-offset-4"
+                        className="-my-1 inline-flex min-h-6 items-center text-[13px] text-primary underline underline-offset-4"
                       >
                         ลืมรหัสผ่าน
                       </Link>

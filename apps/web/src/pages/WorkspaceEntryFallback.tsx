@@ -178,6 +178,7 @@ function AccessNeeded({
                   data-testid="workspace-org-option"
                   data-organization-id={org.id}
                   type="button"
+                  wrap
                   onClick={() => {
                     onChoose(org.id);
                   }}

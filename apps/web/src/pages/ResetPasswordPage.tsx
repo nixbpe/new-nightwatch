@@ -176,7 +176,11 @@ export function ResetPasswordPage() {
               value={field.state.value}
               onChange={field.handleChange}
               onBlur={field.handleBlur}
-              errors={field.state.meta.errors}
+              // An empty-submit message lingers in errorMap.onSubmit while typing; the live mismatch wins.
+              errors={[
+                field.state.meta.errorMap.onChange,
+                field.state.meta.errorMap.onSubmit,
+              ].filter(Boolean)}
             />
           )}
         </form.Field>

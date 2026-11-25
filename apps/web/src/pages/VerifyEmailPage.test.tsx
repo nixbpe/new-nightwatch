@@ -123,6 +123,20 @@ describe("VerifyEmailPage", () => {
     expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
   });
 
+  it("an empty submission keeps the error out of the field's name", async () => {
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId("verify-email-resend"));
+
+    expect(
+      await screen.findByTestId("verify-email-field-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("verify-email-email")).toHaveAccessibleName(
+      "อีเมลที่ใช้สมัครบัญชี",
+    );
+    expect(sendVerificationEmailMock).not.toHaveBeenCalled();
+  });
+
   it("a signup hand-off prefills the address and says where the link went", async () => {
     renderPage({ email: "new@example.com", sent: true });
 

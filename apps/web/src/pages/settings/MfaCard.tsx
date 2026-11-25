@@ -606,7 +606,7 @@ export function MfaCard({
                   onDownload={download}
                 />
                 <BackupCodes codes={regen.codes} />
-                <label className="flex items-start gap-2.5 text-sm">
+                <label className="flex items-start gap-2.5 py-0.5 text-sm">
                   <Checkbox
                     data-testid="mfa-regenerate-acknowledge"
                     checked={regenAcknowledged}
@@ -820,7 +820,7 @@ export function MfaCard({
                 />
                 <BackupCodes codes={draft.backupCodes} />
               </div>
-              <label className="flex items-start gap-2.5 text-sm">
+              <label className="flex items-start gap-2.5 py-0.5 text-sm">
                 <Checkbox
                   data-testid="mfa-recovery-acknowledge"
                   checked={acknowledged}
@@ -890,15 +890,7 @@ export function MfaCard({
                 จะเปิดใช้งานเมื่อรหัสแรกถูกต้องเท่านั้น รหัสเปลี่ยนทุก{" "}
                 <span className="font-mono">30</span> วินาที
               </p>
-              {error === null ? null : codeInvalid ? (
-                <Alert
-                  data-testid="mfa-verify-server-error"
-                  id={VERIFY_TOTP_SERVER_ERROR_ID}
-                  tone="error"
-                >
-                  {error}
-                </Alert>
-              ) : (
+              {error === null || codeInvalid ? null : (
                 <Alert data-testid="mfa-verify-guard" tone="error">
                   {error}
                 </Alert>
@@ -913,32 +905,39 @@ export function MfaCard({
                 }}
               >
                 {(field) => (
-                  <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
-                    <OtpCodeInput
-                      data-testid="mfa-verify-code"
-                      name="first-totp"
-                      value={field.state.value}
-                      onValueChange={field.handleChange}
-                      onBlur={field.handleBlur}
-                      aria-invalid={
-                        field.state.meta.errors.length > 0 || codeInvalid
-                      }
-                      aria-describedby={
-                        field.state.meta.errors.length > 0
-                          ? codeInvalid
-                            ? `${VERIFY_TOTP_CLIENT_ERROR_ID} ${VERIFY_TOTP_SERVER_ERROR_ID}`
-                            : VERIFY_TOTP_CLIENT_ERROR_ID
-                          : codeInvalid
-                            ? VERIFY_TOTP_SERVER_ERROR_ID
-                            : undefined
-                      }
-                    />
+                  <div>
+                    <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
+                      <OtpCodeInput
+                        data-testid="mfa-verify-code"
+                        name="first-totp"
+                        value={field.state.value}
+                        onValueChange={field.handleChange}
+                        onBlur={field.handleBlur}
+                        aria-invalid={
+                          field.state.meta.errors.length > 0 || codeInvalid
+                        }
+                        aria-describedby={
+                          field.state.meta.errors.length > 0
+                            ? codeInvalid
+                              ? `${VERIFY_TOTP_CLIENT_ERROR_ID} ${VERIFY_TOTP_SERVER_ERROR_ID}`
+                              : VERIFY_TOTP_CLIENT_ERROR_ID
+                            : codeInvalid
+                              ? VERIFY_TOTP_SERVER_ERROR_ID
+                              : undefined
+                        }
+                      />
+                    </Field>
                     <FieldValidationError
                       data-testid="mfa-verify-client-error"
                       id={VERIFY_TOTP_CLIENT_ERROR_ID}
                       errors={field.state.meta.errors}
                     />
-                  </Field>
+                    <FieldValidationError
+                      data-testid="mfa-verify-server-error"
+                      id={VERIFY_TOTP_SERVER_ERROR_ID}
+                      errors={codeInvalid ? [error] : []}
+                    />
+                  </div>
                 )}
               </verifyForm.Field>
             </div>
