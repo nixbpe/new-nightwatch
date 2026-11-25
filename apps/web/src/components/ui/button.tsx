@@ -7,28 +7,29 @@ import { cn } from "@/lib/utils";
 // Offset focus outline stays visible against the solid primary fill.
 // `sm` and `icon-sm` are for table row actions and filter chips (LAY-06).
 // `destructive` is for confirmation dialogs (COL-05); `destructive-outline` is for inline confirms.
-// Disabled filled variants go neutral so they never read as washed-out actions.
+// `inactive` is native `disabled` or `aria-disabled`, which keeps the focus on the button while it ignores input.
+// Inactive filled variants go neutral so they never read as washed-out actions.
 // `wrap` lets long Thai labels break without an ancestor override.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors " +
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
-    "disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:shrink-0",
+    "inactive:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-on-primary hover:bg-primary/90 disabled:bg-foreground/8 disabled:text-foreground-secondary disabled:hover:bg-foreground/8",
+          "bg-primary text-on-primary hover:bg-primary/90 inactive:bg-foreground/8 inactive:text-foreground-secondary inactive:hover:bg-foreground/8",
         secondary:
-          "border border-control-border bg-surface text-foreground hover:bg-background disabled:opacity-60",
+          "border border-control-border bg-surface text-foreground hover:bg-background inactive:opacity-60",
         destructive:
-          "bg-danger text-on-danger hover:bg-danger/90 disabled:bg-foreground/8 disabled:text-foreground-secondary disabled:hover:bg-foreground/8",
+          "bg-danger text-on-danger hover:bg-danger/90 inactive:bg-foreground/8 inactive:text-foreground-secondary inactive:hover:bg-foreground/8",
         "destructive-outline":
-          "border border-danger bg-surface text-danger hover:bg-danger-tint disabled:opacity-60",
+          "border border-danger bg-surface text-danger hover:bg-danger-tint inactive:opacity-60",
         outline:
-          "border border-control-border bg-surface text-foreground hover:bg-background disabled:opacity-60",
+          "border border-control-border bg-surface text-foreground hover:bg-background inactive:opacity-60",
         ghost:
-          "text-foreground-secondary hover:bg-background hover:text-foreground disabled:opacity-60",
-        link: "text-primary underline-offset-4 hover:underline disabled:opacity-60",
+          "text-foreground-secondary hover:bg-background hover:text-foreground inactive:opacity-60",
+        link: "text-primary underline-offset-4 hover:underline inactive:opacity-60",
       },
       size: {
         default: "h-10 px-4",

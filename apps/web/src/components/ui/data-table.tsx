@@ -80,7 +80,7 @@ export function DataTable<Row>({
       role="region"
       aria-label={ariaLabel}
       className={cn(
-        "overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary",
+        "overflow-x-auto rounded-md border border-foreground/10 bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         className,
       )}
     >
@@ -189,7 +189,7 @@ export function DataTable<Row>({
                   data-testid={cellTestId?.(column)}
                   key={column.key}
                   className={cn(
-                    "h-11 align-middle",
+                    "h-11 py-1 align-middle",
                     padding,
                     column.mono && "font-mono text-[13px]",
                     column.align === "end" && "text-end",

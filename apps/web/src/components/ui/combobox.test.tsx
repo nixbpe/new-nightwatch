@@ -76,6 +76,44 @@ describe("Combobox", () => {
     expect(field).toHaveValue("Asia/Tokyo (GMT+9)");
   });
 
+  it("centres the chosen option inside the list and only nudges the page to show the list", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+    // happy-dom has no layout: give the list 100 px and the option a 20 px row at 300 px.
+    const layout = { offsetTop: 300, offsetHeight: 20, clientHeight: 100 };
+    const saved = Object.entries(layout).map(
+      ([key]) =>
+        [
+          key,
+          Object.getOwnPropertyDescriptor(HTMLElement.prototype, key),
+        ] as const,
+    );
+    for (const [key, value] of Object.entries(layout)) {
+      Object.defineProperty(HTMLElement.prototype, key, {
+        configurable: true,
+        get: () => value,
+      });
+    }
+    try {
+      render(<Harness />);
+      await user.click(screen.getByRole("combobox"));
+      await vi.waitFor(() => {
+        expect(screen.getByRole("listbox").scrollTop).toBe(260);
+      });
+      const popup = screen.getByRole("listbox").parentElement;
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      expect(scrollIntoView.mock.contexts[0]).toBe(popup);
+    } finally {
+      for (const [key, descriptor] of saved) {
+        if (descriptor)
+          Object.defineProperty(HTMLElement.prototype, key, descriptor);
+        else Reflect.deleteProperty(HTMLElement.prototype, key);
+      }
+      scrollIntoView.mockRestore();
+    }
+  });
+
   it("chooses an option with the pointer", async () => {
     const user = userEvent.setup();
     render(<Harness />);

@@ -18,7 +18,7 @@ function Select({ className, size = "md", ...props }: SelectProps) {
     <select
       data-slot="select"
       className={cn(
-        "field-caret field-focus w-full appearance-none rounded-md border border-control-border bg-surface font-normal text-foreground transition-colors " +
+        "field-caret field-focus w-full appearance-none rounded-md border border-control-border bg-surface font-normal text-ellipsis text-foreground transition-colors " +
           "disabled:cursor-not-allowed disabled:opacity-60 " +
           "aria-invalid:border-danger",
         SIZES[size],

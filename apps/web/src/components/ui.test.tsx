@@ -98,6 +98,35 @@ describe("Field", () => {
     expect(input).toHaveAccessibleDescription("ชื่อที่แสดง กรอกชื่อ");
   });
 
+  it("puts the error directly under the control and the help after it", () => {
+    render(
+      <>
+        <Field label="ชื่อ" help="ชื่อที่แสดง" error="กรอกชื่อ">
+          <Input />
+        </Field>
+        <Field
+          label="โซนเวลา"
+          htmlFor="zone"
+          help="ใช้กับรายงาน"
+          error="เลือกโซนเวลา"
+        >
+          <Input id="zone" />
+        </Field>
+      </>,
+    );
+    for (const [error, help] of [
+      ["กรอกชื่อ", "ชื่อที่แสดง"],
+      ["เลือกโซนเวลา", "ใช้กับรายงาน"],
+    ] as const) {
+      expect(
+        screen
+          .getByText(error)
+          .compareDocumentPosition(screen.getByText(help)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
   it("pairs the label by htmlFor for a control that cannot sit inside a label", () => {
     render(
       <Field

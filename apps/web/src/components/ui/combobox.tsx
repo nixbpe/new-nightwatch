@@ -71,9 +71,15 @@ function Combobox({
     const index = options.findIndex((option) => option.value === value);
     setActive(Math.max(index, 0));
     requestAnimationFrame(() => {
-      listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({
-        block: "center",
-      });
+      const list = listRef.current;
+      if (!list) return;
+      const chosen = list.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (chosen) {
+        list.scrollTop =
+          chosen.offsetTop - (list.clientHeight - chosen.offsetHeight) / 2;
+      }
+      // The page moves only as far as it takes to show the whole list.
+      list.parentElement?.scrollIntoView({ block: "nearest" });
     });
   };
 
@@ -157,7 +163,7 @@ function Combobox({
             role="listbox"
             aria-label={props["aria-label"]}
             aria-labelledby={props["aria-labelledby"]}
-            className="max-h-64 overflow-y-auto py-1"
+            className="relative max-h-64 overflow-y-auto py-1"
             onMouseDown={(event) => {
               event.preventDefault();
             }}

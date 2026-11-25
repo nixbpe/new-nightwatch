@@ -9,7 +9,7 @@ export { Input } from "./ui/input";
 // For textareas that share the field styling.
 export const textInputClass =
   "field-focus h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
+  "placeholder:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-danger";
 
 export function Field({
   label,
@@ -63,8 +63,8 @@ export function Field({
           {label}
         </Label>
         {children}
-        {helpText}
         {message}
+        {helpText}
       </div>
     );
   }
@@ -74,8 +74,8 @@ export function Field({
         <span className="mb-2 block">{label}</span>
         {children}
       </Label>
-      {helpText}
       {message}
+      {helpText}
     </div>
   );
 }
