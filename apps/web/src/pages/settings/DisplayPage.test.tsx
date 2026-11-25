@@ -277,9 +277,9 @@ describe("DisplayPage", () => {
 
     await user.click(screen.getByTestId("display-time-zone-browser"));
 
-    expect(
-      (screen.getByTestId("display-time-zone")).value,
-    ).toContain(browserZone);
+    expect(screen.getByTestId("display-time-zone")).toHaveDisplayValue(
+      new RegExp(browserZone),
+    );
     expect(screen.getByTestId("display-time-zone")).toHaveFocus();
     expect(screen.queryByTestId("display-time-zone-browser")).toBeNull();
     expect(screen.getByTestId("display-save")).toBeEnabled();
