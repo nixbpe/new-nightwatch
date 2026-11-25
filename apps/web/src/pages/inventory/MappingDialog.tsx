@@ -256,6 +256,8 @@ export function MappingDialog({
               </span>
             </>
           }
+          help="ถ้ากรอก CPE หรือ purl ระบบใช้ค่าที่กรอกแทนผลการค้น และตรวจรูปแบบก่อนบันทึก"
+          helpId="mapping-purl-help"
           error={errors.purl}
           errorId="mapping-purl-error"
           errorTestId="mapping-purl-error"
@@ -268,7 +270,9 @@ export function MappingDialog({
             maxLength={512}
             aria-invalid={errors.purl === undefined ? undefined : true}
             aria-describedby={
-              errors.purl === undefined ? undefined : "mapping-purl-error"
+              errors.purl === undefined
+                ? "mapping-purl-help"
+                : "mapping-purl-help mapping-purl-error"
             }
             className="font-mono text-[14px]"
             placeholder="pkg:deb/ubuntu/openssl@3.0.2-0ubuntu1.10?distro=ubuntu-22.04"
@@ -276,10 +280,6 @@ export function MappingDialog({
               setTypedPurl(event.target.value);
             }}
           />
-          <span className="text-[13px] text-foreground-secondary">
-            ถ้ากรอก CPE หรือ purl ระบบใช้ค่าที่กรอกแทนผลการค้น
-            และตรวจรูปแบบก่อนบันทึก
-          </span>
         </Field>
       </div>
       <div className="flex flex-wrap justify-end gap-2 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
