@@ -135,7 +135,7 @@ export function AuditFilterBar({
           ค้นหา
         </Button>
       </form>
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">ช่วงเวลา</span>
           <SegmentedControl
@@ -183,7 +183,7 @@ export function AuditFilterBar({
               if (busy) return;
               onChange({ actor: event.target.value || undefined });
             }}
-            className="w-auto max-w-56"
+            className="w-auto max-w-80 text-sm"
           >
             <option data-testid="audit-actor-all" value="">
               ทั้งหมด
@@ -207,7 +207,7 @@ export function AuditFilterBar({
         </label>
       </div>
       {filters.range === "custom" ? (
-        <div className="flex flex-wrap items-start gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1.5 text-sm font-medium">
             วันเริ่ม
             <Input
@@ -247,7 +247,7 @@ export function AuditFilterBar({
               data-retained-date={retainedDay}
               id={errorId}
               role="alert"
-              className="text-sm text-danger"
+              className="flex min-h-10 items-center text-sm text-danger"
             >
               {CUSTOM_ERROR_TEXT[customError](retainedDay)}
             </p>

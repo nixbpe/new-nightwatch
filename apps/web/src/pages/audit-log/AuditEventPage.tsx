@@ -463,7 +463,7 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
           tabIndex={0}
           role="region"
           aria-label="ตารางการเปลี่ยนแปลง"
-          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <table
             data-testid="audit-event-changes-table"

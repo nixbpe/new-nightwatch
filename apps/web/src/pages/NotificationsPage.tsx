@@ -281,6 +281,12 @@ function dayLabel(value: string, preferences: Preferences) {
   return dayDate(value, preferences);
 }
 
+const rowLinkClass =
+  "mb-2 ml-9 inline-block py-1 text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+const detailLinkClass =
+  "-my-1 inline-block py-1 text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
 function NotificationList({
   items,
   onOpen,
@@ -384,7 +390,7 @@ function NotificationList({
                 to={monitorPath(item)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
-                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={rowLinkClass}
               >
                 เปิดมอนิเตอร์
                 <span className="sr-only"> {item.subject.monitorName}</span>
@@ -397,7 +403,7 @@ function NotificationList({
                 to={newCvesPath(item)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
-                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={rowLinkClass}
               >
                 ดู CVE ใหม่
                 <span className="sr-only"> {item.subject.projectName}</span>
@@ -409,7 +415,7 @@ function NotificationList({
                 to={auditExportPath(item.organizationId)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
-                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={rowLinkClass}
               >
                 เปิดบันทึกกิจกรรม
               </Link>
@@ -420,7 +426,7 @@ function NotificationList({
                 to="/settings/sessions"
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
-                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={rowLinkClass}
               >
                 ไม่ใช่คุณ? ตรวจสอบเซสชัน
               </Link>
@@ -436,7 +442,7 @@ function NotificationList({
                 to={notificationSettingsPath(item.organizationId)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
-                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={rowLinkClass}
               >
                 ดูการตั้งค่า
               </Link>
@@ -765,7 +771,7 @@ function NotificationsPageForOrganization({
                   <Link
                     data-testid="notification-monitor-link"
                     to={monitorPath(detail)}
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     เปิดมอนิเตอร์
                     <span className="sr-only">
@@ -802,7 +808,7 @@ function NotificationsPageForOrganization({
                   <Link
                     data-testid="notification-vulnerability-link"
                     to={newCvesPath(detail)}
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     ดู CVE ใหม่
                     <span className="sr-only">
@@ -829,7 +835,7 @@ function NotificationsPageForOrganization({
                 <dd className="mb-3 sm:mb-0">
                   <Link
                     to={auditExportPath(detail.organizationId)}
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     เปิดบันทึกกิจกรรม
                   </Link>
@@ -843,14 +849,14 @@ function NotificationsPageForOrganization({
                   <Link
                     data-testid="notification-account-sessions-link"
                     to="/settings/sessions"
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     ตรวจสอบเซสชัน
                   </Link>
                   <Link
                     data-testid="notification-account-security-link"
                     to="/settings/security"
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     เปลี่ยนรหัสผ่าน
                   </Link>
@@ -869,7 +875,7 @@ function NotificationsPageForOrganization({
                   <Link
                     data-testid="notification-settings-link"
                     to={notificationSettingsPath(detail.organizationId)}
-                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={detailLinkClass}
                   >
                     ดูการตั้งค่า
                   </Link>
@@ -1025,7 +1031,11 @@ function NotificationsPageForOrganization({
           <span className="font-mono">{counts.recent}</span> รายการใน 7 วัน (ถึง{" "}
           {itemTime(counts.window.until, preferences)})
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div
+          role="group"
+          aria-label="หมวดการแจ้งเตือน"
+          className="flex flex-wrap gap-2"
+        >
           {(
             [
               ["all", "ทั้งหมด"],

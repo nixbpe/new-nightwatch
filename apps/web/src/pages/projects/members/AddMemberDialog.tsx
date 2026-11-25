@@ -324,6 +324,12 @@ export function AddMemberDialog({
           )}
         </div>
         <div>
+          <span
+            aria-hidden="true"
+            className="mb-2 block text-sm leading-none font-medium"
+          >
+            บทบาทในโปรเจกต์
+          </span>
           <SegmentedControl
             testId="add-member-role"
             optionTestId={(value) => `add-member-role-${value}`}

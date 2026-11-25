@@ -665,6 +665,7 @@ function ProjectsForOrganization({
           </Label>
           <SegmentedControl
             testId="projects-view"
+            className="h-10 items-center"
             optionTestId={(value) => `projects-view-${value}`}
             label="แสดงโปรเจกต์"
             value={view}

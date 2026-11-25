@@ -236,6 +236,11 @@ describe("NotificationsPage", () => {
     expect(
       screen.getByTestId("notifications-filter-category-monitor"),
     ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("group", { name: "หมวดการแจ้งเตือน" }),
+    ).toContainElement(
+      screen.getByTestId("notifications-filter-category-monitor"),
+    );
     expect(screen.getByTestId("notifications-mark-all")).toBeEnabled();
     // Mark-all ignores the filter, so the button says it covers every category.
     expect(screen.getByTestId("notifications-mark-all-scope")).toBeVisible();

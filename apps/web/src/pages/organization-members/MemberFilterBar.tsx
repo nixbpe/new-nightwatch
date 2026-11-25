@@ -4,7 +4,7 @@ import {
 } from "@nightwatch/api-contract";
 import { useState, type RefObject, type SyntheticEvent } from "react";
 
-import { Input } from "../../components/ui";
+import { Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import type { MemberListFilter } from "../../lib/api/members";
@@ -50,8 +50,7 @@ export function MemberFilterBar({
       onSubmit={submitSearch}
       className="flex flex-wrap items-end gap-x-3 gap-y-3"
     >
-      <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
-        ค้นหา
+      <Field label="ค้นหา" className="min-w-0">
         <Input
           ref={searchRef}
           data-testid="members-filter-search"
@@ -62,9 +61,9 @@ export function MemberFilterBar({
           onChange={(event) => {
             setDraft(event.target.value);
           }}
-          className="w-80 max-w-full text-sm"
+          className="w-80 max-w-full"
         />
-      </label>
+      </Field>
       <Button
         data-testid="members-filter-submit"
         type="submit"
@@ -73,8 +72,7 @@ export function MemberFilterBar({
       >
         ค้นหา
       </Button>
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
-        บทบาท
+      <Field label="บทบาท">
         <Select
           data-testid="members-filter-role"
           value={filter.role ?? ""}
@@ -93,7 +91,7 @@ export function MemberFilterBar({
             </option>
           ))}
         </Select>
-      </label>
+      </Field>
       {active ? (
         <Button
           data-testid="members-filter-clear"

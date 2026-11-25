@@ -337,7 +337,7 @@ function ProjectsSection({
             cell: (project) => (
               <Link
                 to={`/organizations/${organizationId}/projects/${project.projectId}/overview`}
-                className="font-medium text-foreground hover:underline"
+                className="inline-block py-1 font-medium text-foreground hover:underline"
               >
                 {project.projectName}
               </Link>
@@ -397,7 +397,7 @@ function DocsLink({ href, children }: { href: string; children: string }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={`w-fit text-[13px] ${linkClass}`}
+      className={`block w-fit py-0.5 text-[13px] ${linkClass}`}
     >
       {children}
     </a>
@@ -467,10 +467,10 @@ function SetupSteps({ data }: { data: OrganizationAwsConnectionResponse }) {
           </h2>
         </summary>
         <ol className="mt-4 flex list-decimal flex-col gap-5 pl-5">
-          <li className="flex flex-col gap-2">
-            <span>คัดลอก External ID ขององค์กร</span>
+          <li className="space-y-2">
+            <span className="block">คัดลอก External ID ขององค์กร</span>
             {connected ? (
-              <span className="text-[13px] text-foreground-secondary">
+              <span className="block text-[13px] text-foreground-secondary">
                 External ID อยู่ในการ์ดการเชื่อมต่อด้านบน
               </span>
             ) : (
@@ -493,8 +493,8 @@ function SetupSteps({ data }: { data: OrganizationAwsConnectionResponse }) {
               เอกสาร AWS เรื่อง External ID
             </DocsLink>
           </li>
-          <li className="flex flex-col gap-2">
-            <span>
+          <li className="space-y-2">
+            <span className="block">
               สร้าง role{" "}
               <span className="font-mono text-[13px]">NightWatchOrgHub</span>{" "}
               ในบัญชีกลาง แล้วตั้ง trust policy นี้ให้ NightWatch assume role
@@ -521,8 +521,8 @@ function SetupSteps({ data }: { data: OrganizationAwsConnectionResponse }) {
               เอกสาร AWS เรื่องการสร้าง role
             </DocsLink>
           </li>
-          <li className="flex flex-col gap-2">
-            <span>
+          <li className="space-y-2">
+            <span className="block">
               ให้ role นี้ assume role ปลายทางในบัญชีของโปรเจกต์ได้ ด้วย
               permission policy นี้ (สิทธิ์{" "}
               <span className="font-mono text-[13px]">sts:AssumeRole</span>)
@@ -532,7 +532,7 @@ function SetupSteps({ data }: { data: OrganizationAwsConnectionResponse }) {
               testId="aws-permission-policy"
               label="คัดลอก permission policy"
             />
-            <span className="text-[13px] text-foreground-secondary">
+            <span className="block text-[13px] text-foreground-secondary">
               Resource คือ Role ARN ของโปรเจกต์ที่ใช้บัญชีกลางอยู่ตอนนี้
               ถ้ายังไม่มีโปรเจกต์ ให้แทนที่ค่าในเครื่องหมาย &lt; &gt; ด้วย Role
               ARN ของ role ในบัญชีโปรเจกต์ และเพิ่ม Resource เมื่อมีโปรเจกต์ใหม่
