@@ -350,6 +350,23 @@ describe("ProjectSwitcher", () => {
     expect(other.querySelector("svg")).toBeNull();
   });
 
+  it("AC-03: Tab past the last link closes the menu and leaves focus where Tab put it", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    const button = await screen.findByTestId("shell-project-switch");
+    await openMenu(user);
+    const last = screen.getByTestId("shell-project-create");
+    last.focus();
+
+    await user.tab();
+    expect(screen.queryByTestId("shell-project-menu")).toBeNull();
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button).not.toHaveFocus();
+    expect(
+      screen.getByTestId("shell-navigation").contains(document.activeElement),
+    ).toBe(true);
+  });
+
   it("AC-03: arrows move through the items, Enter opens one, Escape closes and refocuses the button", async () => {
     const user = userEvent.setup();
     renderShell({ path: membersPath(P_ALPHA) });

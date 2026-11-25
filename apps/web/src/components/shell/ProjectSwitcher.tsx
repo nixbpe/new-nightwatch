@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { PROJECT_ROLE_LABELS } from "../../pages/projects/members/roles";
+import { Input } from "../ui/input";
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from "./icons";
 import { initialsFontClass, initialsOf } from "./initials";
 import { CREATE_PROJECT_PARAM, projectSwitchDestination } from "./nav-config";
@@ -78,7 +79,7 @@ export function ProjectSwitcher({
         aria-label="โหลดโปรเจกต์ไม่สำเร็จ ลองอีกครั้ง"
         title="โหลดโปรเจกต์ไม่สำเร็จ ลองอีกครั้ง"
         onClick={current.refetch}
-        className={`${blockClass} text-sm text-foreground-secondary hover:surface-hover`}
+        className={`${blockClass} text-start text-sm text-foreground-secondary hover:surface-hover`}
       >
         <ProjectMark name="?" muted />
         {collapsed ? null : <span>โหลดโปรเจกต์ไม่สำเร็จ ลองอีกครั้ง</span>}
@@ -255,7 +256,7 @@ export function ProjectSwitcher({
             <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-foreground-secondary">
               <SearchIcon size={14} />
             </span>
-            <input
+            <Input
               data-testid="shell-project-search"
               data-popover-item
               type="text"
@@ -267,7 +268,7 @@ export function ProjectSwitcher({
               onChange={(event) => {
                 setQuery(event.target.value);
               }}
-              className="h-8 w-full rounded-md border border-control-border bg-surface ps-8 pe-2 text-sm text-foreground outline-none placeholder:text-foreground-secondary focus-visible:border-primary"
+              className="h-8 ps-8 pe-2 text-sm"
             />
           </div>
           <div

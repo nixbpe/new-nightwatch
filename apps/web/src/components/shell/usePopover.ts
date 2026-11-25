@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const ITEM_SELECTOR =
   '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"]), [data-popover-item]:not([disabled])';
 
-// Every dismissal (Escape, outside click, `close()`) returns focus to the trigger.
+// Escape, an outside click and `close()` return focus to the trigger; focus moving elsewhere closes the panel and stays there.
 export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<TTrigger>(null);
@@ -38,6 +38,16 @@ export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
       }
       closeAndReturn();
     };
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !panel.contains(target) &&
+        triggerRef.current?.contains(target) !== true
+      ) {
+        setOpen(false);
+      }
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -63,9 +73,11 @@ export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
       list[next]?.focus();
     };
     document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("focusin", onFocusIn);
     window.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);

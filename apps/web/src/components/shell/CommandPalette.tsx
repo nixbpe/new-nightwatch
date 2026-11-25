@@ -59,6 +59,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     void navigate(destination.path);
   };
 
+  // aria-activedescendant does not scroll, so the list follows the arrow keys itself.
+  const select = (index: number) => {
+    setSelected(index);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`command-option-${String(index)}`)
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     switch (event.key) {
       case "Escape":
@@ -68,13 +78,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       case "ArrowDown":
         event.preventDefault();
         if (results.length > 0) {
-          setSelected((selectedIndex + 1) % results.length);
+          select((selectedIndex + 1) % results.length);
         }
         break;
       case "ArrowUp":
         event.preventDefault();
         if (results.length > 0) {
-          setSelected((selectedIndex - 1 + results.length) % results.length);
+          select((selectedIndex - 1 + results.length) % results.length);
         }
         break;
       case "Enter":
@@ -112,7 +122,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onKeyDown={onKeyDown}
         className="overlay-enter relative w-full max-w-[640px] rounded-md border border-foreground/10 bg-surface shadow-modal"
       >
-        <div className="flex h-12 items-center gap-3 border-b border-foreground/10 px-4">
+        <div className="flex h-12 items-center gap-3 rounded-t-md border-b border-foreground/10 px-4 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary">
           <span className="text-foreground-secondary">
             <SearchIcon size={18} />
           </span>
@@ -122,7 +132,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             type="text"
             role="combobox"
             aria-label="ค้นหาทั้งหมด"
-            aria-expanded="true"
+            aria-expanded={results.length > 0}
             aria-controls="command-palette-results"
             aria-activedescendant={activeOptionId}
             aria-autocomplete="list"
@@ -139,7 +149,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           <Kbd>esc</Kbd>
         </div>
 
-        <div className="max-h-[360px] overflow-y-auto p-2">
+        <div className="max-h-[360px] scroll-py-2 overflow-y-auto p-2">
           {results.length === 0 ? (
             <p className="px-2 py-8 text-center text-sm text-foreground-secondary">
               ไม่พบผลลัพธ์สำหรับ “{query.trim()}”

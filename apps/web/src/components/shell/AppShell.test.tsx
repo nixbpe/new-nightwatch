@@ -1218,6 +1218,44 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
+  it("⌘K scrolls the option chosen with the arrows into view and collapses the combobox when nothing matches", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (
+      this: Element,
+      arg,
+    ) {
+      expect(arg).toEqual({ block: "nearest" });
+      scrolled.push(this.id);
+    });
+    const user = userEvent.setup();
+    renderShell();
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    const dialog = screen.getByTestId("shell-command-dialog");
+    const input = within(dialog).getByTestId("shell-command-query");
+    expect(input).toHaveAttribute("aria-expanded", "true");
+
+    await user.keyboard("{ArrowDown}");
+    const second = within(dialog).getAllByTestId(/^shell-command-option-/)[1];
+    await waitFor(() => {
+      expect(scrolled).toEqual([second?.id]);
+    });
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    const options = within(dialog).getAllByTestId(/^shell-command-option-/);
+    await waitFor(() => {
+      expect(scrolled.at(-1)).toBe(options.at(-1)?.id);
+    });
+
+    await user.keyboard("zzzzzz");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("the header search field opens the same palette and Escape returns focus to it", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
