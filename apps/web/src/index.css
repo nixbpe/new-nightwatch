@@ -361,3 +361,24 @@ body {
       transparent 32px
     );
 }
+
+/* Caret for Select and Combobox (docs/design-system.md, Components): drawn with
+   gradients so it follows the theme through currentColor-free tokens. */
+@utility field-caret {
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent 50%,
+      var(--color-foreground-secondary) 50%
+    ),
+    linear-gradient(
+      135deg,
+      var(--color-foreground-secondary) 50%,
+      transparent 50%
+    );
+  background-position:
+    calc(100% - 17px) calc(50% + 1px),
+    calc(100% - 12px) calc(50% + 1px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}

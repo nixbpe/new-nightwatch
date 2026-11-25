@@ -1,0 +1,85 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useState } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { Combobox } from "./combobox";
+
+afterEach(cleanup);
+
+const OPTIONS = [
+  { value: "a", label: "Asia/Bangkok (GMT+7)" },
+  { value: "b", label: "Asia/Tokyo (GMT+9)" },
+  { value: "c", label: "Europe/Paris (GMT+1)" },
+];
+
+function Harness({ initial = "a" }: { initial?: string }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <>
+      <Combobox
+        aria-label="zone"
+        options={OPTIONS}
+        value={value}
+        onValueChange={setValue}
+        emptyText={(q) => `none: ${q}`}
+      />
+      <output data-testid="chosen">{value}</output>
+    </>
+  );
+}
+
+describe("Combobox", () => {
+  it("shows the chosen label and opens the full list on click", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const field = screen.getByRole("combobox", { name: "zone" });
+    expect(field).toHaveValue("Asia/Bangkok (GMT+7)");
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    await user.click(field);
+    expect(field).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+      "Bangkok",
+    );
+  });
+
+  it("filters by every typed word and reports an empty result", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("combobox"));
+    await user.keyboard("asia +9");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    await user.clear(screen.getByRole("combobox"));
+    await user.keyboard("nope");
+    expect(screen.getByText("none: nope")).toBeVisible();
+  });
+
+  it("chooses with the keyboard and restores the label on Escape or blur", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const field = screen.getByRole("combobox");
+    await user.click(field);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByTestId("chosen")).toHaveTextContent("b");
+    expect(field).toHaveValue("Asia/Tokyo (GMT+9)");
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    await user.click(field);
+    await user.keyboard("par{Escape}");
+    expect(screen.getByTestId("chosen")).toHaveTextContent("b");
+    expect(field).toHaveValue("Asia/Tokyo (GMT+9)");
+
+    await user.keyboard("{ArrowDown}par");
+    await user.tab();
+    expect(field).toHaveValue("Asia/Tokyo (GMT+9)");
+  });
+
+  it("chooses an option with the pointer", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: /Paris/ }));
+    expect(screen.getByTestId("chosen")).toHaveTextContent("c");
+  });
+});

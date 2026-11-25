@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { SegmentedControl } from "../../components/ui/segmented-control";
+import { Combobox } from "../../components/ui/combobox";
 import { Select } from "../../components/ui/select";
 import { Label } from "../../components/ui/label";
 import { SectionHeader } from "../../components/ui/section-header";
@@ -106,7 +107,7 @@ export function DisplayPage() {
   const [themeStored, setThemeStored] = useState(true);
   // Fixed at mount so the preview does not tick while the user compares formats.
   const [now] = useState(() => new Date());
-  const zoneRef = useRef<HTMLSelectElement>(null);
+  const zoneRef = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
   const ids = {
     language: useId(),
@@ -219,26 +220,22 @@ export function DisplayPage() {
             <Label htmlFor={ids.timeZone} className="mb-2 block">
               โซนเวลา
             </Label>
-            <Select
+            <Combobox
               ref={zoneRef}
               data-testid="display-time-zone"
               id={ids.timeZone}
+              options={zones.map((zone) => ({
+                value: zone.id,
+                label: zone.label,
+              }))}
               value={draft.timeZone}
-              onChange={(event) => {
-                update("timeZone", event.target.value);
+              onValueChange={(timeZone) => {
+                update("timeZone", timeZone);
               }}
+              optionTestId={(id) => `display-zone-${id}`}
+              emptyText={(query) => `ไม่พบโซนเวลา "${query}"`}
               aria-describedby={`${ids.timeZone}-help`}
-            >
-              {zones.map((zone) => (
-                <option
-                  data-testid={`display-zone-${zone.id}`}
-                  key={zone.id}
-                  value={zone.id}
-                >
-                  {zone.label}
-                </option>
-              ))}
-            </Select>
+            />
             <p
               id={`${ids.timeZone}-help`}
               className="mt-1 text-xs text-foreground-secondary"

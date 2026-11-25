@@ -18,11 +18,12 @@ function Select({ className, size = "md", ...props }: SelectProps) {
     <select
       data-slot="select"
       className={cn(
-        "w-full rounded-md border border-control-border bg-surface font-normal text-foreground transition-colors " +
+        "field-caret w-full appearance-none rounded-md border border-control-border bg-surface font-normal text-foreground transition-colors " +
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
           "disabled:cursor-not-allowed disabled:opacity-60 " +
           "aria-invalid:border-danger",
         SIZES[size],
+        "pr-8",
         className,
       )}
       {...props}
