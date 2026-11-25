@@ -15,7 +15,14 @@ type ComboboxOption = { value: string; label: string };
 
 type ComboboxProps = Omit<
   ComponentProps<"input">,
-  "value" | "onChange" | "type" | "role" | "ref"
+  | "value"
+  | "onChange"
+  | "onClick"
+  | "onKeyDown"
+  | "onFocus"
+  | "type"
+  | "role"
+  | "ref"
 > & {
   options: readonly ComboboxOption[];
   value: string;
@@ -90,10 +97,11 @@ function Combobox({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (!open) openList();
-      else move(Math.min(active + 1, shown.length - 1));
+      else move(Math.max(Math.min(active + 1, shown.length - 1), 0));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) openList();
@@ -148,6 +156,7 @@ function Combobox({
             id={listId}
             role="listbox"
             aria-label={props["aria-label"]}
+            aria-labelledby={props["aria-labelledby"]}
             className="max-h-64 overflow-y-auto py-1"
             onMouseDown={(event) => {
               event.preventDefault();
@@ -177,7 +186,10 @@ function Combobox({
             ))}
           </ul>
           {shown.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-foreground-secondary">
+            <p
+              role="status"
+              className="px-3 py-2 text-sm text-foreground-secondary"
+            >
               {emptyText(query ?? "")}
             </p>
           ) : null}

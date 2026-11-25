@@ -226,6 +226,7 @@ export function DisplayPage() {
               }}
               optionTestId={(id) => `display-zone-${id}`}
               emptyText={(query) => `ไม่พบโซนเวลา "${query}"`}
+              aria-labelledby={`${ids.timeZone}-label`}
               aria-describedby={`${ids.timeZone}-help`}
             />
             {draft.timeZone === browserZone ? null : (

@@ -6,7 +6,7 @@ import { Label } from "./ui/label";
 
 export { Input } from "./ui/input";
 
-// For non-Input controls (e.g. <select>) that share the field styling.
+// For textareas that share the field styling.
 export const textInputClass =
   "field-focus h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
   "disabled:cursor-not-allowed disabled:opacity-60";
@@ -23,7 +23,10 @@ export function Field({
   children,
 }: {
   label: ReactNode;
-  /** Pairs the label with a control that cannot sit inside a <label> (a Combobox with its popup). */
+  /**
+   * Pairs the label with a control that cannot sit inside a <label> (a Combobox with its popup).
+   * The label gets the id `${htmlFor}-label`; the caller wires `aria-invalid` and `errorId` itself.
+   */
   htmlFor?: string;
   /** Explains the field; sits outside the label so the accessible name stays the label text. */
   help?: ReactNode;
@@ -56,7 +59,7 @@ export function Field({
   if (htmlFor !== undefined) {
     return (
       <div className={className}>
-        <Label htmlFor={htmlFor} className="mb-2 block">
+        <Label id={`${htmlFor}-label`} htmlFor={htmlFor} className="mb-2 block">
           {label}
         </Label>
         {children}

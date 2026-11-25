@@ -1,9 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { useRef, useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Combobox } from "./combobox";
+import { Dialog } from "./dialog";
 
 afterEach(cleanup);
 
@@ -81,5 +82,57 @@ describe("Combobox", () => {
     await user.click(screen.getByRole("combobox"));
     await user.click(screen.getByRole("option", { name: /Paris/ }));
     expect(screen.getByTestId("chosen")).toHaveTextContent("c");
+  });
+
+  it("names the listbox through aria-labelledby", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <span id="zone-label">โซนเวลา</span>
+        <Combobox
+          aria-labelledby="zone-label"
+          options={OPTIONS}
+          value="a"
+          onValueChange={() => undefined}
+          emptyText={() => ""}
+        />
+      </>,
+    );
+    await user.click(screen.getByRole("combobox"));
+    expect(screen.getByRole("listbox", { name: "โซนเวลา" })).toBeVisible();
+  });
+
+  it("closes only the list on the first Escape inside a dialog", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    function InDialog() {
+      const field = useRef<HTMLInputElement>(null);
+      const fallback = useRef<HTMLElement>(null);
+      return (
+        <Dialog
+          title="t"
+          opener={null}
+          fallbackFocus={fallback}
+          initialFocus={field}
+          onClose={onClose}
+        >
+          <Combobox
+            ref={field}
+            aria-label="zone"
+            options={OPTIONS}
+            value="a"
+            onValueChange={() => undefined}
+            emptyText={() => ""}
+          />
+        </Dialog>
+      );
+    }
+    render(<InDialog />);
+    await user.click(screen.getByRole("combobox"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
