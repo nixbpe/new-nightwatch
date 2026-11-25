@@ -88,36 +88,38 @@ export function BasicSection({
           onChange({ url: event.target.value }, "url");
         }}
       />
-      <div className="flex flex-wrap items-center gap-3">
-        <span aria-hidden="true" className="text-sm font-medium">
-          ตรวจทุก
-        </span>
-        <SegmentedControl
-          optionTestId={(value) => `monitor-form-interval-${value}`}
-          label="ตรวจทุก"
-          disabled={disabled}
-          value={String(values.intervalSeconds)}
-          options={INTERVAL_OPTIONS}
-          onChange={(value) => {
-            onChange({ intervalSeconds: Number(value) }, "intervalSeconds");
-          }}
-        />
-      </div>
-      <p className="text-xs text-foreground-secondary">
-        ประมาณ{" "}
-        <span
-          data-testid="monitor-form-calls-per-day"
-          className="font-mono font-medium text-foreground"
-        >
-          {formatNumber(Math.round(86400 / values.intervalSeconds))}
-        </span>{" "}
-        ครั้งต่อวัน
-      </p>
-      {errors.intervalSeconds === undefined ? null : (
-        <p role="alert" className="text-sm text-danger">
-          {errors.intervalSeconds}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <span aria-hidden="true" className="text-sm font-medium">
+            ตรวจทุก
+          </span>
+          <SegmentedControl
+            optionTestId={(value) => `monitor-form-interval-${value}`}
+            label="ตรวจทุก"
+            disabled={disabled}
+            value={String(values.intervalSeconds)}
+            options={INTERVAL_OPTIONS}
+            onChange={(value) => {
+              onChange({ intervalSeconds: Number(value) }, "intervalSeconds");
+            }}
+          />
+        </div>
+        <p className="text-xs text-foreground-secondary">
+          ประมาณ{" "}
+          <span
+            data-testid="monitor-form-calls-per-day"
+            className="font-mono font-medium text-foreground"
+          >
+            {formatNumber(Math.round(86400 / values.intervalSeconds))}
+          </span>{" "}
+          ครั้งต่อวัน
         </p>
-      )}
+        {errors.intervalSeconds === undefined ? null : (
+          <p role="alert" className="text-sm text-danger">
+            {errors.intervalSeconds}
+          </p>
+        )}
+      </div>
       {advanced ? (
         <TextControl
           data-testid="monitor-form-timeout"

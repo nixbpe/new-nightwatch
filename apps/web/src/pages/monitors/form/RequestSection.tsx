@@ -11,6 +11,7 @@ import { SectionHeader } from "../../../components/ui/section-header";
 
 import {
   AddRowButton,
+  LOCKED_LOOK,
   RowShell,
   SelectControl,
   TextareaControl,
@@ -186,9 +187,10 @@ export function RequestSection({
                   );
                 }}
               />
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-6 w-fit items-center gap-2 text-sm">
                 <Checkbox
                   data-testid="monitor-form-header-secret"
+                  className={LOCKED_LOOK}
                   checked={header.secret}
                   aria-label={`ค่าลับ header แถวที่ ${row}`}
                   aria-disabled={disabled}
@@ -265,7 +267,7 @@ export function RequestSection({
                 <p
                   data-testid="monitor-header-secret-dropped"
                   role="status"
-                  className="text-sm text-caution"
+                  className="text-sm text-caution empty:sr-only"
                 >
                   {header.secret ? null : "ค่าลับเดิมจะถูกลบ"}
                 </p>

@@ -91,7 +91,7 @@ export function SecretsSection({
         data-testid="monitor-auth-secret-dropped"
         data-dropped={dropped}
         role="status"
-        className="text-sm text-caution"
+        className="text-sm text-caution empty:sr-only"
       >
         {dropped ? AUTH_DROPPED_NOTE : null}
       </p>

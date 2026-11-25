@@ -18,7 +18,9 @@ export type SectionProps = {
   secrets: SecretAccess;
 };
 
-const controlInvalid = "aria-invalid:border-danger";
+/** Locked controls stay focusable (never natively disabled), so the shared `disabled:` styles do not reach them. */
+export const LOCKED_LOOK =
+  "aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-readonly:cursor-not-allowed aria-readonly:opacity-60";
 
 export function TextControl({
   path,
@@ -34,6 +36,7 @@ export function TextControl({
   label: ReactNode;
   ariaLabel?: string;
   error: string | undefined;
+  /** Sizes the control only: the label, hint and error keep the full width. */
   className?: string;
   hint?: ReactNode;
   /** Read-only, not natively disabled: a disabled field would drop the focus its user is typing in. */
@@ -47,10 +50,11 @@ export function TextControl({
     .filter((id) => id !== null)
     .join(" ");
   return (
-    <div className={className}>
+    <div>
       <Field label={label} error={error} errorId={errorId(path)}>
         <Input
           id={fieldId(path)}
+          className={cn(LOCKED_LOOK, className)}
           aria-label={ariaLabel}
           aria-invalid={error === undefined ? undefined : true}
           aria-describedby={describedBy === "" ? undefined : describedBy}
@@ -116,6 +120,7 @@ export function SecretControl({
       <Field label={label} error={error} errorId={errorId(path)}>
         <Input
           ref={ref}
+          className={LOCKED_LOOK}
           data-testid={testId}
           id={fieldId(path)}
           type="password"
@@ -161,6 +166,7 @@ export function SelectControl({
   label: ReactNode;
   ariaLabel?: string;
   error: string | undefined;
+  /** Sizes the control only: the label, hint and error keep the full width. */
   className?: string;
   /** Rendered outside the <label> (like TextControl's hint) so it never joins the accessible name. */
   hint?: ReactNode;
@@ -174,10 +180,11 @@ export function SelectControl({
     .filter((id) => id !== null)
     .join(" ");
   return (
-    <div className={className}>
+    <div>
       <Field label={label} error={error} errorId={errorId(path)}>
         <Select
           id={fieldId(path)}
+          className={cn(LOCKED_LOOK, className)}
           aria-label={ariaLabel}
           aria-invalid={error === undefined ? undefined : true}
           aria-describedby={describedBy === "" ? undefined : describedBy}
@@ -226,7 +233,7 @@ export function TextareaControl({
         aria-describedby={error === undefined ? undefined : errorId(path)}
         className={cn(
           textInputClass,
-          controlInvalid,
+          LOCKED_LOOK,
           "h-auto min-h-32 py-2 font-mono text-sm",
         )}
         spellCheck={false}

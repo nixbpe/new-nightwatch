@@ -376,10 +376,12 @@ function OverviewForProject({
   };
 
   const sortControl = (
-    <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
+    <Label className="flex items-center gap-2 text-xs font-normal text-foreground-secondary sm:ml-auto">
       เรียงตาม
       <Select
         data-testid="monitor-overview-sort"
+        size="sm"
+        className="w-auto"
         value={sort}
         onChange={(event) => {
           const next = MONITOR_LIST_SORTS.find(
@@ -460,7 +462,7 @@ function OverviewForProject({
           data-testid="monitor-overview-health-filter"
           role="group"
           aria-label="สถานะ"
-          className="flex flex-1 flex-wrap gap-2"
+          className="flex flex-wrap gap-2"
         >
           {statusChips.map((chip) => {
             const pressed = chip.value === health;
@@ -512,6 +514,7 @@ function OverviewForProject({
             ล้างตัวกรอง
           </Button>
         ) : null}
+        {trailing}
       </div>
       {data === undefined || !filtered ? null : (
         <p
@@ -521,7 +524,6 @@ function OverviewForProject({
           พบ {data.page.total} จาก {data.summary.total}
         </p>
       )}
-      {trailing}
     </div>
   );
 

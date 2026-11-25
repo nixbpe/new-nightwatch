@@ -149,7 +149,7 @@ function ResponseBody({ response }: { response: LastResponse }) {
                 </caption>
                 <thead>
                   <tr className="text-foreground-secondary">
-                    <th scope="col" className="py-1 pr-3 font-medium">
+                    <th scope="col" className="w-2/5 py-1 pr-3 font-medium">
                       ชื่อ
                     </th>
                     <th scope="col" className="py-1 font-medium">
@@ -168,13 +168,13 @@ function ResponseBody({ response }: { response: LastResponse }) {
                       <th
                         data-testid="monitor-response-header-name"
                         scope="row"
-                        className="py-1 pr-3 font-mono font-normal break-all"
+                        className="py-1 pr-3 font-mono font-normal wrap-anywhere"
                       >
                         {header.name}
                       </th>
                       <td
                         data-testid="monitor-response-header-value"
-                        className="py-1 font-mono break-all"
+                        className="py-1 font-mono wrap-anywhere"
                       >
                         {header.redacted ? (
                           <span className="font-sans text-foreground-secondary">
@@ -204,7 +204,7 @@ function ResponseBody({ response }: { response: LastResponse }) {
                 role="region"
                 tabIndex={0}
                 aria-label="เนื้อหาของการตอบกลับล่าสุด"
-                className="surface-inset max-h-96 overflow-auto rounded-md border border-foreground/10 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-foreground"
+                className="surface-inset max-h-96 overflow-auto rounded-md border border-foreground/10 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {body.text}
               </pre>
