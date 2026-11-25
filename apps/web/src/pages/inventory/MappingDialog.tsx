@@ -133,11 +133,6 @@ export function MappingDialog({
             {inventoryErrorMessage(search.error)}
           </Alert>
         ) : null}
-        {save.isError ? (
-          <Alert tone="error" data-testid="mapping-save-error">
-            {inventoryErrorMessage(save.error)}
-          </Alert>
-        ) : null}
         <form
           className="flex flex-col gap-2"
           onSubmit={(event) => {
@@ -282,6 +277,13 @@ export function MappingDialog({
           />
         </Field>
       </div>
+      {save.isError ? (
+        <div className="px-4 pt-2 sm:px-6">
+          <Alert tone="error" data-testid="mapping-save-error">
+            {inventoryErrorMessage(save.error)}
+          </Alert>
+        </div>
+      ) : null}
       <div className="flex flex-wrap justify-end gap-2 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
         <Button
           variant="outline"

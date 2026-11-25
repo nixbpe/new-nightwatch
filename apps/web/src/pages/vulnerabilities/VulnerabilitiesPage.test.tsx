@@ -369,6 +369,7 @@ describe("the Needs-fix view (default)", () => {
       "href",
       `/organizations/${ORG}/projects/${PROJECT}/inventory/import`,
     );
+    expect(screen.queryByTestId("vuln-filter-system")).toBeNull();
   });
 
   it("shows a member the Import hint without the link", async () => {

@@ -6,7 +6,7 @@ import { Link, useParams } from "react-router";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { useCurrentProject } from "../../components/shell/useCurrentProject";
-import { Alert, Input } from "../../components/ui";
+import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import {
   DataTable,
@@ -251,7 +251,7 @@ function MappingQueue({ organizationId, projectId }: Scope) {
   ];
   const actions = (item: InventoryMapping) =>
     canManage ? (
-      <div className="inline-flex flex-wrap justify-end gap-2">
+      <div className="inline-flex flex-wrap justify-end gap-2 xl:flex-nowrap">
         {item.status === "pending" && item.cpe !== null ? (
           <Button
             size="sm"
@@ -388,18 +388,18 @@ function MappingQueue({ organizationId, projectId }: Scope) {
         />
       ) : (
         <div ref={queue} className="space-y-6">
-          <Input
-            type="search"
-            data-testid="mapping-filter-search"
-            aria-label="ค้นหา Vendor หรือ Product"
-            placeholder="Vendor หรือ Product"
-            maxLength={200}
-            value={search}
-            className="w-[220px]"
-            onChange={(event) => {
-              setSearch(event.target.value);
-            }}
-          />
+          <Field label="ค้นหา Vendor หรือ Product" className="w-[220px]">
+            <Input
+              type="search"
+              data-testid="mapping-filter-search"
+              placeholder="Vendor หรือ Product"
+              maxLength={200}
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+              }}
+            />
+          </Field>
           <section
             aria-labelledby="mapping-pending-heading"
             className="space-y-3"

@@ -152,7 +152,7 @@ export function TriageControl({
 
   return (
     <div className="space-y-1.5 text-[13px]" data-testid={`triage-${testId}`}>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex items-center gap-1">
         {canManage ? (
           <button
             ref={menu.triggerRef}
@@ -163,7 +163,7 @@ export function TriageControl({
             aria-label={`สถานะ VEX ของ ${target.cveId}: ${statusText}`}
             aria-disabled={save.isPending ? true : undefined}
             onClick={openMenu}
-            className="inline-flex h-8 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-[13px] text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-disabled:opacity-60"
+            className="inline-flex h-8 min-w-38 items-center justify-between gap-2 rounded-md border border-control-border bg-surface px-3 text-[13px] text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-disabled:opacity-60"
           >
             {save.isPending && !asking ? "กำลังบันทึก" : statusText}
             <ChevronsUpDownIcon size={14} />
@@ -266,7 +266,7 @@ export function TriageControl({
             ref={reasonInput}
             id={reasonId}
             data-testid={`triage-reason-${testId}`}
-            className="w-full text-sm"
+            className="h-8 w-full text-sm"
             maxLength={500}
             value={reason}
             onChange={(event) => {
@@ -276,6 +276,7 @@ export function TriageControl({
           <div className="flex items-center gap-2">
             <Button
               type="submit"
+              size="sm"
               data-testid={`triage-save-${testId}`}
               disabled={save.isPending || reason.trim() === ""}
             >
@@ -284,6 +285,7 @@ export function TriageControl({
             <Button
               type="button"
               variant="outline"
+              size="sm"
               data-testid={`triage-cancel-${testId}`}
               disabled={save.isPending}
               onClick={cancelAsking}

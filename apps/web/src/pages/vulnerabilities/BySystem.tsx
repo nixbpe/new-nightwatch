@@ -21,7 +21,13 @@ import {
   NO_SYSTEM_NAME,
   saveBlob,
 } from "../inventory/format";
-import { SeverityPill, SOURCE_LABELS, percent } from "./format";
+import {
+  FOCUS_RING_INSET,
+  SeverityPill,
+  SOURCE_LABELS,
+  STANDALONE_LINK,
+  percent,
+} from "./format";
 import { TermTip } from "./terms";
 
 type Scope = { organizationId: string; projectId: string };
@@ -198,10 +204,7 @@ function StateCells({
             <TermTip term="notCovered" />
           </span>
           <span className={detail}>
-            <Link
-              className="text-primary underline-offset-4 hover:underline"
-              to={`${inventoryPath}/mappings`}
-            >
+            <Link className={STANDALONE_LINK} to={`${inventoryPath}/mappings`}>
               ไปคิวยืนยัน CPE/purl
             </Link>
           </span>
@@ -271,6 +274,7 @@ function ComponentBlock({
             className={cn(
               ROW,
               "cursor-pointer list-none [&::-webkit-details-marker]:hidden",
+              FOCUS_RING_INSET,
             )}
           >
             <span
@@ -518,10 +522,7 @@ export function BySystem({
       <p className="text-sm" data-testid="vuln-no-inventory">
         ยังไม่มี component ใน inventory{" "}
         {list.canManage ? (
-          <Link
-            className="text-primary underline-offset-4 hover:underline"
-            to={`${inventoryPath}/import`}
-          >
+          <Link className={STANDALONE_LINK} to={`${inventoryPath}/import`}>
             import inventory
           </Link>
         ) : null}

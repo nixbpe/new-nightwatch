@@ -139,7 +139,7 @@ function RenameForm({
         <Button
           type="submit"
           variant="secondary"
-          className="mt-6"
+          className="mt-[22px]"
           data-testid="inventory-system-rename"
           disabled={rename.isPending}
         >

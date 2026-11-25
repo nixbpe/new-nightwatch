@@ -20,7 +20,13 @@ import { formatUploadedAt } from "../inventory/format";
 import type { Preferences } from "../../lib/preferences";
 import { hasFilters, NO_FILTERS, type FixFilters } from "./filters";
 import { itemKey, selectFix } from "./fixSelect";
-import { PROVISIONAL_LABELS, reasonBadges, SeverityPill } from "./format";
+import {
+  FOCUS_RING_INSET,
+  PROVISIONAL_LABELS,
+  reasonBadges,
+  SeverityPill,
+  STANDALONE_LINK,
+} from "./format";
 import { TermTip } from "./terms";
 import { TriageControl } from "./TriageControl";
 
@@ -205,7 +211,12 @@ function Group({
       className="rounded-md border border-foreground/10 bg-surface"
       data-testid={testId}
     >
-      <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+      <summary
+        className={cn(
+          "cursor-pointer px-4 py-2 text-sm font-medium",
+          FOCUS_RING_INSET,
+        )}
+      >
         {title}
       </summary>
       {note === undefined ? null : (
@@ -350,26 +361,30 @@ export function NeedsFix({
       </HairlineGrid>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-foreground-secondary">ตัวกรอง</span>
-        <label className="sr-only" htmlFor="vuln-filter-system">
-          System
-        </label>
-        <Select
-          size="sm"
-          id="vuln-filter-system"
-          data-testid="vuln-filter-system"
-          value={filters.system ?? ""}
-          onChange={(event) => {
-            onFilters({ ...filters, system: event.target.value || null });
-          }}
-          className="w-auto"
-        >
-          <option value="">ทุก System</option>
-          {systems.map(([id, name]) => (
-            <option key={id} value={id}>
-              {name === "" ? "(ไม่ระบุชื่อ System)" : name}
-            </option>
-          ))}
-        </Select>
+        {systems.length === 0 ? null : (
+          <>
+            <label className="sr-only" htmlFor="vuln-filter-system">
+              System
+            </label>
+            <Select
+              size="sm"
+              id="vuln-filter-system"
+              data-testid="vuln-filter-system"
+              value={filters.system ?? ""}
+              onChange={(event) => {
+                onFilters({ ...filters, system: event.target.value || null });
+              }}
+              className="w-auto max-w-72"
+            >
+              <option value="">ทุก System</option>
+              {systems.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name === "" ? "(ไม่ระบุชื่อ System)" : name}
+                </option>
+              ))}
+            </Select>
+          </>
+        )}
         <div role="group" aria-label="ตัวกรอง" className="flex flex-wrap gap-2">
           {(
             [
@@ -415,7 +430,7 @@ export function NeedsFix({
             <TermTip term="notCovered" />
             <Link
               data-testid="vuln-coverage-link"
-              className="text-primary underline-offset-4 hover:underline"
+              className={STANDALONE_LINK}
               to={systemsPath}
             >
               ดูในราย System
@@ -463,7 +478,7 @@ export function NeedsFix({
           action={
             list.canManage ? (
               <Link
-                className="text-sm text-primary underline-offset-4 hover:underline"
+                className={cn(STANDALONE_LINK, "text-sm")}
                 to={`${inventoryPath}/import`}
               >
                 import inventory
