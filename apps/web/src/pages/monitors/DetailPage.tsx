@@ -328,6 +328,7 @@ function DetailForMonitor({
         eyebrow="// monitor · http"
         title={title}
         status={status}
+        actionsBeside
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}

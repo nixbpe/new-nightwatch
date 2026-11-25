@@ -66,6 +66,7 @@ export function PageHeader({
   titleTabIndex,
   titleDescribedBy,
   titleClassName,
+  actionsBeside,
   titleTestId = "page-title",
   scopeTestId = "page-scope",
   descriptionTestId,
@@ -85,13 +86,20 @@ export function PageHeader({
   /** Id of a notice the heading's accessible description should read after its name. */
   titleDescribedBy?: string;
   titleClassName?: string;
+  /** Lets the title block give up width (down to 16rem) so the actions stay beside it instead of wrapping under a long status row. */
+  actionsBeside?: boolean;
 }) {
   return (
     <header
       data-testid="page-header"
       className="flex flex-wrap items-end justify-between gap-4 pb-2"
     >
-      <div className="min-w-0">
+      <div
+        className={cn(
+          "min-w-0",
+          actionsBeside === true && "md:flex-[1_1_16rem]",
+        )}
+      >
         {scope === undefined ? null : (
           <p className="flex min-w-0 items-center gap-2 text-[13px] text-foreground-secondary">
             {scope.mark === undefined ? null : (
