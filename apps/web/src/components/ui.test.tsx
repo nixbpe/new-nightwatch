@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Alert, FieldValidationError } from "./ui";
+import { Alert, Field, FieldValidationError, Input } from "./ui";
 
 describe("FieldValidationError", () => {
   it.each([
@@ -79,4 +79,38 @@ describe("Alert", () => {
       expect(banner).toHaveTextContent("text");
     },
   );
+});
+
+describe("Field", () => {
+  it("names a wrapped control by the label alone and keeps help and error outside it", () => {
+    render(
+      <Field
+        label="ชื่อ"
+        help="ชื่อที่แสดง"
+        helpId="name-help"
+        error="กรอกชื่อ"
+        errorId="name-error"
+      >
+        <Input aria-describedby="name-help name-error" />
+      </Field>,
+    );
+    const input = screen.getByRole("textbox", { name: "ชื่อ" });
+    expect(input).toHaveAccessibleDescription("ชื่อที่แสดง กรอกชื่อ");
+  });
+
+  it("pairs the label by htmlFor for a control that cannot sit inside a label", () => {
+    render(
+      <Field
+        label="โซนเวลา"
+        htmlFor="zone"
+        help="ใช้กับรายงาน"
+        helpId="zone-help"
+      >
+        <Input id="zone" aria-describedby="zone-help" />
+      </Field>,
+    );
+    expect(screen.getByLabelText("โซนเวลา")).toHaveAccessibleDescription(
+      "ใช้กับรายงาน",
+    );
+  });
 });

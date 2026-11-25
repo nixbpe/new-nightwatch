@@ -33,7 +33,7 @@ Divider is Text at 10% opacity in both themes. Derived levels are opacities of a
 
 `canvas-deep` (LAY-08) is optional and the one exact, non-derived addition to the ten roles above: a deeper Canvas for a data-dense or live page section, dark `#07080a`, light unchanged (same as Canvas; no deeper light variant).
 
-Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mono for monospace; the faces ship with the product, never from a runtime font CDN. Corners 4 px, controls 40 px high (44 px for the large size, 32 px for the small size per LAY-06), focus ring a 2 px Primary outline offset 2 px from the control, spacing on a 4 px grid.
+Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mono for monospace; the faces ship with the product, never from a runtime font CDN. Corners 4 px, controls 40 px high (44 px for the large size, 32 px for the small size per LAY-06), focus ring a 2 px Primary outline offset 2 px from the control (text fields draw it over their border, A11Y-01), spacing on a 4 px grid.
 
 ## Colors
 
@@ -99,12 +99,13 @@ Implementation details and regression tests are located through the [feature cod
 - CMP-10 A success message uses `Notice` (a status dot and text, `role="status"`); `Alert` carries only failure, caution or information and has no success tone. `ActionNotice` stays the pending form (an export requested is not yet a success). A page shows one form of success feedback.
 - CMP-11 Button wording: retry is "ลองใหม่"; cancel is "ยกเลิก" (when the action itself cancels an item, the dismissal label is "เก็บไว้" or "ไม่ยกเลิก", and the confirmation names the cancellation, such as "ยกเลิกคำเชิญ"); "กลับ" is for navigation only; the button that confirms a destructive action names the verb and the object ("ลบ System และ 42 แถว", "ถอนสมาชิก"). Labels that an Epic acceptance criterion fixes verbatim, and the column headers of the approved import template, stay as written.
 - CMP-12 Role and term words: "ผู้ดูแลองค์กร" is an Organization admin and "ผู้ดูแลโปรเจกต์" a Project admin; use "สมาชิก" for a person and use the role words from `ROLE_LABELS` and `PROJECT_ROLE_LABELS` when naming a role, including the Project `member` role whose label is "สมาชิก"; the system owner of a Project row is "ผู้รับผิดชอบ" in prose, so it never reads as the "เจ้าของ" role. The Latin terms TYP-04 allows (Project, System, Inventory, Import) keep their written form; a term that an Epic acceptance criterion fixes stays as written.
+- CMP-13 A choice from a short fixed list uses `Select`, which draws its own caret so it looks the same on every system. A list of about 15 options or more that people look up by name (time zones) uses `Combobox`: typing filters the list by every typed word, arrows and Enter choose, Escape and leaving the field restore the chosen value. A control with only one possible value is plain text, not a disabled select.
 
 ## Accessibility
 
 **Principle.** Everything works by keyboard with visible focus, logical order and meaningful names, and nothing relies on hover, placeholders or color alone. Motion is brief, respects reduced-motion and never hides essential content. Before accepting a design, review both themes on desktop, keyboard and focus, and the relevant error, empty and permission states. Narrow layouts and enlarged text follow LAY-02 in implementation and are checked only when a user reports a problem or asks for it.
 
-- A11Y-01 The focus indicator stays visible against adjacent surfaces, including primary buttons, with an offset from the fill; a glow never replaces it.
+- A11Y-01 The focus indicator stays visible against adjacent surfaces; a glow never replaces it. Buttons and other filled controls use a 2 px Primary outline offset 2 px from the fill, so it stays visible on primary buttons. Text fields (input, select, combobox, textarea) draw the same 2 px ring over their own 1 px border with no offset, in Danger while the field is invalid, so the border and ring read as one edge.
 
 ## Motion
 

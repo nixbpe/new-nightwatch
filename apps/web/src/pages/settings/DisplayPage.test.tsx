@@ -99,7 +99,7 @@ describe("DisplayPage", () => {
     expect(localStorage.getItem("nightwatch-theme")).toBe("system");
   });
 
-  it("shows the stored preferences and keeps the single-language select honest", () => {
+  it("shows the stored preferences and shows the single language as text", () => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(STORED));
     renderPage();
 
@@ -109,12 +109,8 @@ describe("DisplayPage", () => {
     expect(screen.getByTestId("display-hour-cycle")).toHaveValue("h12");
     expect(screen.getByTestId("display-week-start")).toHaveValue("sunday");
 
-    const language = screen.getByTestId("display-language");
-    expect(language).toBeDisabled();
-    expect(language).toHaveValue("th");
-    expect(within(language).getAllByTestId("display-language-th")).toHaveLength(
-      1,
-    );
+    expect(screen.getByTestId("display-language")).toHaveTextContent("ไทย");
+    expect(screen.queryByRole("combobox", { name: "ภาษา" })).toBeNull();
     expect(screen.getByTestId("display-save")).toBeDisabled();
   });
 

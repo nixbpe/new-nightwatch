@@ -382,3 +382,15 @@ body {
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
+
+/* Focus ring for text fields (docs/design-system.md, A11Y-01): a 2 px Primary
+   ring drawn over the 1 px border, Danger while the field is invalid. */
+@utility field-focus {
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+  }
+  &[aria-invalid="true"]:focus-visible {
+    outline-color: var(--color-danger);
+  }
+}
