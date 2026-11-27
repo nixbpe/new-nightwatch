@@ -569,6 +569,18 @@ describe("F-013 test and save form", () => {
     expect(screen.queryByTestId("aws-connection-form")).toBeNull();
   });
 
+  it("moves focus into the Role ARN field on Edit and to the card heading on cancel", async () => {
+    fetchMock.mockResolvedValue(connected());
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("aws-connection-edit"));
+    expect(screen.getByTestId("aws-role-arn")).toHaveFocus();
+    await user.click(screen.getByTestId("aws-connection-cancel-edit"));
+    expect(
+      screen.getByRole("heading", { name: "บัญชี AWS กลางขององค์กร" }),
+    ).toHaveFocus();
+  });
+
   it("AC-04 a failed server re-test keeps the saved value and the input", async () => {
     fetchMock.mockResolvedValue(connected());
     testMock.mockResolvedValue(passed);

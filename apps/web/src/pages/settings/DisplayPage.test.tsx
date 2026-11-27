@@ -46,6 +46,11 @@ function renderPage() {
   return { router, ...render(<RouterProvider router={router} />) };
 }
 
+async function pickZone(user: ReturnType<typeof userEvent.setup>, id: string) {
+  await user.click(screen.getByTestId("display-time-zone"));
+  await user.click(screen.getByTestId(`display-zone-${id}`));
+}
+
 describe("DisplayPage", () => {
   afterEach(() => {
     localStorage.removeItem(PREFERENCES_KEY);
@@ -94,20 +99,18 @@ describe("DisplayPage", () => {
     expect(localStorage.getItem("nightwatch-theme")).toBe("system");
   });
 
-  it("shows the stored preferences and keeps the single-language select honest", () => {
+  it("shows the stored preferences and shows the single language as text", () => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(STORED));
     renderPage();
 
-    expect(screen.getByTestId("display-time-zone")).toHaveValue("Asia/Tokyo");
+    expect(screen.getByTestId("display-time-zone")).toHaveValue(
+      "Asia/Tokyo (GMT+9)",
+    );
     expect(screen.getByTestId("display-hour-cycle")).toHaveValue("h12");
     expect(screen.getByTestId("display-week-start")).toHaveValue("sunday");
 
-    const language = screen.getByTestId("display-language");
-    expect(language).toBeDisabled();
-    expect(language).toHaveValue("th");
-    expect(within(language).getAllByTestId("display-language-th")).toHaveLength(
-      1,
-    );
+    expect(screen.getByTestId("display-language")).toHaveTextContent("ไทย");
+    expect(screen.queryByRole("combobox", { name: "ภาษา" })).toBeNull();
     expect(screen.getByTestId("display-save")).toBeDisabled();
   });
 
@@ -118,10 +121,7 @@ describe("DisplayPage", () => {
     expect(save).toBeDisabled();
 
     await user.selectOptions(screen.getByTestId("display-hour-cycle"), "h12");
-    await user.selectOptions(
-      screen.getByTestId("display-time-zone"),
-      "Asia/Tokyo",
-    );
+    await pickZone(user, "Asia/Tokyo");
     expect(save).toBeEnabled();
     await user.click(save);
 
@@ -172,10 +172,7 @@ describe("DisplayPage", () => {
         ...over,
       });
 
-      await user.selectOptions(
-        screen.getByTestId("display-time-zone"),
-        "Asia/Tokyo",
-      );
+      await pickZone(user, "Asia/Tokyo");
       expect(screen.getByTestId("display-preview")).toHaveTextContent(
         formatDateTime(new Date(), draftOf({})),
       );
@@ -235,13 +232,33 @@ describe("DisplayPage", () => {
     expect(unload()).toBe(false);
   });
 
-  it("labels time zones with their IANA id and current offset", () => {
+  it("labels time zones with their IANA id and current offset", async () => {
+    const user = userEvent.setup();
     renderPage();
-    const select = screen.getByTestId("display-time-zone");
-    const bangkok = within(select).getByTestId("display-zone-Asia/Bangkok");
-    expect(bangkok).toHaveAttribute("value", "Asia/Bangkok");
+    await user.click(screen.getByTestId("display-time-zone"));
+    const bangkok = screen.getByTestId("display-zone-Asia/Bangkok");
     expect(bangkok.textContent).toContain("Asia/Bangkok");
     expect(bangkok.textContent).toContain("GMT+7");
+  });
+
+  it("filters the time zones as the user types, by city or offset", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const field = screen.getByTestId("display-time-zone");
+    await user.click(field);
+    await user.keyboard("bangkok");
+    expect(
+      within(screen.getByRole("listbox")).getAllByRole("option"),
+    ).toHaveLength(1);
+    await user.clear(field);
+    await user.keyboard("GMT+9");
+    expect(screen.getByTestId("display-zone-Asia/Tokyo")).toBeVisible();
+    await user.clear(field);
+    await user.keyboard("zzzz");
+    expect(
+      within(screen.getByRole("listbox")).queryAllByRole("option"),
+    ).toHaveLength(0);
+    expect(screen.getByText('ไม่พบโซนเวลา "zzzz"')).toBeVisible();
   });
 
   it("offers a way back to the browser's time zone that waits for Save", async () => {
@@ -256,7 +273,9 @@ describe("DisplayPage", () => {
 
     await user.click(screen.getByTestId("display-time-zone-browser"));
 
-    expect(screen.getByTestId("display-time-zone")).toHaveValue(browserZone);
+    expect(screen.getByTestId("display-time-zone")).toHaveDisplayValue(
+      new RegExp(browserZone),
+    );
     expect(screen.getByTestId("display-time-zone")).toHaveFocus();
     expect(screen.queryByTestId("display-time-zone-browser")).toBeNull();
     expect(screen.getByTestId("display-save")).toBeEnabled();

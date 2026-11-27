@@ -329,6 +329,24 @@ describe("AcceptInvitationPage", () => {
     expect(password).toHaveAttribute("type", "password");
   });
 
+  it("names the signup fields by their labels alone and describes each invalid one by its error", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByTestId("invitation-signup-submit"),
+    );
+
+    const name = screen.getByRole("textbox", { name: "ชื่อที่แสดง" });
+    expect(name).toBeInvalid();
+    expect(name).toHaveAccessibleDescription("ชื่อต้องมีอย่างน้อย 2 ตัวอักษร");
+    const password = screen.getByLabelText("รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)");
+    expect(password).toBeInvalid();
+    expect(password).toHaveAccessibleDescription(
+      "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+    );
+  });
+
   it("keeps the invitation pending on cap denial, announces the cap, and focuses the error", async () => {
     rememberInvitation("inv-123");
     fetchInvitationMock.mockResolvedValue(invitation);

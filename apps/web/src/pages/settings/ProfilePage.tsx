@@ -218,40 +218,34 @@ function ProfileForm({
               aria-describedby={showError ? `${nameId}-error` : undefined}
             />
           </Field>
-          <div>
-            <Field
-              label={
-                <span className="inline-flex min-h-6 items-center gap-2">
-                  อีเมล
-                  {emailVerified ? (
-                    <StatusPill
-                      data-testid="profile-email-verified"
-                      tone="primary"
-                      dot
-                    >
-                      ยืนยันแล้ว
-                    </StatusPill>
-                  ) : null}
-                </span>
-              }
-            >
-              <Input
-                data-testid="profile-email"
-                id={emailId}
-                type="email"
-                value={email}
-                readOnly
-                aria-describedby={`${emailId}-help`}
-                className="text-foreground-secondary"
-              />
-            </Field>
-            <p
-              id={`${emailId}-help`}
-              className="mt-1 text-xs text-foreground-secondary"
-            >
-              ใช้เข้าสู่ระบบและรับการแจ้งเตือน เปลี่ยนอีเมลยังไม่เปิดให้บริการ
-            </p>
-          </div>
+          <Field
+            label={
+              <span className="inline-flex min-h-6 items-center gap-2">
+                อีเมล
+                {emailVerified ? (
+                  <StatusPill
+                    data-testid="profile-email-verified"
+                    tone="primary"
+                    dot
+                  >
+                    ยืนยันแล้ว
+                  </StatusPill>
+                ) : null}
+              </span>
+            }
+            help="ใช้เข้าสู่ระบบและรับการแจ้งเตือน เปลี่ยนอีเมลยังไม่เปิดให้บริการ"
+            helpId={`${emailId}-help`}
+          >
+            <Input
+              data-testid="profile-email"
+              id={emailId}
+              type="email"
+              value={email}
+              readOnly
+              aria-describedby={`${emailId}-help`}
+              className="bg-foreground/4 text-foreground-secondary"
+            />
+          </Field>
         </div>
         <CardFooter>
           <Button

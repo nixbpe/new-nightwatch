@@ -33,7 +33,7 @@ Divider is Text at 10% opacity in both themes. Derived levels are opacities of a
 
 `canvas-deep` (LAY-08) is optional and the one exact, non-derived addition to the ten roles above: a deeper Canvas for a data-dense or live page section, dark `#07080a`, light unchanged (same as Canvas; no deeper light variant).
 
-Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mono for monospace; the faces ship with the product, never from a runtime font CDN. Corners 4 px, controls 40 px high (44 px for the large size, 32 px for the small size per LAY-06), focus ring a 2 px Primary outline offset 2 px from the control, spacing on a 4 px grid.
+Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mono for monospace; the faces ship with the product, never from a runtime font CDN. Corners 4 px, controls 40 px high (44 px for the large size, 32 px for the small size per LAY-06), focus ring a 2 px Primary outline offset 2 px from the control (text fields draw it over their border, A11Y-01), spacing on a 4 px grid.
 
 ## Colors
 
@@ -89,7 +89,7 @@ Implementation details and regression tests are located through the [feature cod
 **Principle.** Every pattern shows its real state and adds nothing the assigned flow does not need. One dominant action per group; destructive actions are marked by wording and consequence, not red alone. Tables keep clear headers, aligned values, visible sort and filter context, correct counts and ownership context on small screens.
 
 - CMP-01 Feedback distinguishes loading, no data, no filter matches, restricted, failure, pending and success. Unknown or stale data never looks healthy, current or empty.
-- CMP-02 Forms keep persistent labels, errors next to the field, input after failure, a visible pending state and no accidental duplicate submits.
+- CMP-02 Forms keep persistent labels, errors next to the field (directly under it, above any help text), input after failure, a visible pending state and no accidental duplicate submits.
 - CMP-03 Overlays have a clear title, dismissal and return path; modals trap focus while open, restore it on close and fit the viewport.
 - CMP-04 Collapsed navigation stays keyboard-usable, and closed items are unreachable.
 - CMP-06 A designed element with no backing data yet (a mockup) renders in its real route inside a marked region (dashed strong edge): the notice "ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง", a link to its GitHub issue and an `aria-label` that names the region an example. Sample data inside is neutral and labelled and never looks like live telemetry (CMP-05): no status colors, live indicator or freshness claim.
@@ -99,12 +99,15 @@ Implementation details and regression tests are located through the [feature cod
 - CMP-10 A success message uses `Notice` (a status dot and text, `role="status"`); `Alert` carries only failure, caution or information and has no success tone. `ActionNotice` stays the pending form (an export requested is not yet a success). A page shows one form of success feedback.
 - CMP-11 Button wording: retry is "ลองใหม่"; cancel is "ยกเลิก" (when the action itself cancels an item, the dismissal label is "เก็บไว้" or "ไม่ยกเลิก", and the confirmation names the cancellation, such as "ยกเลิกคำเชิญ"); "กลับ" is for navigation only; the button that confirms a destructive action names the verb and the object ("ลบ System และ 42 แถว", "ถอนสมาชิก"). Labels that an Epic acceptance criterion fixes verbatim, and the column headers of the approved import template, stay as written.
 - CMP-12 Role and term words: "ผู้ดูแลองค์กร" is an Organization admin and "ผู้ดูแลโปรเจกต์" a Project admin; use "สมาชิก" for a person and use the role words from `ROLE_LABELS` and `PROJECT_ROLE_LABELS` when naming a role, including the Project `member` role whose label is "สมาชิก"; the system owner of a Project row is "ผู้รับผิดชอบ" in prose, so it never reads as the "เจ้าของ" role. The Latin terms TYP-04 allows (Project, System, Inventory, Import) keep their written form; a term that an Epic acceptance criterion fixes stays as written.
+- CMP-13 A choice from a short fixed list uses `Select`, which draws its own caret so it looks the same on every system. A list of about 15 options or more that people look up by name (time zones) uses `Combobox`: typing filters the list by every typed word, arrows and Enter choose, Escape and leaving the field restore the chosen value. A control with only one possible value is plain text, not a disabled select. A `Select` whose chosen label is wider than the control ends it with an ellipsis instead of cutting a glyph.
+- CMP-14 A button that ignores input but keeps focus (`aria-disabled`: a pending submit, a blocked action) looks like a disabled one: neutral fill on filled variants, 60% opacity on the others, `not-allowed` cursor. `Button` styles `disabled` and `aria-disabled="true"` through one `inactive` variant, so a page never restyles it.
+- CMP-15 The clear button of a `type="search"` field is a 24 px target with a 14 px x in Secondary text (Text on hover), never the browser's own blue or white (COL-03).
 
 ## Accessibility
 
 **Principle.** Everything works by keyboard with visible focus, logical order and meaningful names, and nothing relies on hover, placeholders or color alone. Motion is brief, respects reduced-motion and never hides essential content. Before accepting a design, review both themes on desktop, keyboard and focus, and the relevant error, empty and permission states. Narrow layouts and enlarged text follow LAY-02 in implementation and are checked only when a user reports a problem or asks for it.
 
-- A11Y-01 The focus indicator stays visible against adjacent surfaces, including primary buttons, with an offset from the fill; a glow never replaces it.
+- A11Y-01 The focus indicator stays visible against adjacent surfaces; a glow never replaces it. Buttons and other filled controls use a 2 px Primary outline offset 2 px from the fill, so it stays visible on primary buttons. Text fields (input, select, combobox, textarea) draw the same 2 px ring over their own 1 px border with no offset, in Danger while the field is invalid, so the border and ring read as one edge. Links, tabs, summaries, menu items, checkboxes and radios get the 2 px Primary ring offset 2 px from a base rule, with no class needed; menu rows draw it 2 px inside the edge because their overflow container would clip it. A `focus-visible:outline-*` utility overrides the base rule.
 
 ## Motion
 

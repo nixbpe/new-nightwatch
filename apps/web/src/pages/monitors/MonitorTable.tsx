@@ -283,6 +283,7 @@ export function MonitorTable({
       cellTestId={(column) => `monitor-list-cell-${column.key}`}
       columnHeaderTestId={(column) => `monitor-list-heading-${column.key}`}
       ariaLabel="ตารางมอนิเตอร์"
+      dense
       columns={columns}
       rows={monitors}
       rowKey={(row) => row.id}

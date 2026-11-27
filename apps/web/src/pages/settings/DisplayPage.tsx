@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { Alert } from "../../components/ui";
+import { Alert, Field } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { SegmentedControl } from "../../components/ui/segmented-control";
+import { Combobox } from "../../components/ui/combobox";
 import { Select } from "../../components/ui/select";
-import { Label } from "../../components/ui/label";
 import { SectionHeader } from "../../components/ui/section-header";
 import { Notice } from "../../components/ui/notice";
 import { useUnsavedChangesGuard } from "../../components/ui/useUnsavedChangesGuard";
@@ -106,10 +106,9 @@ export function DisplayPage() {
   const [themeStored, setThemeStored] = useState(true);
   // Fixed at mount so the preview does not tick while the user compares formats.
   const [now] = useState(() => new Date());
-  const zoneRef = useRef<HTMLSelectElement>(null);
+  const zoneRef = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
   const ids = {
-    language: useId(),
     timeZone: useId(),
     hourCycle: useId(),
     weekStart: useId(),
@@ -194,57 +193,44 @@ export function DisplayPage() {
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
           <div>
-            <Label htmlFor={ids.language} className="mb-2 block">
+            <span className="mb-2 block text-sm font-medium leading-none">
               ภาษา
-            </Label>
-            <Select
-              data-testid="display-language"
-              id={ids.language}
-              value={draft.language}
-              disabled
-              aria-describedby={`${ids.language}-help`}
-            >
-              <option data-testid="display-language-th" value="th">
-                ไทย
-              </option>
-            </Select>
+            </span>
             <p
-              id={`${ids.language}-help`}
-              className="mt-1 text-xs text-foreground-secondary"
+              data-testid="display-language"
+              className="flex h-10 items-center text-base"
             >
+              ไทย
+            </p>
+            <p className="mt-1 text-xs text-foreground-secondary">
               ตอนนี้มีภาษาไทยภาษาเดียว ภาษาอังกฤษจะเพิ่มในภายหลัง
             </p>
           </div>
           <div>
-            <Label htmlFor={ids.timeZone} className="mb-2 block">
-              โซนเวลา
-            </Label>
-            <Select
-              ref={zoneRef}
-              data-testid="display-time-zone"
-              id={ids.timeZone}
-              value={draft.timeZone}
-              onChange={(event) => {
-                update("timeZone", event.target.value);
-              }}
-              aria-describedby={`${ids.timeZone}-help`}
+            <Field
+              htmlFor={ids.timeZone}
+              label="โซนเวลา"
+              help="เวลาทั้งหมดในรายงานและกิจกรรมจะแสดงในโซนนี้"
+              helpId={`${ids.timeZone}-help`}
             >
-              {zones.map((zone) => (
-                <option
-                  data-testid={`display-zone-${zone.id}`}
-                  key={zone.id}
-                  value={zone.id}
-                >
-                  {zone.label}
-                </option>
-              ))}
-            </Select>
-            <p
-              id={`${ids.timeZone}-help`}
-              className="mt-1 text-xs text-foreground-secondary"
-            >
-              เวลาทั้งหมดในรายงานและกิจกรรมจะแสดงในโซนนี้
-            </p>
+              <Combobox
+                ref={zoneRef}
+                data-testid="display-time-zone"
+                id={ids.timeZone}
+                options={zones.map((zone) => ({
+                  value: zone.id,
+                  label: zone.label,
+                }))}
+                value={draft.timeZone}
+                onValueChange={(timeZone) => {
+                  update("timeZone", timeZone);
+                }}
+                optionTestId={(id) => `display-zone-${id}`}
+                emptyText={(query) => `ไม่พบโซนเวลา "${query}"`}
+                aria-labelledby={`${ids.timeZone}-label`}
+                aria-describedby={`${ids.timeZone}-help`}
+              />
+            </Field>
             {draft.timeZone === browserZone ? null : (
               <Button
                 type="button"
@@ -262,10 +248,7 @@ export function DisplayPage() {
               </Button>
             )}
           </div>
-          <div>
-            <Label htmlFor={ids.hourCycle} className="mb-2 block">
-              รูปแบบเวลา
-            </Label>
+          <Field htmlFor={ids.hourCycle} label="รูปแบบเวลา">
             <Select
               data-testid="display-hour-cycle"
               id={ids.hourCycle}
@@ -283,11 +266,8 @@ export function DisplayPage() {
                 </option>
               ))}
             </Select>
-          </div>
-          <div>
-            <Label htmlFor={ids.weekStart} className="mb-2 block">
-              วันแรกของสัปดาห์
-            </Label>
+          </Field>
+          <Field htmlFor={ids.weekStart} label="วันแรกของสัปดาห์">
             <Select
               data-testid="display-week-start"
               id={ids.weekStart}
@@ -305,7 +285,7 @@ export function DisplayPage() {
                 </option>
               ))}
             </Select>
-          </div>
+          </Field>
         </div>
 
         <p

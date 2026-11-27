@@ -148,6 +148,26 @@ describe("ResetPasswordPage", () => {
     });
   });
 
+  it("replaces the empty-submit message under the confirm field with the mismatch while typing", async () => {
+    renderAt("/reset-password?token=reset-tok-3");
+
+    await userEvent.click(screen.getByTestId("reset-password-submit"));
+    expect(
+      await screen.findByTestId("reset-password-confirm-error"),
+    ).toHaveTextContent("กรุณายืนยันรหัสผ่านใหม่");
+
+    await userEvent.type(
+      screen.getByTestId("reset-password-password"),
+      "first-pass-123",
+    );
+    await userEvent.type(screen.getByTestId("reset-password-confirm"), "first");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("reset-password-confirm-error"),
+      ).toHaveTextContent("รหัสผ่านทั้งสองช่องไม่ตรงกัน");
+    });
+  });
+
   it("offers a new link only for a dead token, not for other server errors", async () => {
     resetPasswordMock.mockResolvedValue({
       data: null,

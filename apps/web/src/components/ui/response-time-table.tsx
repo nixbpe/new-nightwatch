@@ -40,7 +40,7 @@ export function ResponseTimeTable({
       role="region"
       aria-label="ข้อมูลกราฟเวลาตอบสนอง"
       tabIndex={0}
-      className="max-h-80 overflow-auto rounded-md border border-foreground/10 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+      className="max-h-80 overflow-auto rounded-md border border-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       <table
         data-testid="monitor-response-table"

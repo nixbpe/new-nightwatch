@@ -335,6 +335,7 @@ function Sample({
                               <Button
                                 key={verdict}
                                 size="sm"
+                                className="min-w-28"
                                 variant={
                                   item.verdict === verdict
                                     ? "default"

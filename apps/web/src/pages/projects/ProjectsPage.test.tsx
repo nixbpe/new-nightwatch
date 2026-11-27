@@ -634,8 +634,38 @@ describe("create dialog", () => {
     const slug = within(dialog).getByTestId("project-form-slug");
     expect(slug).toBeInvalid();
     expect(slug).toHaveFocus();
-    expect(slug.getAttribute("aria-describedby")?.split(" ")).toContain(
-      error.id,
+    const hint = within(dialog).getByText(/^3 ถึง 40 ตัว/);
+    expect(slug.getAttribute("aria-describedby")).toBe(
+      `${error.id} ${hint.id}`,
+    );
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the description hint beside its error and focuses the field", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage();
+    const dialog = await openCreate(user);
+    await user.type(
+      within(dialog).getByTestId("project-form-name"),
+      "Payments",
+    );
+    await user.type(
+      within(dialog).getByTestId("project-form-slug"),
+      "payments",
+    );
+    await user.click(within(dialog).getByTestId("project-form-description"));
+    await user.paste("x".repeat(501));
+    await user.click(within(dialog).getByTestId("project-form-submit"));
+    const error = await within(dialog).findByTestId(
+      "project-form-description-error",
+    );
+    const description = within(dialog).getByTestId("project-form-description");
+    const hint = within(dialog).getByText("ไม่เกิน 500 ตัวอักษร");
+    expect(description).toBeInvalid();
+    expect(description).toHaveFocus();
+    expect(description.getAttribute("aria-describedby")).toBe(
+      `${error.id} ${hint.id}`,
     );
     expect(createMock).not.toHaveBeenCalled();
   });

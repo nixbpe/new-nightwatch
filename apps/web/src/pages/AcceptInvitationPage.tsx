@@ -14,8 +14,7 @@ import {
 } from "../components/ui";
 import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
-import { Label } from "../components/ui/label";
-import { PasswordInput } from "../components/ui/password-input";
+import { PasswordField } from "../components/ui/password-field";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
 import {
   acceptInvitation,
@@ -43,6 +42,8 @@ import {
   hasContextPublicationClaim,
   publishContextPublication,
 } from "../lib/queryClient";
+
+const textLink = "inline-flex min-h-6 items-center text-primary underline";
 
 // The API answers 404 for unknown, expired, revoked and accepted invitations alike (it does not
 // reveal which), so the message names expiry as one cause.
@@ -118,7 +119,7 @@ export function AcceptInvitationPage() {
             <Link
               data-testid="invitation-preview-workspace"
               to="/workspace"
-              className="text-sm text-primary underline"
+              className={`${textLink} self-center text-sm`}
             >
               ไปที่พื้นที่ทำงาน
             </Link>
@@ -126,7 +127,7 @@ export function AcceptInvitationPage() {
             <Link
               data-testid="invitation-login"
               to="/login"
-              className="text-sm text-primary underline"
+              className={`${textLink} self-center text-sm`}
             >
               ไปที่หน้าเข้าสู่ระบบ
             </Link>
@@ -395,7 +396,7 @@ function VerifiedAcceptance({
           <Link
             data-testid="invitation-workspace"
             to="/workspace"
-            className="text-primary underline"
+            className={`${textLink} self-center`}
           >
             ไปที่พื้นที่ทำงาน
           </Link>
@@ -472,9 +473,18 @@ function SignupGate({
       subtitle={`คุณได้รับเชิญให้เข้าร่วมองค์กร ${organizationName} ในบทบาท${ROLE_LABELS[role] ?? role}`}
     >
       {expired ? (
-        <Alert data-testid="invitation-expired" tone="error">
-          คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากเจ้าของหรือผู้ดูแลองค์กร
-        </Alert>
+        <div className="flex flex-col gap-4">
+          <Alert data-testid="invitation-expired" tone="error">
+            คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากเจ้าของหรือผู้ดูแลองค์กร
+          </Alert>
+          <Link
+            data-testid="invitation-login"
+            to="/login"
+            className={`${textLink} self-center text-sm`}
+          >
+            ไปที่หน้าเข้าสู่ระบบ
+          </Link>
+        </div>
       ) : (
         <form
           onSubmit={(event) => {
@@ -499,7 +509,7 @@ function SignupGate({
               value={email}
               readOnly
               aria-readonly="true"
-              className="opacity-70"
+              className="text-foreground-secondary"
             />
           </Field>
           <form.Field
@@ -516,8 +526,9 @@ function SignupGate({
             }}
           >
             {(field) => (
-              <Field label="ชื่อที่แสดง">
+              <Field htmlFor="invitation-signup-name" label="ชื่อที่แสดง">
                 <Input
+                  id="invitation-signup-name"
                   data-testid="invitation-signup-name"
                   type="text"
                   name="name"
@@ -556,37 +567,16 @@ function SignupGate({
             }}
           >
             {(field) => (
-              <div>
-                <Label
-                  htmlFor="invitation-signup-password"
-                  className="mb-2 block"
-                >
-                  รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)
-                </Label>
-                <PasswordInput
-                  id="invitation-signup-password"
-                  data-testid="invitation-signup-password"
-                  toggleTestId="invitation-signup-password-toggle"
-                  name="password"
-                  autoComplete="new-password"
-                  value={field.state.value}
-                  onChange={(event) => {
-                    field.handleChange(event.target.value);
-                  }}
-                  onBlur={field.handleBlur}
-                  aria-invalid={field.state.meta.errors.length > 0}
-                  aria-describedby={
-                    field.state.meta.errors.length > 0
-                      ? "invitation-password-error"
-                      : undefined
-                  }
-                />
-                <FieldValidationError
-                  id="invitation-password-error"
-                  data-testid="invitation-password-error"
-                  errors={field.state.meta.errors}
-                />
-              </div>
+              <PasswordField
+                id="invitation-signup-password"
+                label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)"
+                name="password"
+                autoComplete="new-password"
+                value={field.state.value}
+                onChange={field.handleChange}
+                onBlur={field.handleBlur}
+                errors={field.state.meta.errors}
+              />
             )}
           </form.Field>
           <form.Subscribe
@@ -606,7 +596,7 @@ function SignupGate({
             <Link
               data-testid="invitation-login"
               to="/login"
-              className="text-primary underline"
+              className={textLink}
               onClick={() => {
                 rememberInvitation(invitationId);
               }}
@@ -616,15 +606,6 @@ function SignupGate({
           </p>
         </form>
       )}
-      {expired ? (
-        <Link
-          data-testid="invitation-login"
-          to="/login"
-          className="mt-4 block text-center text-sm text-primary underline"
-        >
-          ไปที่หน้าเข้าสู่ระบบ
-        </Link>
-      ) : null}
     </AuthPageFrame>
   );
 }

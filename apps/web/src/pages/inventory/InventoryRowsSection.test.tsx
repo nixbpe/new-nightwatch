@@ -644,9 +644,12 @@ describe("InventoryRowsSection editing", () => {
     expect(error).toHaveTextContent("Canonical Ubuntu 22.04.4");
     expect(error).toHaveTextContent("inventory-q4.xlsx");
     for (const key of ["vendor", "product", "version"]) {
-      expect(
-        within(dialog).getByTestId(`inventory-row-${key}`),
-      ).toHaveAttribute("aria-invalid", "true");
+      const field = within(dialog).getByTestId(`inventory-row-${key}`);
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expect(field).toHaveAttribute(
+        "aria-describedby",
+        "inventory-row-version-error",
+      );
     }
     expect(within(dialog).getByTestId("inventory-row-product")).toHaveValue(
       "Ubuntu",

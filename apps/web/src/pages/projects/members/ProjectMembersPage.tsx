@@ -526,7 +526,7 @@ function ProjectMembers({
     {
       key: "organizationRole",
       header: "บทบาทในองค์กร",
-      width: "160px",
+      width: "128px",
       cell: (member) => (
         <span
           data-testid="project-member-organization-role"
@@ -539,7 +539,7 @@ function ProjectMembers({
     {
       key: "projectRole",
       header: "บทบาทในโปรเจกต์",
-      width: "200px",
+      width: "176px",
       cell: (member) => {
         if (!canManage) {
           return (
@@ -593,7 +593,7 @@ function ProjectMembers({
     {
       key: "joinedAt",
       header: "เข้าร่วมเมื่อ",
-      width: "140px",
+      width: "128px",
       mono: true,
       cell: (member) => (
         <time

@@ -328,6 +328,7 @@ function DetailForMonitor({
         eyebrow="// monitor · http"
         title={title}
         status={status}
+        actionsBeside
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}
@@ -451,7 +452,6 @@ function DetailForMonitor({
         type="button"
         variant="secondary"
         aria-disabled={busy}
-        className={busy ? "opacity-60" : undefined}
         onClick={() => {
           if (!busy) toggle.mutate(paused ? "resume" : "pause");
         }}

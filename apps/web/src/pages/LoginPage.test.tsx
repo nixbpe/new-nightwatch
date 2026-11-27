@@ -267,6 +267,7 @@ describe("LoginPage", () => {
     const password = screen.getByTestId("login-password");
     expect(email).toHaveAttribute("aria-invalid", "true");
     expect(email).toHaveAttribute("aria-describedby", "login-email-error");
+    expect(email).toHaveAccessibleName("อีเมล");
     expect(password).toHaveAttribute("aria-invalid", "true");
     expect(password).toHaveAttribute(
       "aria-describedby",

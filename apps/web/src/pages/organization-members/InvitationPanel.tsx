@@ -20,6 +20,7 @@ import {
   pendingInvitationListQueryPrefix,
 } from "../../lib/api/invitations";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
+import { cn } from "../../lib/utils";
 import {
   getContextPublicationSnapshot,
   subscribeToContextPublication,
@@ -181,7 +182,10 @@ export function InvitationPanel({
             ref={noticeRef}
             data-testid="members-invitation-notice-focus"
             tabIndex={-1}
-            className="mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className={cn(
+              "mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              collapsed && "mb-5",
+            )}
           >
             {notice.tone === "success" ? (
               <Notice data-testid="members-invitation-success" tone="success">

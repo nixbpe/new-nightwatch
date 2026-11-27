@@ -181,7 +181,7 @@ export function InvitationResendButton({
   const availableAt = new Date(invitation.resendAvailableAt);
   const cooling = availableAt.getTime() > now;
   return (
-    <div className="flex flex-col gap-1">
+    <>
       <Button
         data-testid={`invitation-resend-${invitation.publicId}`}
         ref={(control) => {
@@ -193,7 +193,6 @@ export function InvitationResendButton({
         // aria-disabled keeps the cooling button focusable so its reason is read.
         disabled={pending}
         aria-disabled={cooling ? "true" : undefined}
-        className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         aria-describedby={cooling ? cooldownId : undefined}
         aria-label={`ส่งซ้ำคำเชิญถึง ${invitation.email}`}
         onClick={(event) => {
@@ -207,11 +206,11 @@ export function InvitationResendButton({
         <span
           data-testid={`invitation-cooldown-${invitation.publicId}`}
           id={cooldownId}
-          className="text-xs text-foreground-secondary"
+          className="order-last basis-full text-right text-xs text-foreground-secondary"
         >
           ส่งซ้ำได้อีกครั้งเมื่อ {formatDateTime(availableAt, preferences)}
         </span>
       ) : null}
-    </div>
+    </>
   );
 }

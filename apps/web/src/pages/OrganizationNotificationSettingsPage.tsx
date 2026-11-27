@@ -1,6 +1,6 @@
 import type { NotificationSettingsUpdate } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import { Page, PageHeader } from "../components/shell/Page";
@@ -59,6 +59,18 @@ function OrganizationNotificationSettingsForOrganization({
       });
     },
   });
+  const firstSetting = useRef<HTMLInputElement>(null);
+  const retry = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  // Save disables the focused button and the checkboxes while it runs, which
+  // drops keyboard focus; it returns to the field after a save or to the retry
+  // action after a failure, unless the user has moved it elsewhere meanwhile.
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active !== document.body && active !== saveButton.current) return;
+    if (save.isSuccess) firstSetting.current?.focus();
+    if (save.isError) retry.current?.focus();
+  }, [save.isSuccess, save.isError]);
   // A bookmarked URL may name a non-active org, so the scope line names it, with the slug since names repeat.
   const { me } = useTenant();
   const organization = me?.organizations.find(
@@ -179,6 +191,7 @@ function OrganizationNotificationSettingsForOrganization({
             <div>
               {versionConflict ? (
                 <Button
+                  ref={retry}
                   data-testid="organization-notifications-reload"
                   type="button"
                   variant="secondary"
@@ -190,12 +203,14 @@ function OrganizationNotificationSettingsForOrganization({
                       monitorAlertsEnabled: null,
                     });
                     void settings.refetch();
+                    firstSetting.current?.focus();
                   }}
                 >
                   โหลดค่าล่าสุด
                 </Button>
               ) : (
                 <Button
+                  ref={retry}
                   data-testid="organization-notifications-save-retry"
                   type="button"
                   variant="secondary"
@@ -212,6 +227,7 @@ function OrganizationNotificationSettingsForOrganization({
         ) : null}
         <label className="flex items-start gap-3">
           <Checkbox
+            ref={firstSetting}
             data-testid="organization-notifications-settings-changed"
             checked={settingsChanged}
             disabled={save.isPending}
@@ -267,9 +283,11 @@ function OrganizationNotificationSettingsForOrganization({
             {save.isSuccess ? "บันทึกแล้ว" : null}
           </Notice>
           <Button
+            ref={saveButton}
             data-testid="organization-notifications-save"
             type="button"
             wrap
+            className="ml-auto"
             disabled={!changed || save.isPending}
             onClick={() => {
               save.mutate({

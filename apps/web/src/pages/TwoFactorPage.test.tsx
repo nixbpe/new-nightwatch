@@ -100,6 +100,19 @@ describe("TwoFactorPage challenge", () => {
     expect(screen.getByTestId("two-factor-submit")).toBeInTheDocument();
   });
 
+  it("names the empty code field by its label alone and describes it by the error", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    const code = screen.getByRole("textbox", {
+      name: "รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน",
+    });
+    expect(code).toBeInvalid();
+    expect(code).toHaveAccessibleDescription("กรุณากรอกรหัสยืนยัน");
+  });
+
   it("offers a way back to sign-in when the challenge cannot be completed", async () => {
     // The challenge cookie expires on its own; without this link the error that says
     // "sign in again" leaves the user on a page with no way to do it.
@@ -221,6 +234,9 @@ describe("TwoFactorPage challenge", () => {
     expect(recovery).toHaveFocus();
     await user.type(recovery, "ab-12 cd");
     expect(recovery).toHaveValue("ab-12 cd");
+    // Recovery codes are case-sensitive: a phone keyboard must not capitalise or correct them.
+    expect(recovery).toHaveAttribute("autocapitalize", "none");
+    expect(recovery).toHaveAttribute("spellcheck", "false");
   });
 
   it("starts on the app code and switches to a recovery code and back, clearing the field and error", async () => {
@@ -256,6 +272,28 @@ describe("TwoFactorPage challenge", () => {
     expect(screen.getByTestId("two-factor-code")).toHaveFocus();
   });
 
+  it("a lockout shows its message without marking the code wrong or taking focus", async () => {
+    sessionState.data = null;
+    const user = userEvent.setup();
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: null,
+      error: { code: "ACCOUNT_TEMPORARILY_LOCKED", status: 429 },
+    });
+    renderPage();
+
+    await user.type(screen.getByTestId("two-factor-code"), "000000");
+    await user.click(screen.getByTestId("two-factor-submit"));
+
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+    expect(screen.getByTestId("two-factor-code")).not.toBeInvalid();
+    expect(
+      screen.getByTestId("two-factor-code"),
+    ).not.toHaveAccessibleDescription(
+      screen.getByTestId("two-factor-error").textContent,
+    );
+    expect(screen.getByTestId("two-factor-code")).not.toHaveFocus();
+  });
+
   it("an invalid TOTP stays on the challenge with a visible error", async () => {
     sessionState.data = null;
     const user = userEvent.setup();
@@ -270,6 +308,11 @@ describe("TwoFactorPage challenge", () => {
 
     expect(await screen.findByTestId("two-factor-error")).toBeVisible();
     expect(screen.getByTestId("two-factor-code")).toHaveValue("000000");
+    expect(screen.getByTestId("two-factor-code")).toHaveFocus();
+    expect(screen.getByTestId("two-factor-code")).toBeInvalid();
+    expect(screen.getByTestId("two-factor-code")).toHaveAccessibleDescription(
+      screen.getByTestId("two-factor-error").textContent,
+    );
     expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({
       code: "000000",
       trustDevice: false,

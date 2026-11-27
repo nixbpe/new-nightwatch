@@ -22,15 +22,16 @@ function Notice({
       role="status"
       data-slot="notice"
       className={cn(
-        "inline-flex items-center gap-1.5 text-sm",
+        "inline-flex items-start gap-1.5 text-sm",
         tone === "success" ? "text-primary" : "text-foreground-secondary",
         className,
       )}
     >
+      {/* shrink-0 keeps the dot round when the text wraps; the margin centres it on the first line. */}
       <span
         aria-hidden="true"
         className={cn(
-          "h-1.5 w-1.5 rounded-full",
+          "mt-[calc((1lh-0.375rem)/2)] h-1.5 w-1.5 shrink-0 rounded-full",
           tone === "success" ? "bg-current" : "animate-pulse bg-current",
         )}
       />

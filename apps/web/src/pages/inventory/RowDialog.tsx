@@ -359,10 +359,16 @@ export function RowDialog({
             {TEXT_FIELDS.map(({ key, label, mono }, index) => {
               const error =
                 errors[key] ?? (key === "version" ? duplicate : null);
+              const inKey =
+                key === "vendor" || key === "product" || key === "version";
               const invalid =
-                errors[key] !== undefined ||
-                (keyInvalid &&
-                  (key === "vendor" || key === "product" || key === "version"));
+                errors[key] !== undefined || (keyInvalid && inKey);
+              const describedBy =
+                error !== null
+                  ? `inventory-row-${key}-error`
+                  : keyInvalid && inKey
+                    ? "inventory-row-version-error"
+                    : undefined;
               return (
                 <Field
                   key={key}
@@ -370,11 +376,6 @@ export function RowDialog({
                   error={error}
                   errorId={`inventory-row-${key}-error`}
                   errorTestId={`inventory-row-${key}-error`}
-                  className={
-                    key === "version" && duplicate !== null
-                      ? "sm:col-span-2"
-                      : undefined
-                  }
                 >
                   <Input
                     ref={
@@ -385,9 +386,7 @@ export function RowDialog({
                     data-testid={`inventory-row-${key}`}
                     value={values[key]}
                     aria-invalid={invalid ? true : undefined}
-                    aria-describedby={
-                      error === null ? undefined : `inventory-row-${key}-error`
-                    }
+                    aria-describedby={describedBy}
                     className={
                       mono === true ? "font-mono text-[14px]" : undefined
                     }

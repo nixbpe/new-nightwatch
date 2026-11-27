@@ -206,71 +206,59 @@ export function ProjectFormDialog({
               </span>
             </div>
           ) : (
-            <div>
-              <Field
-                label="slug"
-                error={errors.slug}
-                errorId={slugId}
-                errorTestId="project-form-slug-error"
-              >
-                <Input
-                  data-testid="project-form-slug"
-                  ref={slugInput}
-                  value={slug}
-                  className="font-mono text-[13px]"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-invalid={errors.slug === undefined ? undefined : true}
-                  aria-describedby={
-                    errors.slug === undefined ? `${slugId}-hint` : slugId
-                  }
-                  onChange={(event) => {
-                    setSlug(event.target.value);
-                  }}
-                />
-              </Field>
-              <span
-                id={`${slugId}-hint`}
-                className="mt-1 block text-xs text-foreground-secondary"
-              >
-                3 ถึง 40 ตัว ใช้ a-z, 0-9 และ - เท่านั้น เปลี่ยนไม่ได้หลังสร้าง
-              </span>
-            </div>
-          )}
-          <div>
             <Field
-              label="คำอธิบาย (ไม่บังคับ)"
-              error={errors.description}
-              errorId={descriptionId}
-              errorTestId="project-form-description-error"
+              label="slug"
+              help="3 ถึง 40 ตัว ใช้ a-z, 0-9 และ - เท่านั้น เปลี่ยนไม่ได้หลังสร้าง"
+              helpId={`${slugId}-hint`}
+              error={errors.slug}
+              errorId={slugId}
+              errorTestId="project-form-slug-error"
             >
-              <textarea
-                data-testid="project-form-description"
-                ref={descriptionInput}
-                value={description}
-                rows={3}
-                className={cn(textInputClass, "h-auto py-2")}
-                aria-invalid={
-                  errors.description === undefined ? undefined : true
-                }
+              <Input
+                data-testid="project-form-slug"
+                ref={slugInput}
+                value={slug}
+                className="font-mono text-[13px]"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={errors.slug === undefined ? undefined : true}
                 aria-describedby={
-                  errors.description === undefined
-                    ? `${descriptionId}-hint`
-                    : descriptionId
+                  errors.slug === undefined
+                    ? `${slugId}-hint`
+                    : `${slugId} ${slugId}-hint`
                 }
                 onChange={(event) => {
-                  setDescription(event.target.value);
+                  setSlug(event.target.value);
                 }}
               />
             </Field>
-            <span
-              id={`${descriptionId}-hint`}
-              className="mt-1 block text-xs text-foreground-secondary"
-            >
-              ไม่เกิน 500 ตัวอักษร
-            </span>
-          </div>
+          )}
+          <Field
+            label="คำอธิบาย (ไม่บังคับ)"
+            help="ไม่เกิน 500 ตัวอักษร"
+            helpId={`${descriptionId}-hint`}
+            error={errors.description}
+            errorId={descriptionId}
+            errorTestId="project-form-description-error"
+          >
+            <textarea
+              data-testid="project-form-description"
+              ref={descriptionInput}
+              value={description}
+              rows={3}
+              className={cn(textInputClass, "h-auto py-2")}
+              aria-invalid={errors.description === undefined ? undefined : true}
+              aria-describedby={
+                errors.description === undefined
+                  ? `${descriptionId}-hint`
+                  : `${descriptionId} ${descriptionId}-hint`
+              }
+              onChange={(event) => {
+                setDescription(event.target.value);
+              }}
+            />
+          </Field>
         </div>
         <div className="flex flex-col gap-2 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <Button

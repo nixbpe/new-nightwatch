@@ -116,7 +116,7 @@ export function Header({
                         : `shell-breadcrumb-${crumb.path}`
                     }
                     to={crumb.path}
-                    className="text-foreground-secondary hover:text-foreground"
+                    className="py-0.5 text-foreground-secondary hover:text-foreground"
                   >
                     {crumb.label}
                   </Link>

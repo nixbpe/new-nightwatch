@@ -45,7 +45,7 @@ export function AuditTable({
       tabIndex={0}
       role="region"
       aria-label="ตารางบันทึกกิจกรรม"
-      className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+      className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       <table
         data-testid="audit-events-table"

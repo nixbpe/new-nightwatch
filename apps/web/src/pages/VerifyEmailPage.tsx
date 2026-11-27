@@ -195,12 +195,18 @@ function VerificationForm({
               }}
             >
               {(field) => (
-                <Field label="อีเมลที่ใช้สมัครบัญชี">
+                <Field
+                  label="อีเมลที่ใช้สมัครบัญชี"
+                  htmlFor="verify-email-email"
+                >
                   <Input
+                    id="verify-email-email"
                     data-testid="verify-email-email"
                     type="email"
                     name="email"
                     autoComplete="email"
+                    placeholder="name@company.com"
+                    className="font-mono"
                     value={field.state.value}
                     onChange={(event) => {
                       field.handleChange(event.target.value);

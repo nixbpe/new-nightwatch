@@ -17,7 +17,14 @@ import type {
   NotificationItem,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -1216,6 +1223,66 @@ describe("AppShell", () => {
     expect(
       await screen.findByTestId("shell-route-sessions"),
     ).toBeInTheDocument();
+  });
+
+  it("⌘K scrolls the option chosen with the arrows into view and collapses the combobox when nothing matches", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (
+      this: Element,
+      arg,
+    ) {
+      expect(arg).toEqual({ block: "nearest" });
+      scrolled.push(this.id);
+    });
+    const user = userEvent.setup();
+    renderShell();
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    const dialog = screen.getByTestId("shell-command-dialog");
+    const input = within(dialog).getByTestId("shell-command-query");
+    expect(input).toHaveAttribute("aria-expanded", "true");
+
+    await user.keyboard("{ArrowDown}");
+    const second = within(dialog).getAllByTestId(/^shell-command-option-/)[1];
+    await waitFor(() => {
+      expect(scrolled).toEqual([second?.id]);
+    });
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    const options = within(dialog).getAllByTestId(/^shell-command-option-/);
+    await waitFor(() => {
+      expect(scrolled.at(-1)).toBe(options.at(-1)?.id);
+    });
+
+    await user.keyboard("zzzzzz");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("⌘K: a row scrolled under a resting pointer does not take the selection, a pointer move does", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const user = userEvent.setup();
+    renderShell();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("shell-breadcrumb-organization"),
+      ).toHaveTextContent("Org A");
+    });
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    const dialog = screen.getByTestId("shell-command-dialog");
+    await user.keyboard("{ArrowDown}");
+    const options = within(dialog).getAllByTestId(/^shell-command-option-/);
+    expect(options[1]).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.mouseEnter(options[3] as HTMLElement);
+    expect(options[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.mouseMove(options[3] as HTMLElement);
+    expect(options[3]).toHaveAttribute("aria-selected", "true");
   });
 
   it("the header search field opens the same palette and Escape returns focus to it", async () => {

@@ -6,14 +6,16 @@ import { Label } from "./ui/label";
 
 export { Input } from "./ui/input";
 
-// For non-Input controls (e.g. <select>) that share the field styling.
+// For textareas that share the field styling.
 export const textInputClass =
-  "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
-  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
+  "field-focus h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
+  "placeholder:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-danger";
 
 export function Field({
   label,
+  htmlFor,
+  help,
+  helpId,
   error,
   errorId,
   errorTestId,
@@ -21,6 +23,16 @@ export function Field({
   children,
 }: {
   label: ReactNode;
+  /**
+   * Pairs the label with the control by id instead of wrapping it: for a control that cannot sit
+   * inside a <label> (a Combobox with its popup), and to keep the error out of the accessible name.
+   * The label gets the id `${htmlFor}-label`; the caller wires `aria-invalid`, `aria-describedby` and `errorId` itself.
+   */
+  htmlFor?: string;
+  /** Explains the field; sits outside the label so the accessible name stays the label text. */
+  help?: ReactNode;
+  /** Lets the control point at the help through aria-describedby. */
+  helpId?: string;
   error?: string | null;
   /** Lets the control point at the message through aria-describedby. */
   errorId?: string;
@@ -28,23 +40,43 @@ export function Field({
   className?: string;
   children: ReactNode;
 }) {
-  // The message sits outside the <label> so the accessible label stays the label text alone.
+  const message =
+    error === undefined || error === null ? null : (
+      <span
+        data-testid={errorTestId}
+        id={errorId}
+        role="alert"
+        className="mt-1 block text-sm text-danger"
+      >
+        {error}
+      </span>
+    );
+  const helpText =
+    help === undefined ? null : (
+      <p id={helpId} className="mt-1 text-xs text-foreground-secondary">
+        {help}
+      </p>
+    );
+  if (htmlFor !== undefined) {
+    return (
+      <div className={className}>
+        <Label id={`${htmlFor}-label`} htmlFor={htmlFor} className="mb-2 block">
+          {label}
+        </Label>
+        {children}
+        {message}
+        {helpText}
+      </div>
+    );
+  }
   return (
     <div className={className}>
       <Label className="block">
         <span className="mb-2 block">{label}</span>
         {children}
       </Label>
-      {error === undefined || error === null ? null : (
-        <span
-          data-testid={errorTestId}
-          id={errorId}
-          role="alert"
-          className="mt-1 block text-sm text-danger"
-        >
-          {error}
-        </span>
-      )}
+      {message}
+      {helpText}
     </div>
   );
 }

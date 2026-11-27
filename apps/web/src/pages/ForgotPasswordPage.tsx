@@ -70,7 +70,7 @@ export function ForgotPasswordPage() {
           <Notice
             tone="success"
             data-testid="forgot-password-success"
-            className="items-start break-words"
+            className="wrap-anywhere"
           >
             {`หากอีเมล ${sentTo} มีบัญชีในระบบ เราจะส่งลิงก์ที่ใช้ได้ ${RESET_LINK_LIFETIME} ตรวจโฟลเดอร์สแปมด้วย`}
           </Notice>
@@ -96,7 +96,7 @@ export function ForgotPasswordPage() {
           <Link
             to="/login"
             data-testid="forgot-password-login"
-            className="text-center text-sm text-primary underline"
+            className="inline-flex min-h-6 items-center self-center text-sm text-primary underline"
           >
             กลับไปเข้าสู่ระบบ
           </Link>
@@ -130,12 +130,15 @@ export function ForgotPasswordPage() {
             }}
           >
             {(field) => (
-              <Field label="อีเมล">
+              <Field label="อีเมล" htmlFor="forgot-password-email">
                 <Input
+                  id="forgot-password-email"
                   data-testid="forgot-password-email"
                   type="email"
                   name="email"
                   autoComplete="email"
+                  placeholder="name@company.com"
+                  className="font-mono"
                   value={field.state.value}
                   onChange={(event) => {
                     field.handleChange(event.target.value);
@@ -172,7 +175,7 @@ export function ForgotPasswordPage() {
             <Link
               data-testid="forgot-password-login"
               to="/login"
-              className="text-primary underline"
+              className="inline-flex min-h-6 items-center text-primary underline"
             >
               กลับไปเข้าสู่ระบบ
             </Link>

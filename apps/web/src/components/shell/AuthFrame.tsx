@@ -58,7 +58,7 @@ export function AuthPageFrame({
           {subtitle === undefined ? null : (
             <p
               data-testid={subtitleTestId}
-              className="mt-2 text-sm text-foreground-secondary"
+              className="mt-2 text-sm text-foreground-secondary wrap-anywhere"
             >
               {subtitle}
             </p>

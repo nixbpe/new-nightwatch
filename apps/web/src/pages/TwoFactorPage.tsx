@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
@@ -26,8 +26,11 @@ type ChallengeMode = "totp" | "recovery";
 export function TwoFactorPage() {
   const { data, isPending } = authClient.useSession();
   const [error, setError] = useState<string | null>(null);
+  // The server judged the code itself wrong, as opposed to a lockout, an expired challenge or a failed request.
+  const [codeRefused, setCodeRefused] = useState(false);
   // Set once verification succeeded: the page changes only after the session refetch.
   const [redirecting, setRedirecting] = useState(false);
+  const codeRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
     defaultValues: {
@@ -37,6 +40,7 @@ export function TwoFactorPage() {
     },
     onSubmit: async ({ value }) => {
       setError(null);
+      setCodeRefused(false);
       try {
         const args = {
           code: value.code.trim(),
@@ -47,6 +51,10 @@ export function TwoFactorPage() {
             ? await authClient.twoFactor.verifyBackupCode(args)
             : await authClient.twoFactor.verifyTotp(args);
         if (verifyError != null) {
+          const refused =
+            verifyError.code === "INVALID_CODE" ||
+            verifyError.code === "INVALID_BACKUP_CODE";
+          setCodeRefused(refused);
           setError(
             authErrorMessage(
               verifyError,
@@ -55,6 +63,11 @@ export function TwoFactorPage() {
                 : "รหัสยืนยันไม่ถูกต้อง",
             ),
           );
+          if (refused) {
+            // The submit button took focus; put the user back in the field with the wrong code selected.
+            codeRef.current?.focus();
+            codeRef.current?.select();
+          }
           return;
         }
         setRedirecting(true);
@@ -88,7 +101,11 @@ export function TwoFactorPage() {
         noValidate
       >
         {error === null ? null : (
-          <Alert data-testid="two-factor-error" tone="error">
+          <Alert
+            id="two-factor-error-message"
+            data-testid="two-factor-error"
+            tone="error"
+          >
             {error}
           </Alert>
         )}
@@ -106,6 +123,7 @@ export function TwoFactorPage() {
             >
               {(field) => (
                 <Field
+                  htmlFor="two-factor-code"
                   label={
                     mode === "recovery"
                       ? "รหัสกู้คืนบัญชี (ใช้ได้ครั้งเดียว)"
@@ -115,35 +133,49 @@ export function TwoFactorPage() {
                   {mode === "recovery" ? (
                     // Recovery codes keep their exact text; only the TOTP field strips non-digits.
                     <Input
+                      ref={codeRef}
+                      id="two-factor-code"
                       data-testid="two-factor-code"
                       type="text"
                       name="challenge-code"
                       autoFocus
                       autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={field.state.value}
                       onChange={(event) => {
                         field.handleChange(event.target.value);
                       }}
                       onBlur={field.handleBlur}
-                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-invalid={
+                        field.state.meta.errors.length > 0 || codeRefused
+                      }
                       aria-describedby={
                         field.state.meta.errors.length > 0
                           ? "two-factor-recovery-error"
-                          : undefined
+                          : codeRefused
+                            ? "two-factor-error-message"
+                            : undefined
                       }
                     />
                   ) : (
                     <OtpCodeInput
+                      ref={codeRef}
+                      id="two-factor-code"
                       data-testid="two-factor-code"
                       name="challenge-code"
                       value={field.state.value}
                       onValueChange={field.handleChange}
                       onBlur={field.handleBlur}
-                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-invalid={
+                        field.state.meta.errors.length > 0 || codeRefused
+                      }
                       aria-describedby={
                         field.state.meta.errors.length > 0
                           ? "two-factor-totp-error"
-                          : undefined
+                          : codeRefused
+                            ? "two-factor-error-message"
+                            : undefined
                       }
                     />
                   )}
@@ -179,6 +211,7 @@ export function TwoFactorPage() {
                 );
                 form.resetField("code");
                 setError(null);
+                setCodeRefused(false);
               }}
             >
               {modeField.state.value === "totp"
@@ -189,7 +222,7 @@ export function TwoFactorPage() {
         </form.Field>
         <form.Field name="trustDevice">
           {(field) => (
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-6 items-center gap-2 text-sm">
               <Checkbox
                 data-testid="two-factor-trust-device"
                 name="trust-device"
@@ -218,7 +251,7 @@ export function TwoFactorPage() {
         <Link
           to="/login"
           data-testid="two-factor-login"
-          className="text-center text-sm text-primary underline"
+          className="inline-flex min-h-6 items-center self-center text-sm text-primary underline"
         >
           กลับไปเข้าสู่ระบบ
         </Link>

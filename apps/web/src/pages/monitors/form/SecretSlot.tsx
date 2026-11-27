@@ -86,7 +86,7 @@ export function SecretSlot({
     );
   }
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col gap-2">
       <SecretControl
         data-testid={valueTestId}
         path={path}
@@ -104,6 +104,7 @@ export function SecretSlot({
           type="button"
           variant="ghost"
           size="sm"
+          className="self-start"
           aria-disabled={disabled}
           aria-label={`ยกเลิกการแทนที่ ${label}`}
           onClick={() => {

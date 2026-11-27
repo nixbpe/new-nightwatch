@@ -24,7 +24,7 @@ import {
 } from "../../components/shell/icons";
 import { EmptyState } from "../../components/shell/EmptyState";
 import { PageState } from "../../components/shell/PageState";
-import { Alert, Input } from "../../components/ui";
+import { Alert, Field, Input } from "../../components/ui";
 import { cn } from "@/lib/utils";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -107,27 +107,29 @@ function TextFilterForm({
     <form
       role={search === true ? "search" : undefined}
       aria-label={search === true ? undefined : label}
-      className="flex items-center gap-1"
+      className="flex items-end gap-1"
       onSubmit={(event) => {
         event.preventDefault();
         setText(text.trim());
         submit(text.trim());
       }}
     >
-      <Input
-        type="search"
-        data-testid={testId}
-        aria-label={label}
-        placeholder={placeholder}
-        maxLength={200}
-        value={text}
-        className="w-[220px]"
-        onChange={(event) => {
-          setText(event.target.value);
-          // The clear button of a search box fires no submit; a filter that is on must go with it.
-          if (event.target.value === "" && initial !== "") submit("");
-        }}
-      />
+      <Field label={label}>
+        <Input
+          type="search"
+          data-testid={testId}
+          aria-label={label}
+          placeholder={placeholder}
+          maxLength={200}
+          value={text}
+          className="w-[220px]"
+          onChange={(event) => {
+            setText(event.target.value);
+            // The clear button of a search box fires no submit; a filter that is on must go with it.
+            if (event.target.value === "" && initial !== "") submit("");
+          }}
+        />
+      </Field>
       <IconButton
         type="submit"
         variant="secondary"
@@ -365,94 +367,110 @@ export function InventoryRowsSection({
       <p className="text-xs text-foreground-secondary">
         คุณภาพข้อมูลตรวจความครบถ้วนและรูปแบบ ไม่ใช่ผลตรวจความปลอดภัย
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          data-testid="inventory-rows-system"
-          aria-label="System"
-          className="w-auto"
-          value={filters.system}
-          onChange={(event) => {
-            go({ system: event.target.value });
-          }}
-        >
-          <option value="">ทุก System</option>
-          {summary.systems.map((system) => (
-            <option key={system.id} value={system.id}>
-              {systemName(system.name)}
-            </option>
-          ))}
-        </Select>
-        <Select
-          data-testid="inventory-rows-layer"
-          aria-label="Layer"
-          className="w-auto"
-          value={filters.layer}
-          onChange={(event) => {
-            const layer = INVENTORY_LAYERS.find(
-              (item) => item === event.target.value,
-            );
-            go({ layer: layer ?? "" });
-          }}
-        >
-          <option value="">ทุก Layer</option>
-          {INVENTORY_LAYERS.map((layer) => (
-            <option key={layer} value={layer}>
-              {layer}
-            </option>
-          ))}
-        </Select>
-        <Select
-          data-testid="inventory-rows-environment"
-          aria-label="Environment"
-          className="w-auto"
-          value={filters.environment}
-          onChange={(event) => {
-            const environment = INVENTORY_ENVIRONMENTS.find(
-              (item) => item === event.target.value,
-            );
-            go({ environment: environment ?? "" });
-          }}
-        >
-          <option value="">ทุก Environment</option>
-          {INVENTORY_ENVIRONMENTS.map((environment) => (
-            <option key={environment} value={environment}>
-              {environment}
-            </option>
-          ))}
-        </Select>
-        <Select
-          data-testid="inventory-rows-exposure"
-          aria-label="Exposure"
-          className="w-auto"
-          value={filters.exposure}
-          onChange={(event) => {
-            const exposure = INVENTORY_EXPOSURES.find(
-              (item) => item === event.target.value,
-            );
-            go({ exposure: exposure ?? "" });
-          }}
-        >
-          <option value="">ทุก Exposure</option>
-          {INVENTORY_EXPOSURES.map((exposure) => (
-            <option key={exposure} value={exposure}>
-              {exposure}
-            </option>
-          ))}
-        </Select>
-        <SegmentedControl
-          testId="inventory-rows-status"
-          label="สถานะ"
-          value={filters.status}
-          options={STATUS_OPTIONS}
-          optionTestId={(value) => `inventory-rows-status-${value}`}
-          onChange={(status) => {
-            go({ status });
-          }}
-        />
-        <InfoTip
-          data-testid="inventory-rows-key-info"
-          label="key ของแถวคือ System + Vendor + Product + Version ไม่สนตัวพิมพ์เล็กใหญ่และช่องว่างหัวท้าย แถวที่ key ซ้ำมาจากไฟล์ก่อนระบบห้ามซ้ำ ยังคงอยู่ครบ แก้หรือลบได้"
-        />
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="System">
+          <Select
+            data-testid="inventory-rows-system"
+            aria-label="System"
+            className="w-auto max-w-[260px]"
+            value={filters.system}
+            onChange={(event) => {
+              go({ system: event.target.value });
+            }}
+          >
+            <option value="">ทุก System</option>
+            {summary.systems.map((system) => (
+              <option key={system.id} value={system.id}>
+                {systemName(system.name)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Layer">
+          <Select
+            data-testid="inventory-rows-layer"
+            aria-label="Layer"
+            className="w-auto"
+            value={filters.layer}
+            onChange={(event) => {
+              const layer = INVENTORY_LAYERS.find(
+                (item) => item === event.target.value,
+              );
+              go({ layer: layer ?? "" });
+            }}
+          >
+            <option value="">ทุก Layer</option>
+            {INVENTORY_LAYERS.map((layer) => (
+              <option key={layer} value={layer}>
+                {layer}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Environment">
+          <Select
+            data-testid="inventory-rows-environment"
+            aria-label="Environment"
+            className="w-auto"
+            value={filters.environment}
+            onChange={(event) => {
+              const environment = INVENTORY_ENVIRONMENTS.find(
+                (item) => item === event.target.value,
+              );
+              go({ environment: environment ?? "" });
+            }}
+          >
+            <option value="">ทุก Environment</option>
+            {INVENTORY_ENVIRONMENTS.map((environment) => (
+              <option key={environment} value={environment}>
+                {environment}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Exposure">
+          <Select
+            data-testid="inventory-rows-exposure"
+            aria-label="Exposure"
+            className="w-auto"
+            value={filters.exposure}
+            onChange={(event) => {
+              const exposure = INVENTORY_EXPOSURES.find(
+                (item) => item === event.target.value,
+              );
+              go({ exposure: exposure ?? "" });
+            }}
+          >
+            <option value="">ทุก Exposure</option>
+            {INVENTORY_EXPOSURES.map((exposure) => (
+              <option key={exposure} value={exposure}>
+                {exposure}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex flex-col gap-2">
+          <span aria-hidden className="text-sm leading-none font-medium">
+            สถานะ
+          </span>
+          <div className="flex h-10 items-center gap-1">
+            <SegmentedControl
+              className="self-center"
+              testId="inventory-rows-status"
+              label="สถานะ"
+              value={filters.status}
+              options={STATUS_OPTIONS}
+              optionTestId={(value) => `inventory-rows-status-${value}`}
+              onChange={(status) => {
+                go({ status });
+              }}
+            />
+            <InfoTip
+              data-testid="inventory-rows-key-info"
+              label="key ของแถวคือ System + Vendor + Product + Version ไม่สนตัวพิมพ์เล็กใหญ่และช่องว่างหัวท้าย แถวที่ key ซ้ำมาจากไฟล์ก่อนระบบห้ามซ้ำ ยังคงอยู่ครบ แก้หรือลบได้"
+            />
+          </div>
+        </div>
         <TextFilterForm
           initial={filters.owner}
           label="Owner"

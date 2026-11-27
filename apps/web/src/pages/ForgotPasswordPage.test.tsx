@@ -71,6 +71,21 @@ describe("ForgotPasswordPage", () => {
     expect(screen.getByTestId("forgot-password-login")).toBeInTheDocument();
   });
 
+  it("an empty submission keeps the error out of the field's name", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("forgot-password-submit"));
+
+    expect(
+      await screen.findByTestId("forgot-password-email-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("forgot-password-email")).toHaveAccessibleName(
+      "อีเมล",
+    );
+    expect(requestPasswordResetMock).not.toHaveBeenCalled();
+  });
+
   it("the confirmation names the typed address and resend asks the server again after the cooldown", async () => {
     requestPasswordResetMock.mockResolvedValue({ data: {}, error: null });
     const user = userEvent.setup();

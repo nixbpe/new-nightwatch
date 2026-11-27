@@ -198,6 +198,9 @@ describe("MfaCard enrolment steps", () => {
     expect(alert).toHaveAttribute("id", "first-totp-server-error");
     expect(alert).toBeVisible();
     expect(alert).toHaveAttribute("role", "alert");
+    expect(code.compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(code).toHaveValue("123456");
     expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({ code: "123456" });
 
@@ -244,6 +247,18 @@ describe("MfaCard enrolment steps", () => {
     const code = screen.getByTestId("mfa-verify-code");
     await user.type(code, "12ab34567");
     expect(code).toHaveValue("123456");
+  });
+
+  it("an empty code shows its error next to the field without renaming it", async () => {
+    const user = await reachScanStep();
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
+    await user.click(screen.getByTestId("mfa-verify-submit"));
+
+    const error = await screen.findByTestId("mfa-verify-client-error");
+    const code = screen.getByTestId("mfa-verify-code");
+    expect(code).toHaveAttribute("aria-describedby", error.id);
+    expect(code).toHaveAccessibleName("รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน");
   });
 
   it("a pasted code with a space keeps all six digits", async () => {

@@ -319,7 +319,7 @@ export function PendingInvitationsSection({
               header: "การทำงาน",
               align: "end",
               cell: (item) => (
-                <div className="flex flex-wrap items-start justify-end gap-2">
+                <div className="flex flex-wrap items-start justify-end gap-x-2 gap-y-1 py-1">
                   <InvitationResendButton
                     invitation={item}
                     now={now}

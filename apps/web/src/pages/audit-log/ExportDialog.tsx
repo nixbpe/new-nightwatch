@@ -120,7 +120,7 @@ export function ExportDialog({
         >
           <legend className="mb-1 font-medium">รูปแบบไฟล์</legend>
           {(["csv", "json"] as const).map((value) => (
-            <label key={value} className="flex items-center gap-2">
+            <label key={value} className="flex min-h-6 items-center gap-2">
               <input
                 data-testid={`audit-export-dialog-format-${value}`}
                 ref={value === "csv" ? firstFormat : undefined}

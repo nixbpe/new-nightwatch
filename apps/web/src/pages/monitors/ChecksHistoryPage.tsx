@@ -882,7 +882,6 @@ function ChecksHistorySection({
                   variant="secondary"
                   size="sm"
                   aria-disabled={loadingMore}
-                  className={loadingMore ? "opacity-60" : undefined}
                   onClick={() => {
                     void loadMore();
                   }}

@@ -5,11 +5,17 @@ import {
   organizationNotificationSettingsQueryKey,
 } from "../../../lib/api/notifications";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
+import { cn } from "@/lib/utils";
 import { Card } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { ORG_ALERTS_OFF_MESSAGE } from "../detail/labels";
-import { SelectControl, TextControl, type SectionProps } from "./controls";
+import {
+  LOCKED_LOOK,
+  SelectControl,
+  TextControl,
+  type SectionProps,
+} from "./controls";
 
 const CHECKBOX_CARD =
   "flex items-start gap-3 rounded-md border border-foreground/10 px-4 py-3 text-sm";
@@ -105,7 +111,7 @@ export function AlertsSection({
           data-testid="monitor-form-alert-down"
           checked={alerts.downEnabled}
           aria-disabled={disabled}
-          className="mt-0.5"
+          className={cn("mt-0.5", LOCKED_LOOK)}
           onChange={(event) => {
             if (disabled) return;
             onChange(
@@ -121,7 +127,7 @@ export function AlertsSection({
           data-testid="monitor-form-alert-ssl"
           checked={alerts.sslEnabled}
           aria-disabled={disabled}
-          className="mt-0.5"
+          className={cn("mt-0.5", LOCKED_LOOK)}
           onChange={(event) => {
             if (disabled) return;
             onChange(

@@ -2,9 +2,14 @@ import {
   ORGANIZATION_MEMBER_SEARCH_MAX_LENGTH,
   organizationRoleSchema,
 } from "@nightwatch/api-contract";
-import { useState, type RefObject, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type RefObject,
+  type SyntheticEvent,
+} from "react";
 
-import { Input } from "../../components/ui";
+import { Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import type { MemberListFilter } from "../../lib/api/members";
@@ -33,6 +38,14 @@ export function MemberFilterBar({
   }
   const active = filter.q !== undefined || filter.role !== undefined;
 
+  // The clear button of a search box fires no submit; a filter that is on must go with it,
+  // also when the box was emptied while a member change was still saving.
+  useEffect(() => {
+    if (draft === "" && filter.q !== undefined && !busy) {
+      onChange({ ...filter, q: undefined });
+    }
+  }, [busy, draft, filter, onChange]);
+
   const submitSearch = (event: SyntheticEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -50,8 +63,7 @@ export function MemberFilterBar({
       onSubmit={submitSearch}
       className="flex flex-wrap items-end gap-x-3 gap-y-3"
     >
-      <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
-        ค้นหา
+      <Field label="ค้นหา" className="min-w-0">
         <Input
           ref={searchRef}
           data-testid="members-filter-search"
@@ -62,9 +74,9 @@ export function MemberFilterBar({
           onChange={(event) => {
             setDraft(event.target.value);
           }}
-          className="w-80 max-w-full text-sm"
+          className="w-80 max-w-full"
         />
-      </label>
+      </Field>
       <Button
         data-testid="members-filter-submit"
         type="submit"
@@ -73,8 +85,7 @@ export function MemberFilterBar({
       >
         ค้นหา
       </Button>
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
-        บทบาท
+      <Field label="บทบาท">
         <Select
           data-testid="members-filter-role"
           value={filter.role ?? ""}
@@ -93,7 +104,7 @@ export function MemberFilterBar({
             </option>
           ))}
         </Select>
-      </label>
+      </Field>
       {active ? (
         <Button
           data-testid="members-filter-clear"

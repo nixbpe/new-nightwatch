@@ -580,6 +580,9 @@ describe("MappingDialog", () => {
     expect(screen.getByTestId("mapping-purl-error")).toBeInTheDocument();
     expect(screen.getByTestId("mapping-cpe-error")).toBeInTheDocument();
     expect(screen.getByTestId("mapping-cpe")).toHaveFocus();
+    expect(screen.getByTestId("mapping-purl")).toHaveAccessibleDescription(
+      /รูปแบบ purl ไม่ถูกต้อง.*ระบบใช้ค่าที่กรอกแทนผลการค้น/,
+    );
     expect(decideMock).not.toHaveBeenCalled();
 
     await user.clear(screen.getByTestId("mapping-cpe"));

@@ -96,6 +96,10 @@ export function ConnectionCard({
     },
     [],
   );
+  // The Edit button leaves with the action bar, so focus moves to the field it opened.
+  useEffect(() => {
+    if (editing) input.current?.focus();
+  }, [editing]);
   // Runs after the dialog's own focus return, whose opener left with the
   // connection, so focus lands on the card instead of the body (AC-13).
   useEffect(() => {
@@ -293,6 +297,7 @@ export function ConnectionCard({
     setDraftRevision(null);
     setFieldError(null);
     setAttempt({ kind: "idle" });
+    heading.current?.focus();
   }
 
   const affected = data.projects.length;
@@ -493,6 +498,8 @@ export function ConnectionCard({
         >
           <Field
             label="Role ARN ในบัญชีกลาง"
+            help="ทดสอบให้ผ่านก่อนบันทึก ตอนบันทึก NightWatch จะทดสอบซ้ำอีกครั้ง"
+            helpId={hintId}
             error={fieldError}
             errorId={errorId}
             errorTestId="aws-role-arn-error"
@@ -515,12 +522,6 @@ export function ConnectionCard({
               }}
             />
           </Field>
-          <p
-            id={hintId}
-            className="-mt-2 text-[13px] text-foreground-secondary"
-          >
-            ทดสอบให้ผ่านก่อนบันทึก ตอนบันทึก NightWatch จะทดสอบซ้ำอีกครั้ง
-          </p>
           <div className="flex flex-wrap justify-end gap-2">
             {connection === null ? null : (
               <Button
@@ -752,33 +753,37 @@ function AccessDeniedChecklist({
     <div data-testid="aws-test-checklist" className="flex flex-col gap-2">
       <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
         <li>Role ARN ตรงกับ role ที่สร้างในบัญชีกลาง ทั้งเลขบัญชีและชื่อ</li>
-        <li className="flex flex-wrap items-center gap-x-2">
-          trust policy ของ role ตรงกับ policy ในขั้นตอนตั้งค่า
-          {trust === null ? null : (
-            <CopyButton
-              value={trust}
-              label="คัดลอก trust policy"
-              copiedLabel="คัดลอก trust policy แล้ว"
-              showLabel
-              data-testid="aws-checklist-trust-copy"
-            />
-          )}
+        <li>
+          <span className="flex flex-wrap items-center gap-x-2">
+            trust policy ของ role ตรงกับ policy ในขั้นตอนตั้งค่า
+            {trust === null ? null : (
+              <CopyButton
+                value={trust}
+                label="คัดลอก trust policy"
+                copiedLabel="คัดลอก trust policy แล้ว"
+                showLabel
+                data-testid="aws-checklist-trust-copy"
+              />
+            )}
+          </span>
         </li>
-        <li className="flex flex-wrap items-center gap-x-2">
-          External ID ใน trust policy ตรงกับ External ID ขององค์กร
-          <CopyButton
-            value={externalId}
-            label="คัดลอก External ID"
-            copiedLabel="คัดลอก External ID แล้ว"
-            showLabel
-            data-testid="aws-checklist-external-id-copy"
-          />
+        <li>
+          <span className="flex flex-wrap items-center gap-x-2">
+            External ID ใน trust policy ตรงกับ External ID ขององค์กร
+            <CopyButton
+              value={externalId}
+              label="คัดลอก External ID"
+              copiedLabel="คัดลอก External ID แล้ว"
+              showLabel
+              data-testid="aws-checklist-external-id-copy"
+            />
+          </span>
         </li>
       </ol>
       <a
         data-testid="aws-checklist-steps-link"
         href={`#${SETUP_STEPS_ID}`}
-        className="w-fit text-sm text-primary underline-offset-4 hover:underline"
+        className="w-fit py-0.5 text-sm text-primary underline-offset-4 hover:underline"
         onClick={() => {
           const steps = document.getElementById(SETUP_STEPS_ID);
           if (steps instanceof HTMLDetailsElement) steps.open = true;

@@ -33,7 +33,7 @@ export function MockupNotice({
         href={issueUrl ?? `${ISSUES_URL}/${String(issue)}`}
         target="_blank"
         rel="noreferrer"
-        className="text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="inline-flex min-h-6 items-center text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         ดู issue <span className="font-mono">#{issue}</span>
         <span className="sr-only"> (เปิดในแท็บใหม่)</span>

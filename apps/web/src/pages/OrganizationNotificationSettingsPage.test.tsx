@@ -398,6 +398,74 @@ describe("OrganizationNotificationSettingsPage", () => {
     });
   });
 
+  it("moves focus to the retry button after a failed save and to the first setting after a saved one", async () => {
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    });
+    updateSettingsMock
+      .mockRejectedValueOnce(new ApiError("INTERNAL", "boom", 500))
+      .mockResolvedValue({
+        organizationId: ORG_A,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: false,
+        version: 5,
+      });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-monitor-alerts"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    const retry = await screen.findByTestId(
+      "organization-notifications-save-retry",
+    );
+    expect(retry).toHaveFocus();
+    await user.click(retry);
+    await screen.findByTestId("organization-notifications-success");
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).toHaveFocus();
+  });
+
+  it("leaves focus alone when the user moved it elsewhere while the save was running", async () => {
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 4,
+    });
+    const saving = Promise.withResolvers<{
+      organizationId: string;
+      settingsChangedEnabled: boolean;
+      monitorAlertsEnabled: boolean;
+      version: number;
+    }>();
+    updateSettingsMock.mockReturnValue(saving.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByTestId("organization-notifications-monitor-alerts"),
+    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    const elsewhere = document.body.appendChild(
+      document.createElement("button"),
+    );
+    elsewhere.focus();
+
+    saving.resolve({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: false,
+      version: 5,
+    });
+    await screen.findByTestId("organization-notifications-success");
+    expect(elsewhere).toHaveFocus();
+    elsewhere.remove();
+  });
+
   it("retires the failed submission on edit and saves the visible draft", async () => {
     const initial = {
       organizationId: ORG_A,

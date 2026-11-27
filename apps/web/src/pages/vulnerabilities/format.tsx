@@ -27,6 +27,12 @@ export const PROVISIONAL_LABELS = {
   cvss: "CVSS",
 } as const;
 
+/** A row that fills its container draws the focus ring inside it, where an outer ring would be clipped. */
+export const FOCUS_RING_INSET = "focus-visible:-outline-offset-2";
+/** A text link on its own line or cell: 24 px high (LAY-03). */
+export const STANDALONE_LINK =
+  "inline-flex min-h-6 items-center text-primary underline-offset-4 hover:underline";
+
 export const percent = (rate: number) =>
   `${String(Math.round(rate * 1000) / 10)}%`;
 
